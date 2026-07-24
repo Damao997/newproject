@@ -1,6 +1,6 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios'
 import { useAuthStore } from '@/stores/authStore'
-import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse, FilterParams, KpiData, TrendData, BusinessUnitData, Alert, ImportBatch, Company, AccountSubject, Metric, Role, Permission } from '@/types'
+import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse, FilterParams, KpiData, TrendData, BusinessUnitData, Alert, ImportBatch, Company, AggregationMap, AccountSubject, Metric, Role, Permission } from '@/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
@@ -61,11 +61,20 @@ class ApiClient {
   }
 
   private async request<T>(config: AxiosRequestConfig): Promise<T> {
-    const response: AxiosResponse<ApiResponse<T>> = await this.client(config)
-    if (response.data.code !== 0) {
-      throw new Error(response.data.message || '请求失败')
+    try {
+      const response: AxiosResponse<ApiResponse<T>> = await this.client(config)
+      if (response.data.code !== 0) {
+        throw new Error(response.data.message || '请求失败')
+      }
+      return response.data.data
+    } catch (err) {
+      // 优先提取后端统一响应中的业务错误信息（HTTP 非 2xx 时）
+      const message = (err as { response?: { data?: { message?: string } } }).response?.data?.message
+      if (message) {
+        throw new Error(message)
+      }
+      throw err
     }
-    return response.data.data
   }
 
   // Auth API
@@ -276,11 +285,65 @@ class ApiClient {
     })
   }
 
+  async createCompany(data: Partial<Company>): Promise<Company> {
+    return this.request({ method: 'POST', url: '/data/companies', data })
+  }
+
+  async updateCompany(id: string, data: Partial<Company>): Promise<Company> {
+    return this.request({ method: 'PUT', url: `/data/companies/${id}`, data })
+  }
+
+  async deleteCompany(id: string): Promise<void> {
+    return this.request({ method: 'DELETE', url: `/data/companies/${id}` })
+  }
+
+  async getAggregationMap(summaryCode?: string): Promise<AggregationMap[]> {
+    return this.request({ method: 'GET', url: '/data/aggregation-map', params: summaryCode ? { summaryCode } : undefined })
+  }
+
+  async createAggregationMap(data: { summaryCompanyCode: string; singleCompanyCode: string; isInternalElimination?: boolean }): Promise<AggregationMap> {
+    return this.request({ method: 'POST', url: '/data/aggregation-map', data })
+  }
+
+  async deleteAggregationMap(id: string): Promise<void> {
+    return this.request({ method: 'DELETE', url: `/data/aggregation-map/${id}` })
+  }
+
+  async previewImport(file: File, templateType: string): Promise<{ dataRowCount: number; errorCount: number; operatingCount: number; staticCount: number; budgetCount: number; errors: { row: number; column: string; message: string }[] }> {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('templateType', templateType)
+    return this.request({
+      method: 'POST',
+      url: '/data/imports/preview',
+      data: formData,
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  }
+
   async getSubjects(params?: FilterParams): Promise<PaginatedResponse<AccountSubject>> {
     return this.request({
       method: 'GET',
       url: '/data/subjects',
       params,
+    })
+  }
+
+  async getSubjectTree(type: 'operating' | 'static'): Promise<{
+    id: string
+    code: string
+    name: string
+    level: number
+    parentCode: string | null
+    category: string
+    direction: string
+    isLeaf: boolean
+    dataType: 'data' | 'calc' | 'display'
+  }[]> {
+    return this.request({
+      method: 'GET',
+      url: '/data/subjects/tree',
+      params: { type },
     })
   }
 
@@ -423,6 +486,248 @@ class ApiClient {
       params,
     })
   }
+
+  // AI API
+  async generateFormula(data: { userDescription: string; subjectType?: string }): Promise<{
+    suggestedFormula: string | null
+    dependsOn: string[]
+    explanation: string
+    valid: boolean
+    warnings: string[]
+  }> {
+    return this.request({
+      method: 'POST',
+      url: '/ai/formula',
+      data,
+    })
+  }
+
+  async getFormulaRules(): Promise<{ id: string; name: string; formulaTemplate: string; refCodes: string[]; description: string | null }[]> {
+    return this.request({
+      method: 'GET',
+      url: '/ai/formula-rules',
+    })
+  }
+
+  async batchPreviewFormulas(data: { subjectType?: string }): Promise<{
+    code: string
+    name: string
+    formula: string | null
+    dependsOn: string[]
+    explanation: string
+    valid: boolean
+    warnings: string[]
+    ruleName: string | null
+  }[]> {
+    return this.request({
+      method: 'POST',
+      url: '/ai/formula/batch-preview',
+      data,
+    })
+  }
+
+  async batchApplyFormulas(items: { code: string; formula: string; dependsOn: string[] }[]): Promise<{ applied: number }> {
+    return this.request({
+      method: 'POST',
+      url: '/ai/formula/batch-apply',
+      data: { items },
+    })
+  }
+
+  // 指标公式版本历史 / 回滚 / 试算 / 依赖分析 / 审批
+  async getMetricHistory(id: string): Promise<{ version: number; formula: string; description: string | null; changedByName: string; changedAt: string; approvedBy: string | null }[]> {
+    return this.request({ method: 'GET', url: `/data/metrics/${id}/history` })
+  }
+
+  async rollbackMetric(id: string, version: number): Promise<Metric> {
+    return this.request({ method: 'POST', url: `/data/metrics/${id}/rollback`, data: { version } })
+  }
+
+  async trialCalcFormula(data: { formula: string; companyCode?: string; period?: string }): Promise<{ value: number | null; period: string | null; operands: { code: string; name: string; value: number }[] }> {
+    return this.request({ method: 'POST', url: '/data/metrics/trial-calc', data })
+  }
+
+  async analyzeDependencies(id: string): Promise<{ code: string; dependsOn: { code: string; name: string }[]; usedBy: { code: string; name: string }[] }> {
+    return this.request({ method: 'GET', url: `/data/metrics/${id}/dependencies` })
+  }
+
+  async approveMetric(id: string): Promise<{ approved: boolean }> {
+    return this.request({ method: 'POST', url: `/data/metrics/${id}/approve` })
+  }
+
+  async rejectMetric(id: string): Promise<Metric> {
+    return this.request({ method: 'POST', url: `/data/metrics/${id}/reject` })
+  }
+
+  // 公式规则库管理
+  async createFormulaRule(data: { name: string; formulaTemplate: string; description?: string }): Promise<unknown> {
+    return this.request({ method: 'POST', url: '/ai/formula-rules', data })
+  }
+
+  async updateFormulaRule(id: string, data: { name?: string; formulaTemplate?: string; description?: string }): Promise<unknown> {
+    return this.request({ method: 'PUT', url: `/ai/formula-rules/${id}`, data })
+  }
+
+  async toggleFormulaRule(id: string, enabled: boolean): Promise<unknown> {
+    return this.request({ method: 'POST', url: `/ai/formula-rules/${id}/toggle`, data: { enabled } })
+  }
+
+  async deleteFormulaRule(id: string): Promise<void> {
+    return this.request({ method: 'DELETE', url: `/ai/formula-rules/${id}` })
+  }
+
+  // ============ 分析报告：单项分析（公司 × 科目 × 期间） ============
+  async listAnalyses(params: { companyCode?: string; subjectCode?: string; period?: string }): Promise<{ items: AnalysisItem[]; total: number }> {
+    return this.request({ method: 'GET', url: '/reports/analyses', params })
+  }
+
+  async getAnalysis(id: string): Promise<AnalysisItem> {
+    return this.request({ method: 'GET', url: `/reports/analyses/${id}` })
+  }
+
+  async createAnalysis(data: AnalysisInput): Promise<AnalysisItem> {
+    return this.request({ method: 'POST', url: '/reports/analyses', data })
+  }
+
+  async updateAnalysis(id: string, data: { title?: string; content?: string; metricContext?: Record<string, unknown> | null }): Promise<AnalysisItem> {
+    return this.request({ method: 'PUT', url: `/reports/analyses/${id}`, data })
+  }
+
+  async deleteAnalysis(id: string): Promise<void> {
+    return this.request({ method: 'DELETE', url: `/reports/analyses/${id}` })
+  }
+
+  async batchAnalyses(params: { companyCodes: string[]; period?: string }): Promise<{ items: AnalysisItem[]; resolvedCompanyCodes: string[] }> {
+    return this.request({ method: 'GET', url: '/reports/analyses/batch', params: { companyCodes: params.companyCodes.join(','), period: params.period } })
+  }
+
+  // ============ 分析报告：汇总报告 ============
+  async listReports(params: { page?: number; pageSize?: number; status?: string }): Promise<{ items: ReportListItem[]; total: number; page: number; pageSize: number }> {
+    return this.request({ method: 'GET', url: '/reports', params })
+  }
+
+  async getReport(id: string): Promise<ReportDetail> {
+    return this.request({ method: 'GET', url: `/reports/${id}` })
+  }
+
+  async createReport(data: { title: string; fiscalYear: string; period: string; companyScope: { type: 'company' | 'summary'; code: string } }): Promise<ReportDetail> {
+    return this.request({ method: 'POST', url: '/reports', data })
+  }
+
+  async updateReport(id: string, data: { title?: string; status?: string }): Promise<ReportDetail> {
+    return this.request({ method: 'PUT', url: `/reports/${id}`, data })
+  }
+
+  async deleteReport(id: string): Promise<void> {
+    return this.request({ method: 'DELETE', url: `/reports/${id}` })
+  }
+
+  async generateReportSections(id: string): Promise<ReportDetail> {
+    return this.request({ method: 'POST', url: `/reports/${id}/sections/generate` })
+  }
+
+  async setReportSections(id: string, items: ReportSectionInput[]): Promise<ReportDetail> {
+    return this.request({ method: 'PUT', url: `/reports/${id}/sections`, data: { items } })
+  }
+
+  async saveReportVersion(id: string, changeSummary?: string): Promise<{ versionNo: number }> {
+    return this.request({ method: 'POST', url: `/reports/${id}/versions`, data: { changeSummary } })
+  }
+
+  async listReportVersions(id: string): Promise<{ items: ReportVersionItem[] }> {
+    return this.request({ method: 'GET', url: `/reports/${id}/versions` })
+  }
+
+  async exportReport(id: string, format: 'docx' | 'pdf'): Promise<ReportExportData> {
+    return this.request({ method: 'GET', url: `/reports/${id}/export`, params: { format } })
+  }
+}
+
+// ============ 分析报告类型 ============
+export interface AnalysisItem {
+  id: string
+  companyCode: string
+  companyName: string | null
+  subjectCode: string
+  subjectName: string | null
+  subjectType: string
+  fiscalYear: string
+  period: string
+  title: string
+  content: string
+  metricContext: Record<string, unknown> | null
+  createdBy: string | null
+  updatedBy: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AnalysisInput {
+  companyCode: string
+  subjectCode: string
+  subjectType?: 'operating' | 'static'
+  fiscalYear: string
+  period: string
+  title: string
+  content: string
+  metricContext?: Record<string, unknown> | null
+}
+
+export interface CompanyScope {
+  type: 'company' | 'summary'
+  code: string
+  name?: string | null
+}
+
+export interface ReportListItem {
+  id: string
+  title: string
+  fiscalYear: string
+  period: string
+  companyScope: CompanyScope
+  status: string
+  currentVersion: number
+  createdBy: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ReportSectionView {
+  id: string
+  orderNo: number
+  title: string
+  content: string
+  analysisId: string | null
+  source: { companyCode: string; companyName: string | null; subjectCode: string; subjectName: string | null; period: string } | null
+  missing: boolean
+}
+
+export interface ReportDetail extends ReportListItem {
+  sections: ReportSectionView[]
+}
+
+export interface ReportSectionInput {
+  id?: string
+  analysisId?: string | null
+  title?: string
+  content?: string
+}
+
+export interface ReportVersionItem {
+  id: string
+  versionNo: number
+  changeSummary: string | null
+  changedBy: string | null
+  changedAt: string
+}
+
+export interface ReportExportData {
+  title: string
+  fiscalYear: string
+  period: string
+  scopeName: string | null
+  generatedAt: string
+  sections: { title: string; content: string; plainText: string; missing: boolean }[]
 }
 
 export const api = new ApiClient()

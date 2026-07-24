@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { TrendingUp } from 'lucide-react'
-import { mockLogin } from '@/mock/data'
+import { api } from '@/lib/api'
 
 export default function LoginPage() {
   const [username, setUsername] = useState('')
@@ -25,7 +25,7 @@ export default function LoginPage() {
     setError('')
 
     try {
-      const response = await mockLogin(username, password)
+      const response = await api.login({ username, password })
       login(response.user, response.accessToken, response.refreshToken)
       navigate('/dashboard')
     } catch (err) {

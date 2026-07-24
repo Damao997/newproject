@@ -3,9 +3,12 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { SubjectTree } from '@/components/subject-tree/subject-tree'
-import { filterTree, type FlatSubjectRow } from '@/lib/subject-tree'
+import { SubjectDialog } from '@/components/subject-tree/subject-dialog'
+import { useConfirm } from '@/components/ui/confirm-dialog'
+import { filterTree, buildSubjectTree, flattenTree } from '@/lib/subject-tree'
 import { exportToExcel } from '@/lib/export'
-import { Search, ChevronsDownUp, ChevronsUpDown, Download } from 'lucide-react'
+import { useSubjectTree, useDeleteSubject, type SubjectTreeItem } from '@/hooks/api-queries'
+import { Search, ChevronsDownUp, ChevronsUpDown, Download, Plus, Pencil, Trash2 } from 'lucide-react'
 import type { SubjectNode } from '@/types'
 
 const dataTypeLabel: Record<SubjectNode['dataType'], string> = {
@@ -17,48 +20,62 @@ const dataTypeLabel: Record<SubjectNode['dataType'], string> = {
 /** 收集所有含子节点的科目编码（用于展开） */
 function collectExpandableCodes(nodes: SubjectNode[]): string[] {
   const codes: string[] = []
-  for (const node of nodes) {
-    if (node.children.length > 0) {
-      codes.push(node.code)
-      codes.push(...collectExpandableCodes(node.children))
+  const walk = (list: SubjectNode[]) => {
+    for (const node of list) {
+      if (node.children.length > 0) {
+        codes.push(node.code)
+        walk(node.children)
+      }
     }
   }
+  walk(nodes)
   return codes
 }
 
 interface SubjectTreePanelProps {
-  /** 装饰后的科目树 */
-  tree: SubjectNode[]
-  /** 装饰后的扁平列表（用于计数与导出） */
-  flat: FlatSubjectRow[]
+  /** 科目类型 */
+  type: 'operating' | 'static'
+  canCreate?: boolean
+  canUpdate?: boolean
+  canDelete?: boolean
   /** 是否显示导出按钮 */
   canExport?: boolean
   /** 导出文件名（不含扩展名） */
   exportFileName?: string
   /** 导出工作表名 */
   exportSheet?: string
-  /** 科目计数文案后缀，如「（level0-level4）」 */
+  /** 科目计数文案后缀 */
   countSuffix?: string
 }
 
 /**
- * 通用科目树面板：类别筛选 + 搜索 + 展开/折叠 + 科目树 + 可选导出。
- * 自持状态，默认展开 level0（各类别下 level1 可见）。经营分析与静态科目复用同一面板。
+ * 通用科目树面板（读后端真实科目）：类别筛选 + 搜索 + 展开/折叠 + 科目树 + 新增/编辑/停用 + 导出。
+ * 经营分析与静态科目复用同一面板（按 type 取数）。
  */
 export function SubjectTreePanel({
-  tree,
-  flat,
+  type,
+  canCreate = false,
+  canUpdate = false,
+  canDelete = false,
   canExport = false,
   exportFileName = '科目层级',
   exportSheet = '科目层级',
   countSuffix = '',
 }: SubjectTreePanelProps) {
+  const { data, isLoading } = useSubjectTree(type)
+  const deleteSubject = useDeleteSubject()
+  const { confirm, element: confirmElement } = useConfirm()
+  const [actionError, setActionError] = useState<string | null>(null)
+  const flat = useMemo(() => (data ?? []) as SubjectTreeItem[], [data])
+  const tree = useMemo(() => buildSubjectTree(flat), [flat])
+
   const rootCodes = useMemo(() => tree.map((n) => n.code), [tree])
   const allExpandableCodes = useMemo(() => collectExpandableCodes(tree), [tree])
 
   const [category, setCategory] = useState('all')
   const [keyword, setKeyword] = useState('')
   const [expandedCodes, setExpandedCodes] = useState<Set<string>>(() => new Set(rootCodes))
+  const [dialog, setDialog] = useState<{ open: boolean; mode: 'create' | 'edit'; subject: SubjectTreeItem | null }>({ open: false, mode: 'create', subject: null })
 
   const trimmedKeyword = keyword.trim()
 
@@ -67,7 +84,6 @@ export function SubjectTreePanel({
     return filterTree(base, trimmedKeyword)
   }, [tree, category, trimmedKeyword])
 
-  // 搜索时自动展开过滤后树的全部祖先，确保命中项可见
   const effectiveExpanded = useMemo(
     () => (trimmedKeyword ? new Set(collectExpandableCodes(displayTree)) : expandedCodes),
     [trimmedKeyword, displayTree, expandedCodes],
@@ -82,7 +98,26 @@ export function SubjectTreePanel({
     })
   }
 
+  const handleDisable = async (node: SubjectNode) => {
+    const item = flat.find((f) => f.code === node.code)
+    if (!item) return
+    if (!(await confirm({ title: '停用科目', description: `确认停用科目「${node.name}」？`, danger: true, confirmText: '停用' }))) return
+    setActionError(null)
+    try {
+      await deleteSubject.mutateAsync(item.id)
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : '停用失败')
+    }
+  }
+
   const handleExport = async () => {
+    const rows = flattenTree(tree).map(({ node, depth }) => ({
+      code: node.code,
+      name: `${'　'.repeat(depth)}${node.name}`,
+      level: `level${node.level}`,
+      category: node.category,
+      dataType: dataTypeLabel[node.dataType],
+    }))
     await exportToExcel({
       filename: `${exportFileName}_${new Date().toISOString().slice(0, 10)}.xlsx`,
       sheetName: exportSheet,
@@ -93,15 +128,11 @@ export function SubjectTreePanel({
         { header: '类别', key: 'category', width: 16 },
         { header: '数据类型', key: 'dataType', width: 12 },
       ],
-      rows: flat.map(({ node }) => ({
-        code: node.code,
-        name: node.name,
-        level: `level${node.level}`,
-        category: node.category,
-        dataType: dataTypeLabel[node.dataType],
-      })),
+      rows,
     })
   }
+
+  const hasActions = canUpdate || canDelete
 
   return (
     <div className="space-y-4">
@@ -131,6 +162,12 @@ export function SubjectTreePanel({
         </div>
 
         <div className="flex items-center space-x-2">
+          {canCreate && (
+            <Button variant="outline" size="sm" onClick={() => setDialog({ open: true, mode: 'create', subject: null })}>
+              <Plus className="mr-2 h-4 w-4" />
+              新增科目
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -159,15 +196,50 @@ export function SubjectTreePanel({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        共 {flat.length} 个科目{countSuffix}
+        {isLoading ? '加载中...' : `共 ${flattenTree(tree).length} 个科目${countSuffix}`}
       </p>
+
+      {actionError && <p className="text-xs text-destructive">{actionError}</p>}
 
       <SubjectTree
         nodes={displayTree}
         expandedCodes={effectiveExpanded}
         onToggle={handleToggle}
         keyword={trimmedKeyword}
+        emptyText={isLoading ? '加载中...' : '暂无科目'}
+        actions={
+          hasActions
+            ? (node) => (
+                <>
+                  {canUpdate && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setDialog({ open: true, mode: 'edit', subject: flat.find((f) => f.code === node.code) ?? null })}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  )}
+                  {canDelete && (
+                    <Button variant="ghost" size="sm" onClick={() => handleDisable(node)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </>
+              )
+            : undefined
+        }
       />
+
+      <SubjectDialog
+        open={dialog.open}
+        mode={dialog.mode}
+        type={type}
+        subject={dialog.subject}
+        flat={flat}
+        onClose={() => setDialog((d) => ({ ...d, open: false }))}
+      />
+      {confirmElement}
     </div>
   )
 }

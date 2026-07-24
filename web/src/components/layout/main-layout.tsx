@@ -10,10 +10,10 @@ export function MainLayout() {
   }
 
   return (
-    <div className="relative flex min-h-screen flex-col bg-background">
+    <div className="relative flex h-screen flex-col overflow-hidden bg-[#F8FAFC]">
       <Header />
-      <main className="flex-1">
-        <div className="container mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <main className="flex-1 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}>
+        <div className="container mx-auto max-w-7xl px-6 py-8">
           <Outlet />
         </div>
       </main>

@@ -10,8 +10,8 @@
     --card-foreground: 222 84% 5%;
     --popover: 0 0% 100%;
     --popover-foreground: 222 84% 5%;
-    --primary: 221 83% 53%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 25 95% 53%;
+    --primary-foreground: 0 0% 100%;
     --secondary: 210 40% 96%;
     --secondary-foreground: 222 47% 11%;
     --muted: 210 40% 96%;
@@ -20,11 +20,11 @@
     --accent-foreground: 222 47% 11%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 210 40% 98%;
-    --success: 142 76% 36%;
+    --success: 160 84% 39%;
     --warning: 38 92% 50%;
     --border: 214 32% 91%;
     --input: 214 32% 91%;
-    --ring: 221 83% 53%;
+    --ring: 25 95% 53%;
     --radius: 0.75rem;
   }
 
@@ -76,4 +76,73 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ============ TipTap 富文本编辑器排版 ============ */
+.prose-editor:empty::before,
+.prose-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: hsl(var(--muted-foreground));
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+.prose-editor h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 12px 0 6px;
+}
+.prose-editor h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 10px 0 4px;
+}
+.prose-editor p {
+  margin: 4px 0;
+}
+.prose-editor ul,
+.prose-editor ol {
+  padding-left: 20px;
+  margin: 4px 0;
+}
+.prose-editor ul {
+  list-style: disc;
+}
+.prose-editor ol {
+  list-style: decimal;
+}
+.prose-editor blockquote {
+  border-left: 3px solid hsl(var(--border));
+  padding-left: 12px;
+  color: hsl(var(--muted-foreground));
+  margin: 6px 0;
+}
+.prose-editor a {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+}
+.prose-editor table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 6px 0;
+}
+.prose-editor th,
+.prose-editor td {
+  border: 1px solid hsl(var(--border));
+  padding: 4px 8px;
+  text-align: left;
+}
+.prose-editor code {
+  background: hsl(var(--muted));
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+}
+.prose-editor pre {
+  background: hsl(var(--muted));
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 6px 0;
+  overflow-x: auto;
 }

@@ -1,10 +1,12 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useRef } from 'react'
 import { DataTable, type DataTableColumn } from './data-table'
 
 const ProTableInner = lazy(() => import('./pro-table-inner'))
 
-/** 启用虚拟滚动的行数阈值，对齐《前端开发规范》§7.1 */
-const VIRTUAL_THRESHOLD = 100
+/** 启用虚拟滚动的行数阈值（进入），对齐《前端开发规范》§7.1 */
+const VIRTUAL_ENABLE_THRESHOLD = 100
+/** 退出虚拟滚动的行数阈值：低于该值才退出，形成迟滞区避免阈值附近反复切换实现导致 remount 抖动 */
+const VIRTUAL_DISABLE_THRESHOLD = 80
 
 interface ProDataTableProps<T> {
   columns: DataTableColumn<T>[]
@@ -27,7 +29,12 @@ export function ProDataTable<T extends Record<string, unknown>>({
   emptyText,
   className,
 }: ProDataTableProps<T>) {
-  if (data.length <= VIRTUAL_THRESHOLD) {
+  // 迟滞判定：进入虚拟模式后需降到较低阈值才退出，避免行数在阈值附近抖动时反复 remount
+  const virtualRef = useRef(false)
+  if (!virtualRef.current && data.length > VIRTUAL_ENABLE_THRESHOLD) virtualRef.current = true
+  else if (virtualRef.current && data.length < VIRTUAL_DISABLE_THRESHOLD) virtualRef.current = false
+
+  if (!virtualRef.current) {
     return (
       <DataTable
         columns={columns}
@@ -41,7 +48,11 @@ export function ProDataTable<T extends Record<string, unknown>>({
 
   return (
     <Suspense
-      fallback={<div className="p-8 text-center text-sm text-muted-foreground">表格加载中…</div>}
+      fallback={
+        <div className="flex min-h-[480px] items-center justify-center p-8 text-center text-sm text-muted-foreground">
+          表格加载中…
+        </div>
+      }
     >
       <ProTableInner
         columns={columns as DataTableColumn<Record<string, unknown>>[]}

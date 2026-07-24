@@ -31,10 +31,10 @@ export function TrendChart({ data, showBudget = true }: TrendChartProps) {
         if (!Array.isArray(params)) return ''
         let result = `<div style="font-weight:600;margin-bottom:8px;color:#0F172A;font-size:14px">${params[0].axisValue}</div>`
         params.forEach((item: any) => {
-          const color = item.seriesName === '收入' ? '#2563EB' 
-            : item.seriesName === '成本' ? '#EF4444' 
-            : item.seriesName === '毛利' ? '#16A34A'
-            : '#F59E0B'
+          const color = item.seriesName === '收入' ? '#F97316' 
+            : item.seriesName === '成本' ? '#3B82F6' 
+            : item.seriesName === '毛利' ? '#10B981'
+            : '#8B5CF6'
           result += `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin:4px 0">
             <div style="display:flex;align-items:center;gap:8px">
               <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color}"></span>
@@ -93,7 +93,7 @@ export function TrendChart({ data, showBudget = true }: TrendChartProps) {
       },
       splitLine: {
         lineStyle: {
-          color: '#F1F5F9',
+          color: '#E2E8F0',
           type: 'dashed',
         },
       },
@@ -109,17 +109,7 @@ export function TrendChart({ data, showBudget = true }: TrendChartProps) {
         type: 'bar',
         data: data.map(d => d.revenue),
         itemStyle: {
-          color: {
-            type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: '#3B82F6' },
-              { offset: 1, color: '#2563EB' },
-            ],
-          },
+          color: '#F97316',
           borderRadius: [4, 4, 0, 0],
         },
         barWidth: '16%',
@@ -130,17 +120,7 @@ export function TrendChart({ data, showBudget = true }: TrendChartProps) {
         type: 'bar',
         data: data.map(d => d.cost),
         itemStyle: {
-          color: {
-            type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: '#F87171' },
-              { offset: 1, color: '#EF4444' },
-            ],
-          },
+          color: '#3B82F6',
           borderRadius: [4, 4, 0, 0],
         },
         barWidth: '16%',
@@ -151,14 +131,14 @@ export function TrendChart({ data, showBudget = true }: TrendChartProps) {
         data: data.map(d => d.profit),
         smooth: 0.4,
         lineStyle: {
-          color: '#16A34A',
+          color: '#10B981',
           width: 2.5,
           cap: 'round',
         },
         symbol: 'circle',
         symbolSize: 6,
         itemStyle: {
-          color: '#16A34A',
+          color: '#10B981',
           borderWidth: 2,
           borderColor: '#fff',
         },
@@ -171,7 +151,7 @@ export function TrendChart({ data, showBudget = true }: TrendChartProps) {
               data: data.map(d => d.budget),
               smooth: 0.4,
               lineStyle: {
-                color: '#F59E0B',
+                color: '#8B5CF6',
                 width: 2,
                 type: 'dashed',
                 cap: 'round',
@@ -179,7 +159,7 @@ export function TrendChart({ data, showBudget = true }: TrendChartProps) {
               symbol: 'diamond',
               symbolSize: 6,
               itemStyle: {
-                color: '#F59E0B',
+                color: '#8B5CF6',
                 borderWidth: 2,
                 borderColor: '#fff',
               },

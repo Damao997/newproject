@@ -1,5 +1,5 @@
 import { Fragment } from 'react'
-import { ChevronRight, ChevronDown } from 'lucide-react'
+import { ChevronRight, ChevronDown, MessageSquarePlus } from 'lucide-react'
 import { cn, formatMoneyWan, formatPercent, getChangeColor } from '@/lib/utils'
 import { calcYoy, calcAchievement, calcYtdYoy, type MetricValue } from '@/lib/metric-values'
 import type { SubjectNode } from '@/types'
@@ -17,6 +17,8 @@ interface MetricTreeProps {
   onToggle: (code: string) => void
   /** 是否将 level0 抽为最左侧「分类」列（同组跨行合并） */
   categoryColumn?: boolean
+  /** 传入后在行尾渲染「分析」操作列，点击回调该科目节点 */
+  onAnalyze?: (node: SubjectNode) => void
   emptyText?: string
 }
 
@@ -95,6 +97,22 @@ function SubjectCell({
   )
 }
 
+/** 分析操作单元格：点击触发单项分析抽屉 */
+function AnalyzeCell({ node, onAnalyze }: { node: SubjectNode; onAnalyze?: (node: SubjectNode) => void }) {
+  if (!onAnalyze) return null
+  return (
+    <td className="px-4 py-2 text-center align-middle">
+      <button
+        type="button"
+        onClick={() => onAnalyze(node)}
+        className="inline-flex items-center gap-1 rounded px-2 py-1 text-[12px] text-primary transition-colors hover:bg-primary/10"
+      >
+        <MessageSquarePlus className="h-3.5 w-3.5" /> 分析
+      </button>
+    </td>
+  )
+}
+
 /** 普通树形行（静态指标 / 非分类布局） */
 function MetricRows({
   nodes,
@@ -103,6 +121,7 @@ function MetricRows({
   isOperating,
   expandedCodes,
   onToggle,
+  onAnalyze,
 }: {
   nodes: SubjectNode[]
   depth: number
@@ -110,6 +129,7 @@ function MetricRows({
   isOperating: boolean
   expandedCodes: Set<string>
   onToggle: (code: string) => void
+  onAnalyze?: (node: SubjectNode) => void
 }) {
   return (
     <>
@@ -121,6 +141,7 @@ function MetricRows({
             <tr className="border-b transition-colors hover:bg-muted/50">
               <SubjectCell node={node} indentDepth={depth} expandedCodes={expandedCodes} onToggle={onToggle} />
               {renderValueCells(valueMap.get(node.code), isOperating)}
+              <AnalyzeCell node={node} onAnalyze={onAnalyze} />
             </tr>
             {hasChildren && isExpanded && (
               <MetricRows
@@ -130,6 +151,7 @@ function MetricRows({
                 isOperating={isOperating}
                 expandedCodes={expandedCodes}
                 onToggle={onToggle}
+                onAnalyze={onAnalyze}
               />
             )}
           </Fragment>
@@ -159,12 +181,14 @@ function CategoryRows({
   isOperating,
   expandedCodes,
   onToggle,
+  onAnalyze,
 }: {
   level0Nodes: SubjectNode[]
   valueMap: Map<string, MetricValue>
   isOperating: boolean
   expandedCodes: Set<string>
   onToggle: (code: string) => void
+  onAnalyze?: (node: SubjectNode) => void
 }) {
   return (
     <>
@@ -191,6 +215,7 @@ function CategoryRows({
                   onToggle={onToggle}
                 />
                 {renderValueCells(valueMap.get(node.code), isOperating)}
+                <AnalyzeCell node={node} onAnalyze={onAnalyze} />
               </tr>
             ))}
           </Fragment>
@@ -214,10 +239,11 @@ export function MetricTree({
   expandedCodes,
   onToggle,
   categoryColumn = false,
+  onAnalyze,
   emptyText = '暂无数据',
 }: MetricTreeProps) {
   const isOperating = variant === 'operating'
-  const colSpan = 1 + valueColCount(isOperating) + (categoryColumn ? 1 : 0)
+  const colSpan = 1 + valueColCount(isOperating) + (categoryColumn ? 1 : 0) + (onAnalyze ? 1 : 0)
   const headBase = 'h-11 px-4 text-[13px] align-middle font-medium text-black'
   return (
     <div className="overflow-x-auto">
@@ -244,6 +270,7 @@ export function MetricTree({
                 <th className={cn(headBase, 'text-center')}>变动率</th>
               </>
             )}
+            {onAnalyze && <th className={cn(headBase, 'text-center')}>操作</th>}
           </tr>
         </thead>
         <tbody>
@@ -260,6 +287,7 @@ export function MetricTree({
               isOperating={isOperating}
               expandedCodes={expandedCodes}
               onToggle={onToggle}
+              onAnalyze={onAnalyze}
             />
           ) : (
             <MetricRows
@@ -269,6 +297,7 @@ export function MetricTree({
               isOperating={isOperating}
               expandedCodes={expandedCodes}
               onToggle={onToggle}
+              onAnalyze={onAnalyze}
             />
           )}
         </tbody>

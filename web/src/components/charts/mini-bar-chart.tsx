@@ -16,6 +16,8 @@ interface MiniBarChartProps {
   max?: number
   /** 数值格式化 */
   valueFormatter?: (value: number) => string
+  /** 条形颜色数组，循环着色（默认四色活泼体系） */
+  barColors?: string[]
   className?: string
 }
 
@@ -26,7 +28,9 @@ interface MiniBarChartProps {
  * 仅用 CSS 宽度过渡实现流畅的条形增长动画（挂载后从 0 增长到目标值）。
  * 适合分类少、只需展示相对占比的轻量场景。
  */
-export function MiniBarChart({ data, max, valueFormatter, className }: MiniBarChartProps) {
+const DEFAULT_BAR_COLORS = ['#F97316', '#3B82F6', '#10B981', '#8B5CF6']
+
+export function MiniBarChart({ data, max, valueFormatter, barColors = DEFAULT_BAR_COLORS, className }: MiniBarChartProps) {
   const [ready, setReady] = useState(false)
   const maxValue = max ?? Math.max(...data.map((d) => d.value), 1)
 
@@ -38,8 +42,9 @@ export function MiniBarChart({ data, max, valueFormatter, className }: MiniBarCh
 
   return (
     <div className={cn('space-y-5', className)}>
-      {data.map((item) => {
+      {data.map((item, i) => {
         const pct = Math.min((item.value / maxValue) * 100, 100)
+        const barColor = barColors[i % barColors.length]
         return (
           <div key={item.label} className="group">
             <div className="mb-2 flex items-center justify-between">
@@ -55,8 +60,8 @@ export function MiniBarChart({ data, max, valueFormatter, className }: MiniBarCh
             </div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
               <div
-                className="chart-bar h-full rounded-full bg-gradient-to-r from-primary/80 to-primary"
-                style={{ width: ready ? `${pct}%` : '0%' }}
+                className="chart-bar h-full rounded-full"
+                style={{ width: ready ? `${pct}%` : '0%', backgroundColor: barColor }}
               />
             </div>
           </div>

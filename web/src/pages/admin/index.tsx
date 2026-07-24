@@ -8,11 +8,13 @@ import { PageContainer } from '@/components/layout/page-container'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { Pagination } from '@/components/data-table/pagination'
 import { usePermission } from '@/hooks/usePermission'
+import { useUsers, useRoles, useAuditLogs, useUpdateUser, useResetPassword, useDeleteRole, useCloneRole, type RoleItem } from '@/hooks/api-queries'
+import { UserDialog, RoleDialog, PermissionDialog } from './dialogs'
 import { exportToExcel } from '@/lib/export'
-import { PAGINATION } from '@/lib/constants'
-import { 
-  Download, 
-  Plus, 
+import { PAGINATION, ROLE_NAMES } from '@/lib/constants'
+import {
+  Download,
+  Plus,
   Search,
   MoreHorizontal,
   Edit,
@@ -21,16 +23,15 @@ import {
   UserX,
   Users,
   Shield,
-  Activity
+  Activity,
 } from 'lucide-react'
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuSeparator, 
-  DropdownMenuTrigger 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { mockUsers, mockRoles, mockAuditLogs } from '@/mock/data'
 import type { User, UserRole, AuditLog } from '@/types'
 
 const USER_PAGE_SIZE = PAGINATION.DEFAULT_PAGE_SIZE
@@ -45,6 +46,7 @@ export default function AdminPage() {
   const canViewRoles = can('admin:roles', 'view')
   const canCreateRole = can('admin:roles', 'create')
   const canUpdateRole = can('admin:roles', 'update')
+  const canDeleteRole = can('admin:roles', 'delete')
   const canManagePermissions = can('admin:permissions', 'update')
   const hasUserActions = canUpdateUser || canResetPassword || canDeleteUser
 
@@ -53,32 +55,61 @@ export default function AdminPage() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [page, setPage] = useState(1)
 
-  const getRoleName = (role: UserRole) => {
-    const roleMap: Record<UserRole, string> = {
-      admin: '管理员',
-      finance_manager: '财务主管',
-      department_manager: '部门经理',
-      viewer: '查看者',
-      finance_analyst_it: '财务分析师(兼IT)',
-    }
-    return roleMap[role]
-  }
+  // 弹窗状态
+  const [userDialog, setUserDialog] = useState<{ open: boolean; mode: 'create' | 'edit'; user: User | null }>({ open: false, mode: 'create', user: null })
+  const [roleDialog, setRoleDialog] = useState<{ open: boolean; mode: 'create' | 'edit'; role: RoleItem | null }>({ open: false, mode: 'create', role: null })
+  const [permRole, setPermRole] = useState<RoleItem | null>(null)
 
-  const filteredUsers = useMemo(() => mockUsers.filter(user => {
-    if (roleFilter !== 'all' && user.role !== roleFilter) return false
-    if (statusFilter !== 'all' && user.status !== statusFilter) return false
-    if (searchQuery && !user.username.includes(searchQuery) && !user.name.includes(searchQuery)) return false
-    return true
-  }), [roleFilter, statusFilter, searchQuery])
+  // 真实数据（用户量小，取较大页在前端做筛选/分页，保留原交互）
+  const { data: usersData } = useUsers({ page: 1, pageSize: 500 })
+  const { data: rolesData } = useRoles()
+  const { data: auditData } = useAuditLogs({ page: 1, pageSize: 50 })
+  const updateUser = useUpdateUser()
+  const resetPassword = useResetPassword()
+  const deleteRole = useDeleteRole()
+  const cloneRole = useCloneRole()
+
+  const allUsers = (usersData?.items ?? []) as User[]
+  const roles = (rolesData ?? []) as RoleItem[]
+  const auditLogs = (auditData?.items ?? []) as AuditLog[]
+
+  const getRoleName = (role: UserRole) => ROLE_NAMES[role] ?? role
+
+  const filteredUsers = useMemo(
+    () =>
+      allUsers.filter((user) => {
+        if (roleFilter !== 'all' && user.role !== roleFilter) return false
+        if (statusFilter !== 'all' && user.status !== statusFilter) return false
+        if (searchQuery && !user.username.includes(searchQuery) && !user.name.includes(searchQuery)) return false
+        return true
+      }),
+    [allUsers, roleFilter, statusFilter, searchQuery],
+  )
 
   const pagedUsers = filteredUsers.slice((page - 1) * USER_PAGE_SIZE, page * USER_PAGE_SIZE)
   const resetPage = () => setPage(1)
 
   const stats = {
-    total: mockUsers.length,
-    active: mockUsers.filter(u => u.status === 'active').length,
-    inactive: mockUsers.filter(u => u.status === 'inactive').length,
-    roles: mockRoles.length,
+    total: allUsers.length,
+    active: allUsers.filter((u) => u.status === 'active').length,
+    inactive: allUsers.filter((u) => u.status === 'inactive').length,
+    roles: roles.length,
+  }
+
+  const toggleStatus = (u: User) => {
+    updateUser.mutate({ id: u.id, data: { status: u.status === 'active' ? 'inactive' : 'active' } })
+  }
+
+  const handleResetPassword = (u: User) => {
+    const pwd = window.prompt(`为用户「${u.name}」设置新密码（至少 8 位，含字母与数字）`)
+    if (!pwd) return
+    resetPassword.mutate(
+      { id: u.id, newPassword: pwd },
+      {
+        onSuccess: () => window.alert('密码已重置'),
+        onError: (e) => window.alert(e instanceof Error ? e.message : '重置失败'),
+      },
+    )
   }
 
   const userColumns: DataTableColumn<User>[] = [
@@ -108,13 +139,13 @@ export default function AdminPage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {canUpdateUser && (
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setUserDialog({ open: true, mode: 'edit', user: u })}>
                   <Edit className="mr-2 h-4 w-4" />
                   编辑用户
                 </DropdownMenuItem>
               )}
               {canResetPassword && (
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleResetPassword(u)}>
                   <Key className="mr-2 h-4 w-4" />
                   重置密码
                 </DropdownMenuItem>
@@ -122,7 +153,7 @@ export default function AdminPage() {
               {canDeleteUser && (
                 <>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => toggleStatus(u)}>
                     {u.status === 'active' ? (
                       <>
                         <UserX className="mr-2 h-4 w-4" />
@@ -166,7 +197,6 @@ export default function AdminPage() {
         { header: '角色', key: 'role', width: 18 },
         { header: '数据范围', key: 'dataScope', width: 14 },
         { header: '状态', key: 'status', width: 10 },
-        { header: '最近登录', key: 'lastLoginAt', width: 22 },
       ],
       rows: filteredUsers.map((u) => ({
         username: u.username,
@@ -174,16 +204,12 @@ export default function AdminPage() {
         role: getRoleName(u.role),
         dataScope: u.dataScope === '*' ? '全部' : u.dataScope,
         status: u.status === 'active' ? '启用' : '停用',
-        lastLoginAt: u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString('zh-CN') : '-',
       })),
     })
   }
 
   return (
-    <PageContainer
-      title="权限管理"
-      description="管理用户、角色、功能权限和数据权限"
-    >
+    <PageContainer title="权限管理" description="管理用户、角色、功能权限和数据权限">
       {/* 统计卡片 */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 animate-fade-in">
         <Card>
@@ -223,7 +249,7 @@ export default function AdminPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">预置角色</p>
+                <p className="text-sm font-medium text-muted-foreground">角色数</p>
                 <p className="text-2xl font-bold">{stats.roles}</p>
               </div>
               <Shield className="h-8 w-8 text-muted-foreground" />
@@ -245,7 +271,7 @@ export default function AdminPage() {
                 </Button>
               )}
               {canCreateUser && (
-                <Button size="sm">
+                <Button size="sm" onClick={() => setUserDialog({ open: true, mode: 'create', user: null })}>
                   <Plus className="mr-2 h-4 w-4" />
                   新增用户
                 </Button>
@@ -254,7 +280,6 @@ export default function AdminPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* 筛选栏 */}
           <div className="flex flex-col space-y-2 sm:flex-row sm:items-center sm:space-x-2 sm:space-y-0">
             <Select value={roleFilter} onValueChange={(v) => { setRoleFilter(v); resetPage() }}>
               <SelectTrigger className="w-full sm:w-[180px]">
@@ -262,10 +287,8 @@ export default function AdminPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">全部角色</SelectItem>
-                {mockRoles.map(role => (
-                  <SelectItem key={role.code} value={role.code}>
-                    {role.name}
-                  </SelectItem>
+                {roles.map((role) => (
+                  <SelectItem key={role.code} value={role.code}>{role.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -292,21 +315,11 @@ export default function AdminPage() {
             </div>
           </div>
 
-          {/* 用户表格 */}
-          <DataTable
-            columns={userColumns}
-            data={pagedUsers}
-            rowKey={(u) => u.id}
-            emptyText="暂无用户"
-          />
+          <div className="min-h-[360px]">
+            <DataTable columns={userColumns} data={pagedUsers} rowKey={(u) => u.id} emptyText="暂无用户" />
+          </div>
 
-          {/* 分页 */}
-          <Pagination
-            page={page}
-            pageSize={USER_PAGE_SIZE}
-            total={filteredUsers.length}
-            onPageChange={setPage}
-          />
+          <Pagination page={page} pageSize={USER_PAGE_SIZE} total={filteredUsers.length} onPageChange={setPage} />
         </CardContent>
       </Card>
 
@@ -317,7 +330,7 @@ export default function AdminPage() {
             <div className="flex items-center justify-between">
               <CardTitle>角色管理</CardTitle>
               {canCreateRole && (
-                <Button size="sm">
+                <Button size="sm" onClick={() => setRoleDialog({ open: true, mode: 'create', role: null })}>
                   <Plus className="mr-2 h-4 w-4" />
                   新增角色
                 </Button>
@@ -326,7 +339,7 @@ export default function AdminPage() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {mockRoles.map((role) => (
+              {roles.map((role) => (
                 <Card key={role.id}>
                   <CardContent className="pt-6">
                     <div className="flex items-start justify-between">
@@ -334,22 +347,30 @@ export default function AdminPage() {
                         <h4 className="font-medium">{role.name}</h4>
                         <p className="mt-1 text-sm text-muted-foreground">{role.description}</p>
                       </div>
-                      {role.isSystem && (
-                        <Badge variant="secondary">系统</Badge>
-                      )}
+                      {role.isSystem && <Badge variant="secondary">系统</Badge>}
                     </div>
                     {(canUpdateRole || canManagePermissions) && (
-                      <div className="mt-4 flex items-center space-x-2">
+                      <div className="mt-4 flex flex-wrap items-center gap-2">
                         {canUpdateRole && (
-                          <Button variant="outline" size="sm">
+                          <Button variant="outline" size="sm" onClick={() => setRoleDialog({ open: true, mode: 'edit', role })}>
                             <Edit className="mr-2 h-4 w-4" />
                             编辑
                           </Button>
                         )}
                         {canManagePermissions && (
-                          <Button variant="ghost" size="sm">
+                          <Button variant="ghost" size="sm" onClick={() => setPermRole(role)}>
                             <Shield className="mr-2 h-4 w-4" />
                             权限
+                          </Button>
+                        )}
+                        {canCreateRole && (
+                          <Button variant="ghost" size="sm" onClick={() => cloneRole.mutate({ id: role.id, name: `${role.name}-副本` })}>
+                            克隆
+                          </Button>
+                        )}
+                        {canDeleteRole && !role.isSystem && (
+                          <Button variant="ghost" size="sm" className="text-destructive" onClick={() => { if (window.confirm(`确认删除角色「${role.name}」？`)) deleteRole.mutate(role.id) }}>
+                            删除
                           </Button>
                         )}
                       </div>
@@ -371,14 +392,25 @@ export default function AdminPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <DataTable
-            columns={auditColumns}
-            data={mockAuditLogs}
-            rowKey={(log) => log.id}
-            emptyText="暂无审计日志"
-          />
+          <DataTable columns={auditColumns} data={auditLogs} rowKey={(log) => log.id} emptyText="暂无审计日志" />
         </CardContent>
       </Card>
+
+      {/* 弹窗 */}
+      <UserDialog
+        open={userDialog.open}
+        mode={userDialog.mode}
+        user={userDialog.user}
+        roles={roles.map((r) => ({ code: r.code, name: r.name }))}
+        onClose={() => setUserDialog((s) => ({ ...s, open: false }))}
+      />
+      <RoleDialog
+        open={roleDialog.open}
+        mode={roleDialog.mode}
+        role={roleDialog.role}
+        onClose={() => setRoleDialog((s) => ({ ...s, open: false }))}
+      />
+      <PermissionDialog open={!!permRole} role={permRole} onClose={() => setPermRole(null)} />
     </PageContainer>
   )
 }

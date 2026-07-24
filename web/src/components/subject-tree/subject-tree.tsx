@@ -1,4 +1,4 @@
-import { Fragment } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import { ChevronRight, ChevronDown } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
@@ -21,6 +21,8 @@ interface SubjectTreeProps {
   /** 高亮关键字（命中名称时高亮） */
   keyword?: string
   emptyText?: string
+  /** 可选：每行操作列渲染器（传入时渲染「操作」列） */
+  actions?: (node: SubjectNode) => ReactNode
 }
 
 /** 高亮命中的关键字片段 */
@@ -46,12 +48,14 @@ function TreeRows({
   expandedCodes,
   onToggle,
   keyword,
+  actions,
 }: {
   nodes: SubjectNode[]
   depth: number
   expandedCodes: Set<string>
   onToggle: (code: string) => void
   keyword?: string
+  actions?: (node: SubjectNode) => ReactNode
 }) {
   return (
     <>
@@ -93,6 +97,11 @@ function TreeRows({
               <td className="p-4 align-middle">
                 <Badge variant={meta.variant}>{meta.label}</Badge>
               </td>
+              {actions && (
+                <td className="p-4 align-middle">
+                  <div className="flex items-center justify-end gap-1">{actions(node)}</div>
+                </td>
+              )}
             </tr>
             {hasChildren && isExpanded && (
               <TreeRows
@@ -101,6 +110,7 @@ function TreeRows({
                 expandedCodes={expandedCodes}
                 onToggle={onToggle}
                 keyword={keyword}
+                actions={actions}
               />
             )}
           </Fragment>
@@ -122,6 +132,7 @@ export function SubjectTree({
   onToggle,
   keyword,
   emptyText = '暂无科目',
+  actions,
 }: SubjectTreeProps) {
   return (
     <div className="overflow-x-auto">
@@ -133,12 +144,15 @@ export function SubjectTree({
             <th className="h-11 px-4 text-[13px] text-center align-middle font-medium text-black">层级</th>
             <th className="h-11 px-4 text-[13px] text-center align-middle font-medium text-black">类别</th>
             <th className="h-11 px-4 text-[13px] text-center align-middle font-medium text-black">数据类型</th>
+            {actions && (
+              <th className="h-11 px-4 text-[13px] text-center align-middle font-medium text-black">操作</th>
+            )}
           </tr>
         </thead>
         <tbody>
           {nodes.length === 0 ? (
             <tr>
-              <td colSpan={5} className="p-8 text-center text-muted-foreground">
+              <td colSpan={actions ? 6 : 5} className="p-8 text-center text-muted-foreground">
                 {emptyText}
               </td>
             </tr>
@@ -149,6 +163,7 @@ export function SubjectTree({
               expandedCodes={expandedCodes}
               onToggle={onToggle}
               keyword={keyword}
+              actions={actions}
             />
           )}
         </tbody>

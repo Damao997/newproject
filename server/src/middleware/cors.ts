@@ -1,0 +1,31 @@
+import cors from 'cors'
+import type { RequestHandler } from 'express'
+import { loadConfig } from '../config/env'
+
+/**
+ * CORS：仅允许配置的前端来源，credentials:true。
+ * 安全红线：严禁 Access-Control-Allow-Origin: *（见 docs/references/security.md）。
+ */
+export function corsMiddleware(): RequestHandler {
+  const { frontendOrigin } = loadConfig()
+  const allowList = frontendOrigin.split(',').map((o) => o.trim()).filter(Boolean)
+
+  return cors({
+    origin: (origin, callback) => {
+      // 同源/无 Origin 的请求（如 curl、服务端）放行
+      if (!origin) {
+        callback(null, true)
+        return
+      }
+      if (allowList.includes(origin)) {
+        callback(null, true)
+        return
+      }
+      callback(new Error(`CORS 拒绝来源：${origin}`))
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
+    exposedHeaders: ['X-Request-Id'],
+  })
+}

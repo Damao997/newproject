@@ -41,6 +41,40 @@ export function decorateTree(raw: RawSubjectNode[], prefix = 'OP'): SubjectNode[
   return walk(raw, 0, '')
 }
 
+/** 由后端扁平列表（含 parentCode/dataType）按 parentCode 构树，根为 parentCode 为空者 */
+export interface FlatSubjectItem {
+  code: string
+  name: string
+  level: number
+  parentCode: string | null
+  category: string
+  dataType: 'data' | 'calc' | 'display'
+}
+
+export function buildSubjectTree(flat: FlatSubjectItem[]): SubjectNode[] {
+  const map = new Map<string, SubjectNode>()
+  for (const item of flat) {
+    map.set(item.code, {
+      code: item.code,
+      name: item.name,
+      level: item.level,
+      category: item.category,
+      dataType: item.dataType,
+      children: [],
+    })
+  }
+  const roots: SubjectNode[] = []
+  for (const item of flat) {
+    const node = map.get(item.code)!
+    if (item.parentCode && map.has(item.parentCode)) {
+      map.get(item.parentCode)!.children.push(node)
+    } else {
+      roots.push(node)
+    }
+  }
+  return roots
+}
+
 /** 前序展开为扁平行列表 */
 export function flattenTree(tree: SubjectNode[], depth = 0): FlatSubjectRow[] {
   const rows: FlatSubjectRow[] = []

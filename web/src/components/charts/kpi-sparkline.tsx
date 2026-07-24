@@ -7,7 +7,7 @@ interface KpiSparklineProps {
   height?: number
 }
 
-export function KpiSparkline({ data, color = '#2563EB', height = 48 }: KpiSparklineProps) {
+export function KpiSparkline({ data, color = '#F97316', height = 48 }: KpiSparklineProps) {
   const option: EChartsOption = {
     grid: {
       top: 4,

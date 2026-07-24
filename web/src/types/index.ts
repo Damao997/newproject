@@ -32,8 +32,22 @@ export interface Company {
   code: string
   name: string
   type: 'entity' | 'summary'
-  businessUnit?: string
+  entityType?: 'single' | 'summary'
+  businessUnit?: string | null
+  parentCode?: string | null
+  legalEntity?: string | null
+  managementEntity?: string | null
+  orderNo?: number
   status: 'active' | 'inactive'
+}
+
+export interface AggregationMap {
+  id: string
+  summaryCompanyCode: string
+  summaryCompanyName: string
+  singleCompanyCode: string
+  singleCompanyName: string
+  isInternalElimination: boolean
 }
 
 export interface AccountSubject {
@@ -103,6 +117,7 @@ export interface ImportBatch {
   filename: string
   templateType: 'operating' | 'static' | 'budget'
   status: 'draft' | 'active' | 'archived' | 'purged'
+  rowCount?: number
   successCount: number
   errorCount: number
   errors?: ImportError[]
