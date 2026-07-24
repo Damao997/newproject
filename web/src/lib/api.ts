@@ -1,6 +1,6 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios'
 import { useAuthStore } from '@/stores/authStore'
-import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse, FilterParams, KpiData, TrendData, BusinessUnitData, Alert, ImportBatch, Company, AggregationMap, AccountSubject, Metric, Role, Permission } from '@/types'
+import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse, FilterParams, KpiData, TrendData, Alert, ImportBatch, Company, AggregationMap, AccountSubject, Metric, Role, Permission } from '@/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
@@ -112,7 +112,6 @@ class ApiClient {
   async getDashboardOverview(): Promise<{
     kpiData: KpiData[]
     trendData: TrendData[]
-    businessUnitData: BusinessUnitData[]
     alerts: Alert[]
     lastUpdatedAt: string
   }> {

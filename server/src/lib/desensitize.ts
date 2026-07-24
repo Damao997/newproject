@@ -46,28 +46,32 @@ export async function buildCompanyMap(): Promise<CompanyMap> {
   return { forward, reverse }
 }
 
+/** 转义正则元字符，避免公司名/编码中的特殊字符被当作正则语法解析 */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * 单趟替换：按 key 长度降序构建 alternation 正则，一次扫描完成全部替换。
+ * 相较多趟 split/join：已替换区域不会被后续扫描，从而消除“还原/脱敏后文本含另一 key 子串”导致的二次替换污染。
+ * 正则 alternation 按列举顺序匹配，长 key 在前保证同一位置“长键优先”。
+ */
+function replaceOnce(text: string, mapping: Map<string, string>): string {
+  if (!text) return text
+  const keys = Array.from(mapping.keys()).filter(Boolean).sort((a, b) => b.length - a.length)
+  if (keys.length === 0) return text
+  const re = new RegExp(keys.map(escapeRegExp).join('|'), 'g')
+  return text.replace(re, (m) => mapping.get(m) as string)
+}
+
 /** 将文本中的真实公司名/编码替换为别名（长键优先，避免子串误替换） */
 export function applyCompanyMap(text: string, map: CompanyMap): string {
-  if (!text) return text
-  const keys = Array.from(map.forward.keys()).filter(Boolean).sort((a, b) => b.length - a.length)
-  let out = text
-  for (const key of keys) {
-    const alias = map.forward.get(key) as string
-    out = out.split(key).join(alias)
-  }
-  return out
+  return replaceOnce(text, map.forward)
 }
 
 /** 将输出中的公司别名还原为真实公司名 */
 export function restoreCompanyMap(text: string, map: CompanyMap): string {
-  if (!text) return text
-  const aliases = Array.from(map.reverse.keys()).sort((a, b) => b.length - a.length)
-  let out = text
-  for (const alias of aliases) {
-    const name = map.reverse.get(alias) as string
-    out = out.split(alias).join(name)
-  }
-  return out
+  return replaceOnce(text, map.reverse)
 }
 
 /** 金额分档区间（单位：元），闭下开上；见 AI模块规范 §2.2 */

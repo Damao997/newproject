@@ -5,21 +5,18 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { KpiCard } from '@/components/charts/kpi-card'
 import { TrendChart } from '@/components/charts/trend-chart'
-import { MiniBarChart } from '@/components/charts/mini-bar-chart'
 import { PageContainer } from '@/components/layout/page-container'
 import { StatusIndicator } from '@/components/ui/status-indicator'
 import { KpiGridSkeleton, ChartSkeleton, ListSkeleton } from '@/components/ui/skeleton-blocks'
 import { usePermission } from '@/hooks/usePermission'
 import { useDashboardOverview } from '@/hooks/api-queries'
 import { exportToExcel } from '@/lib/export'
-import { formatMoney } from '@/lib/utils'
 import { 
   Download, 
   Upload, 
   FileText, 
   AlertTriangle,
   TrendingUp,
-  Building2,
   Clock
 } from 'lucide-react'
 
@@ -34,7 +31,6 @@ export default function DashboardPage() {
   const { data, isLoading } = useDashboardOverview()
   const kpiData = data?.kpiData ?? []
   const trendData = data?.trendData ?? []
-  const businessUnitData = data?.businessUnitData ?? []
   const alerts = (data?.alerts ?? []) as DashboardAlert[]
   const lastUpdatedAt = data?.lastUpdatedAt
 
@@ -118,29 +114,7 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-            {/* 事业部概览 —— 轻量 CSS 图表 */}
-            <Card className="animate-fade-in border border-border bg-white shadow-sm transition-shadow duration-200 hover:shadow-md" style={{ animationDelay: '200ms' }}>
-              <CardHeader className="px-6 pb-3 pt-5">
-                <CardTitle className="flex items-center gap-2 text-lg font-semibold">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-                    <Building2 className="h-4 w-4 text-primary" />
-                  </div>
-                  事业部概览
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="px-6 pb-6">
-                <MiniBarChart
-                  data={businessUnitData.map((bu) => ({
-                    label: bu.name,
-                    value: bu.revenue,
-                    hint: `${bu.percentage}%`,
-                  }))}
-                  valueFormatter={(v) => formatMoney(v)}
-                />
-              </CardContent>
-            </Card>
-
+          <div className="grid grid-cols-1 gap-5">
             {/* 预警提醒 */}
             <Card className="animate-fade-in border border-border bg-white shadow-sm transition-shadow duration-200 hover:shadow-md" style={{ animationDelay: '280ms' }}>
               <CardHeader className="px-6 pb-3 pt-5">

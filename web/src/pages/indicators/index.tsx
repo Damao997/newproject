@@ -90,10 +90,6 @@ export default function IndicatorsPage() {
 
   const entityCompanies = useMemo(() => (companies ?? []).filter((c) => c.type === 'entity'), [companies])
   const summaryEntities = useMemo(() => (companies ?? []).filter((c) => c.type === 'summary'), [companies])
-  const businessUnits = useMemo(
-    () => Array.from(new Set(entityCompanies.map((c) => c.businessUnit).filter((bu): bu is string => !!bu))),
-    [entityCompanies],
-  )
 
   const activeItems = (isOperating ? operatingQuery.data?.items : staticQuery.data?.items) ?? []
   const isLoading = isOperating ? operatingQuery.isLoading : staticQuery.isLoading
@@ -248,12 +244,6 @@ export default function IndicatorsPage() {
                     <SelectLabel>汇总主体</SelectLabel>
                     {summaryEntities.map((c) => (
                       <SelectItem key={c.code} value={`summary:${c.code}`}>{c.name}</SelectItem>
-                    ))}
-                  </SelectGroup>
-                  <SelectGroup>
-                    <SelectLabel>事业部</SelectLabel>
-                    {businessUnits.map((bu) => (
-                      <SelectItem key={bu} value={`bu:${bu}`}>{bu}</SelectItem>
                     ))}
                   </SelectGroup>
                 </SelectContent>

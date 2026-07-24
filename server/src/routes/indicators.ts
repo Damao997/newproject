@@ -15,7 +15,7 @@ import type { AuthUserContext } from '../types/express'
 const router = Router()
 
 function scopeOf(authUser: AuthUserContext) {
-  return { companyCode: authUser.companyCode, orgScopeBu: authUser.orgScopeBu, scopeValue: authUser.scopeValue }
+  return { companyCode: authUser.companyCode, scopeValue: authUser.scopeValue }
 }
 
 function sendXlsx(res: Response, buffer: Buffer, filename: string): void {

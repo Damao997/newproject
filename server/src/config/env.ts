@@ -1,4 +1,5 @@
 import dotenv from 'dotenv'
+import { getFiscalStartMonth } from '../lib/period'
 
 dotenv.config()
 
@@ -39,6 +40,7 @@ export interface AppConfig {
   deepseekApiKey: string | null
   deepseekApiBase: string
   deepseekModel: string
+  fiscalStartMonth: number
 }
 
 let cached: AppConfig | null = null
@@ -60,6 +62,7 @@ export function loadConfig(): AppConfig {
     deepseekApiKey: process.env.DEEPSEEK_API_KEY && process.env.DEEPSEEK_API_KEY.trim() !== '' ? process.env.DEEPSEEK_API_KEY.trim() : null,
     deepseekApiBase: optional('DEEPSEEK_API_BASE', 'https://api.deepseek.com/v1'),
     deepseekModel: optional('DEEPSEEK_MODEL', 'deepseek-flash'),
+    fiscalStartMonth: getFiscalStartMonth(),
   }
 
   if (Number.isNaN(config.port)) {

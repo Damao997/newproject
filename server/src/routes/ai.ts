@@ -70,7 +70,7 @@ router.post(
     try {
       const { finalText } = await AIProxyService.analyzeStream(
         {
-          scope: { companyCode: authUser.companyCode, orgScopeBu: authUser.orgScopeBu, scopeValue: authUser.scopeValue },
+          scope: { companyCode: authUser.companyCode, scopeValue: authUser.scopeValue },
           companyCode: String(b.companyCode ?? ''),
           subjectCode: String(b.subjectCode ?? ''),
           subjectType: b.subjectType === 'static' ? 'static' : 'operating',

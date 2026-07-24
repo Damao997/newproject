@@ -26,7 +26,6 @@ function activeUser(overrides: Record<string, unknown> = {}) {
     username: 'alice',
     roleId: 'r-admin',
     companyCode: null,
-    orgScopeBu: null,
     status: 'active',
     role: { code: 'admin', scopeValue: '*', status: 'active' },
     ...overrides,

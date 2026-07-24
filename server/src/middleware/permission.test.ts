@@ -32,7 +32,7 @@ describe('requirePermission', () => {
   it('有对应权限 → 放行（next 无参）', async () => {
     mocks.prisma.permission.findFirst.mockResolvedValue({ id: 'p1' })
     const { req, res, next } = runMiddleware({
-      authUser: { userId: 'u1', username: 'a', roleId: 'r1', roleCode: 'admin', scopeValue: '*', companyCode: null, orgScopeBu: null },
+      authUser: { userId: 'u1', username: 'a', roleId: 'r1', roleCode: 'admin', scopeValue: '*', companyCode: null },
     })
     await requirePermission('dashboard:view', 'view')(req, res, next)
     expect(next).toHaveBeenCalledTimes(1)
@@ -42,7 +42,7 @@ describe('requirePermission', () => {
   it('无对应权限 → next(403)（默认拒绝）', async () => {
     mocks.prisma.permission.findFirst.mockResolvedValue(null)
     const { req, res, next } = runMiddleware({
-      authUser: { userId: 'u1', username: 'a', roleId: 'r-viewer', roleCode: 'viewer', scopeValue: '', companyCode: null, orgScopeBu: null },
+      authUser: { userId: 'u1', username: 'a', roleId: 'r-viewer', roleCode: 'viewer', scopeValue: '', companyCode: null },
     })
     await requirePermission('admin:users:view', 'view')(req, res, next)
     expect(next).toHaveBeenCalledWith(expect.objectContaining({ code: 403 }))

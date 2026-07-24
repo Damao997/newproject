@@ -26,7 +26,7 @@ function ctxOf(req: { authUser?: AuthUserContext; traceId: string }) {
   return { userId: (req.authUser as AuthUserContext).userId, traceId: req.traceId }
 }
 function scopeOf(a: AuthUserContext) {
-  return { companyCode: a.companyCode, orgScopeBu: a.orgScopeBu, scopeValue: a.scopeValue }
+  return { companyCode: a.companyCode, scopeValue: a.scopeValue }
 }
 function pageParams(q: Record<string, unknown>) {
   const page = Math.max(Number(q.page) || 1, 1)

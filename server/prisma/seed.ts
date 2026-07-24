@@ -1,4 +1,4 @@
-import { PrismaClient, Prisma } from '@prisma/client'
+import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import { seedDomain } from './seed-domain'
 import { seedCompaniesAndMapping } from './seed-companies'
@@ -124,14 +124,12 @@ interface UserSeed {
   displayName: string
   roleCode: string
   companyCode?: string
-  orgScopeBu?: string[]
-  businessUnit?: string
 }
 
 const USERS: UserSeed[] = [
   { username: 'admin', displayName: '系统管理员', roleCode: 'admin' },
   { username: 'finance.manager', displayName: '财务主管-张三', roleCode: 'finance_manager', companyCode: 'EN330059' },
-  { username: 'dept.manager', displayName: '部门经理-李四', roleCode: 'department_manager', orgScopeBu: ['BU_EAST'], businessUnit: 'BU_EAST' },
+  { username: 'dept.manager', displayName: '部门经理-李四', roleCode: 'department_manager', companyCode: 'EN330059' },
   { username: 'viewer', displayName: '查看者-王五', roleCode: 'viewer', companyCode: 'EN330058' },
   { username: 'analyst.it', displayName: '财务分析师-赵六', roleCode: 'finance_analyst_it' },
 ]
@@ -190,8 +188,6 @@ async function main(): Promise<void> {
         displayName: u.displayName,
         roleId: role.id,
         companyCode: u.companyCode ?? null,
-        orgScopeBu: (u.orgScopeBu ?? Prisma.JsonNull) as Prisma.InputJsonValue,
-        businessUnit: u.businessUnit ?? null,
       },
       create: {
         username: u.username,
@@ -199,8 +195,6 @@ async function main(): Promise<void> {
         passwordHash,
         roleId: role.id,
         companyCode: u.companyCode ?? null,
-        orgScopeBu: (u.orgScopeBu ?? Prisma.JsonNull) as Prisma.InputJsonValue,
-        businessUnit: u.businessUnit ?? null,
       },
     })
   }

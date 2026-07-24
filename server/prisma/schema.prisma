@@ -130,7 +130,6 @@ model Company {
   entityType       EntityType   @map("entity_type")
   legalEntity      String?      @map("legal_entity")
   managementEntity String?      @map("management_entity")
-  businessUnit     String?      @map("business_unit")
   parentCode       String?      @map("parent_code")
   status           RecordStatus @default(active)
   orderNo          Int          @default(0) @map("order_no")
@@ -143,7 +142,6 @@ model Company {
   users User[]
 
   @@index([parentCode])
-  @@index([businessUnit])
   @@index([status])
   @@map("company")
 }
@@ -509,8 +507,6 @@ model User {
   passwordHash    String       @map("password_hash")
   roleId          String       @map("role_id")
   companyCode     String?      @map("company_code")
-  orgScopeBu      Json?        @map("org_scope_bu") @db.JsonB
-  businessUnit    String?      @map("business_unit")
   status          RecordStatus @default(active)
   refreshTokenJti String?      @map("refresh_token_jti")
   createdAt       DateTime     @default(now()) @map("created_at")

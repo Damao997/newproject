@@ -25,10 +25,10 @@ const resolvers: Resolvers = {
 }
 
 describe('excel-import 转置布局解析', () => {
-  it('operating：公司×日期列展开，最新日期=本月实际、较早=同期实际', () => {
+  it('operating：每个日期列均存为本月实际（按各自 period），不在导入时打同期标', () => {
     const buf = makeXlsx([
       ['单体维度', '杭州公司', '杭州公司', '宁波公司', '宁波公司'],
-      ['月份', new Date(2026, 2, 31), new Date(2025, 2, 31), new Date(2026, 2, 31), new Date(2025, 2, 31)],
+      ['月份', new Date(2026, 2, 15), new Date(2025, 2, 15), new Date(2026, 2, 15), new Date(2025, 2, 15)],
       ['灶具收入', 100, 80, 200, 160],
       ['热水器收入', 50, 40, 60, 48],
     ])
@@ -36,24 +36,44 @@ describe('excel-import 转置布局解析', () => {
     expect(res.dataRowCount).toBe(2)
     expect(res.errors.length).toBe(0)
     expect(res.operating.length).toBe(8)
-    const hzActual = res.operating.find((r) => r.companyCode === 'EN330059' && r.accountCode === 'OP_010' && r.periodDimCode === OPERATING_DIMS.ACTUAL_MONTH)
-    expect(hzActual).toMatchObject({ period: '2026-03', fiscalYear: 'FY2026', value: 100 })
-    const hzSame = res.operating.find((r) => r.companyCode === 'EN330059' && r.accountCode === 'OP_010' && r.periodDimCode === OPERATING_DIMS.SAME_PERIOD_ACTUAL)
-    expect(hzSame).toMatchObject({ period: '2025-03', value: 80 })
+    // 全部为 ACTUAL_MONTH，无 SAME_PERIOD 打标
+    expect(res.operating.every((r) => r.periodDimCode === OPERATING_DIMS.ACTUAL_MONTH)).toBe(true)
+    const hzCur = res.operating.find((r) => r.companyCode === 'EN330059' && r.accountCode === 'OP_010' && r.period === '2026-03')
+    expect(hzCur).toMatchObject({ fiscalYear: 'FY2026', value: 100 })
+    const hzPrev = res.operating.find((r) => r.companyCode === 'EN330059' && r.accountCode === 'OP_010' && r.period === '2025-03')
+    expect(hzPrev).toMatchObject({ fiscalYear: 'FY2025', value: 80 })
   })
 
-  it('static：最新日期=本期金额、较早=年初金额', () => {
+  it('operating 多月序列：当年与上年各月均按自身 period 存为本月实际', () => {
+    const buf = makeXlsx([
+      ['单体维度', '杭州公司', '杭州公司', '杭州公司', '杭州公司'],
+      ['月份', new Date(2026, 1, 15), new Date(2026, 2, 15), new Date(2025, 1, 15), new Date(2025, 2, 15)],
+      ['灶具收入', 10, 20, 8, 16],
+    ])
+    const res = parseImportWorkbook(buf, 'operating', resolvers)
+    const rows = res.operating.filter((r) => r.accountCode === 'OP_010')
+    expect(rows.length).toBe(4)
+    expect(rows.every((r) => r.periodDimCode === OPERATING_DIMS.ACTUAL_MONTH)).toBe(true)
+    const periods = rows.map((r) => r.period).sort()
+    expect(periods).toEqual(['2025-02', '2025-03', '2026-02', '2026-03'])
+    expect(rows.find((r) => r.period === '2025-03')).toMatchObject({ fiscalYear: 'FY2025', value: 16 })
+    expect(rows.find((r) => r.period === '2026-02')).toMatchObject({ fiscalYear: 'FY2026', value: 10 })
+  })
+
+  it('static：每个快照列均存为原始快照（marker=CURRENT_AMOUNT，携 snapshotDate）', () => {
     const buf = makeXlsx([
       ['公司维度', '杭州公司', '杭州公司'],
-      ['月度', new Date(2026, 2, 31), new Date(2026, 1, 28)],
+      ['月度', new Date(2026, 2, 15), new Date(2026, 0, 15)],
       ['总资产', 5000, 4500],
     ])
     const res = parseImportWorkbook(buf, 'static', resolvers)
     expect(res.static.length).toBe(2)
-    const cur = res.static.find((r) => r.periodDimCode === STATIC_DIMS.CURRENT_AMOUNT)
-    expect(cur).toMatchObject({ companyCode: 'EN330059', accountCode: 'ST_001', value: 5000 })
-    const ys = res.static.find((r) => r.periodDimCode === STATIC_DIMS.YEAR_START)
-    expect(ys).toMatchObject({ value: 4500 })
+    // 全部为原始快照 marker，四维由聚合层按快照月份派生
+    expect(res.static.every((r) => r.periodDimCode === STATIC_DIMS.CURRENT_AMOUNT)).toBe(true)
+    const mar = res.static.find((r) => r.accountCode === 'ST_001' && r.snapshotDate.getUTCMonth() === 2)
+    expect(mar).toMatchObject({ companyCode: 'EN330059', value: 5000 })
+    const jan = res.static.find((r) => r.accountCode === 'ST_001' && r.snapshotDate.getUTCMonth() === 0)
+    expect(jan).toMatchObject({ value: 4500 })
   })
 
   it('budget：单表头公司列，年度预算', () => {

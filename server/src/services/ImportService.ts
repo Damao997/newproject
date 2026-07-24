@@ -225,8 +225,14 @@ export const ImportService = {
     if (b.lifecycleStatus === 'active') return toDto(b)
 
     const updated = await prisma.$transaction(async (tx) => {
+      // 预算按财年管理：仅归档同 dataType 且同 fiscalYear 的旧 active（允许多财年预算共存）；
+      // 经营/静态维持整体替换（归档同 dataType 全部旧 active）。
+      const archiveWhere =
+        b.dataType === 'budget'
+          ? { dataType: b.dataType, lifecycleStatus: 'active' as const, fiscalYear: b.fiscalYear }
+          : { dataType: b.dataType, lifecycleStatus: 'active' as const }
       await tx.importBatch.updateMany({
-        where: { dataType: b.dataType, lifecycleStatus: 'active' },
+        where: archiveWhere,
         data: { lifecycleStatus: 'archived' },
       })
       return tx.importBatch.update({

@@ -1,5 +1,6 @@
 import { inflateRawSync } from 'node:zlib'
 import { OPERATING_DIMS, STATIC_DIMS } from './metric-values'
+import { fyLabelOfDate, getFiscalStartMonth } from './period'
 
 /**
  * Excel 宽表 → 长表 unpivot 解析器（见 数据模型规范 §4.4）。
@@ -268,10 +269,6 @@ function ym(d: Date): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
 }
 
-function fyOf(d: Date): string {
-  return `FY${d.getUTCFullYear()}`
-}
-
 function parseValue(cell: unknown): { value: number | null; empty: boolean } {
   if (cell === undefined || cell === null || cell === '') return { value: null, empty: true }
   if (cell instanceof Date) return { value: null, empty: true }
@@ -283,6 +280,7 @@ function parseValue(cell: unknown): { value: number | null; empty: boolean } {
 
 export function parseImportWorkbook(buffer: Buffer, template: ImportTemplate, resolvers: Resolvers): ParseResult {
   const result: ParseResult = { template, operating: [], static: [], budget: [], errors: [], dataRowCount: 0 }
+  const fiscalStartMonth = getFiscalStartMonth()
   let grid: unknown[][]
   try {
     grid = readGrid(buffer)
@@ -299,7 +297,7 @@ export function parseImportWorkbook(buffer: Buffer, template: ImportTemplate, re
   const monthRow = template === 'budget' ? [] : ((grid[1] ?? []) as unknown[])
   const dataStart = template === 'budget' ? 1 : 2
 
-  interface ColMeta { companyCode: string | null; companyName: string; date: Date | null; periodDimCode: string | null; label: string }
+  interface ColMeta { companyCode: string | null; companyName: string; date: Date | null; periodDimCode: string | null; label: string; effPeriod: string | null; effFy: string | null }
   const colMeta: (ColMeta | null)[] = []
 
   for (let c = 1; c < companyRow.length; c++) {
@@ -310,31 +308,27 @@ export function parseImportWorkbook(buffer: Buffer, template: ImportTemplate, re
     }
     const companyCode = resolvers.companyByName.get(companyName) ?? null
     const date = template === 'budget' ? null : toDate(monthRow[c])
-    colMeta[c] = { companyCode, companyName, date, periodDimCode: null, label: excelColLabel(c) }
+    colMeta[c] = { companyCode, companyName, date, periodDimCode: null, label: excelColLabel(c), effPeriod: null, effFy: null }
   }
 
-  if (template !== 'budget') {
-    const datesByCompany = new Map<string, Set<number>>()
+  if (template === 'operating') {
+    // 原始月度实际：每个月份列一律存为 ACTUAL_MONTH（按各自 period）；
+    // 同期/本年累计/同期累计均由查询选定期按时间标记派生，不在导入时打标。
     for (let c = 1; c < colMeta.length; c++) {
       const m = colMeta[c]
       if (!m || !m.date) continue
-      if (!datesByCompany.has(m.companyName)) datesByCompany.set(m.companyName, new Set())
-      datesByCompany.get(m.companyName)!.add(m.date.getTime())
+      m.periodDimCode = OPERATING_DIMS.ACTUAL_MONTH
+      m.effPeriod = ym(m.date)
+      m.effFy = fyLabelOfDate(m.date, fiscalStartMonth)
     }
-    const rankByCompanyDate = new Map<string, number>()
-    for (const [companyName, dateSet] of datesByCompany) {
-      const sorted = Array.from(dateSet).sort((a, b) => b - a)
-      sorted.forEach((t, idx) => rankByCompanyDate.set(`${companyName}|${t}`, idx))
-    }
+  } else if (template === 'static') {
+    // 原始快照：每个快照列一律存单值（marker=CURRENT_AMOUNT，携 snapshotDate）；
+    // 本期/年初/同期/上年年初 均由查询选定期按快照月份派生，不在导入时打标。
     for (let c = 1; c < colMeta.length; c++) {
       const m = colMeta[c]
       if (!m || !m.date) continue
-      const rank = rankByCompanyDate.get(`${m.companyName}|${m.date.getTime()}`) ?? 0
-      if (template === 'operating') {
-        m.periodDimCode = rank === 0 ? OPERATING_DIMS.ACTUAL_MONTH : rank === 1 ? OPERATING_DIMS.SAME_PERIOD_ACTUAL : null
-      } else {
-        m.periodDimCode = rank === 0 ? STATIC_DIMS.CURRENT_AMOUNT : rank === 1 ? STATIC_DIMS.YEAR_START : null
-      }
+      m.periodDimCode = STATIC_DIMS.CURRENT_AMOUNT
+      m.effFy = fyLabelOfDate(m.date, fiscalStartMonth)
     }
   }
 
@@ -364,11 +358,12 @@ export function parseImportWorkbook(buffer: Buffer, template: ImportTemplate, re
       }
       const value = Number(parsed.value.toFixed(2))
       if (template === 'operating') {
-        if (!meta.periodDimCode || !meta.date) continue
-        result.operating.push({ companyCode: meta.companyCode, accountCode, period: ym(meta.date), periodDimCode: meta.periodDimCode, fiscalYear: fyOf(meta.date), value })
+        if (!meta.periodDimCode || !meta.effPeriod || !meta.effFy) continue
+        // 本月实际按各自月份归期；同期实际归入对应当前财年同月 period（见维度映射）
+        result.operating.push({ companyCode: meta.companyCode, accountCode, period: meta.effPeriod, periodDimCode: meta.periodDimCode, fiscalYear: meta.effFy, value })
       } else if (template === 'static') {
         if (!meta.periodDimCode || !meta.date) continue
-        result.static.push({ companyCode: meta.companyCode, accountCode, snapshotDate: meta.date, periodDimCode: meta.periodDimCode, fiscalYear: fyOf(meta.date), value })
+        result.static.push({ companyCode: meta.companyCode, accountCode, snapshotDate: meta.date, periodDimCode: meta.periodDimCode, fiscalYear: meta.effFy ?? fyLabelOfDate(meta.date, fiscalStartMonth), value })
       } else {
         result.budget.push({ companyCode: meta.companyCode, accountCode, fiscalYear: resolvers.defaultFiscalYear, period: 'annual', value })
       }

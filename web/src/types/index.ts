@@ -33,7 +33,6 @@ export interface Company {
   name: string
   type: 'entity' | 'summary'
   entityType?: 'single' | 'summary'
-  businessUnit?: string | null
   parentCode?: string | null
   legalEntity?: string | null
   managementEntity?: string | null
@@ -147,12 +146,6 @@ export interface TrendData {
   cost: number
   profit: number
   budget?: number
-}
-
-export interface BusinessUnitData {
-  name: string
-  revenue: number
-  percentage: number
 }
 
 export interface Alert {

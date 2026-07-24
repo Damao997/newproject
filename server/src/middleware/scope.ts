@@ -3,10 +3,9 @@ import type { AuthUserContext } from '../types/express'
 
 /**
  * 数据范围（scope）过滤 —— Prisma 扩展。
- * 三优先级（见 docs/references/security.md）：
+ * 两优先级（见 docs/references/security.md）：
  *   1. user.company_code 非空 → 精确绑定单体公司
- *   2. company_code 空且 org_scope_bu 非空 → BU 映射的公司集合
- *   3. 两者皆空且 role.scope_value='*' → 全量
+ *   2. company_code 空且 role.scope_value='*' → 全量
  *   兜底：无范围 → none（空结果，默认拒绝，防越权）
  *
  * 禁止硬编码 if(role==='admin')，统一通过 scope_value='*' 判定全量。
@@ -92,27 +91,17 @@ export function applyScope<T extends PrismaClient | { $extends: unknown }>(clien
 
 /**
  * 依据当前用户上下文解析数据范围。
- * 需要读取 company.business_unit 完成 org_scope_bu → company_code 映射。
  */
 export async function resolveScope(
-  client: Pick<PrismaClient, 'company'>,
-  authUser: Pick<AuthUserContext, 'companyCode' | 'orgScopeBu' | 'scopeValue'>,
+  _client: Pick<PrismaClient, 'company'>,
+  authUser: Pick<AuthUserContext, 'companyCode' | 'scopeValue'>,
 ): Promise<DataScope> {
   // 优先级 1：精确绑定单体公司
   if (authUser.companyCode) {
     return { type: 'companies', companyCodes: [authUser.companyCode] }
   }
 
-  // 优先级 2：事业部范围映射
-  if (authUser.orgScopeBu && authUser.orgScopeBu.length > 0) {
-    const companies = await client.company.findMany({
-      where: { businessUnit: { in: authUser.orgScopeBu }, status: 'active' },
-      select: { code: true },
-    })
-    return { type: 'companies', companyCodes: companies.map((c) => c.code) }
-  }
-
-  // 优先级 3：角色全量
+  // 优先级 2：角色全量
   if (authUser.scopeValue === '*') {
     return { type: 'all' }
   }

@@ -131,7 +131,7 @@ describe('AIProxyService.analyzeStream（mock chatStream + 真实指标）', () 
   let dbReady = false
   let companyCode = ''
   let subjectCode = ''
-  const scope = { companyCode: null, orgScopeBu: null, scopeValue: '*' }
+  const scope = { companyCode: null, scopeValue: '*' }
 
   beforeAll(async () => {
     try {

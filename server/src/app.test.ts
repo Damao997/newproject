@@ -39,8 +39,6 @@ function activeUser(overrides: Record<string, unknown> = {}) {
     passwordHash,
     roleId: 'r-admin',
     companyCode: null,
-    orgScopeBu: null,
-    businessUnit: null,
     status: 'active',
     refreshTokenJti: null,
     createdAt: new Date('2026-01-01T00:00:00Z'),

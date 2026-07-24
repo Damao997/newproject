@@ -10,7 +10,7 @@ import type { AuthUserContext } from '../types/express'
  * 同比/达成率由后端计算，不存库（见 CLAUDE.md 公式计算铁律）。
  */
 
-type Scope = Pick<AuthUserContext, 'companyCode' | 'orgScopeBu' | 'scopeValue'>
+type Scope = Pick<AuthUserContext, 'companyCode' | 'scopeValue'>
 
 export interface OperatingRow {
   code: string
@@ -113,6 +113,20 @@ export async function latestOperatingPeriod(): Promise<string> {
   return row?.period ?? '2025-06'
 }
 
+/** 最新静态快照期间（active 静态批次内最大快照月），无则回退最新经营期 */
+export async function latestStaticPeriod(): Promise<string> {
+  const batch = await prisma.importBatch.findFirst({ where: { dataType: 'static', lifecycleStatus: 'active' }, select: { id: true } })
+  if (!batch) return latestOperatingPeriod()
+  const row = await prisma.factStatic.findFirst({
+    where: { batchId: batch.id },
+    orderBy: { snapshotDate: 'desc' },
+    select: { snapshotDate: true },
+  })
+  if (!row) return latestOperatingPeriod()
+  const d = row.snapshotDate
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
 export const IndicatorsService = {
   async getTree(subjectType: 'operating' | 'static'): Promise<unknown[]> {
     return structuralTree(subjectType)
@@ -127,12 +141,13 @@ export const IndicatorsService = {
     return { items, total, period, companyCount: companyCodes.length }
   },
 
-  async getStatic(scope: Scope, params: { companyCode?: string }): Promise<{ items: StaticRow[]; total: number; companyCount: number }> {
+  async getStatic(scope: Scope, params: { companyCode?: string; period?: string }): Promise<{ items: StaticRow[]; total: number; period: string; companyCount: number }> {
     const companyCodes = await resolveCompanyCodes(scope, params.companyCode)
-    const tree = await AggregationService.buildStaticTree(companyCodes)
+    const period = params.period || (await latestStaticPeriod())
+    const tree = await AggregationService.buildStaticTree(companyCodes, period)
     const items = tree.map(serializeStatic)
     const total = flattenValueTree(tree).length
-    return { items, total, companyCount: companyCodes.length }
+    return { items, total, period, companyCount: companyCodes.length }
   },
 
   async getByCode(scope: Scope, code: string, params: { companyCode?: string; period?: string }): Promise<OperatingRow | StaticRow> {

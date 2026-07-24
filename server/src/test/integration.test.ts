@@ -13,7 +13,7 @@ import { AdminService } from '../services/AdminService'
  * 若数据库不可达或未 seed，则整组自动跳过。
  */
 
-const ADMIN_SCOPE = { companyCode: null, orgScopeBu: null, scopeValue: '*' }
+const ADMIN_SCOPE = { companyCode: null, scopeValue: '*' }
 let dbReady = false
 
 beforeAll(async () => {

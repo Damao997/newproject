@@ -2,6 +2,9 @@ import { prisma } from '../lib/prisma'
 import { resolveScope } from '../middleware/scope'
 import type { AuthUserContext } from '../types/express'
 import { OPERATING_DIMS, STATIC_DIMS } from '../lib/metric-values'
+import { evaluateFormula, topoSortMetrics } from '../lib/formula'
+import { extractCodes } from './FormulaRuleService'
+import { periodMinusYears, fiscalYearStartPeriod, fiscalYearLabel } from '../lib/period'
 
 /**
  * 聚合服务：从事实表按科目树自底向上汇总（父节点 = 子节点求和，与前端一致），
@@ -51,7 +54,7 @@ async function expandSummaries(codes: string[]): Promise<string[]> {
 
 /** 解析当前用户的有效公司编码集合（叠加可选的公司过滤；汇总主体自动展开为单体成员） */
 export async function resolveCompanyCodes(
-  authUser: Pick<AuthUserContext, 'companyCode' | 'orgScopeBu' | 'scopeValue'>,
+  authUser: Pick<AuthUserContext, 'companyCode' | 'scopeValue'>,
   requestedCompany?: string,
 ): Promise<string[]> {
   const scope = await resolveScope(prisma, authUser)
@@ -99,6 +102,74 @@ async function loadSubjects(subjectType: 'operating' | 'static'): Promise<Subjec
   const metrics = await prisma.metric.findMany({ select: { code: true, dataType: true } })
   const dtMap = new Map(metrics.map((m) => [m.code, m.dataType]))
   return rows.map((r) => ({ ...r, dataType: (dtMap.get(r.code) ?? 'data') as SubjectRow['dataType'] }))
+}
+
+export interface CalcFormula {
+  code: string
+  formula: string
+  dependsOn: string[]
+}
+
+/** 加载指定科目类型下、含公式的 active 计算类指标（用于展示层公式计算） */
+async function loadCalcFormulas(subjectType: 'operating' | 'static'): Promise<CalcFormula[]> {
+  const prefix = subjectType === 'operating' ? 'OP_' : 'ST_'
+  const metrics = await prisma.metric.findMany({
+    where: { dataType: 'calc', status: 'active', formula: { not: null }, code: { startsWith: prefix } },
+    select: { code: true, formula: true, dependsOn: true },
+  })
+  return metrics.map((m) => ({
+    code: m.code,
+    formula: m.formula as string,
+    dependsOn: Array.isArray(m.dependsOn) ? (m.dependsOn as string[]) : extractCodes(m.formula as string),
+  }))
+}
+
+/**
+ * 计算层：对含公式的计算类科目按 DAG 拓扑序用公式求值，逐维度覆盖"父=子求和"的默认值。
+ * 无公式的计算类科目保持求和（向后兼容）；操作数缺失记 0；有环或单式报错则跳过该节点，不破坏整棵树。
+ * externalByDim：跨树操作数（如静态比率引用经营科目），按维度提供 code→值；树内同 code 优先。
+ */
+export function applyCalcLayer(
+  roots: ValueNode[],
+  calcFormulas: CalcFormula[],
+  dims: string[],
+  externalByDim?: Map<string, Record<string, number>>,
+): void {
+  if (calcFormulas.length === 0) return
+  const flat = flattenValueTree(roots)
+  const byCode = new Map(flat.map((n) => [n.code, n]))
+  const present = calcFormulas.filter((m) => byCode.has(m.code))
+  if (present.length === 0) return
+  let order: string[]
+  try {
+    order = topoSortMetrics(present.map((m) => ({ code: m.code, dependsOn: m.dependsOn })))
+  } catch {
+    return // 依赖有环：跳过计算层，保底不破坏求和结果
+  }
+  const formulaByCode = new Map(present.map((m) => [m.code, m.formula]))
+  // 每个维度维护 code→value 快照，先铺跨树外部值，再以树内值覆盖；随计算推进更新
+  const dimValues = new Map<string, Record<string, number>>()
+  for (const d of dims) {
+    const rec: Record<string, number> = { ...(externalByDim?.get(d) ?? {}) }
+    for (const n of flat) rec[n.code] = n.values[d] ?? 0
+    dimValues.set(d, rec)
+  }
+  for (const code of order) {
+    const formula = formulaByCode.get(code)
+    const node = byCode.get(code)
+    if (!formula || !node) continue
+    for (const d of dims) {
+      const rec = dimValues.get(d) as Record<string, number>
+      let v: number
+      try {
+        v = round2(evaluateFormula(formula, rec))
+      } catch {
+        v = node.values[d] ?? 0
+      }
+      node.values[d] = v
+      rec[code] = v
+    }
+  }
 }
 
 const EMPTY_OPERATING: Record<string, number> = {
@@ -153,48 +224,126 @@ function buildTree(subjects: SubjectRow[], leafValues: Map<string, Record<string
 }
 
 export const AggregationService = {
-  /** 经营指标聚合树 */
+  /** 经营指标聚合树：以原始 ACTUAL_MONTH 为基础，按选定期派生本月/同期/本年累计/同期累计 */
   async buildOperatingTree(companyCodes: string[], period: string): Promise<ValueNode[]> {
     const subjects = await loadSubjects('operating')
     const leafValues = new Map<string, Record<string, number>>()
+    const setDim = (acc: string, dim: string, v: number): void => {
+      const rec = leafValues.get(acc) ?? { ...EMPTY_OPERATING }
+      rec[dim] = v
+      leafValues.set(acc, rec)
+    }
     if (companyCodes.length > 0) {
       const batchIds = await activeBatchIds('operating')
       if (batchIds.length > 0) {
-        const grouped = await prisma.factOperating.groupBy({
-          by: ['accountCode', 'periodDimCode'],
-          where: { companyCode: { in: companyCodes }, period, batchId: { in: batchIds } },
+        const prevPeriod = periodMinusYears(period, 1)
+        const fyStart = fiscalYearStartPeriod(period)
+        const prevFyStart = fiscalYearStartPeriod(prevPeriod)
+        const baseWhere = { companyCode: { in: companyCodes }, batchId: { in: batchIds }, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH }
+
+        // 本月实际 & 同期实际：按单期精确取 ACTUAL_MONTH（当期 / 当期减 1 年）
+        const single = await prisma.factOperating.groupBy({
+          by: ['accountCode', 'period'],
+          where: { ...baseWhere, period: { in: [period, prevPeriod] } },
           _sum: { value: true },
         })
-        for (const g of grouped) {
-          const rec = leafValues.get(g.accountCode) ?? { ...EMPTY_OPERATING }
-          rec[g.periodDimCode] = Number(g._sum.value ?? 0)
-          leafValues.set(g.accountCode, rec)
+        for (const g of single) {
+          const v = Number(g._sum.value ?? 0)
+          if (g.period === period) setDim(g.accountCode, OPERATING_DIMS.ACTUAL_MONTH, v)
+          else if (g.period === prevPeriod) setDim(g.accountCode, OPERATING_DIMS.SAME_PERIOD_ACTUAL, v)
         }
+        // 本年累计：[财年起..当期] 区间求和（YYYY-MM 字典序即时间序）
+        const ytd = await prisma.factOperating.groupBy({
+          by: ['accountCode'],
+          where: { ...baseWhere, period: { gte: fyStart, lte: period } },
+          _sum: { value: true },
+        })
+        for (const g of ytd) setDim(g.accountCode, OPERATING_DIMS.YTD_ACTUAL, Number(g._sum.value ?? 0))
+        // 同期累计：[上一财年起..当期减 1 年] 区间求和
+        const ytdPrev = await prisma.factOperating.groupBy({
+          by: ['accountCode'],
+          where: { ...baseWhere, period: { gte: prevFyStart, lte: prevPeriod } },
+          _sum: { value: true },
+        })
+        for (const g of ytdPrev) setDim(g.accountCode, OPERATING_DIMS.SAME_PERIOD_YTD, Number(g._sum.value ?? 0))
+      }
+      // 预算金额：按当前期所属财年取 active 预算批次（年度预算，无期间维度）汇总注入 BUDGET_AMOUNT
+      const budgetBatchIds = await activeBatchIds('budget')
+      if (budgetBatchIds.length > 0) {
+        const budgetGrouped = await prisma.factBudget.groupBy({
+          by: ['accountCode'],
+          where: { companyCode: { in: companyCodes }, batchId: { in: budgetBatchIds }, fiscalYear: fiscalYearLabel(period) },
+          _sum: { value: true },
+        })
+        for (const g of budgetGrouped) setDim(g.accountCode, OPERATING_DIMS.BUDGET_AMOUNT, Number(g._sum.value ?? 0))
       }
     }
-    return buildTree(subjects, leafValues, EMPTY_OPERATING)
+    const tree = buildTree(subjects, leafValues, EMPTY_OPERATING)
+    applyCalcLayer(tree, await loadCalcFormulas('operating'), Object.keys(EMPTY_OPERATING))
+    return tree
   },
 
-  /** 静态指标聚合树（按 active 静态批次汇总） */
-  async buildStaticTree(companyCodes: string[]): Promise<ValueNode[]> {
+  /** 静态指标聚合树：以原始快照为基础，按选定期的快照月份派生本期/年初/同期/上年年初 */
+  async buildStaticTree(companyCodes: string[], period: string): Promise<ValueNode[]> {
     const subjects = await loadSubjects('static')
     const leafValues = new Map<string, Record<string, number>>()
+    const setDim = (acc: string, dim: string, v: number): void => {
+      const rec = leafValues.get(acc) ?? { ...EMPTY_STATIC }
+      rec[dim] = v
+      leafValues.set(acc, rec)
+    }
     if (companyCodes.length > 0) {
       const batchIds = await activeBatchIds('static')
       if (batchIds.length > 0) {
+        const prev = periodMinusYears(period, 1)
+        // 输出维度 → 目标快照月份
+        const dimTargets: [string, string][] = [
+          [STATIC_DIMS.CURRENT_AMOUNT, period],
+          [STATIC_DIMS.YEAR_START, fiscalYearStartPeriod(period)],
+          [STATIC_DIMS.SAME_PERIOD_AMOUNT, prev],
+          [STATIC_DIMS.LAST_YEAR_START, fiscalYearStartPeriod(prev)],
+        ]
         const grouped = await prisma.factStatic.groupBy({
-          by: ['accountCode', 'periodDimCode'],
+          by: ['accountCode', 'snapshotDate'],
           where: { companyCode: { in: companyCodes }, batchId: { in: batchIds } },
           _sum: { value: true },
         })
+        // 按 (accountCode, 月份) 汇总（同月多公司/多快照日期合计）
+        const monthSum = new Map<string, number>()
         for (const g of grouped) {
-          const rec = leafValues.get(g.accountCode) ?? { ...EMPTY_STATIC }
-          rec[g.periodDimCode] = Number(g._sum.value ?? 0)
-          leafValues.set(g.accountCode, rec)
+          const d = g.snapshotDate as Date
+          const mon = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+          const k = `${g.accountCode}|${mon}`
+          monthSum.set(k, (monthSum.get(k) ?? 0) + Number(g._sum.value ?? 0))
+        }
+        for (const acc of new Set(grouped.map((g) => g.accountCode))) {
+          for (const [dim, tPeriod] of dimTargets) {
+            const v = monthSum.get(`${acc}|${tPeriod}`)
+            if (v !== undefined) setDim(acc, dim, v)
+          }
         }
       }
     }
-    return buildTree(subjects, leafValues, EMPTY_STATIC)
+    const tree = buildTree(subjects, leafValues, EMPTY_STATIC)
+    const calc = await loadCalcFormulas('static')
+    // 跨树比率（如 ROE/ROA 引用经营“壹品慧净利润”）：注入同选定期经营树“本期/同期”值作为外部操作数
+    let externalByDim: Map<string, Record<string, number>> | undefined
+    const needsExternal = calc.some((m) => m.dependsOn.some((d) => d.startsWith('OP_')))
+    if (needsExternal && companyCodes.length > 0) {
+      const opFlat = flattenValueTree(await AggregationService.buildOperatingTree(companyCodes, period))
+      const current: Record<string, number> = {}
+      const same: Record<string, number> = {}
+      for (const n of opFlat) {
+        current[n.code] = n.values[OPERATING_DIMS.ACTUAL_MONTH] ?? 0
+        same[n.code] = n.values[OPERATING_DIMS.SAME_PERIOD_ACTUAL] ?? 0
+      }
+      externalByDim = new Map([
+        [STATIC_DIMS.CURRENT_AMOUNT, current],
+        [STATIC_DIMS.SAME_PERIOD_AMOUNT, same],
+      ])
+    }
+    applyCalcLayer(tree, calc, Object.keys(EMPTY_STATIC), externalByDim)
+    return tree
   },
 }
 

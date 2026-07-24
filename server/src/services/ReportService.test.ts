@@ -14,7 +14,7 @@ let adminId = ''
 let companyCode = ''
 let subjectCode = ''
 const period = `2098-${(Date.now() % 12 + 1).toString().padStart(2, '0')}`
-const adminScope = { companyCode: null, orgScopeBu: null, scopeValue: '*' }
+const adminScope = { companyCode: null, scopeValue: '*' }
 
 const createdReportIds: string[] = []
 const createdAnalysisIds: string[] = []

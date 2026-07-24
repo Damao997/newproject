@@ -16,7 +16,7 @@ const period = `2099-${suffix.slice(0, 2).padStart(2, '0')}`.slice(0, 7) // 唯�
 const createdIds: string[] = []
 
 // 全量 scope 上下文（scopeValue='*'）
-const adminScope = { companyCode: null, orgScopeBu: null, scopeValue: '*' }
+const adminScope = { companyCode: null, scopeValue: '*' }
 
 beforeAll(async () => {
   try {
@@ -99,7 +99,7 @@ describe('SubjectAnalysisService（真实 DB）', () => {
 
   it('scope 越权：受限用户操作非授权公司被拒（403）', async () => {
     if (!dbReady) return
-    const restricted = { companyCode: 'NON_EXISTENT_EN', orgScopeBu: null, scopeValue: '' }
+    const restricted = { companyCode: 'NON_EXISTENT_EN', scopeValue: '' }
     await expect(
       SubjectAnalysisService.create(restricted, { companyCode, subjectCode, fiscalYear: '2099', period, title: 'x', content: '<p>x</p>' }, adminId),
     ).rejects.toMatchObject({ code: 403 })

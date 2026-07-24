@@ -12,7 +12,7 @@ import type { AuthUserContext } from '../types/express'
  * - 软删除：status=inactive（由 soft-delete 扩展自动过滤读操作）。
  */
 
-type Scope = Pick<AuthUserContext, 'companyCode' | 'orgScopeBu' | 'scopeValue'>
+type Scope = Pick<AuthUserContext, 'companyCode' | 'scopeValue'>
 
 export interface AnalysisInput {
   companyCode: string

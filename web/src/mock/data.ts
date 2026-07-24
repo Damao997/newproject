@@ -1,4 +1,4 @@
-import type { User, Company, AccountSubject, Metric, Role, KpiData, TrendData, BusinessUnitData, Alert, ImportBatch, AuditLog } from '@/types'
+import type { User, Company, AccountSubject, Metric, Role, KpiData, TrendData, Alert, ImportBatch, AuditLog } from '@/types'
 
 export const mockUsers: User[] = [
   {
@@ -47,16 +47,16 @@ export const mockUsers: User[] = [
 ]
 
 export const mockCompanies: Company[] = [
-  { id: '1', code: 'ET0001', name: '浙江省公司汇总', type: 'summary', businessUnit: '总部', status: 'active' },
-  { id: '2', code: 'EN330059', name: '杭州分公司', type: 'entity', businessUnit: '华东区', status: 'active' },
-  { id: '3', code: 'EN330060', name: '宁波分公司', type: 'entity', businessUnit: '华东区', status: 'active' },
-  { id: '4', code: 'EN330061', name: '温州分公司', type: 'entity', businessUnit: '华东区', status: 'active' },
-  { id: '5', code: 'EN330062', name: '广州分公司', type: 'entity', businessUnit: '华南区', status: 'active' },
-  { id: '6', code: 'EN330063', name: '深圳分公司', type: 'entity', businessUnit: '华南区', status: 'active' },
-  { id: '7', code: 'EN330064', name: '北京分公司', type: 'entity', businessUnit: '华北区', status: 'active' },
-  { id: '8', code: 'EN330065', name: '天津分公司', type: 'entity', businessUnit: '华北区', status: 'active' },
-  { id: '9', code: 'EN330066', name: '成都分公司', type: 'entity', businessUnit: '西南区', status: 'active' },
-  { id: '10', code: 'EN330067', name: '武汉分公司', type: 'entity', businessUnit: '华中区', status: 'active' },
+  { id: '1', code: 'ET0001', name: '浙江省公司汇总', type: 'summary', status: 'active' },
+  { id: '2', code: 'EN330059', name: '杭州分公司', type: 'entity', status: 'active' },
+  { id: '3', code: 'EN330060', name: '宁波分公司', type: 'entity', status: 'active' },
+  { id: '4', code: 'EN330061', name: '温州分公司', type: 'entity', status: 'active' },
+  { id: '5', code: 'EN330062', name: '广州分公司', type: 'entity', status: 'active' },
+  { id: '6', code: 'EN330063', name: '深圳分公司', type: 'entity', status: 'active' },
+  { id: '7', code: 'EN330064', name: '北京分公司', type: 'entity', status: 'active' },
+  { id: '8', code: 'EN330065', name: '天津分公司', type: 'entity', status: 'active' },
+  { id: '9', code: 'EN330066', name: '成都分公司', type: 'entity', status: 'active' },
+  { id: '10', code: 'EN330067', name: '武汉分公司', type: 'entity', status: 'active' },
 ]
 
 export const mockAccountSubjects: AccountSubject[] = [
@@ -144,13 +144,6 @@ export const mockTrendData: TrendData[] = [
   { period: '2024-10', revenue: 1120, cost: 790, profit: 330, budget: 1120 },
   { period: '2024-11', revenue: 1150, cost: 800, profit: 350, budget: 1150 },
   { period: '2024-12', revenue: 1180, cost: 820, profit: 360, budget: 1180 },
-]
-
-export const mockBusinessUnitData: BusinessUnitData[] = [
-  { name: '华东区', revenue: 1234.56, percentage: 45 },
-  { name: '华南区', revenue: 765.43, percentage: 28 },
-  { name: '华北区', revenue: 543.21, percentage: 20 },
-  { name: '其他', revenue: 210.98, percentage: 7 },
 ]
 
 export const mockAlerts: Alert[] = [

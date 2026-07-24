@@ -13,14 +13,13 @@ import { buildExcel } from '../lib/excel'
 interface AuditCtx { userId: string; traceId?: string }
 
 // ---------------- 公司 ----------------
-export interface CompanyDto { id: string; code: string; name: string; type: string; entityType: string; businessUnit: string | null; parentCode: string | null; legalEntity: string | null; managementEntity: string | null; orderNo: number; status: string }
+export interface CompanyDto { id: string; code: string; name: string; type: string; entityType: string; parentCode: string | null; legalEntity: string | null; managementEntity: string | null; orderNo: number; status: string }
 
-function companyDto(c: { id: string; code: string; name: string; entityType: string; businessUnit: string | null; parentCode: string | null; legalEntity: string | null; managementEntity: string | null; orderNo: number; status: string }): CompanyDto {
+function companyDto(c: { id: string; code: string; name: string; entityType: string; parentCode: string | null; legalEntity: string | null; managementEntity: string | null; orderNo: number; status: string }): CompanyDto {
   return {
     id: c.id, code: c.code, name: c.name,
     type: c.entityType === 'single' ? 'entity' : 'summary',
     entityType: c.entityType,
-    businessUnit: c.businessUnit,
     parentCode: c.parentCode,
     legalEntity: c.legalEntity,
     managementEntity: c.managementEntity,
@@ -58,7 +57,7 @@ export const DataService = {
     return rows.map(companyDto)
   },
 
-  async createCompany(input: { code: string; name: string; entityType?: string; businessUnit?: string | null; parentCode?: string | null; legalEntity?: string | null; managementEntity?: string | null; orderNo?: number }, ctx: AuditCtx): Promise<CompanyDto> {
+  async createCompany(input: { code: string; name: string; entityType?: string; parentCode?: string | null; legalEntity?: string | null; managementEntity?: string | null; orderNo?: number }, ctx: AuditCtx): Promise<CompanyDto> {
     const exists = await prisma.company.findUnique({ where: { code: input.code } })
     if (exists) throw errors.conflict('公司编码已存在')
     const created = await prisma.company.create({
@@ -66,7 +65,6 @@ export const DataService = {
         code: input.code,
         name: input.name,
         entityType: input.entityType === 'summary' ? 'summary' : 'single',
-        businessUnit: input.businessUnit ?? null,
         parentCode: input.parentCode ?? null,
         legalEntity: input.legalEntity ?? null,
         managementEntity: input.managementEntity ?? null,
@@ -78,7 +76,7 @@ export const DataService = {
     return companyDto(created)
   },
 
-  async updateCompany(id: string, input: { name?: string; entityType?: string; businessUnit?: string | null; parentCode?: string | null; legalEntity?: string | null; managementEntity?: string | null; orderNo?: number; status?: string }, ctx: AuditCtx): Promise<CompanyDto> {
+  async updateCompany(id: string, input: { name?: string; entityType?: string; parentCode?: string | null; legalEntity?: string | null; managementEntity?: string | null; orderNo?: number; status?: string }, ctx: AuditCtx): Promise<CompanyDto> {
     const found = await prisma.company.findUnique({ where: { id } })
     if (!found) throw errors.notFound('公司不存在')
     // code 不可变（被事实/用户/汇总映射引用）
@@ -90,7 +88,6 @@ export const DataService = {
       data: {
         name: input.name ?? undefined,
         entityType: input.entityType === 'summary' ? 'summary' : input.entityType === 'single' ? 'single' : undefined,
-        businessUnit: input.businessUnit === undefined ? undefined : input.businessUnit,
         parentCode: input.parentCode === undefined ? undefined : input.parentCode,
         legalEntity: input.legalEntity === undefined ? undefined : input.legalEntity,
         managementEntity: input.managementEntity === undefined ? undefined : input.managementEntity,

@@ -40,7 +40,7 @@ describe('DataService 公司 CRUD（真实 DB）', () => {
 
   it('创建单体与汇总公司', async () => {
     if (!dbReady) return
-    const single = await DataService.createCompany({ code: SINGLE_CODE, name: '测试单体', entityType: 'single', businessUnit: 'BU-T' }, ctx)
+    const single = await DataService.createCompany({ code: SINGLE_CODE, name: '测试单体', entityType: 'single' }, ctx)
     const summary = await DataService.createCompany({ code: SUMMARY_CODE, name: '测试汇总', entityType: 'summary' }, ctx)
     singleId = single.id
     summaryId = summary.id

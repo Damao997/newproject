@@ -9,7 +9,7 @@ import { AIProxyService } from '../src/services/AIProxyService'
  * 需 DB 运行且已 seed，且 server/.env 配置有效 DeepSeek key/模型。
  */
 
-const SCOPE = { companyCode: null, orgScopeBu: null, scopeValue: '*' } as const
+const SCOPE = { companyCode: null, scopeValue: '*' } as const
 
 async function main(): Promise<void> {
   await basePrisma.$queryRaw`SELECT 1`

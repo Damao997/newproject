@@ -28,10 +28,9 @@ interface CompanyForm {
   code: string
   name: string
   entityType: 'single' | 'summary'
-  businessUnit: string
 }
 
-const emptyForm: CompanyForm = { code: '', name: '', entityType: 'single', businessUnit: '' }
+const emptyForm: CompanyForm = { code: '', name: '', entityType: 'single' }
 
 /**
  * 公司主体管理：列表 + 搜索 + 新增/编辑（编码不可变）+ 停用（软删除，引用保护）。
@@ -70,7 +69,6 @@ export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete =
       code: c.code,
       name: c.name,
       entityType: (c.entityType ?? (c.type === 'summary' ? 'summary' : 'single')) as 'single' | 'summary',
-      businessUnit: c.businessUnit ?? '',
     })
     setError(null)
     setDialogOpen(true)
@@ -82,7 +80,6 @@ export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete =
       const payload = {
         name: form.name.trim(),
         entityType: form.entityType,
-        businessUnit: form.businessUnit.trim() || null,
       }
       if (editingId) {
         await updateCompany.mutateAsync({ id: editingId, data: payload })
@@ -114,7 +111,6 @@ export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete =
       key: 'type', header: '类型',
       render: (c) => (c.type === 'summary' ? <Badge variant="default">汇总主体</Badge> : <Badge variant="secondary">单体公司</Badge>),
     },
-    { key: 'businessUnit', header: '事业部', cellClassName: 'text-muted-foreground', render: (c) => c.businessUnit || '—' },
     {
       key: 'status', header: '状态',
       render: (c) => (c.status === 'active' ? <Badge variant="success">启用</Badge> : <Badge variant="secondary">停用</Badge>),
@@ -159,7 +155,7 @@ export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete =
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editingId ? '编辑公司' : '新增公司'}</DialogTitle>
-            <DialogDescription>{editingId ? '编码不可修改；类型/名称/事业部可编辑' : '创建单体公司或汇总主体'}</DialogDescription>
+            <DialogDescription>{editingId ? '编码不可修改；类型/名称可编辑' : '创建单体公司或汇总主体'}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1">
@@ -180,10 +176,6 @@ export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete =
                     <SelectItem value="summary">汇总主体</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="space-y-1">
-                <Label>事业部</Label>
-                <Input value={form.businessUnit} onChange={(e) => setForm({ ...form, businessUnit: e.target.value })} placeholder="可选" />
               </div>
             </div>
             {error && <p className="text-xs text-destructive">{error}</p>}

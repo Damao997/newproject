@@ -10,11 +10,10 @@ import type { ValueNode } from './AggregationService'
  * 全部经 scope 过滤；多公司自动汇总求和。
  */
 
-type Scope = Pick<AuthUserContext, 'companyCode' | 'orgScopeBu' | 'scopeValue'>
+type Scope = Pick<AuthUserContext, 'companyCode' | 'scopeValue'>
 
 interface Kpi { title: string; value: number; unit: string; change: number; trend: number[]; icon: string }
 interface Trend { period: string; revenue: number; cost: number; profit: number; budget: number }
-interface Bu { name: string; revenue: number; percentage: number }
 
 function rootByName(tree: ValueNode[], name: string): ValueNode | undefined {
   return tree.find((n) => n.name === name)
@@ -63,7 +62,7 @@ async function monthlyTrend(companyCodes: string[], periods: string[]): Promise<
 }
 
 export const DashboardService = {
-  async getOverview(scope: Scope): Promise<{ kpiData: Kpi[]; trendData: Trend[]; businessUnitData: Bu[]; alerts: unknown[]; lastUpdatedAt: string }> {
+  async getOverview(scope: Scope): Promise<{ kpiData: Kpi[]; trendData: Trend[]; alerts: unknown[]; lastUpdatedAt: string }> {
     const companyCodes = await resolveCompanyCodes(scope)
     const periods = await availablePeriods()
     const period = periods[periods.length - 1] ?? (await latestOperatingPeriod())
@@ -88,31 +87,10 @@ export const DashboardService = {
       { title: '预算执行率', value: achievement, unit: '%', change: 0, trend: [], icon: 'Target' },
     ]
 
-    const businessUnitData = await this.getBusinessUnits(companyCodes, period)
     const alerts = await this.getAlerts(scope)
     const lastBatch = await prisma.importBatch.findFirst({ where: { lifecycleStatus: 'active' }, orderBy: { updatedAt: 'desc' }, select: { updatedAt: true } })
 
-    return { kpiData, trendData, businessUnitData, alerts, lastUpdatedAt: (lastBatch?.updatedAt ?? new Date()).toISOString() }
-  },
-
-  async getBusinessUnits(companyCodes: string[], period: string): Promise<Bu[]> {
-    if (companyCodes.length === 0) return []
-    const companies = await prisma.company.findMany({ where: { code: { in: companyCodes } }, select: { code: true, businessUnit: true } })
-    const byBu = new Map<string, string[]>()
-    for (const c of companies) {
-      const bu = c.businessUnit ?? '未分组'
-      if (!byBu.has(bu)) byBu.set(bu, [])
-      byBu.get(bu)?.push(c.code)
-    }
-    const raw: { name: string; revenue: number }[] = []
-    for (const [bu, codes] of byBu) {
-      const tree = await AggregationService.buildOperatingTree(codes, period)
-      raw.push({ name: bu, revenue: round2(actual(rootByName(tree, '收入'))) })
-    }
-    const total = raw.reduce((s, r) => s + r.revenue, 0)
-    return raw
-      .sort((a, b) => b.revenue - a.revenue)
-      .map((r) => ({ ...r, percentage: total ? Math.round((r.revenue / total) * 100) : 0 }))
+    return { kpiData, trendData, alerts, lastUpdatedAt: (lastBatch?.updatedAt ?? new Date()).toISOString() }
   },
 
   async getDrill(scope: Scope, params: { companyCode?: string; period?: string }): Promise<{ kpiData: Kpi[]; trendData: Trend[] }> {

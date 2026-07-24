@@ -43,7 +43,6 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
       throw errors.forbidden('所属角色已停用')
     }
 
-    const orgScopeBu = Array.isArray(user.orgScopeBu) ? (user.orgScopeBu as string[]) : null
     const context: AuthUserContext = {
       userId: user.id,
       username: user.username,
@@ -51,7 +50,6 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
       roleCode: user.role.code,
       scopeValue: user.role.scopeValue,
       companyCode: user.companyCode ?? null,
-      orgScopeBu,
     }
     req.authUser = context
     next()

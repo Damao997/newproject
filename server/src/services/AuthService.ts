@@ -59,8 +59,6 @@ function toFrontendUser(user: UserWithRole): FrontendUser {
   let dataScope: string
   if (user.companyCode) {
     dataScope = user.companyCode
-  } else if (Array.isArray(user.orgScopeBu) && (user.orgScopeBu as string[]).length > 0) {
-    dataScope = (user.orgScopeBu as string[]).join(',')
   } else if (user.role.scopeValue === '*') {
     dataScope = '全部'
   } else {

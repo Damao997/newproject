@@ -23,19 +23,6 @@ function readSheet(file: string, index: number): unknown[][] {
 
 const cell = (v: unknown): string => (v === null || v === undefined ? '' : String(v).trim())
 
-// 单体公司编码 → 事业部分组（看板事业部分组用；Excel 未提供，按区域近似指派，可后续维护）
-const BU_BY_CODE: Record<string, string> = {
-  '330059': 'BU_EAST', // 杭州
-  '330058': 'BU_EAST', // 省公司
-  '330032': 'BU_EAST', // 壹品慧生活杭州
-  '330072': 'BU_EAST', // 管道直饮水杭州
-  '330063': 'BU_NORTH', // 天津中长浙江
-  '330074': 'BU_EAST', // 中燃优家杭州
-  '330049': 'BU_WEST', // 金华
-  '100068': 'BU_EAST', // 上海舒适
-  '310004': 'BU_EAST', // 管道直饮水上海
-}
-
 export async function seedCompaniesAndMapping(prisma: PrismaClient): Promise<void> {
   // ---- 单体主体（Sheet 索引 0）----
   const singleRows = readSheet(MAPPING_FILE, 0).slice(1) // 去表头
@@ -47,13 +34,14 @@ export async function seedCompaniesAndMapping(prisma: PrismaClient): Promise<voi
     const rawCode = cell(row[0])
     const name = cell(row[1])
     if (!rawCode || !name) continue
-    const code = 'EN' + rawCode.padStart(6, '0')
+    // 兼容两种源格式：已带 EN 前缀则原样使用，否则数字码补 EN+6 位（避免 ENEN 双前缀）
+    const code = /^EN/i.test(rawCode) ? rawCode.toUpperCase() : 'EN' + rawCode.padStart(6, '0')
     singleNameToCode.set(name, code)
     validCodes.add(code)
     await prisma.company.upsert({
       where: { code },
-      update: { name, entityType: 'single', businessUnit: BU_BY_CODE[rawCode] ?? null, orderNo },
-      create: { code, name, entityType: 'single', businessUnit: BU_BY_CODE[rawCode] ?? null, orderNo },
+      update: { name, entityType: 'single', orderNo },
+      create: { code, name, entityType: 'single', orderNo },
     })
     singleCount++
     orderNo++
@@ -83,11 +71,11 @@ export async function seedCompaniesAndMapping(prisma: PrismaClient): Promise<voi
   }
   console.log(`[seed] 汇总主体 ${summaryCount} 条 完成`)
 
-  // ---- 清理旧占位公司（CO/SUM 前缀，非本次有效编码）----
+  // ---- 清理旧占位/无效编码公司（CO/SUM 旧前缀、ENEN 双前缀等，非本次有效编码）----
   const oldCompanies = await prisma.company.findMany({ select: { code: true } })
   const obsolete = oldCompanies
     .map((c) => c.code)
-    .filter((code) => (code.startsWith('CO') || code.startsWith('SUM')) && !validCodes.has(code))
+    .filter((code) => (code.startsWith('CO') || code.startsWith('SUM') || code.startsWith('ENEN')) && !validCodes.has(code))
   if (obsolete.length > 0) {
     await prisma.company.deleteMany({ where: { code: { in: obsolete } } })
     console.log(`[seed] 清理旧占位公司 ${obsolete.length} 条`)

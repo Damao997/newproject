@@ -12,14 +12,13 @@ import { buildExcel } from '../lib/excel'
 interface AuditCtx { userId: string; traceId?: string }
 
 interface UserRow {
-  id: string; username: string; displayName: string; companyCode: string | null; orgScopeBu: unknown
+  id: string; username: string; displayName: string; companyCode: string | null
   status: string; createdAt: Date; updatedAt: Date; role: { code: string; scopeValue: string }
 }
 
 function userDto(u: UserRow) {
   let dataScope: string
   if (u.companyCode) dataScope = u.companyCode
-  else if (Array.isArray(u.orgScopeBu) && (u.orgScopeBu as string[]).length > 0) dataScope = (u.orgScopeBu as string[]).join(',')
   else if (u.role.scopeValue === '*') dataScope = '全部'
   else dataScope = '无'
   return {
@@ -42,7 +41,7 @@ export const AdminService = {
     return { items: rows.map(userDto), total, page: params.page, pageSize: params.pageSize, totalPages: Math.ceil(total / params.pageSize) }
   },
 
-  async createUser(input: { username: string; name?: string; password: string; role: string; companyCode?: string; orgScopeBu?: string[] }, ctx: AuditCtx) {
+  async createUser(input: { username: string; name?: string; password: string; role: string; companyCode?: string }, ctx: AuditCtx) {
     const exists = await prisma.user.findUnique({ where: { username: input.username } })
     if (exists) throw errors.conflict('用户名已存在')
     const role = await prisma.role.findUnique({ where: { code: input.role } })
@@ -53,7 +52,6 @@ export const AdminService = {
       data: {
         username: input.username, displayName: input.name ?? input.username, passwordHash, roleId: role.id,
         companyCode: input.companyCode ?? null,
-        orgScopeBu: (input.orgScopeBu ?? undefined) as never,
       },
       include: USER_INCLUDE,
     })
@@ -61,7 +59,7 @@ export const AdminService = {
     return userDto(created)
   },
 
-  async updateUser(id: string, input: { name?: string; role?: string; companyCode?: string | null; orgScopeBu?: string[]; status?: string }, ctx: AuditCtx) {
+  async updateUser(id: string, input: { name?: string; role?: string; companyCode?: string | null; status?: string }, ctx: AuditCtx) {
     const found = await prisma.user.findUnique({ where: { id } })
     if (!found) throw errors.notFound('用户不存在')
     let roleId: string | undefined
@@ -76,7 +74,6 @@ export const AdminService = {
         displayName: input.name ?? undefined,
         roleId,
         companyCode: input.companyCode === undefined ? undefined : input.companyCode,
-        orgScopeBu: input.orgScopeBu === undefined ? undefined : (input.orgScopeBu as never),
         status: input.status === 'inactive' ? 'inactive' : input.status === 'active' ? 'active' : undefined,
       },
       include: USER_INCLUDE,
