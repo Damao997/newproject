@@ -1,16 +1,19 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { MainLayout } from '@/components/layout/main-layout'
 import { RequirePermission } from '@/components/layout/require-permission'
-import LoginPage from '@/pages/login'
-import DashboardPage from '@/pages/dashboard'
-import IndicatorsPage from '@/pages/indicators'
-import DataPage from '@/pages/data'
-import AdminPage from '@/pages/admin'
-import TransactionsPage from '@/pages/transactions'
-import InventoryPage from '@/pages/inventory'
-import ReportsPage from '@/pages/reports'
+
+const LoginPage = lazy(() => import('@/pages/login'))
+const DashboardPage = lazy(() => import('@/pages/dashboard'))
+const IndicatorsPage = lazy(() => import('@/pages/indicators'))
+const DataPage = lazy(() => import('@/pages/data'))
+const AdminPage = lazy(() => import('@/pages/admin'))
+const TransactionsPage = lazy(() => import('@/pages/transactions'))
+const InventoryPage = lazy(() => import('@/pages/inventory'))
+const ReportsPage = lazy(() => import('@/pages/reports'))
+const ToolsPage = lazy(() => import('@/pages/tools'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -26,7 +29,8 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <BrowserRouter>
-          <Routes>
+          <Suspense fallback={<div className="flex h-screen items-center justify-center text-sm text-muted-foreground">加载中...</div>}>
+            <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/" element={<MainLayout />}>
               <Route index element={<Navigate to="/dashboard" replace />} />
@@ -35,11 +39,13 @@ function App() {
               <Route path="transactions" element={<RequirePermission resource="transactions" action="view"><TransactionsPage /></RequirePermission>} />
               <Route path="inventory" element={<RequirePermission resource="inventory" action="view"><InventoryPage /></RequirePermission>} />
               <Route path="reports" element={<RequirePermission resource="reports" action="view"><ReportsPage /></RequirePermission>} />
+              <Route path="tools" element={<RequirePermission resource="tools" action="view"><ToolsPage /></RequirePermission>} />
               <Route path="data" element={<RequirePermission resource="data:browse" action="view"><DataPage /></RequirePermission>} />
               <Route path="admin" element={<RequirePermission resource="admin:users" action="view"><AdminPage /></RequirePermission>} />
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          </Routes>
+            </Routes>
+          </Suspense>
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>

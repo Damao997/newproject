@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Dialog,
@@ -14,32 +15,43 @@ import {
 } from '@/components/ui/dialog'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { useConfirm } from '@/components/ui/confirm-dialog'
-import { useCompanies, useCreateCompany, useUpdateCompany, useDeleteCompany } from '@/hooks/api-queries'
-import { Plus, Pencil, Trash2, Search } from 'lucide-react'
+import { useCompanies, useCreateCompany, useUpdateCompany, useDeleteCompany, usePurgeCompany } from '@/hooks/api-queries'
+import { Plus, Pencil, Trash2, Search, ShieldAlert } from 'lucide-react'
 import type { Company } from '@/types'
 
 interface CompanyPanelProps {
   canCreate?: boolean
   canUpdate?: boolean
   canDelete?: boolean
+  /** 彻底删除（物理删除，仅 superadmin） */
+  canPurge?: boolean
 }
 
 interface CompanyForm {
   code: string
   name: string
+  shortName: string
   entityType: 'single' | 'summary'
 }
 
-const emptyForm: CompanyForm = { code: '', name: '', entityType: 'single' }
+const emptyForm: CompanyForm = { code: '', name: '', shortName: '', entityType: 'single' }
+
+/** 获取公司显示名称：启用简称且有简称时显示简称，否则显示完整名称 */
+export function getCompanyDisplayName(company: Company, useShortName: boolean): string {
+  if (useShortName && company.shortName) return company.shortName
+  return company.name
+}
 
 /**
  * 公司主体管理：列表 + 搜索 + 新增/编辑（编码不可变）+ 停用（软删除，引用保护）。
+ * canPurge 时对已停用公司提供「彻底删除」（物理删除，不可恢复，仅 superadmin）。
  */
-export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete = false }: CompanyPanelProps) {
+export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete = false, canPurge = false }: CompanyPanelProps) {
   const { data, isLoading } = useCompanies()
   const createCompany = useCreateCompany()
   const updateCompany = useUpdateCompany()
   const deleteCompany = useDeleteCompany()
+  const purgeCompany = usePurgeCompany()
   const { confirm, element: confirmElement } = useConfirm()
 
   const [keyword, setKeyword] = useState('')
@@ -48,6 +60,7 @@ export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete =
   const [form, setForm] = useState<CompanyForm>(emptyForm)
   const [error, setError] = useState<string | null>(null)
   const [listError, setListError] = useState<string | null>(null)
+  const [showShortName, setShowShortName] = useState(false)
 
   const companies = useMemo(() => (data ?? []) as Company[], [data])
   const filtered = useMemo(() => {
@@ -68,6 +81,7 @@ export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete =
     setForm({
       code: c.code,
       name: c.name,
+      shortName: c.shortName ?? '',
       entityType: (c.entityType ?? (c.type === 'summary' ? 'summary' : 'single')) as 'single' | 'summary',
     })
     setError(null)
@@ -77,9 +91,13 @@ export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete =
   const submit = async () => {
     setError(null)
     try {
-      const payload = {
+      const payload: Record<string, unknown> = {
         name: form.name.trim(),
         entityType: form.entityType,
+      }
+      // 简称仅对单体公司有效
+      if (form.entityType === 'single') {
+        payload.shortName = form.shortName.trim() || null
       }
       if (editingId) {
         await updateCompany.mutateAsync({ id: editingId, data: payload })
@@ -103,10 +121,32 @@ export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete =
     }
   }
 
-  const hasActions = canUpdate || canDelete
+  const handlePurge = async (c: Company) => {
+    if (!(await confirm({ title: '彻底删除公司', description: `将物理删除公司「${c.name}」（${c.code}），此操作不可恢复！被事实数据/用户/汇总映射引用时将被拒绝。`, danger: true, confirmText: '彻底删除' }))) return
+    setListError(null)
+    try {
+      await purgeCompany.mutateAsync(c.id)
+    } catch (err) {
+      setListError(err instanceof Error ? err.message : '彻底删除失败')
+    }
+  }
+
+  const hasActions = canUpdate || canDelete || canPurge
   const columns: DataTableColumn<Company>[] = [
     { key: 'code', header: '公司编码', cellClassName: 'font-mono text-muted-foreground' },
-    { key: 'name', header: '公司名称', cellClassName: 'font-medium' },
+    {
+      key: 'name', header: '公司名称', cellClassName: 'font-medium',
+      render: (c) => (
+        <span title={c.name}>
+          {getCompanyDisplayName(c, showShortName)}
+          {showShortName && c.shortName && <span className="ml-1 text-xs text-muted-foreground">({c.name})</span>}
+        </span>
+      ),
+    },
+    {
+      key: 'shortName', header: '简称',
+      render: (c) => (c.shortName ? <span className="text-muted-foreground">{c.shortName}</span> : <span className="text-muted-foreground/50">—</span>),
+    },
     {
       key: 'type', header: '类型',
       render: (c) => (c.type === 'summary' ? <Badge variant="default">汇总主体</Badge> : <Badge variant="secondary">单体公司</Badge>),
@@ -126,6 +166,11 @@ export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete =
               {canDelete && c.status === 'active' && (
                 <Button variant="ghost" size="sm" onClick={() => handleDelete(c)}><Trash2 className="h-4 w-4" /></Button>
               )}
+              {canPurge && c.status !== 'active' && (
+                <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" title="彻底删除（不可恢复）" onClick={() => handlePurge(c)}>
+                  <ShieldAlert className="h-4 w-4" />
+                </Button>
+              )}
             </div>
           ),
         }]
@@ -138,6 +183,10 @@ export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete =
         <div className="relative flex-1">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input placeholder="搜索公司名称或编码..." value={keyword} onChange={(e) => setKeyword(e.target.value)} className="pl-8" />
+        </div>
+        <div className="flex items-center gap-2">
+          <Label htmlFor="show-short-name" className="text-xs text-muted-foreground whitespace-nowrap">显示简称</Label>
+          <Switch id="show-short-name" checked={showShortName} onCheckedChange={setShowShortName} />
         </div>
         {canCreate && (
           <Button variant="outline" size="sm" onClick={openCreate}>
@@ -166,6 +215,12 @@ export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete =
               <Label>公司名称</Label>
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="公司名称" />
             </div>
+            {form.entityType === 'single' && (
+              <div className="space-y-1">
+                <Label>公司简称 <span className="text-muted-foreground font-normal">（可选，用于界面简短显示）</span></Label>
+                <Input value={form.shortName} onChange={(e) => setForm({ ...form, shortName: e.target.value })} placeholder="如：壹品慧" maxLength={100} />
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label>类型</Label>

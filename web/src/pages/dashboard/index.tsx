@@ -68,10 +68,12 @@ export default function DashboardPage() {
               导出数据
             </Button>
           )}
-          <Button size="sm" className="h-9 px-4" onClick={() => navigate('/data')}>
-            <Upload className="mr-2 h-4 w-4" />
-            导入数据
-          </Button>
+          {can('data:import', 'upload') && (
+            <Button size="sm" className="h-9 px-4" onClick={() => navigate('/data')}>
+              <Upload className="mr-2 h-4 w-4" />
+              导入数据
+            </Button>
+          )}
         </div>
       }
     >
@@ -183,16 +185,18 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="px-6 pb-6">
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <button
-                  type="button"
-                  className="group flex h-24 flex-col items-center justify-center gap-3 rounded-xl border border-border bg-white transition-all duration-150 hover:border-orange-400/50 hover:shadow-md active:scale-[0.97]"
-                  onClick={() => navigate('/data')}
-                >
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-orange-500/10">
-                    <Upload className="h-5 w-5 text-orange-500" />
-                  </div>
-                  <span className="text-sm font-medium">导入数据</span>
-                </button>
+                {can('data:import', 'upload') && (
+                  <button
+                    type="button"
+                    className="group flex h-24 flex-col items-center justify-center gap-3 rounded-xl border border-border bg-white transition-all duration-150 hover:border-orange-400/50 hover:shadow-md active:scale-[0.97]"
+                    onClick={() => navigate('/data')}
+                  >
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-orange-500/10">
+                      <Upload className="h-5 w-5 text-orange-500" />
+                    </div>
+                    <span className="text-sm font-medium">导入数据</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   className="group flex h-24 flex-col items-center justify-center gap-3 rounded-xl border border-border bg-white transition-all duration-150 hover:border-orange-400/50 hover:shadow-md active:scale-[0.97]"

@@ -14,6 +14,7 @@ import {
 import {
   useCreateUser,
   useUpdateUser,
+  useResetPassword,
   useCreateRole,
   useUpdateRole,
   useUpdateRolePermissions,
@@ -21,6 +22,14 @@ import {
   type RoleItem,
 } from '@/hooks/api-queries'
 import type { User } from '@/types'
+
+/** 密码规则校验（与后端一致）：至少 8 位且含字母与数字，返回错误文案或 null */
+function validatePassword(password: string): string | null {
+  if (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+    return '密码至少 8 位，且需同时包含字母与数字'
+  }
+  return null
+}
 
 // ==================== 用户新增/编辑 ====================
 interface UserDialogProps {
@@ -62,12 +71,21 @@ export function UserDialog({ open, mode, user, roles, onClose }: UserDialogProps
   const pending = createUser.isPending || updateUser.isPending
 
   const submit = async () => {
+    // 前置校验：必填项与密码规则，避免空表单提交靠后端报错
+    if (mode === 'create') {
+      if (!username.trim()) return setError('请输入用户名')
+      const pwdError = validatePassword(password)
+      if (pwdError) return setError(pwdError)
+    } else if (!name.trim()) {
+      return setError('请输入姓名')
+    }
     setError(null)
     try {
       if (mode === 'create') {
-        await createUser.mutateAsync({ username, name, password, role, companyCode: companyCode || undefined })
+        // 姓名留空时后端默认使用用户名
+        await createUser.mutateAsync({ username: username.trim(), name: name.trim() || undefined, password, role, companyCode: companyCode || undefined })
       } else if (user) {
-        await updateUser.mutateAsync({ id: user.id, data: { name, role, companyCode: companyCode || null } })
+        await updateUser.mutateAsync({ id: user.id, data: { name: name.trim(), role, companyCode: companyCode || null } })
       }
       onClose()
     } catch (e) {
@@ -156,12 +174,15 @@ export function RoleDialog({ open, mode, role, onClose }: RoleDialogProps) {
   const pending = createRole.isPending || updateRole.isPending
 
   const submit = async () => {
+    // 前置校验：编码/名称必填
+    if (mode === 'create' && !code.trim()) return setError('请输入角色编码')
+    if (!name.trim()) return setError('请输入角色名称')
     setError(null)
     try {
       if (mode === 'create') {
-        await createRole.mutateAsync({ code, name, description })
+        await createRole.mutateAsync({ code: code.trim(), name: name.trim(), description })
       } else if (role) {
-        await updateRole.mutateAsync({ id: role.id, data: { name, description } })
+        await updateRole.mutateAsync({ id: role.id, data: { name: name.trim(), description } })
       }
       onClose()
     } catch (e) {
@@ -268,7 +289,7 @@ export function PermissionDialog({ open, role, onClose }: PermissionDialogProps)
         <DialogHeader>
           <DialogTitle>权限配置 · {role?.name}</DialogTitle>
           <DialogDescription>
-            {role?.isSystem ? '预置角色权限只读，保存将被后端拒绝' : '勾选该角色拥有的权限项'}
+            {role?.isSystem ? '预置角色权限只读，不可修改' : '勾选该角色拥有的权限项'}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -281,7 +302,8 @@ export function PermissionDialog({ open, role, onClose }: PermissionDialogProps)
                   return (
                     <label key={key} className="flex items-center gap-2 text-xs">
                       <input type="checkbox" checked={selected.has(key)} onChange={() => toggle(key)} disabled={role?.isSystem} />
-                      <span className="font-mono">{p.resource}:{p.action}</span>
+                      {/* resource 已是完整权限码（含动作段），直接展示 */}
+                      <span className="font-mono">{p.resource}</span>
                     </label>
                   )
                 })}
@@ -294,6 +316,69 @@ export function PermissionDialog({ open, role, onClose }: PermissionDialogProps)
           <Button variant="outline" onClick={onClose}>取消</Button>
           <Button onClick={save} disabled={updatePerms.isPending || role?.isSystem}>
             {updatePerms.isPending ? '保存中...' : '保存'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ==================== 重置密码 ====================
+interface ResetPasswordDialogProps {
+  open: boolean
+  user?: User | null
+  onClose: () => void
+}
+
+export function ResetPasswordDialog({ open, user, onClose }: ResetPasswordDialogProps) {
+  const resetPassword = useResetPassword()
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setPassword('')
+    setError(null)
+  }, [open])
+
+  const submit = async () => {
+    if (!user) return
+    const pwdError = validatePassword(password)
+    if (pwdError) return setError(pwdError)
+    setError(null)
+    try {
+      await resetPassword.mutateAsync({ id: user.id, newPassword: password })
+      onClose()
+      window.alert(`用户「${user.name}」的密码已重置`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '重置失败')
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>重置密码 · {user?.name}</DialogTitle>
+          <DialogDescription>为用户 {user?.username} 设置新密码，重置后请告知其重新登录</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <Label>新密码</Label>
+            <Input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="至少 8 位，含字母与数字"
+              autoFocus
+            />
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>取消</Button>
+          <Button onClick={submit} disabled={resetPassword.isPending}>
+            {resetPassword.isPending ? '重置中...' : '重置密码'}
           </Button>
         </DialogFooter>
       </DialogContent>

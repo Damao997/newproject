@@ -14,6 +14,8 @@ export interface DataTableColumn<T> {
   headerClassName?: string
   /** 自定义单元格渲染，缺省时读取 row[key] */
   render?: (row: T, rowIndex: number) => ReactNode
+  /** 冻结该列（横向滚动时固定于左侧，适用于宽表首列） */
+  sticky?: boolean
 }
 
 interface DataTableProps<T> {
@@ -58,6 +60,7 @@ export function DataTable<T>({
                 key={col.key}
                 className={cn(
                   'h-11 px-4 text-[13px] text-center align-middle font-medium text-black',
+                  col.sticky && 'sticky left-0 z-10 bg-muted',
                   col.headerClassName,
                 )}
               >
@@ -80,7 +83,7 @@ export function DataTable<T>({
             data.map((row, rowIndex) => (
               <tr
                 key={rowKey(row, rowIndex)}
-                className="border-b transition-colors hover:bg-muted/50"
+                className="group border-b transition-colors hover:bg-muted/50"
               >
                 {columns.map((col) => (
                   <td
@@ -88,6 +91,7 @@ export function DataTable<T>({
                     className={cn(
                       'p-4 align-middle',
                       alignClass[col.align ?? 'left'],
+                      col.sticky && 'sticky left-0 z-[1] border-r bg-background group-hover:bg-muted/50',
                       col.cellClassName,
                     )}
                   >

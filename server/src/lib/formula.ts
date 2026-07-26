@@ -100,23 +100,28 @@ export function evaluateFormula(formula: string, values: Record<string, number>)
 }
 
 /**
- * 依赖 DAG 拓扑排序（Kahn 算法）+ 环检测。
+ * 依赖 DAG 拓扑排序（Kahn 算法 + 邻接表）+ 环检测。
  * nodes: 指标编码与其直接依赖编码列表。返回可计算顺序（被依赖者在前）。
- * 环存在时抛 METRIC_CIRCULAR_REF。
+ * 环存在时抛 METRIC_CIRCULAR_REF。时间复杂度 O(N+E)。
  */
 export function topoSortMetrics(nodes: { code: string; dependsOn: string[] }[]): string[] {
-  const depMap = new Map<string, string[]>()
-  const indegree = new Map<string, number>()
-  for (const n of nodes) {
-    depMap.set(n.code, n.dependsOn)
-    if (!indegree.has(n.code)) indegree.set(n.code, 0)
-  }
-  // 仅统计集合内部的依赖边
   const known = new Set(nodes.map((n) => n.code))
+  const indegree = new Map<string, number>()
+  /** 邻接表：code → 依赖 code 的节点列表（反向边） */
+  const dependents = new Map<string, string[]>()
+
+  for (const n of nodes) {
+    indegree.set(n.code, 0)
+    if (!dependents.has(n.code)) dependents.set(n.code, [])
+  }
+  // 仅统计集合内部的依赖边，构建反向邻接表
   for (const n of nodes) {
     for (const dep of n.dependsOn) {
       if (known.has(dep)) {
         indegree.set(n.code, (indegree.get(n.code) ?? 0) + 1)
+        const list = dependents.get(dep)
+        if (list) list.push(n.code)
+        else dependents.set(dep, [n.code])
       }
     }
   }
@@ -130,18 +135,16 @@ export function topoSortMetrics(nodes: { code: string; dependsOn: string[] }[]):
   while (queue.length > 0) {
     const code = queue.shift() as string
     order.push(code)
-    // 找到依赖 code 的节点，其入度 -1
-    for (const n of nodes) {
-      if (depMap.get(n.code)?.includes(code) && known.has(code)) {
-        const deg = (indegree.get(n.code) ?? 0) - 1
-        indegree.set(n.code, deg)
-        if (deg === 0) queue.push(n.code)
-      }
+    for (const dependent of dependents.get(code) ?? []) {
+      const deg = (indegree.get(dependent) ?? 0) - 1
+      indegree.set(dependent, deg)
+      if (deg === 0) queue.push(dependent)
     }
   }
 
   if (order.length !== nodes.length) {
-    throw new AppError(30000, 409, 'METRIC_CIRCULAR_REF: 指标依赖存在环')
+    const inCycle = nodes.filter((n) => !order.includes(n.code)).map((n) => n.code)
+    throw new AppError(30000, 409, `METRIC_CIRCULAR_REF: 指标依赖存在环（涉及：${inCycle.join('、')}）`)
   }
   return order
 }

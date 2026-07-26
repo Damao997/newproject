@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma'
-import { errors } from '../lib/errors'
+import { errors, AppError } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
 import { substituteOperands, evaluateExpression, topoSortMetrics } from '../lib/formula'
 
@@ -89,7 +89,7 @@ export async function validateFormulaChange(code: string, formula: string): Prom
     prisma.accountSubject.findMany({ select: { code: true } }),
     prisma.metric.findMany({ where: { status: 'active' }, select: { code: true, dependsOn: true } }),
   ])
-  const knownCodes = new Set(subjects.map((s) => s.code))
+  const knownCodes = new Set([...subjects.map((s) => s.code), ...allMetrics.map((m) => m.code)])
   for (const c of dependsOn) {
     if (!knownCodes.has(c)) warnings.push(`引用了不存在的科目编码：${c}`)
   }
@@ -105,8 +105,8 @@ export async function validateFormulaChange(code: string, formula: string): Prom
   nodes.push({ code, dependsOn })
   try {
     topoSortMetrics(nodes)
-  } catch {
-    warnings.push('公式依赖存在环')
+  } catch (e) {
+    warnings.push(e instanceof AppError ? e.message : '公式依赖存在环')
   }
   return { dependsOn, warnings }
 }
@@ -154,7 +154,9 @@ export const FormulaRuleService = {
       // 校验范围含全部科目编码（公式可跨经营/静态引用）
       prisma.accountSubject.findMany({ select: { code: true } }),
     ])
-    const knownCodes = new Set(subjects.map((s) => s.code))
+    // 公式可引用科目编码或其他指标编码
+    const allMetricCodes = await prisma.metric.findMany({ where: { status: 'active' }, select: { code: true } })
+    const knownCodes = new Set([...subjects.map((s) => s.code), ...allMetricCodes.map((m) => m.code)])
     return metrics
       .filter((m) => m.code.startsWith(prefix))
       .map((m) => this.generateForMetric(m, rules, knownCodes))
@@ -197,6 +199,12 @@ export const FormulaRuleService = {
 
   // ===== 公式规则库管理 =====
   async createRule(input: { name: string; formulaTemplate: string; refCodes?: string[]; description?: string }, ctx: { userId: string; traceId?: string }) {
+    // 模板语法预校验
+    try {
+      evaluateExpression(substituteOperands(input.formulaTemplate, {}))
+    } catch {
+      throw errors.badRequest('公式模板语法不合法（仅支持四则运算、括号与 {编码} 引用）')
+    }
     const exists = await prisma.formulaRule.findUnique({ where: { name: input.name } })
     if (exists) throw errors.conflict('规则名称已存在')
     const created = await prisma.formulaRule.create({
@@ -209,6 +217,13 @@ export const FormulaRuleService = {
   async updateRule(id: string, input: { name?: string; formulaTemplate?: string; refCodes?: string[]; description?: string }, ctx: { userId: string; traceId?: string }) {
     const found = await prisma.formulaRule.findUnique({ where: { id } })
     if (!found) throw errors.notFound('规则不存在')
+    if (input.formulaTemplate) {
+      try {
+        evaluateExpression(substituteOperands(input.formulaTemplate, {}))
+      } catch {
+        throw errors.badRequest('公式模板语法不合法（仅支持四则运算、括号与 {编码} 引用）')
+      }
+    }
     const updated = await prisma.formulaRule.update({
       where: { id },
       data: {

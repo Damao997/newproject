@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { useCreateSubject, useUpdateSubject, type SubjectTreeItem } from '@/hooks/api-queries'
+import { useCreateSubject, useUpdateSubject, useReclassifySubject, type SubjectTreeItem } from '@/hooks/api-queries'
 
 interface SubjectDialogProps {
   open: boolean
@@ -30,6 +30,7 @@ interface SubjectDialogProps {
 export function SubjectDialog({ open, mode, type, subject, flat, onClose }: SubjectDialogProps) {
   const createSubject = useCreateSubject()
   const updateSubject = useUpdateSubject()
+  const reclassifySubject = useReclassifySubject()
 
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
@@ -37,6 +38,18 @@ export function SubjectDialog({ open, mode, type, subject, flat, onClose }: Subj
   const [parentCode, setParentCode] = useState<string>('none')
   const [isLeaf, setIsLeaf] = useState<'true' | 'false'>('true')
   const [error, setError] = useState<string | null>(null)
+
+  /** 向上追溯到 level0 根，返回根名作为 category（成为根时用自身名） */
+  const deriveRootCategory = (pc: string | null, selfName: string): string => {
+    if (!pc) return selfName
+    let cur = flat.find((f) => f.code === pc)
+    let guard = 0
+    while (cur && cur.parentCode && guard < 50) {
+      cur = flat.find((f) => f.code === cur?.parentCode)
+      guard++
+    }
+    return cur?.name ?? selfName
+  }
 
   useEffect(() => {
     if (!open) return
@@ -56,29 +69,54 @@ export function SubjectDialog({ open, mode, type, subject, flat, onClose }: Subj
     }
   }, [open, mode, subject])
 
-  const pending = createSubject.isPending || updateSubject.isPending
+  const pending = createSubject.isPending || updateSubject.isPending || reclassifySubject.isPending
+
+  // 编辑模式下上级是否变更（变更则走重分类路径，category 自动推导）
+  const newParentCode = parentCode === 'none' ? null : parentCode
+  const parentChanged = mode === 'edit' && !!subject && newParentCode !== subject.parentCode
+
+  const handleParentChange = (v: string) => {
+    setParentCode(v)
+    if (mode === 'edit') {
+      setCategory(deriveRootCategory(v === 'none' ? null : v, name.trim()))
+    }
+  }
 
   const submit = async () => {
     setError(null)
     try {
-      const payload: Record<string, unknown> = {
-        name: name.trim(),
-        type,
-        category: category.trim() || name.trim(),
-        parentCode: parentCode === 'none' ? null : parentCode,
-        isLeaf: isLeaf === 'true',
-      }
       if (mode === 'create') {
         if (!code.trim()) {
           setError('科目编码必填')
           return
         }
         const parent = flat.find((f) => f.code === parentCode)
-        payload.code = code.trim()
-        payload.level = parent ? parent.level + 1 : 0
+        const payload: Record<string, unknown> = {
+          name: name.trim(),
+          type,
+          category: category.trim() || name.trim(),
+          parentCode: parentCode === 'none' ? null : parentCode,
+          isLeaf: isLeaf === 'true',
+          code: code.trim(),
+          level: parent ? parent.level + 1 : 0,
+        }
         await createSubject.mutateAsync(payload)
       } else if (subject) {
-        await updateSubject.mutateAsync({ id: subject.id, data: payload })
+        if (parentChanged) {
+          // 换父归类：category 向下传播，走重分类路径
+          await reclassifySubject.mutateAsync({ id: subject.id, parentCode: newParentCode })
+        }
+        // 其余可编辑字段（名称/叶子）；非换父时同步 category/parentCode
+        const fieldPayload: Record<string, unknown> = {
+          name: name.trim(),
+          type,
+          isLeaf: isLeaf === 'true',
+        }
+        if (!parentChanged) {
+          fieldPayload.category = category.trim() || name.trim()
+          fieldPayload.parentCode = newParentCode
+        }
+        await updateSubject.mutateAsync({ id: subject.id, data: fieldPayload })
       }
       onClose()
     } catch (err) {
@@ -105,8 +143,8 @@ export function SubjectDialog({ open, mode, type, subject, flat, onClose }: Subj
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="科目名称" />
           </div>
           <div className="space-y-1">
-            <Label>类别</Label>
-            <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="如：收入（留空取名称）" />
+            <Label>类别{parentChanged && <span className="ml-1 text-xs text-muted-foreground">（随上级自动推导）</span>}</Label>
+            <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="如：收入（留空取名称）" readOnly={parentChanged} />
           </div>
           <div className="space-y-1">
             <Label>是否叶子</Label>
@@ -120,7 +158,7 @@ export function SubjectDialog({ open, mode, type, subject, flat, onClose }: Subj
           </div>
           <div className="space-y-1">
             <Label>上级科目</Label>
-            <Select value={parentCode} onValueChange={setParentCode}>
+            <Select value={parentCode} onValueChange={handleParentChange}>
               <SelectTrigger><SelectValue placeholder="选择上级科目" /></SelectTrigger>
               <SelectContent className="max-h-[280px]">
                 <SelectItem value="none">无（根节点）</SelectItem>

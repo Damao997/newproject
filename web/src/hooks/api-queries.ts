@@ -65,6 +65,14 @@ export function useStaticIndicators(params: { companyCode?: string }) {
   })
 }
 
+export function useAvailablePeriods() {
+  return useQuery<string[]>({
+    queryKey: ['indicators', 'periods'],
+    queryFn: () => api.getAvailablePeriods(),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
 // ---------------- Data: companies / imports / metrics ----------------
 export function useCompanies() {
   return useQuery({ queryKey: queryKeys.companies, queryFn: () => api.getCompanies() })
@@ -87,8 +95,8 @@ export function useMetrics(params: FilterParams = {}) {
   return useQuery({ queryKey: queryKeys.metrics(params), queryFn: () => api.getMetrics(params), placeholderData: keepPreviousData })
 }
 
-export function useSubjects(params: FilterParams = {}) {
-  return useQuery({ queryKey: ['data', 'subjects', params] as const, queryFn: () => api.getSubjects(params), placeholderData: keepPreviousData })
+export function useSubjects(params: FilterParams = {}, options: { enabled?: boolean } = {}) {
+  return useQuery({ queryKey: ['data', 'subjects', params] as const, queryFn: () => api.getSubjects(params), placeholderData: keepPreviousData, enabled: options.enabled ?? true })
 }
 
 export interface SubjectTreeItem {
@@ -139,7 +147,7 @@ export interface CrossTable {
   companies: string[]
   rows: { code: string; name: string; values: Record<string, number> }[]
 }
-export function useCrossTable(params: { period?: string } = {}) {
+export function useCrossTable(params: { period?: string; subjectType?: 'operating' | 'static' } = {}) {
   return useQuery({
     queryKey: ['data', 'cross-table', params] as const,
     queryFn: () => api.getCrossTable(params) as Promise<CrossTable>,
@@ -174,6 +182,32 @@ export function usePreviewImport() {
   })
 }
 
+/** 手动归档批次（高危，仅 superadmin） */
+export function useArchiveImport() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.archiveImport(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['data', 'imports'] })
+      qc.invalidateQueries({ queryKey: ['data', 'cross-table'] })
+      qc.invalidateQueries({ queryKey: ['indicators'] })
+    },
+  })
+}
+
+/** 清除批次数据（高危，仅 superadmin）：物理删除事实明细 */
+export function usePurgeImport() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.purgeImport(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['data', 'imports'] })
+      qc.invalidateQueries({ queryKey: ['data', 'cross-table'] })
+      qc.invalidateQueries({ queryKey: ['indicators'] })
+    },
+  })
+}
+
 // ---------------- Data: 公司 CRUD ----------------
 export function useCreateCompany() {
   const qc = useQueryClient()
@@ -196,6 +230,24 @@ export function useDeleteCompany() {
   return useMutation({
     mutationFn: (id: string) => api.deleteCompany(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.companies }),
+  })
+}
+
+/** 彻底删除公司（高危，仅 superadmin） */
+export function usePurgeCompany() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.purgeCompany(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.companies }),
+  })
+}
+
+/** 彻底删除科目（高危，仅 superadmin） */
+export function usePurgeSubject() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.purgeSubject(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['data', 'subjects'] }),
   })
 }
 
@@ -227,6 +279,57 @@ export function useRemoveAggregationMap() {
   })
 }
 
+// ---------------- 数据重分类 ----------------
+export interface ReclassifyCompanyInput {
+  templateType: string
+  sourceCompanyCode: string
+  targetCompanyCode: string
+  accountCodes?: string[]
+  periodFrom?: string
+  periodTo?: string
+}
+
+export function usePreviewReclassifyCompany() {
+  return useMutation({
+    mutationFn: (data: ReclassifyCompanyInput) => api.previewReclassifyCompany(data),
+  })
+}
+
+export function useReclassifyCompany() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: ReclassifyCompanyInput) => api.reclassifyCompany(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['data', 'cross-table'] })
+      qc.invalidateQueries({ queryKey: ['indicators'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+      qc.invalidateQueries({ queryKey: ['data', 'reclassify-logs'] })
+    },
+  })
+}
+
+export function useReclassifyLogs(params: FilterParams & { type?: string } = {}) {
+  return useQuery({
+    queryKey: ['data', 'reclassify-logs', params] as const,
+    queryFn: () => api.getReclassifyLogs(params),
+    placeholderData: keepPreviousData,
+  })
+}
+
+export function useReclassifySubject() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { id: string; parentCode: string | null }) => api.reclassifySubject(vars.id, vars.parentCode),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['data', 'subjects'] })
+      qc.invalidateQueries({ queryKey: ['data', 'cross-table'] })
+      qc.invalidateQueries({ queryKey: ['indicators'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+      qc.invalidateQueries({ queryKey: ['data', 'reclassify-logs'] })
+    },
+  })
+}
+
 export function useCreateMetric() {
   const qc = useQueryClient()
   return useMutation({
@@ -251,6 +354,15 @@ export function useDeleteMetric() {
   })
 }
 
+/** 彻底删除指标（高危，仅 superadmin）：连同公式历史一并删除 */
+export function usePurgeMetric() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.purgeMetric(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['data', 'metrics'] }),
+  })
+}
+
 // ---------------- Admin: users / roles / audit ----------------
 export function useUsers(params: FilterParams = {}) {
   return useQuery({ queryKey: queryKeys.users(params), queryFn: () => api.getUsers(params), placeholderData: keepPreviousData })
@@ -268,6 +380,15 @@ export function useDisableUser() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => api.deleteUser(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'users'] }),
+  })
+}
+
+/** 彻底删除用户（高危，仅 superadmin）：需先停用 */
+export function usePurgeUser() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.purgeUser(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'users'] }),
   })
 }
@@ -367,6 +488,21 @@ export interface FormulaGenItem {
 export function useGenerateFormula() {
   return useMutation({
     mutationFn: (data: { userDescription: string; subjectType?: string }) => api.generateFormula(data),
+  })
+}
+
+// ---------------- AI 公式检测 ----------------
+export interface FormulaCheckItem {
+  code: string
+  riskLevel: 'low' | 'medium' | 'high' | 'unknown'
+  issues: string[]
+  suggestion: string | null
+  ruleWarnings: string[]
+}
+
+export function useCheckFormulas() {
+  return useMutation({
+    mutationFn: (data: { items: { code: string; name: string; formula: string }[]; subjectType?: string }) => api.checkFormulas(data),
   })
 }
 
@@ -583,5 +719,59 @@ export function useReportVersions(id: string | null) {
     queryKey: ['reports', 'versions', id] as const,
     queryFn: () => api.listReportVersions(id as string),
     enabled: !!id,
+  })
+}
+
+// ---------------- 往来分析 ----------------
+import type { TransactionOverviewItem, TransactionDetailItem, AgingAnalysisRow, InternalSummaryRow, InternalMirrorRow, TransactionFilterParams, PaginatedResponse } from '@/types'
+
+export function useTransactionOverview(companyCode?: string) {
+  return useQuery({
+    queryKey: ['transactions', 'overview', companyCode] as const,
+    queryFn: () => api.getTransactionOverview(companyCode) as Promise<TransactionOverviewItem[]>,
+  })
+}
+
+export function useTransactionDetails(params: TransactionFilterParams) {
+  return useQuery({
+    queryKey: ['transactions', 'details', params] as const,
+    queryFn: () => api.getTransactionDetails(params as Record<string, unknown>) as Promise<PaginatedResponse<TransactionDetailItem>>,
+    placeholderData: keepPreviousData,
+  })
+}
+
+export function useTransactionAging(params: { companyCode?: string; transactionType?: string; groupBy?: string }) {
+  return useQuery({
+    queryKey: ['transactions', 'aging', params] as const,
+    queryFn: () => api.getTransactionAging(params) as Promise<AgingAnalysisRow[]>,
+    placeholderData: keepPreviousData,
+  })
+}
+
+export function useInternalSummary(companyCode?: string) {
+  return useQuery({
+    queryKey: ['transactions', 'internal', 'summary', companyCode] as const,
+    queryFn: () => api.getInternalSummary(companyCode) as Promise<InternalSummaryRow[]>,
+  })
+}
+
+export function useInternalMirrorCheck(companyCode?: string) {
+  return useQuery({
+    queryKey: ['transactions', 'internal', 'mirror', companyCode] as const,
+    queryFn: () => api.getInternalMirrorCheck(companyCode) as Promise<InternalMirrorRow[]>,
+  })
+}
+
+export function useTransactionCounterparties(companyCode?: string) {
+  return useQuery({
+    queryKey: ['transactions', 'counterparties', companyCode] as const,
+    queryFn: () => api.getTransactionCounterparties(companyCode) as Promise<{ counterpartyCode: string; counterpartyName: string | null }[]>,
+  })
+}
+
+export function useTransactionLatestCutoff() {
+  return useQuery({
+    queryKey: ['transactions', 'latest-cutoff'] as const,
+    queryFn: () => api.getTransactionLatestCutoff() as Promise<{ cutoffDate: string | null }>,
   })
 }

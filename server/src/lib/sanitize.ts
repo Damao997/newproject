@@ -52,3 +52,10 @@ export function richTextToPlainText(input: unknown): string {
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 }
+
+/** multer/busboy 按 latin1 解码 multipart 文件名，中文需重解码为 UTF-8；已含非 latin1 字符则视为已正确解码 */
+export function fixUploadFilename(name: string): string {
+  if (/[^\u0000-\u00ff]/.test(name)) return name
+  const decoded = Buffer.from(name, 'latin1').toString('utf8')
+  return decoded.includes('\ufffd') ? name : decoded
+}

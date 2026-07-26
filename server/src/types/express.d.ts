@@ -20,6 +20,7 @@ export interface AuthUserContext {
   roleId: string
   scopeValue: string
   companyCode: string | null
+  orgScopeBu: string[] | null
 }
 
 export {}

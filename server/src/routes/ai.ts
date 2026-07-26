@@ -6,7 +6,7 @@ import { asyncHandler } from '../lib/async-handler'
 import { sendOk } from '../lib/response'
 import { errors } from '../lib/errors'
 import { AppError } from '../lib/errors'
-import { AIProxyService } from '../services/AIProxyService'
+import { AIProxyService, FORMULA_CHECK_MAX_ITEMS } from '../services/AIProxyService'
 import { FormulaRuleService } from '../services/FormulaRuleService'
 import type { Response } from 'express'
 import type { AuthUserContext } from '../types/express'
@@ -110,10 +110,34 @@ router.post(
   }),
 )
 
+// AI 公式检测（单条/批量共用，一次 LLM 调用审查多条，限流）
+router.post(
+  '/formula/check',
+  requirePermission('data:metric:update', 'update'),
+  aiRateLimiter,
+  asyncHandler(async (req, res) => {
+    const raw = Array.isArray(req.body?.items) ? req.body.items : []
+    const items = raw
+      .filter((it: { code?: unknown; name?: unknown; formula?: unknown }) =>
+        typeof it.code === 'string' && typeof it.name === 'string' && typeof it.formula === 'string' && it.formula.trim())
+      .map((it: { code: string; name: string; formula: string }) => ({ code: it.code, name: it.name, formula: it.formula.trim() }))
+    if (items.length === 0) throw errors.badRequest('没有可检测的公式')
+    if (items.length > FORMULA_CHECK_MAX_ITEMS) throw errors.badRequest(`单次最多检测 ${FORMULA_CHECK_MAX_ITEMS} 条公式`)
+    const subjectType = req.body?.subjectType === 'static' ? 'static' : 'operating'
+    const data = await AIProxyService.checkFormulas({
+      items,
+      subjectType,
+      userId: (req.authUser as AuthUserContext).userId,
+      traceId: req.traceId,
+    })
+    sendOk(res, data)
+  }),
+)
+
 // 公式规则列表
 router.get(
   '/formula-rules',
-  requirePermission('data:metric:create', 'create'),
+  requirePermission('data:formula-rule:manage', 'manage'),
   asyncHandler(async (_req, res) => {
     sendOk(res, await FormulaRuleService.listRules())
   }),
@@ -122,7 +146,7 @@ router.get(
 // 公式规则新增
 router.post(
   '/formula-rules',
-  requirePermission('data:metric:create', 'create'),
+  requirePermission('data:formula-rule:manage', 'manage'),
   asyncHandler(async (req, res) => {
     const b = req.body ?? {}
     if (!b.name || !b.formulaTemplate) throw errors.badRequest('规则名称与公式模板必填')
@@ -133,7 +157,7 @@ router.post(
 // 公式规则修改
 router.put(
   '/formula-rules/:id',
-  requirePermission('data:metric:update', 'update'),
+  requirePermission('data:formula-rule:manage', 'manage'),
   asyncHandler(async (req, res) => {
     sendOk(res, await FormulaRuleService.updateRule(req.params.id as string, req.body ?? {}, { userId: (req.authUser as AuthUserContext).userId, traceId: req.traceId }))
   }),
@@ -142,7 +166,7 @@ router.put(
 // 公式规则启停
 router.post(
   '/formula-rules/:id/toggle',
-  requirePermission('data:metric:update', 'update'),
+  requirePermission('data:formula-rule:manage', 'manage'),
   asyncHandler(async (req, res) => {
     const enabled = Boolean(req.body?.enabled)
     sendOk(res, await FormulaRuleService.toggleRule(req.params.id as string, enabled, { userId: (req.authUser as AuthUserContext).userId, traceId: req.traceId }))
@@ -152,7 +176,7 @@ router.post(
 // 公式规则删除
 router.delete(
   '/formula-rules/:id',
-  requirePermission('data:metric:delete', 'delete'),
+  requirePermission('data:formula-rule:manage', 'manage'),
   asyncHandler(async (req, res) => {
     await FormulaRuleService.deleteRule(req.params.id as string, { userId: (req.authUser as AuthUserContext).userId, traceId: req.traceId })
     sendOk(res, null)

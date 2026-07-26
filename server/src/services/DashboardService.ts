@@ -15,7 +15,8 @@ type Scope = Pick<AuthUserContext, 'companyCode' | 'scopeValue'>
 interface Kpi { title: string; value: number; unit: string; change: number; trend: number[]; icon: string }
 interface Trend { period: string; revenue: number; cost: number; profit: number; budget: number }
 
-function rootByName(tree: ValueNode[], name: string): ValueNode | undefined {
+/** 备用：按名称查找根节点（主逻辑已改用 category 匹配） */
+export function rootByName(tree: ValueNode[], name: string): ValueNode | undefined {
   return tree.find((n) => n.name === name)
 }
 
@@ -52,10 +53,10 @@ async function monthlyTrend(companyCodes: string[], periods: string[]): Promise<
   const out: Trend[] = []
   for (const period of periods) {
     const tree = await AggregationService.buildOperatingTree(companyCodes, period)
-    const revenue = actual(rootByName(tree, '收入'))
-    const cost = actual(rootByName(tree, '成本'))
-    const profit = actual(rootByName(tree, '毛利'))
-    const budgetVal = budget(rootByName(tree, '收入'))
+    const revenue = actual(tree.find((n) => n.category === '收入'))
+    const cost = actual(tree.find((n) => n.category === '成本'))
+    const profit = actual(tree.find((n) => n.category === '毛利'))
+    const budgetVal = budget(tree.find((n) => n.category === '收入'))
     out.push({ period, revenue: round2(revenue), cost: round2(cost), profit: round2(profit), budget: round2(budgetVal) })
   }
   return out
@@ -69,10 +70,10 @@ export const DashboardService = {
     const trendData = await monthlyTrend(companyCodes, periods)
 
     const tree = await AggregationService.buildOperatingTree(companyCodes, period)
-    const revenue = rootByName(tree, '收入')
-    const cost = rootByName(tree, '成本')
-    const profit = rootByName(tree, '毛利')
-    const expense = rootByName(tree, '费用')
+    const revenue = tree.find((n) => n.category === '收入')
+    const cost = tree.find((n) => n.category === '成本')
+    const profit = tree.find((n) => n.category === '毛利')
+    const expense = tree.find((n) => n.category === '费用')
 
     const trendOf = (name: string): number[] => trendData.map((t) =>
       name === '收入' ? t.revenue : name === '成本' ? t.cost : name === '毛利' ? t.profit : 0,
@@ -99,9 +100,9 @@ export const DashboardService = {
     const period = params.period || periods[periods.length - 1] || (await latestOperatingPeriod())
     const trendData = await monthlyTrend(companyCodes, periods)
     const tree = await AggregationService.buildOperatingTree(companyCodes, period)
-    const revenue = rootByName(tree, '收入')
-    const cost = rootByName(tree, '成本')
-    const profit = rootByName(tree, '毛利')
+    const revenue = tree.find((n) => n.category === '收入')
+    const cost = tree.find((n) => n.category === '成本')
+    const profit = tree.find((n) => n.category === '毛利')
     const kpiData: Kpi[] = [
       { title: '总收入', value: round2(actual(revenue)), unit: '万', change: changeRate(actual(revenue), samePeriod(revenue)), trend: trendData.map((t) => t.revenue), icon: 'TrendingUp' },
       { title: '总成本', value: round2(actual(cost)), unit: '万', change: changeRate(actual(cost), samePeriod(cost)), trend: trendData.map((t) => t.cost), icon: 'DollarSign' },

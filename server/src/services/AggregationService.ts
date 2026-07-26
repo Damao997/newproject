@@ -39,15 +39,28 @@ function round2(n: number): number {
   return Number(n.toFixed(2))
 }
 
-/** 将汇总主体编码经 company_aggregation_map 展开为其单体成员；单体编码原样保留 */
+/** 将汇总主体编码经 company_aggregation_map 递归展开为其所有单体成员；单体编码原样保留 */
 async function expandSummaries(codes: string[]): Promise<string[]> {
   if (codes.length === 0) return []
-  const companies = await prisma.company.findMany({ where: { code: { in: codes } }, select: { code: true, entityType: true } })
-  const summaryCodes = companies.filter((c) => c.entityType === 'summary').map((c) => c.code)
-  const singleCodes = new Set(companies.filter((c) => c.entityType === 'single').map((c) => c.code))
-  if (summaryCodes.length > 0) {
-    const maps = await prisma.companyAggregationMap.findMany({ where: { summaryCompanyCode: { in: summaryCodes } }, select: { singleCompanyCode: true } })
-    for (const m of maps) singleCodes.add(m.singleCompanyCode)
+  const visited = new Set<string>()
+  const queue = [...codes]
+  const singleCodes = new Set<string>()
+  let depth = 0
+  while (queue.length > 0 && depth < 20) {
+    const batch = queue.splice(0, queue.length)
+    const companies = await prisma.company.findMany({ where: { code: { in: batch } }, select: { code: true, entityType: true } })
+    const summaryCodes = companies.filter((c) => c.entityType === 'summary').map((c) => c.code)
+    for (const c of companies.filter((c) => c.entityType === 'single')) singleCodes.add(c.code)
+    if (summaryCodes.length > 0) {
+      const maps = await prisma.companyAggregationMap.findMany({ where: { summaryCompanyCode: { in: summaryCodes } }, select: { singleCompanyCode: true } })
+      for (const m of maps) {
+        if (!visited.has(m.singleCompanyCode)) {
+          visited.add(m.singleCompanyCode)
+          queue.push(m.singleCompanyCode)
+        }
+      }
+    }
+    depth++
   }
   return Array.from(singleCodes)
 }
@@ -224,7 +237,11 @@ function buildTree(subjects: SubjectRow[], leafValues: Map<string, Record<string
 }
 
 export const AggregationService = {
-  /** 经营指标聚合树：以原始 ACTUAL_MONTH 为基础，按选定期派生本月/同期/本年累计/同期累计 */
+  /**
+   * 经营指标聚合树：以原始 ACTUAL_MONTH 为基础，按选定期派生本月/同期/本年累计/同期累计。
+   * @consumedBy buildStaticTree — 静态树跨树比率（如 ROE/ROA）依赖本方法输出的
+   *   OPERATING_DIMS.ACTUAL_MONTH 与 OPERATING_DIMS.SAME_PERIOD_ACTUAL 维度值（number，万元，round2）。
+   */
   async buildOperatingTree(companyCodes: string[], period: string): Promise<ValueNode[]> {
     const subjects = await loadSubjects('operating')
     const leafValues = new Map<string, Record<string, number>>()
@@ -326,7 +343,13 @@ export const AggregationService = {
     }
     const tree = buildTree(subjects, leafValues, EMPTY_STATIC)
     const calc = await loadCalcFormulas('static')
-    // 跨树比率（如 ROE/ROA 引用经营“壹品慧净利润”）：注入同选定期经营树“本期/同期”值作为外部操作数
+    /**
+     * 跨树依赖契约：当静态计算类科目引用经营科目（OP_ 前缀）时，需调用 buildOperatingTree
+     * 获取同选定期经营树，并读取其 ValueNode.values 中的维度键：
+     *   - OPERATING_DIMS.ACTUAL_MONTH  → 映射至 STATIC_DIMS.CURRENT_AMOUNT
+     *   - OPERATING_DIMS.SAME_PERIOD_ACTUAL → 映射至 STATIC_DIMS.SAME_PERIOD_AMOUNT
+     * 数值格式：number（万元），经 round2 处理；缺失时回退为 0。
+     */
     let externalByDim: Map<string, Record<string, number>> | undefined
     const needsExternal = calc.some((m) => m.dependsOn.some((d) => d.startsWith('OP_')))
     if (needsExternal && companyCodes.length > 0) {

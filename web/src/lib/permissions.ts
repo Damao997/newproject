@@ -13,7 +13,7 @@ import type { UserRole } from '@/types'
  * 说明：后端就绪后应改为使用登录接口返回的权限列表，届时本文件仅作兜底。
  */
 
-/** 管理员拥有的全部权限码（对齐 §2.3 46 项，去除公开路由 auth:login） */
+/** 管理员拥有的全部常规权限码（对齐 §2.3 46 项，去除公开路由 auth:login） */
 const ADMIN_PERMISSIONS: string[] = [
   'dashboard:view', 'dashboard:export',
   'indicators:view', 'indicators:export',
@@ -24,14 +24,34 @@ const ADMIN_PERMISSIONS: string[] = [
   'data:metric:create', 'data:metric:update', 'data:metric:delete',
   'data:company:create', 'data:company:update', 'data:company:delete',
   'data:subject:create', 'data:subject:update', 'data:subject:delete',
+  'data:reclassify:company', 'data:reclassify:subject',
   'data:export',
+  'tools:view',
   'admin:users:view', 'admin:users:create', 'admin:users:update', 'admin:users:delete', 'admin:users:reset-password', 'admin:users:export',
   'admin:roles:view', 'admin:roles:create', 'admin:roles:update', 'admin:roles:delete',
   'admin:permissions:view', 'admin:permissions:update',
 ]
 
+/**
+ * 高危操作权限码：仅超级管理员（superadmin）持有。
+ * 含物理删除（purge）、指标审批、公式规则管理、批次归档/清除。
+ */
+const HIGH_RISK_PERMISSIONS: string[] = [
+  'data:metric:approve',
+  'data:formula-rule:manage',
+  'data:import:archive',
+  'data:import:purge',
+  'data:company:purge',
+  'data:subject:purge',
+  'data:metric:purge',
+  'admin:users:purge',
+]
+
 export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
-  // 管理员：全部模块全部操作
+  // 超级管理员：全部常规权限 + 全部高危操作
+  superadmin: [...ADMIN_PERMISSIONS, ...HIGH_RISK_PERMISSIONS],
+
+  // 管理员：全部模块常规操作（不含高危码）
   admin: ADMIN_PERMISSIONS,
 
   // 财务主管：财务数据查看/导入/导出 + 往来催收；不含权限管理、不含数据结构管理
@@ -42,6 +62,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     'inventory:view', 'inventory:export',
     'reports:view', 'reports:create', 'reports:update', 'reports:export',
     'data:browse:view', 'data:import:upload', 'data:export',
+    'data:reclassify:company', 'data:reclassify:subject',
+    'tools:view',
   ],
 
   // 部门经理：看板/指标/往来/存货查看 + 导出 + 催收计划；不含导入/数据结构/权限管理
@@ -52,6 +74,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     'inventory:view', 'inventory:export',
     'reports:view', 'reports:export',
     'data:browse:view',
+    'tools:view',
   ],
 
   // 查看者：仅看板/指标/报告查看；无导出/无修改/无导入
@@ -72,7 +95,9 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     'data:metric:create', 'data:metric:update', 'data:metric:delete',
     'data:company:create', 'data:company:update', 'data:company:delete',
     'data:subject:create', 'data:subject:update', 'data:subject:delete',
+    'data:reclassify:company', 'data:reclassify:subject',
     'data:export',
+    'tools:view',
     'admin:users:view', 'admin:users:create', 'admin:users:update', 'admin:users:delete', 'admin:users:reset-password', 'admin:users:export',
   ],
 }

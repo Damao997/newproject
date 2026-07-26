@@ -13,6 +13,8 @@ import dataRouter from './routes/data'
 import adminRouter from './routes/admin'
 import aiRouter from './routes/ai'
 import reportsRouter from './routes/reports'
+import transactionsRouter from './routes/transactions'
+import toolsRouter from './routes/tools'
 
 /**
  * 构建 Express 应用并装配中间件链：
@@ -55,6 +57,8 @@ export function createApp(): Application {
   app.use('/api/v1/admin', adminRouter)
   app.use('/api/v1/ai', aiRouter)
   app.use('/api/v1/reports', reportsRouter)
+  app.use('/api/v1/transactions', transactionsRouter)
+  app.use('/api/v1/tools', toolsRouter)
 
   // 兜底 404 与全局错误处理
   app.use(notFoundHandler)

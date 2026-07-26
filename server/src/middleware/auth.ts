@@ -35,6 +35,7 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
     const user = await prisma.user.findUnique({
       where: { id: payload.sub },
       include: { role: true },
+      // orgScopeBu 为 Json? 字段，需显式 select（include role 时已含全部 user 字段）
     })
     if (!user || user.status !== 'active') {
       throw errors.unauthorized('用户不存在或已停用')
@@ -50,6 +51,8 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
       roleCode: user.role.code,
       scopeValue: user.role.scopeValue,
       companyCode: user.companyCode ?? null,
+      // orgScopeBu 为 Json? 字段，运行时校验为字符串数组后收窄类型
+      orgScopeBu: Array.isArray(user.orgScopeBu) ? (user.orgScopeBu as string[]) : null,
     }
     req.authUser = context
     next()

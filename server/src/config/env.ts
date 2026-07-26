@@ -40,6 +40,9 @@ export interface AppConfig {
   deepseekApiKey: string | null
   deepseekApiBase: string
   deepseekModel: string
+  enterpriseInfoProvider: string
+  enterpriseInfoApiKey: string | null
+  enterpriseInfoApiBase: string
   fiscalStartMonth: number
 }
 
@@ -61,7 +64,10 @@ export function loadConfig(): AppConfig {
     logLevel: optional('LOG_LEVEL', 'INFO') as LogLevel,
     deepseekApiKey: process.env.DEEPSEEK_API_KEY && process.env.DEEPSEEK_API_KEY.trim() !== '' ? process.env.DEEPSEEK_API_KEY.trim() : null,
     deepseekApiBase: optional('DEEPSEEK_API_BASE', 'https://api.deepseek.com/v1'),
-    deepseekModel: optional('DEEPSEEK_MODEL', 'deepseek-flash'),
+    deepseekModel: optional('DEEPSEEK_MODEL', 'deepseek-v4-flash'),
+    enterpriseInfoProvider: optional('ENTERPRISE_INFO_PROVIDER', 'mock'),
+    enterpriseInfoApiKey: process.env.ENTERPRISE_INFO_API_KEY && process.env.ENTERPRISE_INFO_API_KEY.trim() !== '' ? process.env.ENTERPRISE_INFO_API_KEY.trim() : null,
+    enterpriseInfoApiBase: optional('ENTERPRISE_INFO_API_BASE', ''),
     fiscalStartMonth: getFiscalStartMonth(),
   }
 

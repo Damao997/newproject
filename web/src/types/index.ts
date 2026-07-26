@@ -3,6 +3,8 @@ export interface User {
   username: string
   name: string
   role: UserRole
+  /** 后端下发的角色权限码列表（`resource:action`），旧会话可能缺失 */
+  permissions?: string[]
   dataScope: string
   status: 'active' | 'inactive'
   lastLoginAt?: string
@@ -10,7 +12,7 @@ export interface User {
   updatedAt: string
 }
 
-export type UserRole = 'admin' | 'finance_manager' | 'department_manager' | 'viewer' | 'finance_analyst_it'
+export type UserRole = 'superadmin' | 'admin' | 'finance_manager' | 'department_manager' | 'viewer' | 'finance_analyst_it'
 
 export interface Role {
   id: string
@@ -31,6 +33,7 @@ export interface Company {
   id: string
   code: string
   name: string
+  shortName?: string | null
   type: 'entity' | 'summary'
   entityType?: 'single' | 'summary'
   parentCode?: string | null
@@ -117,6 +120,8 @@ export interface ImportBatch {
   templateType: 'operating' | 'static' | 'budget'
   status: 'draft' | 'active' | 'archived' | 'purged'
   rowCount?: number
+  /** 入库明细数（unpivot 后的事实记录数） */
+  detailCount?: number
   successCount: number
   errorCount: number
   errors?: ImportError[]
@@ -129,6 +134,21 @@ export interface ImportError {
   row: number
   column: string
   message: string
+}
+
+export interface ReclassifyLog {
+  id: string
+  type: 'company' | 'subject'
+  templateType: string | null
+  sourceCompany: string | null
+  targetCompany: string | null
+  sourceSubject: string | null
+  targetSubject: string | null
+  periodFrom: string | null
+  periodTo: string | null
+  affectedRows: number
+  operator: string
+  createdAt: string
 }
 
 export interface KpiData {
@@ -218,4 +238,92 @@ export interface FilterParams {
   endDate?: string
   page?: number
   pageSize?: number
+  /** 科目类型筛选（data/subjects 接口） */
+  type?: string
+}
+
+// ===== 往来分析模块 =====
+
+export interface TransactionOverviewItem {
+  transactionType: string
+  direction: string
+  totalClosingBalance: number
+  totalOpeningBalance: number
+  totalDebit: number
+  totalCredit: number
+  recordCount: number
+  internalCount: number
+  externalCount: number
+  aging: Record<string, number>
+}
+
+export interface TransactionDetailItem {
+  id: string
+  companyCode: string
+  companyName: string | null
+  transactionType: string
+  direction: string
+  cutoffDate: string | null
+  counterpartyCode: string
+  counterpartyName: string | null
+  accountCode: string
+  accountDesc: string | null
+  documentNo: string | null
+  bookingDate: string | null
+  dueDate: string | null
+  agingDays: number | null
+  openingBalance: number
+  debitAmount: number
+  creditAmount: number
+  closingBalance: number
+  aging: Record<string, number>
+  isInternal: boolean
+  internalType: string | null
+  internalPeerCode: string | null
+  isEliminated: boolean
+  isSettled: boolean
+  sourceFile: string | null
+}
+
+export interface AgingAnalysisRow {
+  companyCode: string
+  companyName: string | null
+  transactionType: string
+  counterpartyCode?: string
+  counterpartyName?: string | null
+  accountCode?: string
+  accountDesc?: string | null
+  closingBalance: number
+  aging: Record<string, number>
+}
+
+export interface InternalSummaryRow {
+  companyCode: string
+  internalPeerCode: string
+  direction: string
+  transactionType: string
+  closingBalance: number
+  recordCount: number
+}
+
+export interface InternalMirrorRow {
+  companyA: string
+  companyB: string
+  arAmount: number
+  apAmount: number
+  difference: number
+}
+
+export interface TransactionFilterParams {
+  page?: number
+  pageSize?: number
+  companyCode?: string
+  transactionType?: string
+  direction?: string
+  counterpartyKeyword?: string
+  isInternal?: boolean
+  internalType?: string
+  isSettled?: boolean
+  minAmount?: number
+  maxAmount?: number
 }

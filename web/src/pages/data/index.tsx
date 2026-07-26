@@ -6,11 +6,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { PageContainer } from '@/components/layout/page-container'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { usePermission } from '@/hooks/usePermission'
-import { useCompanies, useImports, useImport, useCrossTable, useUploadImport, useActivateImport, usePreviewImport } from '@/hooks/api-queries'
+import { useCompanies, useImports, useImport, useCrossTable, useUploadImport, useActivateImport, usePreviewImport, useArchiveImport, usePurgeImport } from '@/hooks/api-queries'
 import { validateExcelFile } from '@/lib/file-validation'
 import { exportToExcel } from '@/lib/export'
 import { downloadImportTemplate } from '@/lib/import-template'
+import { type ImportPreviewResult } from '@/lib/api'
 import { formatMoney, cn } from '@/lib/utils'
+import { Badge } from '@/components/ui/badge'
+import { useConfirm } from '@/components/ui/confirm-dialog'
+import type { ImportBatch } from '@/types'
 import {
   Upload,
   Download,
@@ -19,6 +23,8 @@ import {
   XCircle,
   AlertTriangle,
   Trash2,
+  Archive,
+  ShieldAlert,
 } from 'lucide-react'
 import { SubjectTreePanel } from '@/components/subject-tree/subject-tree-panel'
 import { CompanyPanel } from '@/components/dimension/company-panel'
@@ -33,6 +39,15 @@ const batchStatusLabel: Record<string, string> = {
   purged: '已清除',
 }
 
+/** 模板类型中文标签 */
+const templateTypeLabel: Record<string, string> = {
+  operating: '经营数据',
+  static: '静态数据',
+  budget: '年度预算',
+  transaction: '往来明细',
+  inventory: '存货数据',
+}
+
 interface ImportErrorRow {
   row: number
   column: string
@@ -43,6 +58,14 @@ export default function DataPage() {
   const { can } = usePermission()
   const canImport = can('data:import', 'upload')
   const canExport = can('data', 'export')
+  // 高危操作（仅 superadmin 持有对应权限码）
+  const canArchive = can('data:import', 'archive')
+  const canPurgeBatch = can('data:import', 'purge')
+  const canPurgeCompany = can('data:company', 'purge')
+  const canPurgeSubject = can('data:subject', 'purge')
+  const canPurgeMetric = can('data:metric', 'purge')
+  const canApproveMetric = can('data:metric', 'approve')
+  const { confirm, element: confirmElement } = useConfirm()
 
   const [activeTab, setActiveTab] = useState(canImport ? 'import' : 'browse')
 
@@ -50,19 +73,30 @@ export default function DataPage() {
   const [templateType, setTemplateType] = useState('operating')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
-  const [uploadedInfo, setUploadedInfo] = useState<{ filename: string; successCount: number } | null>(null)
+  const [uploadedInfo, setUploadedInfo] = useState<{ filename: string; detailCount: number; rowCount: number } | null>(null)
   const uploadMutation = useUploadImport()
   const previewMutation = usePreviewImport()
-  const [previewResult, setPreviewResult] = useState<{ dataRowCount: number; errorCount: number; operatingCount: number; staticCount: number; budgetCount: number; errors: { row: number; column: string; message: string }[] } | null>(null)
+  const [previewResult, setPreviewResult] = useState<ImportPreviewResult | null>(null)
+
+  /** 期间列表友好化：超过 6 个截断并标注总数 */
+  const fmtPeriods = (ps: string[]) => (ps.length <= 6 ? ps.join('、') : `${ps.slice(0, 6).join('、')} 等 ${ps.length} 个期间`)
 
   // ---- 数据浏览（交叉表：指标 × 公司）----
   const [browseCompany, setBrowseCompany] = useState('all')
+  const [browsePeriod, setBrowsePeriod] = useState('')
+  const [browseSubjectType, setBrowseSubjectType] = useState<'operating' | 'static'>('operating')
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null)
   const { data: companies } = useCompanies()
   const { data: importsData } = useImports({ page: 1, pageSize: 50 })
-  const { data: crossTable, isLoading: crossLoading, isFetching: crossFetching } = useCrossTable({})
+  const crossParams = useMemo(() => ({
+    ...(browsePeriod ? { period: browsePeriod } : {}),
+    subjectType: browseSubjectType,
+  }), [browsePeriod, browseSubjectType])
+  const { data: crossTable, isLoading: crossLoading, isFetching: crossFetching } = useCrossTable(crossParams)
   const { data: batchDetail, isFetching: detailFetching } = useImport(selectedBatchId)
   const activateMutation = useActivateImport()
+  const archiveMutation = useArchiveImport()
+  const purgeMutation = usePurgeImport()
   const [activateMsg, setActivateMsg] = useState<string | null>(null)
 
   const entityCompanies = useMemo(() => (companies ?? []).filter((c) => c.type === 'entity'), [companies])
@@ -73,15 +107,15 @@ export default function DataPage() {
     [recentBatches, selectedBatchId],
   )
 
-  // 导入质量概览：跨批次聚合关键指标
+  // 导入质量概览：跨批次聚合关键指标（按入库明细数统计）
   const qualityStats = useMemo(() => {
     let totalRows = 0
     let successRows = 0
     let errorRows = 0
     for (const b of recentBatches) {
-      const rows = b.rowCount ?? b.successCount + b.errorCount
+      const rows = b.detailCount ?? b.rowCount ?? b.successCount + b.errorCount
       totalRows += rows
-      successRows += b.successCount
+      successRows += rows
       errorRows += b.errorCount
     }
     return { batchCount: recentBatches.length, totalRows, successRows, errorRows }
@@ -96,7 +130,7 @@ export default function DataPage() {
   type CrossRow = { code: string; name: string; values: Record<string, number> }
   const browseColumns: DataTableColumn<CrossRow>[] = useMemo(() => {
     const cols: DataTableColumn<CrossRow>[] = [
-      { key: 'name', header: '指标', cellClassName: 'font-medium' },
+      { key: 'name', header: '指标', cellClassName: 'font-medium', sticky: true },
     ]
     for (const code of visibleCompanyCodes) {
       cols.push({
@@ -149,7 +183,7 @@ export default function DataPage() {
     setFileError(null)
     try {
       const batch = await uploadMutation.mutateAsync({ file: selectedFile, templateType })
-      setUploadedInfo({ filename: batch.filename, successCount: batch.successCount })
+      setUploadedInfo({ filename: batch.filename, detailCount: batch.detailCount ?? batch.successCount, rowCount: batch.rowCount ?? batch.successCount })
       setSelectedFile(null)
     } catch (err) {
       setFileError(err instanceof Error ? err.message : '导入失败')
@@ -202,6 +236,106 @@ export default function DataPage() {
       setActivateMsg(err instanceof Error ? err.message : '激活失败')
     }
   }
+
+  // ---- 批次管理（激活/归档/清除）----
+  const handleRowActivate = async (b: ImportBatch) => {
+    setActivateMsg(null)
+    try {
+      await activateMutation.mutateAsync(b.id)
+      setActivateMsg(`批次《${b.filename}》已激活生效。`)
+    } catch (err) {
+      setActivateMsg(err instanceof Error ? err.message : '激活失败')
+    }
+  }
+
+  const handleArchive = async (b: ImportBatch) => {
+    const isActive = b.status === 'active'
+    if (!(await confirm({
+      title: '归档批次',
+      description: isActive
+        ? `批次《${b.filename}》当前生效中，归档后该模板类型将无生效数据，看板与指标将不再展示对应数据。确认归档？`
+        : `确认归档批次《${b.filename}》？`,
+      danger: isActive,
+      confirmText: '归档',
+    }))) return
+    setActivateMsg(null)
+    try {
+      await archiveMutation.mutateAsync(b.id)
+      setActivateMsg(`批次《${b.filename}》已归档。`)
+    } catch (err) {
+      setActivateMsg(err instanceof Error ? err.message : '归档失败')
+    }
+  }
+
+  const handlePurgeBatch = async (b: ImportBatch) => {
+    if (!(await confirm({
+      title: '清除批次数据',
+      description: `将物理删除批次《${b.filename}》的全部明细数据，此操作不可恢复！批次记录将保留为“已清除”状态留痕。`,
+      danger: true,
+      confirmText: '清除数据',
+    }))) return
+    setActivateMsg(null)
+    try {
+      await purgeMutation.mutateAsync(b.id)
+      setActivateMsg(`批次《${b.filename}》明细数据已清除。`)
+    } catch (err) {
+      setActivateMsg(err instanceof Error ? err.message : '清除失败')
+    }
+  }
+
+  // 批次管理表列（带权限门禁的行操作）
+  const batchColumns: DataTableColumn<ImportBatch>[] = useMemo(() => {
+    const cols: DataTableColumn<ImportBatch>[] = [
+      { key: 'filename', header: '文件名', cellClassName: 'font-medium' },
+      { key: 'templateType', header: '模板类型', render: (b) => templateTypeLabel[b.templateType] ?? b.templateType },
+      {
+        key: 'status', header: '状态',
+        render: (b) => (
+          <Badge variant={b.status === 'active' ? 'success' : b.status === 'draft' ? 'default' : 'secondary'}>
+            {batchStatusLabel[b.status] ?? b.status}
+          </Badge>
+        ),
+      },
+      { key: 'detailCount', header: '入库明细', align: 'right', cellClassName: 'font-mono', render: (b) => b.detailCount ?? b.rowCount ?? b.successCount + b.errorCount },
+      {
+        key: 'quality', header: '成功/异常', align: 'right', cellClassName: 'font-mono',
+        render: (b) => (
+          <span>
+            <span className="text-green-700">{b.successCount}</span>
+            {' / '}
+            <span className={b.errorCount > 0 ? 'text-red-700' : 'text-muted-foreground'}>{b.errorCount}</span>
+          </span>
+        ),
+      },
+      { key: 'createdAt', header: '导入时间', render: (b) => new Date(b.createdAt).toLocaleString('zh-CN') },
+    ]
+    if (canImport || canArchive || canPurgeBatch) {
+      cols.push({
+        key: 'actions', header: '操作', align: 'right',
+        render: (b) => (
+          <div className="flex items-center justify-end gap-1">
+            {canImport && b.status !== 'active' && b.status !== 'purged' && (
+              <Button variant="ghost" size="sm" title="激活生效" disabled={activateMutation.isPending} onClick={() => handleRowActivate(b)}>
+                <CheckCircle className="h-4 w-4" />
+              </Button>
+            )}
+            {canArchive && (b.status === 'active' || b.status === 'draft') && (
+              <Button variant="ghost" size="sm" title="归档" disabled={archiveMutation.isPending} onClick={() => handleArchive(b)}>
+                <Archive className="h-4 w-4" />
+              </Button>
+            )}
+            {canPurgeBatch && (b.status === 'archived' || b.status === 'draft') && (
+              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" title="清除数据（不可恢复）" disabled={purgeMutation.isPending} onClick={() => handlePurgeBatch(b)}>
+                <ShieldAlert className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        ),
+      })
+    }
+    return cols
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canImport, canArchive, canPurgeBatch, activateMutation.isPending, archiveMutation.isPending, purgeMutation.isPending])
 
   return (
     <PageContainer title="数据管理" description="管理Excel导入、数据浏览、维度科目维护">
@@ -300,8 +434,8 @@ export default function DataPage() {
                         <p className="mt-1 text-xl font-semibold">{previewResult.dataRowCount}</p>
                       </div>
                       <div className="rounded-lg border bg-background p-2">
-                        <p className="text-xs text-muted-foreground">将入库明细</p>
-                        <p className="mt-1 text-xl font-semibold">{previewResult.operatingCount + previewResult.staticCount + previewResult.budgetCount}</p>
+                        <p className="text-xs text-muted-foreground">将入库明细{(previewResult.summary?.duplicateCount ?? 0) > 0 ? '（去重后）' : ''}</p>
+                        <p className="mt-1 text-xl font-semibold">{previewResult.operatingCount + previewResult.staticCount + previewResult.budgetCount - (previewResult.summary?.duplicateCount ?? 0)}</p>
                       </div>
                       <div className={cn('rounded-lg border p-2', previewResult.errorCount > 0 ? 'border-red-200 bg-red-50' : 'bg-background')}>
                         <p className={cn('text-xs', previewResult.errorCount > 0 ? 'text-red-700' : 'text-muted-foreground')}>异常条数</p>
@@ -312,6 +446,104 @@ export default function DataPage() {
                         <p className="mt-1 text-sm font-medium">{templateType === 'operating' ? '经营数据' : templateType === 'static' ? '静态数据' : '年度预算'}</p>
                       </div>
                     </div>
+                    {previewResult.summary && previewResult.summary.companyCount > 0 && (
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                        <div className="rounded-lg border bg-background p-2">
+                          <p className="text-xs text-muted-foreground">覆盖公司数</p>
+                          <p className="mt-1 text-xl font-semibold">{previewResult.summary.companyCount}</p>
+                        </div>
+                        <div className="rounded-lg border bg-background p-2">
+                          <p className="text-xs text-muted-foreground">覆盖科目数</p>
+                          <p className="mt-1 text-xl font-semibold">{previewResult.summary.subjectCount}</p>
+                        </div>
+                        <div className="rounded-lg border bg-background p-2">
+                          <p className="text-xs text-muted-foreground">期间范围</p>
+                          <p className="mt-1 text-sm font-semibold">
+                            {previewResult.summary.periodRange.min === previewResult.summary.periodRange.max
+                              ? previewResult.summary.periodRange.min ?? '-'
+                              : `${previewResult.summary.periodRange.min ?? '-'} ~ ${previewResult.summary.periodRange.max ?? '-'}`}
+                          </p>
+                        </div>
+                        <div className="rounded-lg border bg-background p-2">
+                          <p className="text-xs text-muted-foreground">金额合计</p>
+                          <p className="mt-1 text-sm font-semibold font-mono">{formatMoney(previewResult.summary.totalValue)}</p>
+                        </div>
+                      </div>
+                    )}
+                    {/* 风险/影响提示区（按严重度排序：重复 > KPI 缺类 > 期间消失 > 期间替换 > 零值） */}
+                    {previewResult.summary && previewResult.summary.duplicateCount > 0 && (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                        <div className="flex items-start space-x-2">
+                          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+                          <div className="space-y-1">
+                            <p className="text-sm font-medium text-amber-800">
+                              文件内存在 {previewResult.summary.duplicateCount} 条重复记录（同公司+科目+期间），入库时将自动跳过。
+                            </p>
+                            {previewResult.summary.duplicateSamples.length > 0 && (
+                              <ul className="list-inside list-disc text-xs text-amber-700">
+                                {previewResult.summary.duplicateSamples.map((s, i) => <li key={i}>{s}</li>)}
+                              </ul>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {previewResult.kpiCoverage && previewResult.kpiCoverage.missing.length > 0 && (
+                      <div className="flex items-start space-x-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+                        <p className="text-sm font-medium text-amber-800">
+                          以下看板 KPI 类别无科目数据：{previewResult.kpiCoverage.missing.join('、')}，激活后对应卡片将显示 0。
+                        </p>
+                      </div>
+                    )}
+                    {previewResult.activationImpact?.activeBatch && previewResult.activationImpact.vanishingPeriods.length > 0 && (
+                      <div className="flex items-start space-x-2 rounded-lg border border-red-200 bg-red-50 p-3">
+                        <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+                        <p className="text-sm font-medium text-red-700">
+                          当前生效批次《{previewResult.activationImpact.activeBatch.filename}》包含期间 {fmtPeriods(previewResult.activationImpact.vanishingPeriods)}，本文件未包含；激活后这些期间将从看板与指标中消失。
+                        </p>
+                      </div>
+                    )}
+                    {previewResult.activationImpact?.activeBatch && previewResult.activationImpact.overlappingPeriods.length > 0 && (
+                      <div className="flex items-start space-x-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                        <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" />
+                        <p className="text-sm text-blue-800">
+                          {templateType === 'budget'
+                            ? `激活后将替换《${previewResult.activationImpact.activeBatch.filename}》的 ${fmtPeriods(previewResult.activationImpact.overlappingPeriods)} 财年预算。`
+                            : `激活后将替换《${previewResult.activationImpact.activeBatch.filename}》中期间 ${fmtPeriods(previewResult.activationImpact.overlappingPeriods)} 的数据。`}
+                        </p>
+                      </div>
+                    )}
+                    {previewResult.summary && previewResult.summary.zeroValueCount > 0 && (
+                      <p className="text-xs text-muted-foreground">包含 {previewResult.summary.zeroValueCount} 条零值记录。</p>
+                    )}
+                    {previewResult.sampleRows && previewResult.sampleRows.rows.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium">数据抽样预览（{previewResult.sampleRows.rows.length} 行，跨科目/公司分散采样）</p>
+                        <div className="max-h-[280px] overflow-auto rounded-lg border">
+                          <table className="w-full text-sm">
+                            <thead className="sticky top-0">
+                              <tr className="border-b bg-muted/50">
+                                {previewResult.sampleRows.headers.map((h, i) => (
+                                  <th key={i} className="whitespace-nowrap p-2 text-left font-medium">{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {previewResult.sampleRows.rows.map((row, i) => (
+                                <tr key={i} className="border-b last:border-0">
+                                  {row.map((cell, j) => (
+                                    <td key={j} className="whitespace-nowrap p-2 font-mono text-muted-foreground">
+                                      {typeof cell === 'number' ? cell.toLocaleString('zh-CN', { maximumFractionDigits: 2 }) : cell}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
                     {previewResult.errorCount > 0 && (
                       <div className="max-h-[200px] overflow-y-auto rounded-lg border">
                         <table className="w-full text-sm">
@@ -340,11 +572,24 @@ export default function DataPage() {
 
                 {uploadedInfo && (
                   <div className="rounded-lg border border-green-200 bg-green-50 p-4">
-                    <div className="flex items-center space-x-2">
-                      <CheckCircle className="h-4 w-4 text-green-500" />
-                      <span className="text-sm font-medium text-green-800">
-                        导入成功：《{uploadedInfo.filename}》，解析 {uploadedInfo.successCount} 行（批次已创建为草稿，可在数据浏览激活）
-                      </span>
+                    <div className="flex items-start space-x-2">
+                      <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
+                      <div className="space-y-2">
+                        <span className="text-sm font-medium text-green-800">
+                          导入成功：《{uploadedInfo.filename}》，入库 {uploadedInfo.detailCount} 条明细（解析 {uploadedInfo.rowCount} 行）。
+                        </span>
+                        <p className="text-xs text-green-700">
+                          批次已创建为草稿状态。请前往「数据预览」标签页 → 选择该批次 → 点击「激活批次」使数据在看板和指标中生效。
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-1 border-green-300 text-green-800 hover:bg-green-100"
+                          onClick={() => setActiveTab('browse')}
+                        >
+                          前往数据预览
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -373,7 +618,7 @@ export default function DataPage() {
                   <p className="mt-1 text-2xl font-semibold">{qualityStats.totalRows}</p>
                 </div>
                 <div className="rounded-lg border border-green-200 bg-green-50 p-3">
-                  <p className="text-xs text-green-700">成功记录</p>
+                  <p className="text-xs text-green-700">入库记录</p>
                   <p className="mt-1 text-2xl font-semibold text-green-700">{qualityStats.successRows}</p>
                 </div>
                 <div className={cn('rounded-lg border p-3', qualityStats.errorRows > 0 ? 'border-red-200 bg-red-50' : 'bg-muted/30')}>
@@ -408,12 +653,23 @@ export default function DataPage() {
               </div>
               {activateMsg && <p className="text-xs text-muted-foreground">{activateMsg}</p>}
 
+              {/* 批次管理表：全部批次 + 激活/归档/清除（高危操作按权限显示） */}
+              <div className="space-y-2">
+                <p className="text-sm font-medium">批次管理</p>
+                <DataTable
+                  columns={batchColumns}
+                  data={recentBatches}
+                  rowKey={(b) => b.id}
+                  emptyText="暂无导入批次"
+                />
+              </div>
+
               {selectedBatch && (
                 selectedBatch.errorCount === 0 ? (
                   <div className="flex items-center space-x-2 rounded-lg border border-green-200 bg-green-50 p-4">
                     <CheckCircle className="h-4 w-4 text-green-500" />
                     <span className="text-sm font-medium text-green-800">
-                      完整性校验通过：共 {selectedBatch.rowCount ?? selectedBatch.successCount} 行数据均解析成功。
+                      完整性校验通过：共 {selectedBatch.detailCount ?? selectedBatch.rowCount ?? selectedBatch.successCount} 条明细均解析成功。
                     </span>
                   </div>
                 ) : selectedBatch.successCount > 0 ? (
@@ -449,11 +705,20 @@ export default function DataPage() {
           {/* 数据预览交叉表 */}
           <Card>
             <CardHeader>
-              <CardTitle>数据预览（指标 × 公司 · 本月实际）</CardTitle>
+              <CardTitle>数据预览（{browseSubjectType === 'operating' ? '经营指标' : '静态指标'} × 公司{crossTable?.period ? ` · ${crossTable.period}` : ''}）</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center space-x-4">
+                  <Select value={browseSubjectType} onValueChange={(v) => setBrowseSubjectType(v as 'operating' | 'static')}>
+                    <SelectTrigger className="w-[140px]">
+                      <SelectValue placeholder="指标类型" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="operating">经营指标</SelectItem>
+                      <SelectItem value="static">静态指标</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <Select value={browseCompany} onValueChange={setBrowseCompany}>
                     <SelectTrigger className="w-[180px]">
                       <SelectValue placeholder="选择公司" />
@@ -465,6 +730,18 @@ export default function DataPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm text-muted-foreground">月份:</span>
+                    <input
+                      type="month"
+                      className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                      value={browsePeriod}
+                      onChange={(e) => setBrowsePeriod(e.target.value)}
+                    />
+                    {browsePeriod && (
+                      <Button variant="ghost" size="sm" onClick={() => setBrowsePeriod('')} className="h-9 px-2 text-xs">重置</Button>
+                    )}
+                  </div>
                 </div>
                 {canExport && (
                   <Button variant="outline" size="sm" onClick={handleBrowseExport}>
@@ -508,6 +785,7 @@ export default function DataPage() {
                     canCreate={can('data:subject', 'create')}
                     canUpdate={can('data:subject', 'update')}
                     canDelete={can('data:subject', 'delete')}
+                    canPurge={canPurgeSubject}
                     canExport={canExport}
                     exportFileName="经营分析科目"
                     exportSheet="经营分析科目"
@@ -520,6 +798,7 @@ export default function DataPage() {
                     canCreate={can('data:subject', 'create')}
                     canUpdate={can('data:subject', 'update')}
                     canDelete={can('data:subject', 'delete')}
+                    canPurge={canPurgeSubject}
                     canExport={canExport}
                     exportFileName="静态科目"
                     exportSheet="静态科目"
@@ -531,6 +810,7 @@ export default function DataPage() {
                     canCreate={can('data:company', 'create')}
                     canUpdate={can('data:company', 'update')}
                     canDelete={can('data:company', 'delete')}
+                    canPurge={canPurgeCompany}
                   />
                 </TabsContent>
                 <TabsContent value="summary">
@@ -551,11 +831,15 @@ export default function DataPage() {
                 canCreate={can('data:metric', 'create')}
                 canUpdate={can('data:metric', 'update')}
                 canDelete={can('data:metric', 'delete')}
+                canManageRule={can('data:formula-rule', 'manage')}
+                canApprove={canApproveMetric}
+                canPurge={canPurgeMetric}
               />
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
+      {confirmElement}
     </PageContainer>
   )
 }

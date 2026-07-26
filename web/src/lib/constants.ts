@@ -4,6 +4,7 @@ export const TOKEN_KEY = 'access_token'
 export const REFRESH_TOKEN_KEY = 'refresh_token'
 
 export const ROLES = {
+  SUPERADMIN: 'superadmin',
   ADMIN: 'admin',
   FINANCE_MANAGER: 'finance_manager',
   DEPARTMENT_MANAGER: 'department_manager',
@@ -12,6 +13,7 @@ export const ROLES = {
 } as const
 
 export const ROLE_NAMES: Record<string, string> = {
+  superadmin: '超级管理员',
   admin: '管理员',
   finance_manager: '财务主管',
   department_manager: '部门经理',

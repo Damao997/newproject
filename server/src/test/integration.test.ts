@@ -95,14 +95,20 @@ describe('服务层集成（真实 DB）', () => {
     expect(cross.rows.length).toBeGreaterThan(0)
   })
 
-  it('管理：用户 ≥ 5，角色 = 5（含预置权限）', async () => {
+  it('管理：用户 ≥ 6，预置角色 ≥ 6（含 superadmin 与预置权限）', async () => {
     if (!dbReady) return
     const users = await AdminService.listUsers({ page: 1, pageSize: 20 })
-    expect(users.total).toBeGreaterThanOrEqual(5)
+    expect(users.total).toBeGreaterThanOrEqual(6)
     const roles = await AdminService.listRoles()
-    expect(roles.length).toBe(5)
+    // 预置 6 角色；集成测试可能留有临时自定义角色，故用 ≥
+    expect(roles.filter((r) => r.isSystem).length).toBeGreaterThanOrEqual(6)
     const admin = roles.find((r) => r.code === 'admin')
     expect(admin!.permissions.length).toBeGreaterThan(0)
+    // superadmin 独占高危码：admin 不含 purge，superadmin 包含
+    const superadmin = roles.find((r) => r.code === 'superadmin')
+    expect(superadmin).toBeTruthy()
+    expect(superadmin!.permissions.some((p) => p.resource === 'data:company:purge')).toBe(true)
+    expect(admin!.permissions.some((p) => p.resource.endsWith(':purge'))).toBe(false)
   })
 
   it('导出经营指标为合法 xlsx（PK 头）', async () => {

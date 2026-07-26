@@ -14,7 +14,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts",
     "prisma:studio": "prisma studio",
-    "db:local": "tsx scripts/local-db.ts"
+    "db:local": "tsx scripts/local-db.ts",
+    "setup": "npm run db:local && npm run prisma:generate && npm run prisma:migrate && npm run prisma:seed"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

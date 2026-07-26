@@ -48,6 +48,32 @@ export interface BudgetUnpivotRow {
   value: number
 }
 
+export interface SampleRows {
+  headers: string[]
+  rows: (string | number)[][]
+}
+
+/** 预览覆盖摘要：解析完成后单遍后置扫描得出（转置/标准布局共用） */
+export interface PreviewSummary {
+  companyCount: number
+  subjectCount: number
+  periodRange: { min: string | null; max: string | null }
+  /** 去重升序期间列表（operating=月份、static=快照月、budget=财年），供服务层做生效数据对比 */
+  periods: string[]
+  totalValue: number
+  zeroValueCount: number
+  /** 文件内重复条数（唯一键与 DB 约束一致），入库时将被 skipDuplicates 跳过 */
+  duplicateCount: number
+  /** 重复示例（最多 5 条，"公司名 × 科目名 × 期间"） */
+  duplicateSamples: string[]
+  /** 去重科目编码，供服务层做看板 KPI 覆盖检查 */
+  accountCodes: string[]
+}
+
+export function emptySummary(): PreviewSummary {
+  return { companyCount: 0, subjectCount: 0, periodRange: { min: null, max: null }, periods: [], totalValue: 0, zeroValueCount: 0, duplicateCount: 0, duplicateSamples: [], accountCodes: [] }
+}
+
 export interface ParseResult {
   template: ImportTemplate
   operating: OperatingUnpivotRow[]
@@ -55,6 +81,8 @@ export interface ParseResult {
   budget: BudgetUnpivotRow[]
   errors: ImportError[]
   dataRowCount: number
+  sampleRows: SampleRows
+  summary: PreviewSummary
 }
 
 export interface Resolvers {
@@ -242,6 +270,25 @@ function readGrid(buffer: Buffer): unknown[][] {
   return grid
 }
 
+// ---------------- 布局检测 ----------------
+
+const TRANSPOSED_KEYWORDS = ['科目', '指标', '主要指标', '单体维度', '公司维度']
+
+function detectStandardLayout(grid: unknown[][]): boolean {
+  const headerRow = (grid[0] ?? []) as unknown[]
+  const headers = headerRow.map((h) => (h == null ? '' : String(h).trim()))
+  const hasCompany = headers.some((h) => h === '公司名' || h === '公司')
+  const hasPeriod = headers.some((h) => h === '月份' || h === '期间')
+  return hasCompany && hasPeriod
+}
+
+function isTransposedLayout(grid: unknown[][]): boolean {
+  const first = grid[0]?.[0]
+  if (first == null) return false
+  const text = String(first).trim()
+  return TRANSPOSED_KEYWORDS.some((kw) => text.includes(kw))
+}
+
 // ---------------- unpivot ----------------
 
 function excelColLabel(index: number): string {
@@ -259,6 +306,12 @@ function toDate(cell: unknown): Date | null {
   if (cell instanceof Date) return cell
   if (typeof cell === 'number' && Number.isFinite(cell)) return excelSerialToDate(cell)
   if (typeof cell === 'string') {
+    // 匹配 "YYYY年M月" / "YYYY-MM" / "YYYY/MM" / "YYYYMM"
+    const m = cell.trim().match(/^(\d{4})\s*[年\-/]\s*(\d{1,2})\s*月?$/)
+    if (m) return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, 1))
+    // 纯6位数字 YYYYMM
+    const m2 = cell.trim().match(/^(\d{4})(\d{2})$/)
+    if (m2) return new Date(Date.UTC(Number(m2[1]), Number(m2[2]) - 1, 1))
     const d = new Date(cell)
     if (!Number.isNaN(d.getTime())) return d
   }
@@ -279,7 +332,7 @@ function parseValue(cell: unknown): { value: number | null; empty: boolean } {
 }
 
 export function parseImportWorkbook(buffer: Buffer, template: ImportTemplate, resolvers: Resolvers): ParseResult {
-  const result: ParseResult = { template, operating: [], static: [], budget: [], errors: [], dataRowCount: 0 }
+  const result: ParseResult = { template, operating: [], static: [], budget: [], errors: [], dataRowCount: 0, sampleRows: { headers: [], rows: [] }, summary: emptySummary() }
   const fiscalStartMonth = getFiscalStartMonth()
   let grid: unknown[][]
   try {
@@ -293,6 +346,151 @@ export function parseImportWorkbook(buffer: Buffer, template: ImportTemplate, re
     return result
   }
 
+  // 布局检测：标准布局（仅 operating）优先于转置布局
+  const useStandard = template === 'operating' && !isTransposedLayout(grid) && detectStandardLayout(grid)
+  if (useStandard) {
+    parseStandardLayout(grid, resolvers, fiscalStartMonth, result)
+  } else {
+    parseTransposedLayout(grid, template, resolvers, fiscalStartMonth, result)
+  }
+
+  finalizeResult(result, resolvers)
+  return result
+}
+
+/** 反转 名称→编码 Map 为 编码→名称（同 code 多名称时保留先出现者，即全名优先于简称） */
+function reverseMap(map: Map<string, string>): Map<string, string> {
+  const rev = new Map<string, string>()
+  for (const [name, code] of map) if (!rev.has(code)) rev.set(code, name)
+  return rev
+}
+
+/** 解析完成后单遍扫描：覆盖摘要、文件内重复检测、名称化等距分散采样 */
+function finalizeResult(result: ParseResult, resolvers: Resolvers): void {
+  const companyName = reverseMap(resolvers.companyByName)
+  const subjectName = reverseMap(resolvers.subjectByName)
+
+  // 统一抽取 (公司, 科目, 期间标签, 唯一键, 值)；唯一键与对应事实表 DB 约束一致
+  interface Item { companyCode: string; accountCode: string; periodLabel: string; key: string; value: number }
+  let items: Item[]
+  let periodHeader: string
+  if (result.template === 'operating') {
+    periodHeader = '月份'
+    items = result.operating.map((r) => ({ companyCode: r.companyCode, accountCode: r.accountCode, periodLabel: r.period, key: `${r.companyCode}|${r.accountCode}|${r.period}|${r.periodDimCode}`, value: r.value }))
+  } else if (result.template === 'static') {
+    periodHeader = '快照月'
+    items = result.static.map((r) => ({ companyCode: r.companyCode, accountCode: r.accountCode, periodLabel: ym(r.snapshotDate), key: `${r.companyCode}|${r.accountCode}|${r.snapshotDate.toISOString()}|${r.periodDimCode}`, value: r.value }))
+  } else {
+    periodHeader = '财年'
+    items = result.budget.map((r) => ({ companyCode: r.companyCode, accountCode: r.accountCode, periodLabel: r.fiscalYear, key: `${r.companyCode}|${r.accountCode}|${r.fiscalYear}|${r.period}`, value: r.value }))
+  }
+
+  const companies = new Set<string>()
+  const subjects = new Set<string>()
+  const periods = new Set<string>()
+  const seenKeys = new Set<string>()
+  let totalValue = 0
+  let zeroValueCount = 0
+  let duplicateCount = 0
+  const duplicateSamples: string[] = []
+  for (const it of items) {
+    companies.add(it.companyCode)
+    subjects.add(it.accountCode)
+    periods.add(it.periodLabel)
+    totalValue += it.value
+    if (it.value === 0) zeroValueCount++
+    if (seenKeys.has(it.key)) {
+      duplicateCount++
+      if (duplicateSamples.length < 5) {
+        duplicateSamples.push(`${companyName.get(it.companyCode) ?? it.companyCode} × ${subjectName.get(it.accountCode) ?? it.accountCode} × ${it.periodLabel}`)
+      }
+    } else {
+      seenKeys.add(it.key)
+    }
+  }
+  const sortedPeriods = [...periods].sort()
+  result.summary = {
+    companyCount: companies.size,
+    subjectCount: subjects.size,
+    periodRange: { min: sortedPeriods[0] ?? null, max: sortedPeriods[sortedPeriods.length - 1] ?? null },
+    periods: sortedPeriods,
+    totalValue: Number(totalValue.toFixed(2)),
+    zeroValueCount,
+    duplicateCount,
+    duplicateSamples,
+    accountCodes: [...subjects],
+  }
+
+  // 等距分散采样（最多 20 行，跨科目/公司），显示名称（反查不到回退编码）
+  const sampleTarget = 20
+  const step = Math.max(1, Math.floor(items.length / sampleTarget))
+  const rows: (string | number)[][] = []
+  for (let i = 0; i < items.length && rows.length < sampleTarget; i += step) {
+    const it = items[i]
+    rows.push([subjectName.get(it.accountCode) ?? it.accountCode, companyName.get(it.companyCode) ?? it.companyCode, it.periodLabel, it.value])
+  }
+  result.sampleRows = { headers: ['科目', '公司', periodHeader, '值'], rows }
+}
+
+/** 标准布局解析（operating 专用）：行=公司×月份，列=科目 */
+function parseStandardLayout(grid: unknown[][], resolvers: Resolvers, fiscalStartMonth: number, result: ParseResult): void {
+  const headerRow = (grid[0] ?? []) as unknown[]
+  const headers = headerRow.map((h) => (h == null ? '' : String(h).trim()))
+
+  // 识别维度列
+  let companyColIdx = -1
+  let periodColIdx = -1
+  for (let i = 0; i < headers.length; i++) {
+    if (headers[i] === '公司名' || headers[i] === '公司') companyColIdx = i
+    if (headers[i] === '月份' || headers[i] === '期间') periodColIdx = i
+  }
+
+  // 值列 = 除维度列外的其余列
+  const valueCols: { colIdx: number; subjectName: string; accountCode: string | null }[] = []
+  for (let i = 0; i < headers.length; i++) {
+    if (i === companyColIdx || i === periodColIdx) continue
+    if (!headers[i]) continue
+    const accountCode = resolvers.subjectByName.get(headers[i]) ?? null
+    if (!accountCode) {
+      result.errors.push({ row: 1, column: excelColLabel(i + 1), message: `科目名未匹配：'${headers[i]}'` })
+    }
+    valueCols.push({ colIdx: i, subjectName: headers[i], accountCode })
+  }
+
+  for (let r = 1; r < grid.length; r++) {
+    const row = grid[r] as unknown[] | undefined
+    if (!row || row.length === 0) continue
+    const companyName = row[companyColIdx] == null ? '' : String(row[companyColIdx]).trim()
+    if (!companyName) continue
+    result.dataRowCount++
+    const companyCode = resolvers.companyByName.get(companyName) ?? null
+    if (!companyCode) {
+      result.errors.push({ row: r + 1, column: excelColLabel(companyColIdx + 1), message: `公司名未匹配：'${companyName}'` })
+      continue
+    }
+    const date = toDate(row[periodColIdx])
+    if (!date) {
+      result.errors.push({ row: r + 1, column: excelColLabel(periodColIdx + 1), message: `月份无法解析：'${String(row[periodColIdx] ?? '')}'` })
+      continue
+    }
+    const period = ym(date)
+    const effFy = fyLabelOfDate(date, fiscalStartMonth)
+    for (const vc of valueCols) {
+      if (!vc.accountCode) continue
+      const parsed = parseValue(row[vc.colIdx])
+      if (parsed.empty) continue
+      if (parsed.value === null) {
+        result.errors.push({ row: r + 1, column: excelColLabel(vc.colIdx + 1), message: `值非数字：'${String(row[vc.colIdx])}'` })
+        continue
+      }
+      const value = Number(parsed.value.toFixed(2))
+      result.operating.push({ companyCode, accountCode: vc.accountCode, period, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: effFy, value })
+    }
+  }
+}
+
+/** 转置布局解析（原有逻辑） */
+function parseTransposedLayout(grid: unknown[][], template: ImportTemplate, resolvers: Resolvers, fiscalStartMonth: number, result: ParseResult): void {
   const companyRow = (grid[0] ?? []) as unknown[]
   const monthRow = template === 'budget' ? [] : ((grid[1] ?? []) as unknown[])
   const dataStart = template === 'budget' ? 1 : 2
@@ -312,8 +510,6 @@ export function parseImportWorkbook(buffer: Buffer, template: ImportTemplate, re
   }
 
   if (template === 'operating') {
-    // 原始月度实际：每个月份列一律存为 ACTUAL_MONTH（按各自 period）；
-    // 同期/本年累计/同期累计均由查询选定期按时间标记派生，不在导入时打标。
     for (let c = 1; c < colMeta.length; c++) {
       const m = colMeta[c]
       if (!m || !m.date) continue
@@ -322,8 +518,6 @@ export function parseImportWorkbook(buffer: Buffer, template: ImportTemplate, re
       m.effFy = fyLabelOfDate(m.date, fiscalStartMonth)
     }
   } else if (template === 'static') {
-    // 原始快照：每个快照列一律存单值（marker=CURRENT_AMOUNT，携 snapshotDate）；
-    // 本期/年初/同期/上年年初 均由查询选定期按快照月份派生，不在导入时打标。
     for (let c = 1; c < colMeta.length; c++) {
       const m = colMeta[c]
       if (!m || !m.date) continue
@@ -359,7 +553,6 @@ export function parseImportWorkbook(buffer: Buffer, template: ImportTemplate, re
       const value = Number(parsed.value.toFixed(2))
       if (template === 'operating') {
         if (!meta.periodDimCode || !meta.effPeriod || !meta.effFy) continue
-        // 本月实际按各自月份归期；同期实际归入对应当前财年同月 period（见维度映射）
         result.operating.push({ companyCode: meta.companyCode, accountCode, period: meta.effPeriod, periodDimCode: meta.periodDimCode, fiscalYear: meta.effFy, value })
       } else if (template === 'static') {
         if (!meta.periodDimCode || !meta.date) continue
@@ -369,6 +562,4 @@ export function parseImportWorkbook(buffer: Buffer, template: ImportTemplate, re
       }
     }
   }
-
-  return result
 }

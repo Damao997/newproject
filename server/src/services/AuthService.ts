@@ -22,6 +22,8 @@ export interface FrontendUser {
   username: string
   name: string
   role: string
+  /** 角色权限码列表（`resource:action`），前端 usePermission 优先使用 */
+  permissions: string[]
   dataScope: string
   status: 'active' | 'inactive'
   lastLoginAt?: string
@@ -51,7 +53,7 @@ type UserWithRole = NonNullable<Awaited<ReturnType<typeof findUserWithRole>>>
 function findUserWithRole(where: { id: string } | { username: string }) {
   return prisma.user.findUnique({
     where: where as { id: string },
-    include: { role: true },
+    include: { role: { include: { permissions: true } } },
   })
 }
 
@@ -65,11 +67,15 @@ function toFrontendUser(user: UserWithRole): FrontendUser {
     dataScope = '无'
   }
 
+  // permission.resource 已是完整权限码（如 admin:users:view），去重后下发
+  const permissions = Array.from(new Set(user.role.permissions.map((p) => p.resource)))
+
   return {
     id: user.id,
     username: user.username,
     name: user.displayName,
     role: user.role.code,
+    permissions,
     dataScope,
     status: user.status,
     createdAt: user.createdAt.toISOString(),
@@ -82,7 +88,7 @@ export const AuthService = {
   async login(username: string, password: string, meta: AuditMeta = {}): Promise<LoginResult> {
     const user = await prisma.user.findUnique({
       where: { username },
-      include: { role: true },
+      include: { role: { include: { permissions: true } } },
     })
 
     // 用户不存在 / 已停用 / 密码错误：统一返回同一错误，避免用户枚举
@@ -198,7 +204,7 @@ export const AuthService = {
 
   /** 获取当前用户资料（映射为前端结构） */
   async getProfile(userId: string): Promise<FrontendUser> {
-    const user = await prisma.user.findUnique({ where: { id: userId }, include: { role: true } })
+    const user = await prisma.user.findUnique({ where: { id: userId }, include: { role: { include: { permissions: true } } } })
     if (!user || user.status !== 'active') {
       throw errors.unauthorized('用户不存在或已停用')
     }

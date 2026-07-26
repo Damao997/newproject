@@ -94,14 +94,25 @@ export function applyScope<T extends PrismaClient | { $extends: unknown }>(clien
  */
 export async function resolveScope(
   _client: Pick<PrismaClient, 'company'>,
-  authUser: Pick<AuthUserContext, 'companyCode' | 'scopeValue'>,
+  authUser: Pick<AuthUserContext, 'companyCode' | 'scopeValue'> & { orgScopeBu?: string[] | null },
 ): Promise<DataScope> {
   // 优先级 1：精确绑定单体公司
   if (authUser.companyCode) {
     return { type: 'companies', companyCodes: [authUser.companyCode] }
   }
 
-  // 优先级 2：角色全量
+  // 优先级 2：orgScopeBu → 通过 company.businessUnit 映射为 companyCodes
+  if (authUser.orgScopeBu && authUser.orgScopeBu.length > 0) {
+    const companies = await _client.company.findMany({
+      where: { businessUnit: { in: authUser.orgScopeBu }, status: 'active', entityType: 'single' },
+      select: { code: true },
+    })
+    if (companies.length > 0) {
+      return { type: 'companies', companyCodes: companies.map((c) => c.code) }
+    }
+  }
+
+  // 优先级 3：角色全量
   if (authUser.scopeValue === '*') {
     return { type: 'all' }
   }

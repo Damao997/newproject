@@ -165,8 +165,9 @@ export const IndicatorsService = {
     return found
   },
 
-  /** 交叉表：指标（行）× 公司（列）的本月实际 */
-  async getCross(scope: Scope, body: { companyCodes?: string[]; metricCodes?: string[]; period?: string }): Promise<{ period: string; companies: string[]; rows: { code: string; name: string; values: Record<string, number> }[] }> {
+  /** 交叉表：指标（行）× 公司（列）的本月实际（经营）或本期金额（静态） */
+  async getCross(scope: Scope, body: { companyCodes?: string[]; metricCodes?: string[]; period?: string; subjectType?: 'operating' | 'static' }): Promise<{ period: string; companies: string[]; rows: { code: string; name: string; values: Record<string, number> }[] }> {
+    const subjectType = body.subjectType === 'static' ? 'static' : 'operating'
     const scopeCompanies = await resolveCompanyCodes(scope)
     // 请求的公司码（可能含汇总主体）逐个经映射展开为单体成员，再取权限交集
     let companies: string[]
@@ -180,22 +181,25 @@ export const IndicatorsService = {
     } else {
       companies = scopeCompanies
     }
-    const period = body.period || (await latestOperatingPeriod())
+    const period = body.period || (subjectType === 'static' ? await latestStaticPeriod() : await latestOperatingPeriod())
 
-    // 逐公司聚合，取 metricCodes 的本月实际
+    // 逐公司聚合，取对应维度值
+    const targetDim = subjectType === 'static' ? STATIC_DIMS.CURRENT_AMOUNT : OPERATING_DIMS.ACTUAL_MONTH
     const perCompany = new Map<string, Map<string, number>>()
     for (const cc of companies) {
-      const tree = await AggregationService.buildOperatingTree([cc], period)
+      const tree = subjectType === 'static'
+        ? await AggregationService.buildStaticTree([cc], period)
+        : await AggregationService.buildOperatingTree([cc], period)
       const flat = flattenValueTree(tree)
       const m = new Map<string, number>()
-      for (const n of flat) m.set(n.code, n.values[OPERATING_DIMS.ACTUAL_MONTH] ?? 0)
+      for (const n of flat) m.set(n.code, n.values[targetDim] ?? 0)
       perCompany.set(cc, m)
     }
 
     // 行：指定 metricCodes，或默认取 level0 节点
     let codes = body.metricCodes
     if (!codes || codes.length === 0) {
-      const level0 = await prisma.accountSubject.findMany({ where: { subjectType: 'operating', level: 0 }, orderBy: { orderNo: 'asc' }, select: { code: true } })
+      const level0 = await prisma.accountSubject.findMany({ where: { subjectType, level: 0 }, orderBy: { orderNo: 'asc' }, select: { code: true } })
       codes = level0.map((r) => r.code)
     }
     const nameRows = await prisma.accountSubject.findMany({ where: { code: { in: codes } }, select: { code: true, name: true } })
@@ -207,6 +211,18 @@ export const IndicatorsService = {
       return { code, name: nameMap.get(code) ?? code, values }
     })
     return { period, companies, rows }
+  },
+
+  async getAvailablePeriods(): Promise<string[]> {
+    const batch = await prisma.importBatch.findFirst({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true } })
+    if (!batch) return []
+    const rows = await prisma.factOperating.findMany({
+      where: { batchId: batch.id },
+      distinct: ['period'],
+      orderBy: { period: 'asc' },
+      select: { period: true },
+    })
+    return rows.map((r) => r.period)
   },
 
   /** 导出经营/静态指标为 Excel */

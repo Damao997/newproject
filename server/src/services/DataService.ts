@@ -2,7 +2,7 @@ import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
 import { validateFormulaChange, extractCodes } from './FormulaRuleService'
-import { evaluateFormula } from '../lib/formula'
+import { evaluateFormula, topoSortMetrics } from '../lib/formula'
 import { OPERATING_DIMS } from '../lib/metric-values'
 import { buildExcel } from '../lib/excel'
 
@@ -13,11 +13,12 @@ import { buildExcel } from '../lib/excel'
 interface AuditCtx { userId: string; traceId?: string }
 
 // ---------------- 公司 ----------------
-export interface CompanyDto { id: string; code: string; name: string; type: string; entityType: string; parentCode: string | null; legalEntity: string | null; managementEntity: string | null; orderNo: number; status: string }
+export interface CompanyDto { id: string; code: string; name: string; shortName: string | null; type: string; entityType: string; parentCode: string | null; legalEntity: string | null; managementEntity: string | null; orderNo: number; status: string }
 
-function companyDto(c: { id: string; code: string; name: string; entityType: string; parentCode: string | null; legalEntity: string | null; managementEntity: string | null; orderNo: number; status: string }): CompanyDto {
+function companyDto(c: { id: string; code: string; name: string; shortName: string | null; entityType: string; parentCode: string | null; legalEntity: string | null; managementEntity: string | null; orderNo: number; status: string }): CompanyDto {
   return {
     id: c.id, code: c.code, name: c.name,
+    shortName: c.shortName,
     type: c.entityType === 'single' ? 'entity' : 'summary',
     entityType: c.entityType,
     parentCode: c.parentCode,
@@ -57,13 +58,14 @@ export const DataService = {
     return rows.map(companyDto)
   },
 
-  async createCompany(input: { code: string; name: string; entityType?: string; parentCode?: string | null; legalEntity?: string | null; managementEntity?: string | null; orderNo?: number }, ctx: AuditCtx): Promise<CompanyDto> {
+  async createCompany(input: { code: string; name: string; shortName?: string | null; entityType?: string; parentCode?: string | null; legalEntity?: string | null; managementEntity?: string | null; orderNo?: number }, ctx: AuditCtx): Promise<CompanyDto> {
     const exists = await prisma.company.findUnique({ where: { code: input.code } })
     if (exists) throw errors.conflict('公司编码已存在')
     const created = await prisma.company.create({
       data: {
         code: input.code,
         name: input.name,
+        shortName: input.shortName ?? null,
         entityType: input.entityType === 'summary' ? 'summary' : 'single',
         parentCode: input.parentCode ?? null,
         legalEntity: input.legalEntity ?? null,
@@ -76,7 +78,7 @@ export const DataService = {
     return companyDto(created)
   },
 
-  async updateCompany(id: string, input: { name?: string; entityType?: string; parentCode?: string | null; legalEntity?: string | null; managementEntity?: string | null; orderNo?: number; status?: string }, ctx: AuditCtx): Promise<CompanyDto> {
+  async updateCompany(id: string, input: { name?: string; shortName?: string | null; entityType?: string; parentCode?: string | null; legalEntity?: string | null; managementEntity?: string | null; orderNo?: number; status?: string }, ctx: AuditCtx): Promise<CompanyDto> {
     const found = await prisma.company.findUnique({ where: { id } })
     if (!found) throw errors.notFound('公司不存在')
     // code 不可变（被事实/用户/汇总映射引用）
@@ -87,6 +89,7 @@ export const DataService = {
       where: { id },
       data: {
         name: input.name ?? undefined,
+        shortName: input.shortName === undefined ? undefined : input.shortName,
         entityType: input.entityType === 'summary' ? 'summary' : input.entityType === 'single' ? 'single' : undefined,
         parentCode: input.parentCode === undefined ? undefined : input.parentCode,
         legalEntity: input.legalEntity === undefined ? undefined : input.legalEntity,
@@ -106,6 +109,24 @@ export const DataService = {
     await this.assertCompanyNotReferenced(found.code)
     await prisma.company.update({ where: { id }, data: { status: 'inactive', updatedBy: ctx.userId } })
     await recordAudit({ userId: ctx.userId, module: 'data', action: 'delete', targetId: found.code, detail: { entity: 'company', before: { name: found.name, status: found.status } } }, ctx.traceId)
+  },
+
+  /**
+   * 物理删除公司（高危，仅 superadmin）。
+   * 前置条件：已停用（inactive）且无任何引用。
+   */
+  async purgeCompany(id: string, ctx: AuditCtx): Promise<void> {
+    const found = await prisma.company.findUnique({ where: { id } })
+    if (!found) throw errors.notFound('公司不存在')
+    if (found.status !== 'inactive') throw errors.badRequest('请先停用该公司再彻底删除')
+    await this.assertCompanyNotReferenced(found.code)
+    try {
+      await prisma.company.delete({ where: { id } })
+    } catch (e) {
+      if ((e as { code?: string }).code === 'P2003') throw errors.conflict('存在关联数据，无法彻底删除')
+      throw e
+    }
+    await recordAudit({ userId: ctx.userId, module: 'data', action: 'delete', targetId: found.code, detail: { entity: 'company', action: 'purge', before: { name: found.name, status: found.status } } }, ctx.traceId)
   },
 
   /** 引用完整性保护：公司被事实数据、用户或汇总映射引用时禁止停用/删除 */
@@ -230,6 +251,104 @@ export const DataService = {
     return subjectDto(updated)
   },
 
+  /**
+   * 科目归类调整（换父）：把科目（含子树）移到新的上级科目下，
+   * 重新计算 category（取新 level0 根名）并向下传播到所有后代，level 同步平移。
+   * 数据随之在看板 KPI 桶/指标分组间重新归类（category 为决策依据）。
+   */
+  async reclassifySubject(id: string, input: { parentCode?: string | null }, ctx: AuditCtx): Promise<SubjectDto> {
+    const found = await prisma.accountSubject.findUnique({ where: { id } })
+    if (!found) throw errors.notFound('科目不存在')
+    const newParentCode = input.parentCode === undefined ? found.parentCode : input.parentCode
+    if (newParentCode === found.parentCode) return subjectDto(found)
+
+    let newLevel = 0
+    let newCategory = found.name // 成为根节点时 category=自身名
+    if (newParentCode) {
+      const parent = await prisma.accountSubject.findUnique({ where: { code: newParentCode } })
+      if (!parent) throw errors.badRequest('目标上级科目不存在')
+      if (parent.subjectType !== found.subjectType) throw errors.badRequest('不能跨科目类型（经营/静态）调整归类')
+      if (parent.code === found.code) throw errors.badRequest('不能将科目挂到自身下')
+      if (await this.isDescendantOf(parent.code, found.code)) throw errors.badRequest('不能将科目移到自己的下级科目下')
+      newLevel = parent.level + 1
+      newCategory = await this.rootCategoryOf(parent.code)
+    }
+    const levelDelta = newLevel - found.level
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const all = await tx.accountSubject.findMany({ where: { subjectType: found.subjectType }, select: { code: true, parentCode: true, level: true } })
+      const childrenMap = new Map<string, string[]>()
+      const levelMap = new Map<string, number>()
+      for (const s of all) {
+        levelMap.set(s.code, s.level)
+        if (s.parentCode) {
+          const list = childrenMap.get(s.parentCode) ?? []
+          list.push(s.code)
+          childrenMap.set(s.parentCode, list)
+        }
+      }
+      // 收集子树（含自身）
+      const subtree: string[] = []
+      const stack = [found.code]
+      while (stack.length > 0) {
+        const c = stack.pop() as string
+        subtree.push(c)
+        for (const ch of childrenMap.get(c) ?? []) stack.push(ch)
+      }
+      // 后代：category 统一为新值，level 平移
+      for (const code of subtree) {
+        if (code === found.code) continue
+        await tx.accountSubject.update({ where: { code }, data: { category: newCategory, level: (levelMap.get(code) ?? 0) + levelDelta } })
+      }
+      // 自身：换父 + category + level
+      return tx.accountSubject.update({ where: { id }, data: { parentCode: newParentCode, category: newCategory, level: newLevel } })
+    })
+
+    await prisma.reclassificationLog.create({
+      data: {
+        type: 'subject',
+        sourceSubject: found.parentCode ?? '(root)',
+        targetSubject: newParentCode ?? '(root)',
+        affectedRows: 0,
+        operatedBy: ctx.userId,
+        detail: { subjectCode: found.code, fromCategory: found.category, toCategory: newCategory } as never,
+      },
+    })
+    await recordAudit({ userId: ctx.userId, module: 'data', action: 'reclassify', targetId: found.code, detail: { kind: 'subject', fromParent: found.parentCode, toParent: newParentCode, fromCategory: found.category, toCategory: newCategory } }, ctx.traceId)
+    return subjectDto(updated)
+  },
+
+  /** 判断 candidateCode 是否为 ancestorCode 的子孙（防环） */
+  async isDescendantOf(candidateCode: string, ancestorCode: string): Promise<boolean> {
+    const all = await prisma.accountSubject.findMany({ select: { code: true, parentCode: true } })
+    const childrenMap = new Map<string, string[]>()
+    for (const s of all) {
+      if (s.parentCode) {
+        const list = childrenMap.get(s.parentCode) ?? []
+        list.push(s.code)
+        childrenMap.set(s.parentCode, list)
+      }
+    }
+    const stack = [...(childrenMap.get(ancestorCode) ?? [])]
+    while (stack.length > 0) {
+      const c = stack.pop() as string
+      if (c === candidateCode) return true
+      for (const ch of childrenMap.get(c) ?? []) stack.push(ch)
+    }
+    return false
+  },
+
+  /** 向上追溯到 level0 根，返回根名作为 category */
+  async rootCategoryOf(code: string): Promise<string> {
+    let cur = await prisma.accountSubject.findUnique({ where: { code } })
+    let guard = 0
+    while (cur && cur.parentCode && guard < 50) {
+      cur = await prisma.accountSubject.findUnique({ where: { code: cur.parentCode } })
+      guard++
+    }
+    return cur?.name ?? code
+  },
+
   async deleteSubject(id: string, ctx: AuditCtx): Promise<void> {
     const found = await prisma.accountSubject.findUnique({ where: { id } })
     if (!found) throw errors.notFound('科目不存在')
@@ -238,6 +357,26 @@ export const DataService = {
     // 软删除
     await prisma.accountSubject.update({ where: { id }, data: { status: 'inactive' } })
     await recordAudit({ userId: ctx.userId, module: 'data', action: 'delete', targetId: found.code, detail: { entity: 'subject', before: { name: found.name, status: found.status } } }, ctx.traceId)
+  },
+
+  /**
+   * 物理删除科目（高危，仅 superadmin）。
+   * 前置条件：已停用、无事实/公式引用、无下级科目。
+   */
+  async purgeSubject(id: string, ctx: AuditCtx): Promise<void> {
+    const found = await prisma.accountSubject.findUnique({ where: { id } })
+    if (!found) throw errors.notFound('科目不存在')
+    if (found.status !== 'inactive') throw errors.badRequest('请先停用该科目再彻底删除')
+    await this.assertSubjectNotReferenced(found.code)
+    const childCount = await prisma.accountSubject.count({ where: { parentCode: found.code, subjectType: found.subjectType } })
+    if (childCount > 0) throw errors.conflict('存在下级科目，无法彻底删除')
+    try {
+      await prisma.accountSubject.delete({ where: { id } })
+    } catch (e) {
+      if ((e as { code?: string }).code === 'P2003') throw errors.conflict('存在关联数据，无法彻底删除')
+      throw e
+    }
+    await recordAudit({ userId: ctx.userId, module: 'data', action: 'delete', targetId: found.code, detail: { entity: 'subject', action: 'purge', before: { name: found.name, status: found.status } } }, ctx.traceId)
   },
 
   /** 引用完整性保护：科目被事实表或指标公式引用时禁止停用/删除 */
@@ -373,6 +512,26 @@ export const DataService = {
     await recordAudit({ userId: ctx.userId, module: 'data', action: 'metric_change', targetId: found.code, detail: { action: 'delete' } }, ctx.traceId)
   },
 
+  /**
+   * 物理删除指标（高危，仅 superadmin）：事务内连同公式历史版本一并删除。
+   * 前置条件：已停用（inactive）。
+   */
+  async purgeMetric(id: string, ctx: AuditCtx): Promise<void> {
+    const found = await prisma.metric.findUnique({ where: { id } })
+    if (!found) throw errors.notFound('指标不存在')
+    if (found.status !== 'inactive') throw errors.badRequest('请先停用该指标再彻底删除')
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.metricDefinitionHistory.deleteMany({ where: { metricId: id } })
+        await tx.metric.delete({ where: { id } })
+      })
+    } catch (e) {
+      if ((e as { code?: string }).code === 'P2003') throw errors.conflict('存在关联数据，无法彻底删除')
+      throw e
+    }
+    await recordAudit({ userId: ctx.userId, module: 'data', action: 'metric_change', targetId: found.code, detail: { action: 'purge', before: { name: found.name, status: found.status } } }, ctx.traceId)
+  },
+
   /** 指标公式版本历史（含变更人用户名与审批状态） */
   async getMetricHistory(id: string): Promise<{ version: number; formula: string; description: string | null; changedBy: string; changedByName: string; changedAt: string; approvedBy: string | null }[]> {
     const metric = await prisma.metric.findUnique({ where: { id } })
@@ -417,33 +576,77 @@ export const DataService = {
   },
 
   /** 公式试算：用指定公司/期间的本月实际值代入公式求值 */
-  async trialCalc(input: { formula: string; companyCode?: string; period?: string }): Promise<{ value: number | null; period: string | null; operands: { code: string; name: string; value: number }[] }> {
+  async trialCalc(input: { formula: string; companyCode?: string; period?: string }): Promise<{ value: number | null; period: string | null; operands: { code: string; name: string; value: number; hasData: boolean }[]; batchInfo: { id: string; filename: string; activatedAt: string } | null }> {
     const codes = extractCodes(input.formula)
-    if (codes.length === 0) return { value: null, period: null, operands: [] }
-    const batch = await prisma.importBatch.findFirst({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true } })
-    if (!batch) return { value: null, period: null, operands: [] }
+    if (codes.length === 0) return { value: null, period: null, operands: [], batchInfo: null }
+    const batch = await prisma.importBatch.findFirst({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true, fileName: true, updatedAt: true } })
+    if (!batch) return { value: null, period: null, operands: [], batchInfo: null }
     let period: string | undefined = input.period
     if (!period) {
       const latest = await prisma.factOperating.findFirst({ where: { batchId: batch.id }, orderBy: { period: 'desc' }, select: { period: true } })
       period = latest?.period ?? undefined
     }
-    if (!period) return { value: null, period: null, operands: [] }
-    const where: Record<string, unknown> = { batchId: batch.id, period, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, accountCode: { in: codes } }
+    if (!period) return { value: null, period: null, operands: [], batchInfo: null }
+
+    // 1）递归展开 calc 依赖：先取全部计算类指标公式，再从直接 code 出发逐层收集传递依赖
+    const calcMetrics = await prisma.metric.findMany({
+      where: { dataType: 'calc', formula: { not: null }, status: 'active' },
+      select: { code: true, formula: true },
+    })
+    const calcFormulaByCode = new Map(calcMetrics.map((m) => [m.code, m.formula as string]))
+    const allCodes = new Set<string>(codes)
+    const expandQueue = [...codes]
+    while (expandQueue.length > 0) {
+      const c = expandQueue.shift() as string
+      const f = calcFormulaByCode.get(c)
+      if (!f) continue
+      for (const dep of extractCodes(f)) {
+        if (!allCodes.has(dep)) {
+          allCodes.add(dep)
+          expandQueue.push(dep)
+        }
+      }
+    }
+    const allCodeList = [...allCodes]
+
+    // 2）一次性取全量 code 的事实值
+    const where: Record<string, unknown> = { batchId: batch.id, period, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, accountCode: { in: allCodeList } }
     if (input.companyCode) where.companyCode = input.companyCode
     const facts = await prisma.factOperating.groupBy({ by: ['accountCode'], where, _sum: { value: true } })
     const valueMap = new Map(facts.map((f) => [f.accountCode, Number(f._sum.value ?? 0)]))
+
+    // 3）拓扑序求值 calc 指标（环检测由 topoSortMetrics 负责），写回 evalValues
+    const evalValues: Record<string, number> = {}
+    for (const c of allCodeList) evalValues[c] = valueMap.get(c) ?? 0
+    const calcNodes = allCodeList
+      .filter((c) => calcFormulaByCode.has(c))
+      .map((c) => ({ code: c, dependsOn: extractCodes(calcFormulaByCode.get(c) as string) }))
+    const hasDataMap = new Map<string, boolean>(allCodeList.map((c) => [c, valueMap.has(c)]))
+    if (calcNodes.length > 0) {
+      const order = topoSortMetrics(calcNodes)
+      for (const c of order) {
+        const f = calcFormulaByCode.get(c) as string
+        try {
+          evalValues[c] = evaluateFormula(f, evalValues)
+        } catch {
+          evalValues[c] = 0
+        }
+        const deps = extractCodes(f)
+        hasDataMap.set(c, deps.some((d) => hasDataMap.get(d) ?? false))
+      }
+    }
+
+    // 4）操作数仍返回直接 code，value 取展开后的值
     const subjects = await prisma.accountSubject.findMany({ where: { code: { in: codes } }, select: { code: true, name: true } })
     const nameMap = new Map(subjects.map((s) => [s.code, s.name]))
-    const operands = codes.map((code) => ({ code, name: nameMap.get(code) ?? code, value: valueMap.get(code) ?? 0 }))
-    const evalValues: Record<string, number> = {}
-    for (const c of codes) evalValues[c] = valueMap.get(c) ?? 0
+    const operands = codes.map((code) => ({ code, name: nameMap.get(code) ?? code, value: evalValues[code] ?? 0, hasData: hasDataMap.get(code) ?? false }))
     let value: number | null = null
     try {
       value = Number(evaluateFormula(input.formula, evalValues).toFixed(2))
     } catch {
       value = null
     }
-    return { value, period, operands }
+    return { value, period, operands, batchInfo: { id: batch.id, filename: batch.fileName, activatedAt: batch.updatedAt.toISOString() } }
   },
 
   /** 审批通过：将最新一条历史标记为已审批 */

@@ -10,7 +10,7 @@ import { sendFail } from '../lib/response'
  */
 
 function tooManyHandler(_req: Request, res: Response): void {
-  sendFail(res, 429, '请求频率超限，请稍后再试', 429)
+  sendFail(res, 429, '请求频率超限，请约 1 分钟后重试', 429)
 }
 
 /** 登录限流：5 次/分钟 */

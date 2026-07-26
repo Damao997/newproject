@@ -3,7 +3,8 @@ import * as XLSX from 'xlsx'
 import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
-import { parseImportWorkbook, type ImportTemplate, type Resolvers } from '../lib/excel-import'
+import { parseImportWorkbook, emptySummary, type ImportTemplate, type Resolvers, type SampleRows, type PreviewSummary } from '../lib/excel-import'
+import { fyLabelOfDate } from '../lib/period'
 
 /**
  * 数据导入服务：文件校验（MIME magic + 大小由 multer 保证）、解析计数、
@@ -21,11 +22,16 @@ type TemplateType = 'operating' | 'static' | 'budget' | 'transaction' | 'invento
 const UNPIVOT_TEMPLATES = new Set<TemplateType>(['operating', 'static', 'budget'])
 
 async function buildResolvers(template: ImportTemplate, fiscalYear: string): Promise<Resolvers> {
-  const companies = await prisma.company.findMany({ select: { code: true, name: true } })
+  const companies = await prisma.company.findMany({ select: { code: true, name: true, shortName: true } })
   const subjectType = template === 'static' ? 'static' : 'operating'
   const subjects = await prisma.accountSubject.findMany({ where: { subjectType }, select: { code: true, name: true } })
+  const companyByName = new Map<string, string>()
+  for (const c of companies) {
+    companyByName.set(c.name.trim(), c.code)
+    if (c.shortName) companyByName.set(c.shortName.trim(), c.code)
+  }
   return {
-    companyByName: new Map(companies.map((c) => [c.name.trim(), c.code])),
+    companyByName,
     subjectByName: new Map(subjects.map((s) => [s.name.trim(), s.code])),
     defaultFiscalYear: fiscalYear,
   }
@@ -44,12 +50,105 @@ export interface ImportErrorItem {
   message: string
 }
 
+/** 预览覆盖摘要（对外 DTO：剔除仅供服务层内部对比用的 periods/accountCodes） */
+export type PreviewSummaryDto = Omit<PreviewSummary, 'periods' | 'accountCodes'>
+
+/** 激活影响预告：按 activate 的整体替换语义（budget 按财年）对比文件与当前生效批次的期间集合 */
+export interface ActivationImpact {
+  activeBatch: { id: string; filename: string } | null
+  /** 文件有而生效批次无（激活后新增） */
+  newPeriods: string[]
+  /** 双方都有（激活后被本文件数据替换） */
+  overlappingPeriods: string[]
+  /** 生效批次有而文件无（激活后从看板/指标消失） */
+  vanishingPeriods: string[]
+}
+
+/** 看板 KPI 可见性检查：文件科目沿科目树上溯到根后覆盖的根类别 */
+export interface KpiCoverage {
+  covered: string[]
+  missing: string[]
+}
+
+/** 与 DashboardService KPI 卡匹配逻辑对齐的四类根科目 */
+const KPI_CATEGORIES = ['收入', '成本', '毛利', '费用']
+
+function toSummaryDto(s: PreviewSummary): PreviewSummaryDto {
+  const { periods: _periods, accountCodes: _accountCodes, ...dto } = s
+  return dto
+}
+
+function ymOfDate(d: Date): string {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+/** 查当前生效批次并对比期间集合（operating=period、static=快照月、budget=财年）；
+ * 与 AggregationService 消费口径一致，汇总全部 active 批次的期间（正常不变量下同类型仅一个 active） */
+async function computeActivationImpact(template: ImportTemplate, filePeriods: string[], fiscalYear: string): Promise<ActivationImpact> {
+  const where =
+    template === 'budget'
+      ? { dataType: 'budget' as const, lifecycleStatus: 'active' as const, fiscalYear }
+      : { dataType: template, lifecycleStatus: 'active' as const }
+  const batches = await prisma.importBatch.findMany({ where, select: { id: true, fileName: true }, orderBy: { updatedAt: 'desc' } })
+  if (batches.length === 0) {
+    return { activeBatch: null, newPeriods: filePeriods, overlappingPeriods: [], vanishingPeriods: [] }
+  }
+  const batchIds = batches.map((b) => b.id)
+  let activePeriods: string[]
+  if (template === 'operating') {
+    const rows = await prisma.factOperating.findMany({ where: { batchId: { in: batchIds } }, distinct: ['period'], select: { period: true } })
+    activePeriods = rows.map((r) => r.period)
+  } else if (template === 'static') {
+    const rows = await prisma.factStatic.findMany({ where: { batchId: { in: batchIds } }, distinct: ['snapshotDate'], select: { snapshotDate: true } })
+    activePeriods = [...new Set(rows.map((r) => ymOfDate(r.snapshotDate)))]
+  } else {
+    const rows = await prisma.factBudget.findMany({ where: { batchId: { in: batchIds } }, distinct: ['fiscalYear'], select: { fiscalYear: true } })
+    activePeriods = rows.map((r) => r.fiscalYear)
+  }
+  const fileSet = new Set(filePeriods)
+  const activeSet = new Set(activePeriods)
+  return {
+    activeBatch: { id: batches[0].id, filename: batches[0].fileName },
+    newPeriods: filePeriods.filter((p) => !activeSet.has(p)),
+    overlappingPeriods: filePeriods.filter((p) => activeSet.has(p)),
+    vanishingPeriods: [...activeSet].filter((p) => !fileSet.has(p)).sort(),
+  }
+}
+
+/** 文件科目沿 parentCode 上溯到根，检查四类看板 KPI 根科目是否均有数据落入 */
+async function computeKpiCoverage(accountCodes: string[]): Promise<KpiCoverage> {
+  if (accountCodes.length === 0) return { covered: [], missing: [...KPI_CATEGORIES] }
+  const subjects = await prisma.accountSubject.findMany({
+    where: { subjectType: 'operating' },
+    select: { code: true, parentCode: true, category: true },
+  })
+  const byCode = new Map(subjects.map((s) => [s.code, s]))
+  const rootCategories = new Set<string>()
+  for (const code of accountCodes) {
+    let cur = byCode.get(code)
+    let depth = 0
+    while (cur && cur.parentCode && depth < 20) {
+      const parent = byCode.get(cur.parentCode)
+      if (!parent) break
+      cur = parent
+      depth++
+    }
+    if (cur) rootCategories.add(cur.category)
+  }
+  return {
+    covered: KPI_CATEGORIES.filter((c) => rootCategories.has(c)),
+    missing: KPI_CATEGORIES.filter((c) => !rootCategories.has(c)),
+  }
+}
+
 export interface ImportBatchDto {
   id: string
   filename: string
   templateType: string
   status: string
   rowCount: number
+  /** 入库明细数（unpivot 后的事实记录数；旧数据以解析行数近似） */
+  detailCount: number
   successCount: number
   errorCount: number
   createdBy: string | null
@@ -61,7 +160,7 @@ export interface ImportBatchDto {
 
 function toDto(b: {
   id: string; fileName: string; dataType: string; lifecycleStatus: string; status: string
-  rowCount: number; errorCount: number; uploadedById: string | null; createdAt: Date; updatedAt: Date
+  rowCount: number; detailCount: number; errorCount: number; uploadedById: string | null; createdAt: Date; updatedAt: Date
   errorsJson?: unknown
 }, includeErrors = false): ImportBatchDto {
   const dto: ImportBatchDto = {
@@ -70,6 +169,7 @@ function toDto(b: {
     templateType: b.dataType,
     status: b.lifecycleStatus,
     rowCount: b.rowCount,
+    detailCount: b.detailCount || b.rowCount,
     successCount: Math.max(b.rowCount - b.errorCount, 0),
     errorCount: b.errorCount,
     createdBy: b.uploadedById,
@@ -84,9 +184,10 @@ function toDto(b: {
 
 export const ImportService = {
   /**
-   * 导入预览（dry-run）：仅解析不建批次、不写库，返回将入库行数/各类计数/错误明细。
+   * 导入预览（dry-run）：仅解析不建批次、不写库，返回将入库行数/各类计数/错误明细，
+   * 及覆盖摘要、激活影响预告与看板 KPI 覆盖检查，供管理员入库前确认数据质量。
    */
-  async preview(file: { buffer: Buffer }, templateType: TemplateType, fiscalYear = 'FY2025'): Promise<{ dataRowCount: number; errorCount: number; operatingCount: number; staticCount: number; budgetCount: number; errors: ImportErrorItem[] }> {
+  async preview(file: { buffer: Buffer }, templateType: TemplateType, fiscalYear = fyLabelOfDate(new Date())): Promise<{ dataRowCount: number; errorCount: number; operatingCount: number; staticCount: number; budgetCount: number; errors: ImportErrorItem[]; sampleRows: SampleRows; summary: PreviewSummaryDto; activationImpact: ActivationImpact | null; kpiCoverage: KpiCoverage | null }> {
     assertExcelMagic(file.buffer)
     if (!UNPIVOT_TEMPLATES.has(templateType)) {
       // 非 unpivot 模板（transaction/inventory）：仅统计数据行数
@@ -99,7 +200,7 @@ export const ImportService = {
       } catch {
         throw errors.badRequest('Excel 解析失败，请检查文件内容与模板类型')
       }
-      return { dataRowCount: rowCount, errorCount: 0, operatingCount: 0, staticCount: 0, budgetCount: 0, errors: [] }
+      return { dataRowCount: rowCount, errorCount: 0, operatingCount: 0, staticCount: 0, budgetCount: 0, errors: [], sampleRows: { headers: [], rows: [] }, summary: toSummaryDto(emptySummary()), activationImpact: null, kpiCoverage: null }
     }
     const template = templateType as ImportTemplate
     let parsed
@@ -109,6 +210,8 @@ export const ImportService = {
     } catch {
       throw errors.badRequest('Excel 解析失败，请检查文件内容与模板类型')
     }
+    const activationImpact = await computeActivationImpact(template, parsed.summary.periods, fiscalYear)
+    const kpiCoverage = template === 'operating' ? await computeKpiCoverage(parsed.summary.accountCodes) : null
     return {
       dataRowCount: parsed.dataRowCount,
       errorCount: parsed.errors.length,
@@ -116,10 +219,14 @@ export const ImportService = {
       staticCount: parsed.static.length,
       budgetCount: parsed.budget.length,
       errors: parsed.errors.slice(0, 200),
+      sampleRows: parsed.sampleRows,
+      summary: toSummaryDto(parsed.summary),
+      activationImpact,
+      kpiCoverage,
     }
   },
 
-  async upload(file: { originalname: string; buffer: Buffer; size: number }, templateType: TemplateType, userId: string, traceId?: string, fiscalYear = 'FY2025'): Promise<ImportBatchDto> {
+  async upload(file: { originalname: string; buffer: Buffer; size: number }, templateType: TemplateType, userId: string, traceId?: string, fiscalYear = fyLabelOfDate(new Date())): Promise<ImportBatchDto> {
     assertExcelMagic(file.buffer)
 
     // 文件去重：同 hash 且 active 的批次
@@ -144,56 +251,68 @@ export const ImportService = {
     })
 
     let rowCount = 0
+    let detailCount = 0
     let errorCount = 0
-    let insertedCount = 0
     let errorList: { row: number; column: string; message: string }[] = []
+    let parsedOperating: ReturnType<typeof parseImportWorkbook>['operating'] = []
+    let parsedStatic: ReturnType<typeof parseImportWorkbook>['static'] = []
+    let parsedBudget: ReturnType<typeof parseImportWorkbook>['budget'] = []
 
+    // 解析阶段（CPU 密集，不涉及 DB）
     try {
       if (UNPIVOT_TEMPLATES.has(templateType)) {
-        // 宽表 → 长表 unpivot
         const template = templateType as ImportTemplate
         const resolvers = await buildResolvers(template, fiscalYear)
         const parsed = parseImportWorkbook(file.buffer, template, resolvers)
         rowCount = parsed.dataRowCount
+        detailCount = parsed.operating.length + parsed.static.length + parsed.budget.length
         errorList = parsed.errors
         errorCount = parsed.errors.length
-
-        if (parsed.operating.length > 0) {
-          const res = await prisma.factOperating.createMany({ data: parsed.operating.map((r) => ({ ...r, batchId: batch.id })), skipDuplicates: true })
-          insertedCount += res.count
-        }
-        if (parsed.static.length > 0) {
-          const res = await prisma.factStatic.createMany({ data: parsed.static.map((r) => ({ ...r, batchId: batch.id })), skipDuplicates: true })
-          insertedCount += res.count
-        }
-        if (parsed.budget.length > 0) {
-          const res = await prisma.factBudget.createMany({ data: parsed.budget.map((r) => ({ ...r, batchId: batch.id })), skipDuplicates: true })
-          insertedCount += res.count
-        }
+        parsedOperating = parsed.operating
+        parsedStatic = parsed.static
+        parsedBudget = parsed.budget
       } else {
         // transaction/inventory 暂仅登记：统计数据行数
         const wb = XLSX.read(file.buffer, { type: 'buffer' })
         const first = wb.SheetNames[0]
         const gridRows = first ? (XLSX.utils.sheet_to_json(wb.Sheets[first], { header: 1, blankrows: false }) as unknown[][]) : []
         rowCount = Math.max(gridRows.length - 1, 0)
+        detailCount = rowCount
       }
     } catch {
       await prisma.importBatch.update({ where: { id: batch.id }, data: { status: 'failed' } })
       throw errors.badRequest('Excel 解析失败，请检查文件内容与模板类型')
     }
 
-    // 结算批次状态：有错且无有效数据→failed；有错但部分入库→partial；无错→success
-    const finalStatus = errorCount > 0 ? (insertedCount > 0 ? 'partial' : 'failed') : 'success'
-    const updated = await prisma.importBatch.update({
-      where: { id: batch.id },
-      data: {
-        status: finalStatus,
-        rowCount,
-        errorCount,
-        errorsJson: (errorList.slice(0, 200) as never) ?? undefined,
-      },
+    // 写入阶段：事务保证数据插入与批次状态更新的原子性
+    const updated = await prisma.$transaction(async (tx) => {
+      let insertedCount = 0
+      if (parsedOperating.length > 0) {
+        const res = await tx.factOperating.createMany({ data: parsedOperating.map((r) => ({ ...r, batchId: batch.id })), skipDuplicates: true })
+        insertedCount += res.count
+      }
+      if (parsedStatic.length > 0) {
+        const res = await tx.factStatic.createMany({ data: parsedStatic.map((r) => ({ ...r, batchId: batch.id })), skipDuplicates: true })
+        insertedCount += res.count
+      }
+      if (parsedBudget.length > 0) {
+        const res = await tx.factBudget.createMany({ data: parsedBudget.map((r) => ({ ...r, batchId: batch.id })), skipDuplicates: true })
+        insertedCount += res.count
+      }
+      // 结算批次状态：有错且无有效数据→failed；有错但部分入库→partial；无错→success
+      const finalStatus = errorCount > 0 ? (insertedCount > 0 ? 'partial' : 'failed') : 'success'
+      return tx.importBatch.update({
+        where: { id: batch.id },
+        data: {
+          status: finalStatus,
+          rowCount,
+          detailCount,
+          errorCount,
+          errorsJson: (errorList.slice(0, 200) as never) ?? undefined,
+        },
+      })
     })
-    await recordAudit({ userId, module: 'data', action: 'import', targetId: batch.id, detail: { templateType, rowCount, errorCount, insertedCount } }, traceId)
+    await recordAudit({ userId, module: 'data', action: 'import', targetId: batch.id, detail: { templateType, rowCount, errorCount } }, traceId)
     return toDto(updated)
   },
 
@@ -241,6 +360,41 @@ export const ImportService = {
       })
     })
     await recordAudit({ userId, module: 'data', action: 'update', targetId: id, detail: { action: 'activate' } }, traceId)
+    return toDto(updated)
+  },
+
+  /** 手动归档批次（高危，仅 superadmin）：置 archived，已归档则幂等返回 */
+  async archive(id: string, userId: string, traceId?: string): Promise<ImportBatchDto> {
+    const b = await prisma.importBatch.findUnique({ where: { id } })
+    if (!b) throw errors.notFound('导入批次不存在')
+    if (b.lifecycleStatus === 'archived') return toDto(b)
+    if (b.lifecycleStatus === 'purged') throw errors.conflict('已清除的批次不可归档')
+    const updated = await prisma.importBatch.update({ where: { id }, data: { lifecycleStatus: 'archived' } })
+    await recordAudit({ userId, module: 'data', action: 'update', targetId: id, detail: { action: 'archive' } }, traceId)
+    return toDto(updated)
+  },
+
+  /**
+   * 清除批次数据（高危，仅 superadmin）：物理删除该批次的全部事实明细，
+   * 批次记录保留并置 lifecycleStatus='purged' 留痕。生效中（active）批次拒绝。
+   */
+  async purge(id: string, userId: string, traceId?: string): Promise<ImportBatchDto> {
+    const b = await prisma.importBatch.findUnique({ where: { id } })
+    if (!b) throw errors.notFound('导入批次不存在')
+    if (b.lifecycleStatus === 'purged') return toDto(b)
+    if (b.lifecycleStatus === 'active') throw errors.conflict('生效中批次不可清除，请先归档')
+    const { updated, deletedRows } = await prisma.$transaction(async (tx) => {
+      const [op, st, bg, txn, inv] = await Promise.all([
+        tx.factOperating.deleteMany({ where: { batchId: id } }),
+        tx.factStatic.deleteMany({ where: { batchId: id } }),
+        tx.factBudget.deleteMany({ where: { batchId: id } }),
+        tx.transactionDetail.deleteMany({ where: { batchId: id } }),
+        tx.inventoryRecord.deleteMany({ where: { batchId: id } }),
+      ])
+      const batch = await tx.importBatch.update({ where: { id }, data: { lifecycleStatus: 'purged' } })
+      return { updated: batch, deletedRows: op.count + st.count + bg.count + txn.count + inv.count }
+    })
+    await recordAudit({ userId, module: 'data', action: 'delete', targetId: id, detail: { action: 'purge', deletedRows } }, traceId)
     return toDto(updated)
   },
 }

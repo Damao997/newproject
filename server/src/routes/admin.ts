@@ -14,7 +14,8 @@ import type { AuthUserContext } from '../types/express'
 const router = Router()
 
 function ctxOf(req: { authUser?: AuthUserContext; traceId: string }) {
-  return { userId: (req.authUser as AuthUserContext).userId, traceId: req.traceId }
+  const a = req.authUser as AuthUserContext
+  return { userId: a.userId, traceId: req.traceId, actorRoleId: a.roleId }
 }
 function pageParams(q: Record<string, unknown>) {
   const page = Math.max(Number(q.page) || 1, 1)
@@ -53,6 +54,12 @@ router.put('/users/:id', requirePermission('admin:users:update', 'update'), asyn
 
 router.delete('/users/:id', requirePermission('admin:users:delete', 'delete'), asyncHandler(async (req, res) => {
   await AdminService.disableUser(req.params.id as string, ctxOf(req))
+  sendOk(res, null)
+}))
+
+// 彻底删除用户（高危，仅 superadmin）：需先停用，不可删自己/最后一个超管
+router.delete('/users/:id/purge', requirePermission('admin:users:purge', 'delete'), asyncHandler(async (req, res) => {
+  await AdminService.purgeUser(req.params.id as string, ctxOf(req))
   sendOk(res, null)
 }))
 

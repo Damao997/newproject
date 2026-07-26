@@ -51,7 +51,19 @@ const PERMISSIONS: { resource: string; action: string }[] = [
   { resource: 'data:subject:create', action: 'create' },
   { resource: 'data:subject:update', action: 'update' },
   { resource: 'data:subject:delete', action: 'delete' },
+  { resource: 'data:reclassify:company', action: 'update' },
+  { resource: 'data:reclassify:subject', action: 'update' },
   { resource: 'data:export', action: 'export' },
+  // 数据管理（高危操作，仅 superadmin）
+  { resource: 'data:metric:approve', action: 'approve' },
+  { resource: 'data:formula-rule:manage', action: 'manage' },
+  { resource: 'data:import:archive', action: 'import' },
+  { resource: 'data:import:purge', action: 'delete' },
+  { resource: 'data:company:purge', action: 'delete' },
+  { resource: 'data:subject:purge', action: 'delete' },
+  { resource: 'data:metric:purge', action: 'delete' },
+  // 其他工具
+  { resource: 'tools:view', action: 'view' },
   // 权限管理
   { resource: 'admin:users:view', action: 'view' },
   { resource: 'admin:users:create', action: 'create' },
@@ -65,9 +77,29 @@ const PERMISSIONS: { resource: string; action: string }[] = [
   { resource: 'admin:roles:delete', action: 'delete' },
   { resource: 'admin:permissions:view', action: 'view' },
   { resource: 'admin:permissions:update', action: 'update' },
+  // 权限管理（高危操作，仅 superadmin）
+  { resource: 'admin:users:purge', action: 'delete' },
 ]
 
 const ALL_RESOURCES = PERMISSIONS.map((p) => p.resource)
+
+// ---- 高危操作权限码：仅授予 superadmin，admin 及其他角色一律排除 ----
+const HIGH_RISK_RESOURCES = [
+  'data:metric:approve',
+  'data:formula-rule:manage',
+  'data:import:archive',
+  'data:import:purge',
+  'data:company:purge',
+  'data:subject:purge',
+  'data:metric:purge',
+  'admin:users:purge',
+]
+
+/** superadmin：全量（含高危码） */
+const SUPERADMIN_GRANTS = ALL_RESOURCES
+
+/** admin：全部常规权限，不含高危码 */
+const ADMIN_GRANTS = ALL_RESOURCES.filter((r) => !HIGH_RISK_RESOURCES.includes(r))
 
 // ---- 各角色授予的 resource 集合（依据附录 C 权限矩阵）----
 const FINANCE_MANAGER_GRANTS = [
@@ -78,6 +110,8 @@ const FINANCE_MANAGER_GRANTS = [
   'inventory:view', 'inventory:export',
   'reports:view', 'reports:create', 'reports:update', 'reports:export',
   'data:browse:view', 'data:import:upload', 'data:export',
+  'data:reclassify:company', 'data:reclassify:subject',
+  'tools:view',
 ]
 
 const DEPARTMENT_MANAGER_GRANTS = [
@@ -87,6 +121,7 @@ const DEPARTMENT_MANAGER_GRANTS = [
   'inventory:view', 'inventory:export',
   'reports:view', 'reports:export',
   'data:browse:view',
+  'tools:view',
 ]
 
 const VIEWER_GRANTS = [
@@ -95,9 +130,9 @@ const VIEWER_GRANTS = [
   'reports:view',
 ]
 
-// 财务分析师兼IT：财务分析全权限 + 权限管理仅 users（不含 roles/permissions）
+// 财务分析师兼IT：财务分析全权限 + 权限管理仅 users（不含 roles/permissions/高危码）
 const ANALYST_IT_GRANTS = ALL_RESOURCES.filter(
-  (r) => !r.startsWith('admin:roles') && !r.startsWith('admin:permissions'),
+  (r) => !r.startsWith('admin:roles') && !r.startsWith('admin:permissions') && !HIGH_RISK_RESOURCES.includes(r),
 )
 
 interface RoleSeed {
@@ -109,7 +144,8 @@ interface RoleSeed {
 }
 
 const ROLES: RoleSeed[] = [
-  { code: 'admin', name: '管理员', description: '系统全权管理员，全部公司', scopeValue: '*', grants: ALL_RESOURCES },
+  { code: 'superadmin', name: '超级管理员', description: '最高权限管理员，含物理删除/审批等高危操作，全部公司', scopeValue: '*', grants: SUPERADMIN_GRANTS },
+  { code: 'admin', name: '管理员', description: '系统全权管理员，全部公司', scopeValue: '*', grants: ADMIN_GRANTS },
   { code: 'finance_manager', name: '财务主管', description: '财务数据管理+分析；不含权限管理与数据结构管理', scopeValue: '', grants: FINANCE_MANAGER_GRANTS },
   { code: 'department_manager', name: '部门经理', description: '仅本事业部；看板/指标/往来/存货查看导出+催收计划', scopeValue: '', grants: DEPARTMENT_MANAGER_GRANTS },
   { code: 'viewer', name: '查看者', description: '仅看板/指标/报告查看；无导出/修改/导入', scopeValue: '', grants: VIEWER_GRANTS },
@@ -127,6 +163,7 @@ interface UserSeed {
 }
 
 const USERS: UserSeed[] = [
+  { username: 'superadmin', displayName: '超级管理员', roleCode: 'superadmin' },
   { username: 'admin', displayName: '系统管理员', roleCode: 'admin' },
   { username: 'finance.manager', displayName: '财务主管-张三', roleCode: 'finance_manager', companyCode: 'EN330059' },
   { username: 'dept.manager', displayName: '部门经理-李四', roleCode: 'department_manager', companyCode: 'EN330059' },

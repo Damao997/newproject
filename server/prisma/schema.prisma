@@ -127,9 +127,11 @@ model Company {
   id               String       @id @default(uuid())
   code             String       @unique
   name             String
+  shortName        String?      @map("short_name") @db.VarChar(100)
   entityType       EntityType   @map("entity_type")
   legalEntity      String?      @map("legal_entity")
   managementEntity String?      @map("management_entity")
+  businessUnit    String?      @map("business_unit")
   parentCode       String?      @map("parent_code")
   status           RecordStatus @default(active)
   orderNo          Int          @default(0) @map("order_no")
@@ -295,26 +297,88 @@ model FactBudget {
   @@map("fact_budget")
 }
 
+// 4.4 重分类记录表（跨公司/科目归类调整的审计追溯）
+model ReclassificationLog {
+  id            String   @id @default(uuid())
+  type          String // 'company' | 'subject'
+  templateType  String?  @map("template_type")
+  sourceCompany String?  @map("source_company")
+  targetCompany String?  @map("target_company")
+  sourceSubject String?  @map("source_subject")
+  targetSubject String?  @map("target_subject")
+  periodFrom    String?  @map("period_from")
+  periodTo      String?  @map("period_to")
+  affectedRows  Int      @default(0) @map("affected_rows")
+  operatedBy    String   @map("operated_by")
+  detail        Json?    @db.JsonB
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([type, createdAt])
+  @@map("reclassification_log")
+}
+
 // ============================================================
 // 五、业务表
 // ============================================================
 
-// 5.1 往来明细表
+// 5.1 往来明细表（六大往来：应收/其他应收/预收/应付/其他应付/预付）
 model TransactionDetail {
-  id               String  @id @default(uuid())
-  batchId          String? @map("batch_id")
-  companyCode      String  @map("company_code")
-  counterpartyCode String  @map("counterparty_code")
-  accountCode      String  @map("account_code")
-  period           String
-  openingBalance   Decimal @map("opening_balance") @db.Decimal(18, 2)
-  debitAmount      Decimal @map("debit_amount") @db.Decimal(18, 2)
-  creditAmount     Decimal @map("credit_amount") @db.Decimal(18, 2)
-  closingBalance   Decimal @map("closing_balance") @db.Decimal(18, 2)
-  rawJson          Json?   @map("raw_json") @db.JsonB
+  id               String   @id @default(uuid())
+  batchId          String?  @map("batch_id")
+  companyCode      String   @map("company_code")
+  companyName      String?  @map("company_name")
+  transactionType  String   @map("transaction_type") // 应付账款/其他应付款/预付账款/应收账款/其他应收款/预收账款
+  direction        String   // AR / AP
+  cutoffDate       String?  @map("cutoff_date") // 截止日期
+  counterpartyCode String   @map("counterparty_code")
+  counterpartyName String?  @map("counterparty_name")
+  accountCode      String   @map("account_code")
+  accountDesc      String?  @map("account_desc")
+  subCode          String?  @map("sub_code")
+  subName          String?  @map("sub_name")
+  sourceType       String?  @map("source_type")
+  documentNo       String?  @map("document_no")
+  documentLineNo   String?  @map("document_line_no")
+  bookingDate      String?  @map("booking_date")
+  dueDate          String?  @map("due_date")
+  internalArea     String?  @map("internal_area")
+  product          String?
+  productDesc      String?  @map("product_desc")
+  project          String?
+  projectDesc      String?  @map("project_desc")
+  remark           String?
+  agingDays        Int?     @map("aging_days")
+  openingBalance   Decimal  @default(0) @map("opening_balance") @db.Decimal(18, 2)
+  debitAmount      Decimal  @default(0) @map("debit_amount") @db.Decimal(18, 2)
+  creditAmount     Decimal  @default(0) @map("credit_amount") @db.Decimal(18, 2)
+  closingBalance   Decimal  @default(0) @map("closing_balance") @db.Decimal(18, 2)
+  // 账龄段（10段）
+  aging1m          Decimal  @default(0) @map("aging_1m") @db.Decimal(18, 2)
+  aging2m          Decimal  @default(0) @map("aging_2m") @db.Decimal(18, 2)
+  aging3m          Decimal  @default(0) @map("aging_3m") @db.Decimal(18, 2)
+  aging4m          Decimal  @default(0) @map("aging_4m") @db.Decimal(18, 2)
+  aging5m          Decimal  @default(0) @map("aging_5m") @db.Decimal(18, 2)
+  aging6m          Decimal  @default(0) @map("aging_6m") @db.Decimal(18, 2)
+  aging6mTo1y      Decimal  @default(0) @map("aging_6m_to_1y") @db.Decimal(18, 2)
+  aging1yTo2y      Decimal  @default(0) @map("aging_1y_to_2y") @db.Decimal(18, 2)
+  aging2yTo3y      Decimal  @default(0) @map("aging_2y_to_3y") @db.Decimal(18, 2)
+  aging3yPlus      Decimal  @default(0) @map("aging_3y_plus") @db.Decimal(18, 2)
+  agingTotal       Decimal  @default(0) @map("aging_total") @db.Decimal(18, 2)
+  // 内部往来标记
+  isInternal       Boolean  @default(false) @map("is_internal")
+  internalType     String?  @map("internal_type") // 内部抵消 / 内部关联(标记) / 外部
+  internalPeerCode String?  @map("internal_peer_code")
+  isEliminated     Boolean  @default(false) @map("is_eliminated")
+  isSettled        Boolean  @default(false) @map("is_settled")
+  sourceFile       String?  @map("source_file")
+  period           String?
+  rawJson          Json?    @map("raw_json") @db.JsonB
+  createdAt        DateTime @default(now()) @map("created_at")
 
-  @@index([companyCode, period])
+  @@index([companyCode, transactionType])
   @@index([counterpartyCode])
+  @@index([batchId])
+  @@index([isInternal, internalType])
   @@map("transaction_detail")
 }
 
@@ -507,6 +571,7 @@ model User {
   passwordHash    String       @map("password_hash")
   roleId          String       @map("role_id")
   companyCode     String?      @map("company_code")
+  orgScopeBu    Json?        @map("org_scope_bu") @db.JsonB
   status          RecordStatus @default(active)
   refreshTokenJti String?      @map("refresh_token_jti")
   createdAt       DateTime     @default(now()) @map("created_at")
@@ -624,6 +689,7 @@ model ImportBatch {
   period          String?
   status          ImportStatus
   rowCount        Int             @default(0) @map("row_count")
+  detailCount     Int             @default(0) @map("detail_count")
   errorCount      Int             @default(0) @map("error_count")
   mappingSchemeId String?         @map("mapping_scheme_id")
   sourceType      String?         @map("source_type")
@@ -715,4 +781,46 @@ model FormulaRule {
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   @@map("formula_rule")
+}
+
+// ============================================================
+// 八、其他工具
+// ============================================================
+
+// 8.1 企业工商信息缓存表（外部 Provider 查询结果，带有效期）
+model EnterpriseInfo {
+  id                String   @id @default(uuid())
+  creditCode        String   @unique @map("credit_code") // 统一社会信用代码
+  name              String // 企业名称
+  legalPerson       String?  @map("legal_person") // 法定代表人
+  registeredCapital String?  @map("registered_capital") // 注册资本（原样字符串）
+  establishDate     String?  @map("establish_date") // 成立日期 YYYY-MM-DD
+  status            String? // 经营状态（在业/注销/吊销等）
+  companyType       String?  @map("company_type") // 企业类型
+  industry          String? // 所属行业
+  registeredAddress String?  @map("registered_address") // 注册地址
+  businessScope     String?  @map("business_scope") // 经营范围
+  raw               Json?    @db.JsonB // 厂商原始返回
+  provider          String // 数据来源 mock/tianyancha/...
+  fetchedAt         DateTime @map("fetched_at") // 拉取时间
+  expiresAt         DateTime @map("expires_at") // 缓存过期时间
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@index([name])
+  @@index([expiresAt])
+  @@map("enterprise_info")
+}
+
+// 8.2 企业工商查询历史表（按用户记录）
+model EnterpriseQueryLog {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  keyword     String // 查询关键词（名称或信用代码）
+  matchedName String?  @map("matched_name") // 命中企业名（未命中为空）
+  fromCache   Boolean  @default(false) @map("from_cache")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@map("enterprise_query_log")
 }

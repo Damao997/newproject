@@ -1,8 +1,35 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios'
 import { useAuthStore } from '@/stores/authStore'
-import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse, FilterParams, KpiData, TrendData, Alert, ImportBatch, Company, AggregationMap, AccountSubject, Metric, Role, Permission } from '@/types'
+import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse, FilterParams, KpiData, TrendData, Alert, ImportBatch, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog } from '@/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+
+/** 导入预览（dry-run）返回结构：计数 + 错误明细 + 覆盖摘要 + 激活影响预告 + 看板 KPI 覆盖检查 */
+export interface ImportPreviewResult {
+  dataRowCount: number
+  errorCount: number
+  operatingCount: number
+  staticCount: number
+  budgetCount: number
+  errors: { row: number; column: string; message: string }[]
+  sampleRows?: { headers: string[]; rows: (string | number)[][] }
+  summary?: {
+    companyCount: number
+    subjectCount: number
+    periodRange: { min: string | null; max: string | null }
+    totalValue: number
+    zeroValueCount: number
+    duplicateCount: number
+    duplicateSamples: string[]
+  }
+  activationImpact?: {
+    activeBatch: { id: string; filename: string } | null
+    newPeriods: string[]
+    overlappingPeriods: string[]
+    vanishingPeriods: string[]
+  } | null
+  kpiCoverage?: { covered: string[]; missing: string[] } | null
+}
 
 class ApiClient {
   private client: AxiosInstance
@@ -177,6 +204,13 @@ class ApiClient {
     })
   }
 
+  async getAvailablePeriods(): Promise<string[]> {
+    return this.request({
+      method: 'GET',
+      url: '/indicators/periods',
+    })
+  }
+
   async getIndicatorByCode(code: string): Promise<any> {
     return this.request({
       method: 'GET',
@@ -238,6 +272,22 @@ class ApiClient {
     })
   }
 
+  /** 手动归档批次（高危，仅 superadmin） */
+  async archiveImport(id: string): Promise<void> {
+    return this.request({
+      method: 'POST',
+      url: `/data/imports/${id}/archive`,
+    })
+  }
+
+  /** 清除批次数据（高危，仅 superadmin）：物理删除事实明细，批次置 purged */
+  async purgeImport(id: string): Promise<void> {
+    return this.request({
+      method: 'POST',
+      url: `/data/imports/${id}/purge`,
+    })
+  }
+
   async getCrossTable(params: any): Promise<any> {
     return this.request({
       method: 'GET',
@@ -277,6 +327,14 @@ class ApiClient {
     })
   }
 
+  /** 彻底删除指标（高危，仅 superadmin）：需先停用 */
+  async purgeMetric(id: string): Promise<void> {
+    return this.request({
+      method: 'DELETE',
+      url: `/data/metrics/${id}/purge`,
+    })
+  }
+
   async getCompanies(): Promise<Company[]> {
     return this.request({
       method: 'GET',
@@ -296,6 +354,11 @@ class ApiClient {
     return this.request({ method: 'DELETE', url: `/data/companies/${id}` })
   }
 
+  /** 彻底删除公司（高危，仅 superadmin）：需先停用 */
+  async purgeCompany(id: string): Promise<void> {
+    return this.request({ method: 'DELETE', url: `/data/companies/${id}/purge` })
+  }
+
   async getAggregationMap(summaryCode?: string): Promise<AggregationMap[]> {
     return this.request({ method: 'GET', url: '/data/aggregation-map', params: summaryCode ? { summaryCode } : undefined })
   }
@@ -308,7 +371,30 @@ class ApiClient {
     return this.request({ method: 'DELETE', url: `/data/aggregation-map/${id}` })
   }
 
-  async previewImport(file: File, templateType: string): Promise<{ dataRowCount: number; errorCount: number; operatingCount: number; staticCount: number; budgetCount: number; errors: { row: number; column: string; message: string }[] }> {
+  // ---------------- 数据重分类 ----------------
+  async previewReclassifyCompany(data: {
+    templateType: string; sourceCompanyCode: string; targetCompanyCode: string
+    accountCodes?: string[]; periodFrom?: string; periodTo?: string
+  }): Promise<{ affectedRows: number; totalValue: number; conflictRows: number }> {
+    return this.request({ method: 'POST', url: '/data/reclassify/company/preview', data })
+  }
+
+  async reclassifyCompany(data: {
+    templateType: string; sourceCompanyCode: string; targetCompanyCode: string
+    accountCodes?: string[]; periodFrom?: string; periodTo?: string
+  }): Promise<{ affectedRows: number; mergedRows: number }> {
+    return this.request({ method: 'POST', url: '/data/reclassify/company', data })
+  }
+
+  async getReclassifyLogs(params?: FilterParams & { type?: string }): Promise<PaginatedResponse<ReclassifyLog>> {
+    return this.request({ method: 'GET', url: '/data/reclassify/logs', params })
+  }
+
+  async reclassifySubject(id: string, parentCode: string | null): Promise<AccountSubject> {
+    return this.request({ method: 'POST', url: `/data/subjects/${id}/reclassify`, data: { parentCode } })
+  }
+
+  async previewImport(file: File, templateType: string): Promise<ImportPreviewResult> {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('templateType', templateType)
@@ -369,6 +455,14 @@ class ApiClient {
     })
   }
 
+  /** 彻底删除科目（高危，仅 superadmin）：需先停用 */
+  async purgeSubject(id: string): Promise<void> {
+    return this.request({
+      method: 'DELETE',
+      url: `/data/subjects/${id}/purge`,
+    })
+  }
+
   async exportData(params: FilterParams & { format: 'excel' | 'pdf' }): Promise<Blob> {
     const response = await this.client.get('/data/export', {
       params,
@@ -406,6 +500,14 @@ class ApiClient {
     return this.request({
       method: 'DELETE',
       url: `/admin/users/${id}`,
+    })
+  }
+
+  /** 彻底删除用户（高危，仅 superadmin）：需先停用 */
+  async purgeUser(id: string): Promise<void> {
+    return this.request({
+      method: 'DELETE',
+      url: `/admin/users/${id}/purge`,
     })
   }
 
@@ -497,6 +599,20 @@ class ApiClient {
     return this.request({
       method: 'POST',
       url: '/ai/formula',
+      data,
+    })
+  }
+
+  async checkFormulas(data: { items: { code: string; name: string; formula: string }[]; subjectType?: string }): Promise<{
+    code: string
+    riskLevel: 'low' | 'medium' | 'high' | 'unknown'
+    issues: string[]
+    suggestion: string | null
+    ruleWarnings: string[]
+  }[]> {
+    return this.request({
+      method: 'POST',
+      url: '/ai/formula/check',
       data,
     })
   }
@@ -640,6 +756,44 @@ class ApiClient {
   async exportReport(id: string, format: 'docx' | 'pdf'): Promise<ReportExportData> {
     return this.request({ method: 'GET', url: `/reports/${id}/export`, params: { format } })
   }
+
+  // ============ 往来分析 ============
+  async getTransactionOverview(companyCode?: string) {
+    return this.request({ method: 'GET', url: '/transactions/overview', params: { companyCode } })
+  }
+
+  async getTransactionDetails(params: Record<string, unknown>) {
+    return this.request({ method: 'GET', url: '/transactions/details', params })
+  }
+
+  async getTransactionAging(params: { companyCode?: string; transactionType?: string; groupBy?: string }) {
+    return this.request({ method: 'GET', url: '/transactions/aging', params })
+  }
+
+  async getInternalSummary(companyCode?: string) {
+    return this.request({ method: 'GET', url: '/transactions/internal/summary', params: { companyCode } })
+  }
+
+  async getInternalMirrorCheck(companyCode?: string) {
+    return this.request({ method: 'GET', url: '/transactions/internal/mirror-check', params: { companyCode } })
+  }
+
+  async getTransactionCounterparties(companyCode?: string) {
+    return this.request({ method: 'GET', url: '/transactions/counterparties', params: { companyCode } })
+  }
+
+  async getTransactionLatestCutoff() {
+    return this.request({ method: 'GET', url: '/transactions/latest-cutoff' })
+  }
+
+  // ============ 其他工具 ============
+  async toolsEnterpriseSearch(keyword: string): Promise<EnterpriseSearchResult | null> {
+    return this.request({ method: 'GET', url: '/tools/enterprise/search', params: { keyword } })
+  }
+
+  async toolsEnterpriseHistory(params: { page?: number; pageSize?: number }): Promise<{ items: EnterpriseHistoryItem[]; total: number }> {
+    return this.request({ method: 'GET', url: '/tools/enterprise/history', params })
+  }
 }
 
 // ============ 分析报告类型 ============
@@ -727,6 +881,31 @@ export interface ReportExportData {
   scopeName: string | null
   generatedAt: string
   sections: { title: string; content: string; plainText: string; missing: boolean }[]
+}
+
+// ============ 其他工具类型 ============
+export interface EnterpriseSearchResult {
+  name: string
+  creditCode: string
+  legalPerson: string | null
+  registeredCapital: string | null
+  establishDate: string | null
+  status: string | null
+  companyType: string | null
+  industry: string | null
+  registeredAddress: string | null
+  businessScope: string | null
+  fromCache: boolean
+  provider: string
+  fetchedAt: string
+}
+
+export interface EnterpriseHistoryItem {
+  id: string
+  keyword: string
+  matchedName: string | null
+  fromCache: boolean
+  createdAt: string
 }
 
 export const api = new ApiClient()

@@ -14,15 +14,15 @@ import {
 import { PageContainer } from '@/components/layout/page-container'
 import { MetricTree } from '@/components/subject-tree/metric-tree'
 import { AnalysisDrawer, type AnalysisTarget } from '@/components/indicators/analysis-drawer'
+import { ReclassifyCompanyDialog } from '@/components/reclassify/reclassify-company-dialog'
+import { ReclassifyLogsDialog } from '@/components/reclassify/reclassify-logs-dialog'
 import { usePermission } from '@/hooks/usePermission'
-import { useCompanies, useOperatingIndicators, useStaticIndicators, type OperatingRow, type StaticRow } from '@/hooks/api-queries'
+import { useCompanies, useOperatingIndicators, useStaticIndicators, useAvailablePeriods, type OperatingRow, type StaticRow } from '@/hooks/api-queries'
 import { exportToExcel } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import type { MetricValue } from '@/lib/metric-values'
-import { Download, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
+import { Download, ChevronsDownUp, ChevronsUpDown, ArrowLeftRight, History } from 'lucide-react'
 import type { SubjectNode } from '@/types'
-
-const periods = ['2025-06', '2025-05', '2025-04', '2025-03', '2025-02', '2025-01']
 
 /** 收集含子节点的科目编码（用于全部展开） */
 function collectExpandableCodes(nodes: SubjectNode[]): string[] {
@@ -74,14 +74,31 @@ export default function IndicatorsPage() {
   const { can } = usePermission()
   const [activeTab, setActiveTab] = useState<'operating' | 'static'>('operating')
   const [dimFilter, setDimFilter] = useState('all')
-  const [periodFilter, setPeriodFilter] = useState('2025-06')
+  const [periodFilter, setPeriodFilter] = useState('')
   const [expandedCodes, setExpandedCodes] = useState<Set<string>>(new Set())
   const [analysisTarget, setAnalysisTarget] = useState<AnalysisTarget | null>(null)
+  const [reclassifyOpen, setReclassifyOpen] = useState(false)
+  const [reclassifyLogsOpen, setReclassifyLogsOpen] = useState(false)
 
   const isOperating = activeTab === 'operating'
 
-  // 主体维度：company:CODE → 精确公司；all/summary/bu → 不传（后端按 scope 汇总，summary/BU 展开为后续项）
-  const companyCode = dimFilter.startsWith('company:') ? dimFilter.slice('company:'.length) : undefined
+  const { data: dynamicPeriods } = useAvailablePeriods()
+  const periods = dynamicPeriods ?? []
+
+  useEffect(() => {
+    if (periods.length === 0) return
+    // 首次加载（periodFilter 为空）默认选中最新期间；已选期间不存在时回退最新
+    if (periodFilter === '' || (!periods.includes(periodFilter) && periodFilter !== 'all')) {
+      setPeriodFilter(periods[periods.length - 1])
+    }
+  }, [periods])
+
+  // 主体维度：company:CODE / summary:CODE → 传对应编码；all → 不传（后端按 scope 汇总）
+  const companyCode = dimFilter.startsWith('company:')
+    ? dimFilter.slice('company:'.length)
+    : dimFilter.startsWith('summary:')
+      ? dimFilter.slice('summary:'.length)
+      : undefined
   const period = periodFilter === 'all' ? undefined : periodFilter
 
   const { data: companies } = useCompanies()
@@ -138,7 +155,7 @@ export default function IndicatorsPage() {
       return
     }
     const companyName = entityCompanies.find((c) => c.code === companyCode)?.name ?? companyCode
-    const effectivePeriod = period ?? '2025-06'
+    const effectivePeriod = period ?? periods[periods.length - 1] ?? ''
     setAnalysisTarget({
       companyCode,
       companyName,
@@ -208,12 +225,26 @@ export default function IndicatorsPage() {
       description="按科目层级查看经营指标和静态指标数据"
       className="space-y-3"
       actions={
-        can('indicators', 'export') ? (
-          <Button variant="outline" size="sm" onClick={handleExport} disabled={isLoading || activeItems.length === 0}>
-            <Download className="mr-2 h-4 w-4" />
-            导出Excel
-          </Button>
-        ) : null
+        <div className="flex items-center gap-2">
+          {can('data:reclassify', 'company') && (
+            <Button variant="outline" size="sm" onClick={() => setReclassifyOpen(true)}>
+              <ArrowLeftRight className="mr-2 h-4 w-4" />
+              重分类
+            </Button>
+          )}
+          {can('data:reclassify', 'company') && (
+            <Button variant="outline" size="sm" onClick={() => setReclassifyLogsOpen(true)}>
+              <History className="mr-2 h-4 w-4" />
+              重分类记录
+            </Button>
+          )}
+          {can('indicators', 'export') ? (
+            <Button variant="outline" size="sm" onClick={handleExport} disabled={isLoading || activeItems.length === 0}>
+              <Download className="mr-2 h-4 w-4" />
+              导出Excel
+            </Button>
+          ) : null}
+        </div>
       }
     >
       {/* 筛选栏 */}
@@ -301,6 +332,17 @@ export default function IndicatorsPage() {
 
       {/* 单项分析抽屉 */}
       <AnalysisDrawer open={analysisTarget !== null} target={analysisTarget} onClose={() => setAnalysisTarget(null)} />
+
+      {/* 跨公司重分类 */}
+      <ReclassifyCompanyDialog
+        open={reclassifyOpen}
+        onClose={() => setReclassifyOpen(false)}
+        defaultTemplateType={activeTab}
+        defaultSourceCompany={dimFilter.startsWith('company:') ? dimFilter.slice('company:'.length) : undefined}
+      />
+
+      {/* 重分类记录 */}
+      <ReclassifyLogsDialog open={reclassifyLogsOpen} onClose={() => setReclassifyLogsOpen(false)} />
     </PageContainer>
   )
 }

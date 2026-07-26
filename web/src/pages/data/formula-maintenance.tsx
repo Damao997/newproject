@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -28,14 +28,17 @@ import {
   useUpdateMetric,
   useCreateMetric,
   useDeleteMetric,
+  usePurgeMetric,
   useFormulaRules,
   useBatchPreviewFormulas,
   useBatchApplyFormulas,
   useTrialCalc,
   useDependencies,
+  useCheckFormulas,
   type FormulaGenItem,
+  type FormulaCheckItem,
 } from '@/hooks/api-queries'
-import { Pencil, Sparkles, Wand2, History, Trash2, MoreHorizontal, Plus, Settings2, Calculator } from 'lucide-react'
+import { Pencil, Sparkles, Wand2, History, Trash2, MoreHorizontal, Plus, Settings2, Calculator, Download, ShieldCheck, ShieldAlert } from 'lucide-react'
 import { HistoryDialog } from './formula-history-dialog'
 import { RuleManageDialog } from './formula-rule-dialog'
 import { useConfirm } from '@/components/ui/confirm-dialog'
@@ -46,14 +49,32 @@ interface CalcMetricRow {
   name: string
   category: string
   formula: string | null
+  status: string
 }
 
 const PAGE_SIZE = PAGINATION.DEFAULT_PAGE_SIZE
+/** 批量 AI 体检单次请求条数（后端单次上限 30） */
+const AI_CHECK_CHUNK = 20
+
+/** 风险等级徽章 */
+function riskBadge(level: FormulaCheckItem['riskLevel']) {
+  if (level === 'high') return <Badge variant="destructive">高风险</Badge>
+  if (level === 'medium') return <Badge variant="warning">中风险</Badge>
+  if (level === 'low') return <Badge variant="success">低风险</Badge>
+  return <Badge variant="secondary">未知</Badge>
+}
+
+const RISK_ORDER: Record<FormulaCheckItem['riskLevel'], number> = { high: 0, medium: 1, unknown: 2, low: 3 }
 
 interface FormulaMaintenanceProps {
   canCreate?: boolean
   canUpdate?: boolean
   canDelete?: boolean
+  canManageRule?: boolean
+  /** 指标审批（高危，仅 superadmin）；未传时回退为可编辑即可审批的旧行为 */
+  canApprove?: boolean
+  /** 彻底删除已停用指标（物理删除，仅 superadmin） */
+  canPurge?: boolean
   /** 兼容旧用法：仅传 canManage 时按 update 处理 */
   canManage?: boolean
 }
@@ -63,9 +84,11 @@ interface FormulaMaintenanceProps {
  * 功能：列表（中文公式展示）、新建/编辑/删除、AI 辅助生成、批量规则生成（勾选应用）、
  * 公式试算、依赖影响分析、版本历史与回滚、轻量审批、公式规则库管理、经营/静态切换。
  */
-export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDelete = false, canManage }: FormulaMaintenanceProps) {
+export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDelete = false, canManageRule, canApprove, canPurge = false, canManage }: FormulaMaintenanceProps) {
   // 兼容：canManage 视为可编辑
   const effectiveUpdate = canUpdate || !!canManage
+  const effectiveRuleManage = canManageRule ?? canCreate
+  const effectiveApprove = canApprove ?? effectiveUpdate
 
   const [subjectType, setSubjectType] = useState<'operating' | 'static'>('operating')
   const { data, isLoading } = useMetrics({ page: 1, pageSize: 1000 })
@@ -75,9 +98,11 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
   const updateMetric = useUpdateMetric()
   const createMetric = useCreateMetric()
   const deleteMetric = useDeleteMetric()
+  const purgeMetric = usePurgeMetric()
   const batchPreview = useBatchPreviewFormulas()
   const batchApply = useBatchApplyFormulas()
   const trialCalc = useTrialCalc()
+  const checkFormulas = useCheckFormulas()
 
   const [keyword, setKeyword] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
@@ -105,8 +130,19 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
   const [onlyApplicable, setOnlyApplicable] = useState(false)
   // 规则管理
   const [ruleOpen, setRuleOpen] = useState(false)
+  // AI 检测（单条，编辑对话框内）
+  const [aiCheck, setAiCheck] = useState<FormulaCheckItem | null>(null)
+  // AI 体检（批量）
+  const [aiScanOpen, setAiScanOpen] = useState(false)
+  const [aiScanResults, setAiScanResults] = useState<(FormulaCheckItem & { name: string; formula: string })[]>([])
+  const [aiScanError, setAiScanError] = useState<string | null>(null)
+  const [aiScanProgress, setAiScanProgress] = useState<{ done: number; total: number } | null>(null)
+  const [aiScanRisk, setAiScanRisk] = useState('all')
+  const aiScanCancelRef = useRef(false)
   const { confirm, element: confirmElement } = useConfirm()
   const [listError, setListError] = useState<string | null>(null)
+  const [subjectSearch, setSubjectSearch] = useState('')
+  const [showAggregate, setShowAggregate] = useState(false)
 
   // 编码 → 中文名称映射（公式中文展示）
   const codeNameMap = useMemo(() => {
@@ -121,6 +157,18 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
     return formula.replace(/\{([^}]+)\}/g, (_m, code: string) => codeNameMap.get(code.trim()) ?? `{${code}}`)
   }
 
+  const renderColoredFormula = (formula: string) => {
+    const parts = formula.split(/(\{[^}]+\})/g)
+    return parts.map((part, i) => {
+      if (part.startsWith('{') && part.endsWith('}')) {
+        const code = part.slice(1, -1).trim()
+        const name = codeNameMap.get(code)
+        return <Badge key={i} variant="secondary" className="mx-0.5 font-mono text-[11px]">{name ?? code}</Badge>
+      }
+      return <span key={i} className="font-mono">{part}</span>
+    })
+  }
+
   const calcMetrics: CalcMetricRow[] = useMemo(() => {
     const items = (data?.items ?? []) as unknown as Array<Record<string, unknown>>
     const prefix = subjectType === 'static' ? 'ST_' : 'OP_'
@@ -132,6 +180,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
         name: String(m.name),
         category: String(m.category ?? '—'),
         formula: (m.formula as string | null) ?? null,
+        status: String(m.status ?? 'active'),
       }))
   }, [data, subjectType])
 
@@ -205,6 +254,26 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
     return rows.sort((a, b) => a.code.localeCompare(b.code))
   }, [childrenMap, codeNameMap, subjectType])
 
+  const filteredSubjectsForInsert = useMemo(() => {
+    const items = (subjectsData?.items ?? []) as unknown as Array<Record<string, unknown>>
+    if (!subjectSearch.trim()) return items.slice(0, 50)
+    const kw = subjectSearch.trim().toLowerCase()
+    return items.filter((s) => String(s.name).toLowerCase().includes(kw) || String(s.code).toLowerCase().includes(kw)).slice(0, 100)
+  }, [subjectsData, subjectSearch])
+
+  const formulaValidation = useMemo(() => {
+    if (!draftFormula.trim()) return { valid: true, messages: [] as string[] }
+    const msgs: string[] = []
+    const codes = draftFormula.match(/\{([^}]+)\}/g)?.map((m) => m.slice(1, -1).trim()) ?? []
+    for (const c of codes) {
+      if (!codeNameMap.has(c)) msgs.push(`引用了不存在的编码：${c}`)
+    }
+    const expr = draftFormula.replace(/\{[^}]+\}/g, '0')
+    if (expr.trim() && !/^[0-9+\-*/().\s]+$/.test(expr)) msgs.push('包含非法字符（仅支持 +-*/() 数字）')
+    if (draftFormula.length > 500) msgs.push('公式长度超过 500 字符限制')
+    return { valid: msgs.length === 0, messages: msgs }
+  }, [draftFormula, codeNameMap])
+
   // ---------- 编辑 ----------
   const openEdit = (row: CalcMetricRow) => {
     setEditing(row)
@@ -212,6 +281,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
     setSaveError(null)
     setTrialResult(null)
     setShowDeps(false)
+    setAiCheck(null)
   }
 
   const saveFormula = async () => {
@@ -236,6 +306,16 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
     }
   }
 
+  const handlePurge = async (row: CalcMetricRow) => {
+    if (!(await confirm({ title: '彻底删除指标', description: `将物理删除指标「${row.name}」（${row.code}）及其全部公式历史版本，此操作不可恢复！`, danger: true, confirmText: '彻底删除' }))) return
+    setListError(null)
+    try {
+      await purgeMetric.mutateAsync(row.id)
+    } catch (err) {
+      setListError(err instanceof Error ? err.message : '彻底删除失败')
+    }
+  }
+
   const handleTrial = async () => {
     if (!draftFormula.trim()) return
     setTrialResult(null)
@@ -251,6 +331,62 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
   const insertSubject = (code: string) => {
     setDraftFormula((prev) => (prev ? `${prev} {${code}}` : `{${code}}`))
   }
+
+  // ---------- AI 检测（单条） ----------
+  const handleAiCheck = async () => {
+    if (!editing || !draftFormula.trim()) return
+    setAiCheck(null)
+    setSaveError(null)
+    try {
+      const res = await checkFormulas.mutateAsync({
+        items: [{ code: editing.code, name: editing.name, formula: draftFormula.trim() }],
+        subjectType,
+      })
+      setAiCheck(res[0] ?? null)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'AI 检测失败')
+    }
+  }
+
+  // ---------- AI 体检（批量，分块串行请求） ----------
+  const runAiScan = async () => {
+    const targets = calcMetrics.filter((m) => m.formula)
+    setAiScanOpen(true)
+    setAiScanResults([])
+    setAiScanError(null)
+    setAiScanRisk('all')
+    aiScanCancelRef.current = false
+    setAiScanProgress({ done: 0, total: targets.length })
+    if (targets.length === 0) return
+    const infoMap = new Map(targets.map((t) => [t.code, t]))
+    try {
+      for (let i = 0; i < targets.length; i += AI_CHECK_CHUNK) {
+        if (aiScanCancelRef.current) break
+        const chunk = targets.slice(i, i + AI_CHECK_CHUNK)
+        const res = await checkFormulas.mutateAsync({
+          items: chunk.map((m) => ({ code: m.code, name: m.name, formula: m.formula as string })),
+          subjectType,
+        })
+        setAiScanResults((prev) => [
+          ...prev,
+          ...res.map((r) => ({ ...r, name: infoMap.get(r.code)?.name ?? r.code, formula: infoMap.get(r.code)?.formula ?? '' })),
+        ])
+        setAiScanProgress({ done: Math.min(i + chunk.length, targets.length), total: targets.length })
+      }
+    } catch (err) {
+      setAiScanError(err instanceof Error ? err.message : 'AI 体检失败')
+    }
+  }
+
+  const closeAiScan = () => {
+    aiScanCancelRef.current = true
+    setAiScanOpen(false)
+  }
+
+  const displayedScanResults = useMemo(() => {
+    const list = aiScanRisk === 'all' ? aiScanResults : aiScanResults.filter((r) => r.riskLevel === aiScanRisk)
+    return [...list].sort((a, b) => RISK_ORDER[a.riskLevel] - RISK_ORDER[b.riskLevel] || a.code.localeCompare(b.code))
+  }, [aiScanResults, aiScanRisk])
 
   // ---------- 新建 ----------
   const submitCreate = async () => {
@@ -328,42 +464,61 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
 
   const columns: DataTableColumn<CalcMetricRow>[] = [
     { key: 'code', header: '科目编码', cellClassName: 'font-mono text-muted-foreground' },
-    { key: 'name', header: '科目名称', cellClassName: 'font-medium' },
+    {
+      key: 'name', header: '科目名称', cellClassName: 'font-medium',
+      render: (r) => (
+        <span>
+          {r.name}
+          {r.status !== 'active' && <Badge variant="secondary" className="ml-2">已停用</Badge>}
+        </span>
+      ),
+    },
     { key: 'category', header: '类别', cellClassName: 'text-muted-foreground' },
     {
       key: 'formula', header: '公式', cellClassName: 'font-mono',
       render: (r) => (r.formula ? formatFormula(r.formula) : <span className="text-muted-foreground">—</span>),
     },
     {
-      key: 'actions', header: '操作', align: 'right', render: (r) =>
-        (effectiveUpdate || canDelete) ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm">
-                <MoreHorizontal className="h-4 w-4" />
+      key: 'actions', header: '操作', align: 'right',
+      render: (r) =>
+        (effectiveUpdate || canDelete || canPurge) ? (
+          <div className="flex items-center justify-end gap-1">
+            {effectiveUpdate && (
+              <Button variant="ghost" size="sm" onClick={() => openEdit(r)} title="编辑公式">
+                <Pencil className="h-4 w-4" />
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {effectiveUpdate && (
-                <DropdownMenuItem onClick={() => openEdit(r)}>
-                  <Pencil className="mr-2 h-4 w-4" /> 编辑公式
-                </DropdownMenuItem>
-              )}
-              {effectiveUpdate && (
-                <DropdownMenuItem onClick={() => setHistoryMetric(r)}>
-                  <History className="mr-2 h-4 w-4" /> 历史/回滚
-                </DropdownMenuItem>
-              )}
-              {canDelete && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => handleDelete(r)}>
-                    <Trash2 className="mr-2 h-4 w-4" /> 停用
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {effectiveUpdate && (
+                  <DropdownMenuItem onClick={() => setHistoryMetric(r)}>
+                    <History className="mr-2 h-4 w-4" /> 历史/回滚
                   </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                )}
+                {canDelete && r.status === 'active' && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => handleDelete(r)}>
+                      <Trash2 className="mr-2 h-4 w-4" /> 停用
+                    </DropdownMenuItem>
+                  </>
+                )}
+                {canPurge && r.status !== 'active' && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handlePurge(r)}>
+                      <ShieldAlert className="mr-2 h-4 w-4" /> 彻底删除
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         ) : (
           <span className="text-muted-foreground">-</span>
         ),
@@ -409,9 +564,37 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
             <Wand2 className="mr-2 h-4 w-4" /> {batchPreview.isPending ? '生成中...' : '批量生成'}
           </Button>
         )}
-        {canCreate && (
+        {effectiveUpdate && (
+          <Button variant="outline" size="sm" onClick={runAiScan} disabled={checkFormulas.isPending}>
+            <ShieldCheck className="mr-2 h-4 w-4" /> AI 体检
+          </Button>
+        )}
+        {effectiveRuleManage && (
           <Button variant="ghost" size="sm" onClick={() => setRuleOpen(true)}>
             <Settings2 className="mr-2 h-4 w-4" /> 规则管理
+          </Button>
+        )}
+        {effectiveUpdate && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={async () => {
+              try {
+                const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || '/api/v1'}/data/metrics/formulas/export`, {
+                  headers: { Authorization: `Bearer ${localStorage.getItem('accessToken') ?? ''}` },
+                })
+                const json = await res.json()
+                const blob = new Blob([JSON.stringify(json.data, null, 2)], { type: 'application/json' })
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = `formula-export-${new Date().toISOString().slice(0, 10)}.json`
+                a.click()
+                URL.revokeObjectURL(url)
+              } catch { /* ignore */ }
+            }}
+          >
+            <Download className="mr-2 h-4 w-4" /> 导出公式
           </Button>
         )}
       </div>
@@ -433,25 +616,41 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
           </DialogHeader>
           <div className="space-y-2">
             <label className="text-sm font-medium">公式表达式</label>
-            <Input value={draftFormula} onChange={(e) => setDraftFormula(e.target.value)} placeholder="如：{OP_002} - {OP_030}" />
+            <Input value={draftFormula} onChange={(e) => setDraftFormula(e.target.value)} placeholder="如：{OP_002} - {OP_030}" maxLength={500} />
             {draftFormula.trim() && (
-              <p className="text-xs text-muted-foreground">中文预览：{formatFormula(draftFormula)}</p>
+              <p className="text-xs text-muted-foreground">中文预览：{renderColoredFormula(draftFormula)}</p>
+            )}
+            {draftFormula.trim() && (
+              formulaValidation.valid ? (
+                <p className="text-xs text-green-600">语法校验通过</p>
+              ) : (
+                <div className="space-y-0.5">
+                  {formulaValidation.messages.map((m, i) => (
+                    <p key={i} className="text-xs text-destructive">{m}</p>
+                  ))}
+                </div>
+              )
             )}
             {/* 插入科目 */}
             <div className="flex items-center space-x-2">
+              <Input
+                placeholder="搜索科目..."
+                value={subjectSearch}
+                onChange={(e) => setSubjectSearch(e.target.value)}
+                className="w-[160px] h-9"
+              />
               <Select value="" onValueChange={(code) => insertSubject(code)}>
                 <SelectTrigger className="w-[240px]">
-                  <SelectValue placeholder="插入科目（搜索选择）" />
+                  <SelectValue placeholder="选择科目插入" />
                 </SelectTrigger>
                 <SelectContent className="max-h-[280px]">
-                  {((subjectsData?.items ?? []) as unknown as Array<Record<string, unknown>>).map((s) => (
+                  {filteredSubjectsForInsert.map((s) => (
                     <SelectItem key={String(s.code)} value={String(s.code)}>
                       <span className="font-mono text-xs">{String(s.code)}</span> {String(s.name)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <span className="text-xs text-muted-foreground">选择后插入 {'{编码}'} 到公式</span>
             </div>
             <p className="text-xs text-muted-foreground">
               操作数用 {'{指标编码}'} 引用，仅支持四则运算与括号；保存时后端校验并检测依赖环。清空输入并保存可移除公式。
@@ -488,6 +687,34 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
                     取值：{trialResult.operands.map((o) => `${o.name}=${o.value}`).join('，')}
                   </p>
                 )}
+              </div>
+            )}
+          </div>
+
+          {/* AI 检测（语义审查，仅供参考） */}
+          <div className="space-y-2 rounded-lg border border-dashed p-3">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-1 text-sm font-medium">
+                <ShieldCheck className="h-4 w-4 text-primary" /> AI 检测
+              </label>
+              <Button variant="outline" size="sm" onClick={handleAiCheck} disabled={checkFormulas.isPending || !draftFormula.trim()}>
+                {checkFormulas.isPending ? '检测中...' : '开始检测'}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">AI 审查公式与指标名称的语义一致性与业务合理性，结果仅供参考，不影响保存。</p>
+            {aiCheck && (
+              <div className="space-y-1 rounded-md bg-muted/50 p-2 text-xs">
+                <p className="flex items-center gap-1">风险等级：{riskBadge(aiCheck.riskLevel)}</p>
+                {aiCheck.ruleWarnings.map((w, i) => (
+                  <p key={`rw-${i}`} className="text-destructive">• [规则] {w}</p>
+                ))}
+                {aiCheck.issues.map((m, i) => (
+                  <p key={`is-${i}`}>• {m}</p>
+                ))}
+                {aiCheck.issues.length === 0 && aiCheck.ruleWarnings.length === 0 && (
+                  <p className="text-green-600">未发现问题</p>
+                )}
+                {aiCheck.suggestion && <p className="text-muted-foreground">建议：{aiCheck.suggestion}</p>}
               </div>
             )}
           </div>
@@ -569,9 +796,31 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium">公式（可选）</label>
-              <Input value={createForm.formula} onChange={(e) => setCreateForm({ ...createForm, formula: e.target.value })} placeholder="如：{OP_057} / {OP_005}" />
+              <Input value={createForm.formula} onChange={(e) => setCreateForm({ ...createForm, formula: e.target.value })} placeholder="如：{OP_057} / {OP_005}" maxLength={500} />
               {createForm.formula.trim() && (
                 <p className="text-xs text-muted-foreground">中文预览：{formatFormula(createForm.formula)}</p>
+              )}
+              {createForm.formula.trim() && (
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        const res = await trialCalc.mutateAsync({ formula: createForm.formula.trim() })
+                        setTrialResult(res)
+                      } catch { /* ignore */ }
+                    }}
+                    disabled={trialCalc.isPending}
+                  >
+                    {trialCalc.isPending ? '试算中...' : '试算'}
+                  </Button>
+                  {trialResult && (
+                    <span className="text-xs text-muted-foreground">
+                      结果：{trialResult.value ?? '无法计算'}（期间 {trialResult.period ?? '—'}）
+                    </span>
+                  )}
+                </div>
               )}
             </div>
             {createError && <p className="text-xs text-destructive">{createError}</p>}
@@ -659,22 +908,27 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
           {/* 父子聚合只读预览（不落库） */}
           {!batchPreview.isPending && aggregatePreview.length > 0 && (
             <div className="space-y-2 rounded-lg border border-dashed p-3">
-              <p className="flex items-center gap-1 text-sm font-medium">
-                <Sparkles className="h-4 w-4 text-primary" /> 父子聚合关系预览
-                <span className="text-xs font-normal text-muted-foreground">（仅展示结构聚合关系，不自动应用/落库）</span>
-              </p>
-              <div className="max-h-[220px] overflow-y-auto">
-                <table className="w-full text-xs">
-                  <tbody>
-                    {aggregatePreview.map((a) => (
-                      <tr key={a.code} className="border-b">
-                        <td className="p-2 align-top">{a.name}<span className="ml-1 font-mono text-muted-foreground">{a.code}</span></td>
-                        <td className="p-2 align-top font-mono text-muted-foreground">= {formatFormula(a.formula)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <button
+                className="flex w-full items-center gap-1 text-sm font-medium"
+                onClick={() => setShowAggregate((v) => !v)}
+              >
+                <Sparkles className="h-4 w-4 text-primary" /> 父子聚合关系预览（{aggregatePreview.length} 项）
+                <span className="ml-auto text-xs text-muted-foreground">{showAggregate ? '收起' : '展开'}</span>
+              </button>
+              {showAggregate && (
+                <div className="max-h-[220px] overflow-y-auto">
+                  <table className="w-full text-xs">
+                    <tbody>
+                      {aggregatePreview.map((a) => (
+                        <tr key={a.code} className="border-b">
+                          <td className="p-2 align-top">{a.name}<span className="ml-1 font-mono text-muted-foreground">{a.code}</span></td>
+                          <td className="p-2 align-top font-mono text-muted-foreground">= {formatFormula(a.formula)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>
@@ -683,8 +937,111 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
             </span>
             <Button variant="outline" onClick={() => setBatchOpen(false)}>关闭</Button>
             <Button onClick={applyBatch} disabled={batchApply.isPending || validItems.length === 0}>
-              {batchApply.isPending ? '应用中...' : '确认应用'}
+              {batchApply.isPending ? `应用中（${validItems.length} 项）...` : `确认应用（${validItems.length} 项）`}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* AI 体检对话框（批量检测） */}
+      <Dialog open={aiScanOpen} onOpenChange={(open) => !open && closeAiScan()}>
+        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>AI 公式体检</DialogTitle>
+            <DialogDescription>
+              AI 逐条审查当前类型下已配公式的计算指标（语义一致性与业务合理性），结果仅供参考。
+            </DialogDescription>
+          </DialogHeader>
+          {aiScanError && <p className="text-sm text-destructive">{aiScanError}</p>}
+          {aiScanProgress && (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              {aiScanProgress.total === 0 ? (
+                <span>当前类型下没有已配公式的计算指标</span>
+              ) : (
+                <>
+                  <span>
+                    进度：{aiScanProgress.done} / {aiScanProgress.total}
+                    {checkFormulas.isPending && '（检测中...）'}
+                  </span>
+                  {checkFormulas.isPending && (
+                    <Button variant="ghost" size="sm" onClick={() => { aiScanCancelRef.current = true }}>停止</Button>
+                  )}
+                  <div className="ml-auto flex items-center gap-2">
+                    <span>风险筛选</span>
+                    <Select value={aiScanRisk} onValueChange={setAiScanRisk}>
+                      <SelectTrigger className="h-8 w-[120px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">全部</SelectItem>
+                        <SelectItem value="high">高风险</SelectItem>
+                        <SelectItem value="medium">中风险</SelectItem>
+                        <SelectItem value="low">低风险</SelectItem>
+                        <SelectItem value="unknown">未知</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          {aiScanResults.length > 0 && (
+            <div className="overflow-x-auto rounded-lg border">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/50">
+                    <th className="p-2 text-left font-medium">指标</th>
+                    <th className="p-2 text-left font-medium">公式</th>
+                    <th className="p-2 text-left font-medium">风险</th>
+                    <th className="p-2 text-left font-medium">问题与建议</th>
+                    <th className="p-2 text-right font-medium">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayedScanResults.length === 0 ? (
+                    <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">无匹配项</td></tr>
+                  ) : displayedScanResults.map((r) => (
+                    <tr key={r.code} className="border-b align-top">
+                      <td className="p-2">{r.name}<span className="ml-1 font-mono text-xs text-muted-foreground">{r.code}</span></td>
+                      <td className="p-2 font-mono text-xs">{formatFormula(r.formula)}</td>
+                      <td className="p-2">{riskBadge(r.riskLevel)}</td>
+                      <td className="p-2 text-xs">
+                        {r.ruleWarnings.map((w, i) => (
+                          <p key={`rw-${i}`} className="text-destructive">[规则] {w}</p>
+                        ))}
+                        {r.issues.map((m, i) => (
+                          <p key={`is-${i}`}>{m}</p>
+                        ))}
+                        {r.issues.length === 0 && r.ruleWarnings.length === 0 && <span className="text-muted-foreground">—</span>}
+                        {r.suggestion && <p className="text-muted-foreground">建议：{r.suggestion}</p>}
+                      </td>
+                      <td className="p-2 text-right">
+                        {effectiveUpdate && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title="编辑公式"
+                            onClick={() => {
+                              const row = calcMetrics.find((m) => m.code === r.code)
+                              if (row) { closeAiScan(); openEdit(row) }
+                            }}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <DialogFooter>
+            <span className="mr-auto text-xs text-muted-foreground">
+              {aiScanResults.length > 0 &&
+                `高风险 ${aiScanResults.filter((r) => r.riskLevel === 'high').length} 项，中风险 ${aiScanResults.filter((r) => r.riskLevel === 'medium').length} 项`}
+            </span>
+            <Button variant="outline" onClick={closeAiScan}>关闭</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -694,11 +1051,11 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
         metric={historyMetric}
         formatFormula={formatFormula}
         onClose={() => setHistoryMetric(null)}
-        canApprove={effectiveUpdate}
+        canApprove={effectiveApprove}
       />
 
       {/* 规则管理对话框 */}
-      <RuleManageDialog open={ruleOpen} onClose={() => setRuleOpen(false)} canUpdate={effectiveUpdate} canDelete={canDelete} />
+      <RuleManageDialog open={ruleOpen} onClose={() => setRuleOpen(false)} canUpdate={effectiveUpdate} canDelete={canDelete} formatFormula={formatFormula} />
       {confirmElement}
     </div>
   )
@@ -710,15 +1067,19 @@ function DependencyPanel({ metricId }: { metricId: string }) {
   if (isLoading) return <p className="text-xs text-muted-foreground">加载中...</p>
   if (!data) return null
   return (
-    <div className="space-y-1 text-xs">
-      <p>
-        依赖（本指标引用）：
-        {data.dependsOn.length > 0 ? data.dependsOn.map((d) => `${d.name}(${d.code})`).join('、') : '无'}
-      </p>
-      <p>
-        被依赖（引用本指标）：
-        {data.usedBy.length > 0 ? data.usedBy.map((d) => `${d.name}(${d.code})`).join('、') : '无'}
-      </p>
+    <div className="space-y-2 text-xs">
+      <div>
+        <p className="font-medium">依赖（本指标引用 {data.dependsOn.length} 个）：</p>
+        {data.dependsOn.length > 0 ? data.dependsOn.map((d) => (
+          <p key={d.code} className="ml-3 font-mono text-muted-foreground">├─ {d.name}（{d.code}）</p>
+        )) : <p className="ml-3 text-muted-foreground">无</p>}
+      </div>
+      <div>
+        <p className="font-medium">被依赖（引用本指标 {data.usedBy.length} 个）：</p>
+        {data.usedBy.length > 0 ? data.usedBy.map((d) => (
+          <p key={d.code} className="ml-3 font-mono text-muted-foreground">├─ {d.name}（{d.code}）</p>
+        )) : <p className="ml-3 text-muted-foreground">无</p>}
+      </div>
     </div>
   )
 }

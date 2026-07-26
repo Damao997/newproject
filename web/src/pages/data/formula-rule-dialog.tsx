@@ -25,6 +25,7 @@ interface RuleManageDialogProps {
   onClose: () => void
   canUpdate?: boolean
   canDelete?: boolean
+  formatFormula?: (f: string | null | undefined) => string
 }
 
 interface RuleRow {
@@ -38,7 +39,7 @@ interface RuleRow {
 /**
  * 公式规则库管理：规则的增删改与启停（规则用于批量生成公式）。
  */
-export function RuleManageDialog({ open, onClose, canUpdate = false, canDelete = false }: RuleManageDialogProps) {
+export function RuleManageDialog({ open, onClose, canUpdate = false, canDelete = false, formatFormula }: RuleManageDialogProps) {
   const { data, isLoading } = useFormulaRules()
   const createRule = useCreateFormulaRule()
   const updateRule = useUpdateFormulaRule()
@@ -54,6 +55,13 @@ export function RuleManageDialog({ open, onClose, canUpdate = false, canDelete =
   const [editTemplate, setEditTemplate] = useState('')
 
   const rules = (data ?? []) as unknown as RuleRow[]
+
+  const validateTemplate = (tpl: string): string | null => {
+    if (!tpl.trim()) return '公式模板不能为空'
+    const expr = tpl.replace(/\{[^}]+\}/g, '0')
+    if (!/^[0-9+\-*/().\s]+$/.test(expr)) return '模板含非法字符（仅支持 +-*/() 数字与 {编码} 引用）'
+    return null
+  }
 
   const handleCreate = async () => {
     setError(null)
@@ -124,10 +132,13 @@ export function RuleManageDialog({ open, onClose, canUpdate = false, canDelete =
                       {editingId === r.id ? (
                         <div className="flex items-center space-x-1">
                           <Input value={editTemplate} onChange={(e) => setEditTemplate(e.target.value)} className="h-8 font-mono" />
-                          <Button size="sm" onClick={() => handleSaveEdit(r.id)} disabled={updateRule.isPending}>保存</Button>
+                          <Button size="sm" onClick={() => handleSaveEdit(r.id)} disabled={updateRule.isPending || !!validateTemplate(editTemplate)}>保存</Button>
                         </div>
                       ) : (
-                        r.formulaTemplate
+                        <>
+                          {r.formulaTemplate}
+                          {formatFormula && <p className="text-xs text-muted-foreground">{formatFormula(r.formulaTemplate)}</p>}
+                        </>
                       )}
                     </td>
                     <td className="p-2">
@@ -165,8 +176,11 @@ export function RuleManageDialog({ open, onClose, canUpdate = false, canDelete =
               <Input value={newTemplate} onChange={(e) => setNewTemplate(e.target.value)} placeholder="公式模板（如：{OP_057} / {OP_005}）" />
             </div>
             <Input value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="说明（可选）" />
+            {newTemplate.trim() && validateTemplate(newTemplate) && (
+              <p className="text-xs text-destructive">{validateTemplate(newTemplate)}</p>
+            )}
             <div className="flex justify-end">
-              <Button size="sm" onClick={handleCreate} disabled={createRule.isPending}>
+              <Button size="sm" onClick={handleCreate} disabled={createRule.isPending || !!validateTemplate(newTemplate) || !newName.trim()}>
                 {createRule.isPending ? '创建中...' : '创建规则'}
               </Button>
             </div>

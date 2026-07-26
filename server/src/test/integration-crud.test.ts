@@ -2,7 +2,10 @@
 import { basePrisma, prisma } from '../lib/prisma'
 import { DataService } from '../services/DataService'
 import { AdminService } from '../services/AdminService'
+import { ImportService } from '../services/ImportService'
 import { FormulaRuleService } from '../services/FormulaRuleService'
+import { ReclassificationService } from '../services/ReclassificationService'
+import { OPERATING_DIMS } from '../lib/metric-values'
 
 /**
  * 数据/权限管理写路径集成测试（真实 DB）。
@@ -11,6 +14,7 @@ import { FormulaRuleService } from '../services/FormulaRuleService'
 
 let dbReady = false
 let adminId = ''
+let adminRoleId = ''
 const tempMetricCodes: string[] = []
 const tempUsernames: string[] = []
 const tempRoleCodes: string[] = []
@@ -18,9 +22,12 @@ const tempRoleCodes: string[] = []
 beforeAll(async () => {
   try {
     await basePrisma.$queryRaw`SELECT 1`
-    const admin = await prisma.user.findUnique({ where: { username: 'admin' }, select: { id: true } })
+    const admin = await prisma.user.findUnique({ where: { username: 'admin' }, select: { id: true, roleId: true } })
     dbReady = !!admin
-    if (admin) adminId = admin.id
+    if (admin) {
+      adminId = admin.id
+      adminRoleId = admin.roleId
+    }
   } catch {
     dbReady = false
   }
@@ -39,7 +46,7 @@ afterAll(async () => {
   await basePrisma.role.deleteMany({ where: { code: { in: tempRoleCodes } } }).catch(() => undefined)
 })
 
-const ctx = () => ({ userId: adminId, traceId: 'test' })
+const ctx = () => ({ userId: adminId, traceId: 'test', actorRoleId: adminRoleId })
 
 describe('科目 CRUD', () => {
   it('创建→更新→软删除（未引用科目）', async () => {
@@ -144,5 +151,214 @@ describe('用户与角色', () => {
     const logs = await AdminService.listAuditLogs({ page: 1, pageSize: 10 })
     expect(logs.total).toBeGreaterThanOrEqual(0)
     expect(Array.isArray(logs.items)).toBe(true)
+  })
+})
+
+describe('防越级提权（权限子集规则）', () => {
+  it('低权限操作者创建高权限角色用户 → 403', async () => {
+    if (!dbReady) return
+    const viewerRole = await basePrisma.role.findUnique({ where: { code: 'viewer' }, select: { id: true } })
+    if (!viewerRole) return
+    const username = `esc.user.${Date.now().toString(36)}`
+    await expect(
+      AdminService.createUser(
+        { username, name: '提权测试', password: 'Test@123456', role: 'admin' },
+        { userId: adminId, traceId: 'test', actorRoleId: viewerRole.id },
+      ),
+    ).rejects.toMatchObject({ code: 403 })
+  })
+
+  it('admin 不可分配/操作 superadmin；superadmin 受最后一人保护', async () => {
+    if (!dbReady) return
+    const superRole = await basePrisma.role.findUnique({ where: { code: 'superadmin' }, select: { id: true } })
+    if (!superRole) return // 未重新 seed 时跳过
+    // admin 创建 superadmin 用户 → 403（高危码不在 admin 权限集内）
+    const username = `esc.super.${Date.now().toString(36)}`
+    await expect(
+      AdminService.createUser({ username, name: '越级', password: 'Test@123456', role: 'superadmin' }, ctx()),
+    ).rejects.toMatchObject({ code: 403 })
+    // 仅剩一个活跃超管时，超管自身也不可停用它
+    const superUsers = await basePrisma.user.findMany({ where: { roleId: superRole.id, status: 'active' }, select: { id: true } })
+    if (superUsers.length === 1) {
+      await expect(
+        AdminService.disableUser(superUsers[0].id, { userId: adminId, traceId: 'test', actorRoleId: superRole.id }),
+      ).rejects.toMatchObject({ code: 409 })
+    }
+  })
+})
+
+describe('物理删除（purge）', () => {
+  it('指标：未停用不可 purge；停用后 purge 连同历史物理删除', async () => {
+    if (!dbReady) return
+    const code = `CALC_PG_${Date.now().toString(36)}`
+    tempMetricCodes.push(code)
+    const created = await DataService.createMetric({ code, name: 'purge测试', dataType: 'data', category: '自定义' }, ctx())
+    await expect(DataService.purgeMetric(created.id, ctx())).rejects.toMatchObject({ code: 400 })
+    await DataService.deleteMetric(created.id, ctx())
+    await DataService.purgeMetric(created.id, ctx())
+    const after = await basePrisma.metric.findUnique({ where: { code } })
+    expect(after).toBeNull()
+    const history = await basePrisma.metricDefinitionHistory.count({ where: { metricId: created.id } })
+    expect(history).toBe(0)
+  })
+
+  it('用户：未停用不可 purge；停用后 purge 物理删除', async () => {
+    if (!dbReady) return
+    const username = `purge.user.${Date.now().toString(36)}`
+    tempUsernames.push(username)
+    const created = await AdminService.createUser({ username, name: 'purge用户', password: 'Test@123456', role: 'viewer' }, ctx())
+    await expect(AdminService.purgeUser(created.id, ctx())).rejects.toMatchObject({ code: 400 })
+    await AdminService.disableUser(created.id, ctx())
+    await AdminService.purgeUser(created.id, ctx())
+    const after = await basePrisma.user.findUnique({ where: { username } })
+    expect(after).toBeNull()
+  })
+
+  it('批次：active 不可清除；归档后清除置 purged 且幂等', async () => {
+    if (!dbReady) return
+    const batch = await basePrisma.importBatch.create({
+      // 用 inventory 类型避免与并行测试中的 operating 生效批次查询互扰
+      data: { fileName: `purge-test-${Date.now().toString(36)}.xlsx`, status: 'success', dataType: 'inventory', lifecycleStatus: 'active' },
+    })
+    try {
+      await expect(ImportService.purge(batch.id, adminId, 'test')).rejects.toMatchObject({ code: 409 })
+      const archived = await ImportService.archive(batch.id, adminId, 'test')
+      expect(archived.status).toBe('archived')
+      const purged = await ImportService.purge(batch.id, adminId, 'test')
+      expect(purged.status).toBe('purged')
+      // 幂等：重复 purge 直接返回；已清除不可再归档
+      const again = await ImportService.purge(batch.id, adminId, 'test')
+      expect(again.status).toBe('purged')
+      await expect(ImportService.archive(batch.id, adminId, 'test')).rejects.toMatchObject({ code: 409 })
+    } finally {
+      await basePrisma.importBatch.delete({ where: { id: batch.id } }).catch(() => undefined)
+    }
+  })
+})
+
+describe('公式试算递归展开 calc 依赖', () => {
+  it('公式引用 calc 指标时返回展开后的值（修复前为 0）', async () => {
+    if (!dbReady) return
+    const batch = await basePrisma.importBatch.findFirst({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true } })
+    if (!batch) return
+    const latest = await basePrisma.factOperating.findFirst({ where: { batchId: batch.id }, orderBy: { period: 'desc' }, select: { period: true } })
+    if (!latest) return
+    const period = latest.period
+    const suffix = Date.now().toString(36)
+    const dataCode = `OP_TCD_${suffix}`
+    const calcCode = `OP_TCC_${suffix}`
+    tempMetricCodes.push(dataCode, calcCode)
+    try {
+      await DataService.createSubject({ code: dataCode, name: '试算数据叶', type: 'operating', level: 1, parentCode: 'OP_001', isLeaf: true }, ctx())
+      await DataService.createSubject({ code: calcCode, name: '试算计算项', type: 'operating', level: 1, parentCode: 'OP_001', isLeaf: true }, ctx())
+      await DataService.createMetric({ code: dataCode, name: '试算数据叶', dataType: 'data', category: '自定义' }, ctx())
+      await DataService.createMetric({ code: calcCode, name: '试算计算项', dataType: 'calc', formula: `{${dataCode}}`, category: '自定义' }, ctx())
+      await basePrisma.factOperating.create({
+        data: { batchId: batch.id, companyCode: 'EN330059', accountCode: dataCode, period, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: `FY${period.slice(0, 4)}`, value: 123.45 },
+      })
+      // 直接引用 calc 指标，应递归展开为其依赖的事实值
+      const res = await DataService.trialCalc({ formula: `{${calcCode}}`, companyCode: 'EN330059', period })
+      expect(res.value).toBe(123.45)
+      expect(res.operands[0].code).toBe(calcCode)
+      expect(res.operands[0].value).toBe(123.45)
+      expect(res.operands[0].hasData).toBe(true)
+      // 混合公式：calc + 常量
+      const res2 = await DataService.trialCalc({ formula: `{${calcCode}} * 2 + 10`, companyCode: 'EN330059', period })
+      expect(res2.value).toBe(256.9)
+    } finally {
+      await basePrisma.factOperating.deleteMany({ where: { accountCode: dataCode } }).catch(() => undefined)
+      await basePrisma.accountSubject.deleteMany({ where: { code: { in: [dataCode, calcCode] } } }).catch(() => undefined)
+    }
+  })
+})
+
+describe('跨公司重分类', () => {
+  it('preview + 执行：源公司数据改挂目标公司（含合并求和）', async () => {
+    if (!dbReady) return
+    const batch = await basePrisma.importBatch.findFirst({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true } })
+    if (!batch) return
+    const suffix = Date.now().toString(36)
+    const src = `RCS_${suffix}`
+    const tgt = `RCT_${suffix}`
+    await basePrisma.company.create({ data: { code: src, name: '重分类源', entityType: 'single', status: 'active' } })
+    await basePrisma.company.create({ data: { code: tgt, name: '重分类目标', entityType: 'single', status: 'active' } })
+    const scope = { companyCode: null, scopeValue: '*' }
+    try {
+      await basePrisma.factOperating.createMany({
+        data: [
+          { batchId: batch.id, companyCode: src, accountCode: 'OP_001', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 100 },
+          { batchId: batch.id, companyCode: src, accountCode: 'OP_001', period: '2026-06', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 200 },
+        ],
+      })
+      // 目标公司已有 OP_001@2026-05 (50) → 合并
+      await basePrisma.factOperating.create({ data: { batchId: batch.id, companyCode: tgt, accountCode: 'OP_001', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 50 } })
+
+      const pv = await ReclassificationService.previewCompany({ templateType: 'operating', sourceCompanyCode: src, targetCompanyCode: tgt }, scope)
+      expect(pv.affectedRows).toBe(2)
+      expect(pv.totalValue).toBe(300)
+      expect(pv.conflictRows).toBe(1)
+
+      const res = await ReclassificationService.reclassifyCompany({ templateType: 'operating', sourceCompanyCode: src, targetCompanyCode: tgt }, scope, { userId: adminId, traceId: 'test' })
+      expect(res.affectedRows).toBe(2)
+      expect(res.mergedRows).toBe(1)
+
+      expect(await basePrisma.factOperating.count({ where: { companyCode: src } })).toBe(0)
+      const tgtRows = await basePrisma.factOperating.findMany({ where: { companyCode: tgt, accountCode: 'OP_001' }, orderBy: { period: 'asc' } })
+      expect(tgtRows.length).toBe(2)
+      expect(Number(tgtRows[0].value)).toBe(150) // 100 + 50 合并
+      expect(Number(tgtRows[1].value)).toBe(200)
+
+      const logs = await basePrisma.reclassificationLog.findMany({ where: { type: 'company', sourceCompany: src } })
+      expect(logs.length).toBeGreaterThanOrEqual(1)
+    } finally {
+      await basePrisma.factOperating.deleteMany({ where: { companyCode: { in: [src, tgt] } } }).catch(() => undefined)
+      await basePrisma.company.deleteMany({ where: { code: { in: [src, tgt] } } }).catch(() => undefined)
+      await basePrisma.reclassificationLog.deleteMany({ where: { sourceCompany: src } }).catch(() => undefined)
+    }
+  })
+
+  it('目标公司不在数据范围内 → 403', async () => {
+    if (!dbReady) return
+    await expect(
+      ReclassificationService.previewCompany(
+        { templateType: 'operating', sourceCompanyCode: 'EN330059', targetCompanyCode: 'EN330058' },
+        { companyCode: 'EN330059', scopeValue: '' },
+      ),
+    ).rejects.toMatchObject({ code: 403 })
+  })
+})
+
+describe('科目归类调整', () => {
+  it('换父后科目 category 更新为新根名，可还原', async () => {
+    if (!dbReady) return
+    const roots = await basePrisma.accountSubject.findMany({ where: { subjectType: 'operating', level: 0, status: 'active' }, orderBy: { orderNo: 'asc' } })
+    if (roots.length < 2) return
+    const rootA = roots[0]
+    const rootB = roots[1]
+    const leaf = await basePrisma.accountSubject.findFirst({ where: { subjectType: 'operating', parentCode: rootA.code, status: 'active' } })
+    if (!leaf) return
+    const originalParent = leaf.parentCode
+    try {
+      const updated = await DataService.reclassifySubject(leaf.id, { parentCode: rootB.code }, { userId: adminId, traceId: 'test' })
+      expect(updated.parentCode).toBe(rootB.code)
+      expect(updated.category).toBe(rootB.name)
+      await DataService.reclassifySubject(leaf.id, { parentCode: originalParent }, { userId: adminId, traceId: 'test' })
+      const restored = await basePrisma.accountSubject.findUnique({ where: { id: leaf.id } })
+      expect(restored?.parentCode).toBe(originalParent)
+      expect(restored?.category).toBe(rootA.name)
+    } finally {
+      await basePrisma.reclassificationLog.deleteMany({ where: { type: 'subject', targetSubject: rootB.code } }).catch(() => undefined)
+    }
+  })
+
+  it('移到自身子孙下 → 400 防环', async () => {
+    if (!dbReady) return
+    const parent = await basePrisma.accountSubject.findFirst({ where: { subjectType: 'operating', status: 'active', isLeaf: false, level: 0 } })
+    if (!parent) return
+    const child = await basePrisma.accountSubject.findFirst({ where: { subjectType: 'operating', parentCode: parent.code, status: 'active' } })
+    if (!child) return
+    await expect(
+      DataService.reclassifySubject(parent.id, { parentCode: child.code }, { userId: adminId, traceId: 'test' }),
+    ).rejects.toMatchObject({ code: 400 })
   })
 })

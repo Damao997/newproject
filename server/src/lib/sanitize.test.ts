@@ -1,5 +1,24 @@
 import { describe, it, expect } from 'vitest'
-import { sanitizeRichText, richTextToPlainText } from './sanitize'
+import { sanitizeRichText, richTextToPlainText, fixUploadFilename } from './sanitize'
+
+describe('fixUploadFilename 上传文件名重解码', () => {
+  it('latin1 误解码的中文名还原为 UTF-8', () => {
+    const garbled = Buffer.from('经营数据范例.xlsx', 'utf8').toString('latin1')
+    expect(fixUploadFilename(garbled)).toBe('经营数据范例.xlsx')
+  })
+
+  it('已是正确 UTF-8 的中文名不变', () => {
+    expect(fixUploadFilename('年度预算.xlsx')).toBe('年度预算.xlsx')
+  })
+
+  it('纯 ASCII 文件名不变', () => {
+    expect(fixUploadFilename('report-2026.xlsx')).toBe('report-2026.xlsx')
+  })
+
+  it('西文重音字符（非 UTF-8 字节序）不被误改', () => {
+    expect(fixUploadFilename('résumé.xlsx')).toBe('résumé.xlsx')
+  })
+})
 
 describe('sanitize 富文本净化', () => {
   it('剥离 script/iframe/on* 事件属性', () => {

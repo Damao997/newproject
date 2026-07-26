@@ -52,6 +52,12 @@ router.get('/static', requirePermission('indicators:view', 'view'), asyncHandler
   sendOk(res, data)
 }))
 
+// GET /indicators/periods
+router.get('/periods', asyncHandler(async (_req, res) => {
+  const periods = await IndicatorsService.getAvailablePeriods()
+  sendOk(res, periods)
+}))
+
 // POST /indicators/cross
 router.post('/cross', requirePermission('indicators:view', 'view'), asyncHandler(async (req, res) => {
   const authUser = req.authUser as AuthUserContext

@@ -43,7 +43,7 @@ function activeUser(overrides: Record<string, unknown> = {}) {
     refreshTokenJti: null,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-02T00:00:00Z'),
-    role: { id: 'r-admin', code: 'admin', scopeValue: '*', status: 'active' },
+    role: { id: 'r-admin', code: 'admin', scopeValue: '*', status: 'active', permissions: [{ resource: 'admin:users:view', action: 'view' }] },
     ...overrides,
   }
 }

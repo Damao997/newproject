@@ -37,7 +37,7 @@ function makeUser(overrides: Record<string, unknown> = {}) {
     refreshTokenJti: null,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-02T00:00:00Z'),
-    role: { id: 'r-admin', code: 'admin', scopeValue: '*', status: 'active' },
+    role: { id: 'r-admin', code: 'admin', scopeValue: '*', status: 'active', permissions: [{ resource: 'admin:users:view', action: 'view' }, { resource: 'admin:users:view', action: 'view' }] },
     ...overrides,
   }
 }
@@ -68,6 +68,8 @@ describe('AuthService.login', () => {
       dataScope: '全部',
       status: 'active',
     })
+    // 角色权限映射为去重后的权限码列表
+    expect(result.user.permissions).toEqual(['admin:users:view'])
     expect(mocks.prisma.user.update).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'u1' } }),
     )
@@ -80,7 +82,7 @@ describe('AuthService.login', () => {
   it('dataScope 优先取 companyCode', async () => {
     const passwordHash = await hashPassword('Yipinhui@2026')
     mocks.prisma.user.findUnique.mockResolvedValue(
-      makeUser({ passwordHash, companyCode: 'EN330059', role: { code: 'finance_manager', scopeValue: '', status: 'active' } }),
+      makeUser({ passwordHash, companyCode: 'EN330059', role: { code: 'finance_manager', scopeValue: '', status: 'active', permissions: [] } }),
     )
     const result = await AuthService.login('alice', 'Yipinhui@2026')
     expect(result.user.dataScope).toBe('EN330059')

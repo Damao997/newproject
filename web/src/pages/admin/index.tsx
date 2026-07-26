@@ -8,8 +8,8 @@ import { PageContainer } from '@/components/layout/page-container'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { Pagination } from '@/components/data-table/pagination'
 import { usePermission } from '@/hooks/usePermission'
-import { useUsers, useRoles, useAuditLogs, useUpdateUser, useResetPassword, useDeleteRole, useCloneRole, type RoleItem } from '@/hooks/api-queries'
-import { UserDialog, RoleDialog, PermissionDialog } from './dialogs'
+import { useUsers, useRoles, useAuditLogs, useUpdateUser, useDisableUser, useDeleteRole, useCloneRole, usePurgeUser, type RoleItem } from '@/hooks/api-queries'
+import { UserDialog, RoleDialog, PermissionDialog, ResetPasswordDialog } from './dialogs'
 import { exportToExcel } from '@/lib/export'
 import { PAGINATION, ROLE_NAMES } from '@/lib/constants'
 import {
@@ -24,6 +24,7 @@ import {
   Users,
   Shield,
   Activity,
+  ShieldAlert,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -35,52 +36,72 @@ import {
 import type { User, UserRole, AuditLog } from '@/types'
 
 const USER_PAGE_SIZE = PAGINATION.DEFAULT_PAGE_SIZE
+const AUDIT_PAGE_SIZE = 20
+/** 用户列表一次性拉取上限（前端筛选/分页），超出时展示截断提示 */
+const USER_FETCH_LIMIT = 500
 
 export default function AdminPage() {
-  const { can } = usePermission()
+  const { can, role: currentRole } = usePermission()
   const canCreateUser = can('admin:users', 'create')
   const canUpdateUser = can('admin:users', 'update')
   const canResetPassword = can('admin:users', 'reset-password')
   const canDeleteUser = can('admin:users', 'delete')
+  const canPurgeUser = can('admin:users', 'purge')
   const canExportUser = can('admin:users', 'export')
   const canViewRoles = can('admin:roles', 'view')
   const canCreateRole = can('admin:roles', 'create')
   const canUpdateRole = can('admin:roles', 'update')
   const canDeleteRole = can('admin:roles', 'delete')
   const canManagePermissions = can('admin:permissions', 'update')
-  const hasUserActions = canUpdateUser || canResetPassword || canDeleteUser
+  const hasUserActions = canUpdateUser || canResetPassword || canDeleteUser || canPurgeUser
 
   const [searchQuery, setSearchQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [page, setPage] = useState(1)
+  const [auditPage, setAuditPage] = useState(1)
 
   // 弹窗状态
   const [userDialog, setUserDialog] = useState<{ open: boolean; mode: 'create' | 'edit'; user: User | null }>({ open: false, mode: 'create', user: null })
   const [roleDialog, setRoleDialog] = useState<{ open: boolean; mode: 'create' | 'edit'; role: RoleItem | null }>({ open: false, mode: 'create', role: null })
   const [permRole, setPermRole] = useState<RoleItem | null>(null)
+  const [resetUser, setResetUser] = useState<User | null>(null)
 
   // 真实数据（用户量小，取较大页在前端做筛选/分页，保留原交互）
-  const { data: usersData } = useUsers({ page: 1, pageSize: 500 })
+  const { data: usersData } = useUsers({ page: 1, pageSize: USER_FETCH_LIMIT })
   const { data: rolesData } = useRoles()
-  const { data: auditData } = useAuditLogs({ page: 1, pageSize: 50 })
+  const { data: auditData } = useAuditLogs({ page: auditPage, pageSize: AUDIT_PAGE_SIZE })
   const updateUser = useUpdateUser()
-  const resetPassword = useResetPassword()
+  const disableUser = useDisableUser()
   const deleteRole = useDeleteRole()
   const cloneRole = useCloneRole()
+  const purgeUser = usePurgeUser()
 
   const allUsers = (usersData?.items ?? []) as User[]
   const roles = (rolesData ?? []) as RoleItem[]
   const auditLogs = (auditData?.items ?? []) as AuditLog[]
+  const auditTotal = auditData?.total ?? 0
+  const usersTruncated = (usersData?.total ?? 0) > USER_FETCH_LIMIT
 
-  const getRoleName = (role: UserRole) => ROLE_NAMES[role] ?? role
+  // 防提权（前端门禁，后端子集规则兜底）：非 superadmin 不可分配 superadmin 角色
+  const assignableRoles = useMemo(
+    () => roles.filter((r) => currentRole === 'superadmin' || r.code !== 'superadmin'),
+    [roles, currentRole],
+  )
+
+  // 角色名称：优先用后端角色列表映射（覆盖自定义/克隆角色），缺失时回退预置常量
+  const roleNameMap = useMemo(() => new Map(roles.map((r) => [r.code, r.name])), [roles])
+  const getRoleName = (role: UserRole) => roleNameMap.get(role) ?? ROLE_NAMES[role] ?? role
 
   const filteredUsers = useMemo(
     () =>
       allUsers.filter((user) => {
         if (roleFilter !== 'all' && user.role !== roleFilter) return false
         if (statusFilter !== 'all' && user.status !== statusFilter) return false
-        if (searchQuery && !user.username.includes(searchQuery) && !user.name.includes(searchQuery)) return false
+        if (searchQuery) {
+          const q = searchQuery.toLowerCase()
+          if (!user.username.toLowerCase().includes(q) && !user.name.toLowerCase().includes(q)) return false
+        }
         return true
       }),
     [allUsers, roleFilter, statusFilter, searchQuery],
@@ -96,20 +117,32 @@ export default function AdminPage() {
     roles: roles.length,
   }
 
-  const toggleStatus = (u: User) => {
-    updateUser.mutate({ id: u.id, data: { status: u.status === 'active' ? 'inactive' : 'active' } })
+  const alertError = (fallback: string) => (e: unknown) => window.alert(e instanceof Error ? e.message : fallback)
+
+  /** 停用：走专用 DELETE 接口（后端会同步吊销刷新令牌），需二次确认 */
+  const handleDisableUser = (u: User) => {
+    if (!window.confirm(`确认停用用户「${u.name}」？停用后其登录会话将失效。`)) return
+    disableUser.mutate(u.id, { onError: alertError('停用失败') })
   }
 
-  const handleResetPassword = (u: User) => {
-    const pwd = window.prompt(`为用户「${u.name}」设置新密码（至少 8 位，含字母与数字）`)
-    if (!pwd) return
-    resetPassword.mutate(
-      { id: u.id, newPassword: pwd },
-      {
-        onSuccess: () => window.alert('密码已重置'),
-        onError: (e) => window.alert(e instanceof Error ? e.message : '重置失败'),
-      },
-    )
+  /** 启用：恢复账号状态 */
+  const handleEnableUser = (u: User) => {
+    updateUser.mutate({ id: u.id, data: { status: 'active' } }, { onError: alertError('启用失败') })
+  }
+
+  const handlePurgeUser = (u: User) => {
+    if (!window.confirm(`将物理删除用户「${u.name}」（${u.username}），此操作不可恢复！确认彻底删除？`)) return
+    purgeUser.mutate(u.id, { onError: alertError('彻底删除失败') })
+  }
+
+  const handleCloneRole = (role: RoleItem) => {
+    if (cloneRole.isPending) return
+    cloneRole.mutate({ id: role.id, name: `${role.name}-副本` }, { onError: alertError('克隆失败') })
+  }
+
+  const handleDeleteRole = (role: RoleItem) => {
+    if (!window.confirm(`确认删除角色「${role.name}」？`)) return
+    deleteRole.mutate(role.id, { onError: alertError('删除失败') })
   }
 
   const userColumns: DataTableColumn<User>[] = [
@@ -145,26 +178,36 @@ export default function AdminPage() {
                 </DropdownMenuItem>
               )}
               {canResetPassword && (
-                <DropdownMenuItem onClick={() => handleResetPassword(u)}>
+                <DropdownMenuItem onClick={() => setResetUser(u)}>
                   <Key className="mr-2 h-4 w-4" />
                   重置密码
                 </DropdownMenuItem>
               )}
-              {canDeleteUser && (
+              {/* 停用走 DELETE（admin:users:delete），启用走 PUT（admin:users:update），门禁分开 */}
+              {u.status === 'active' && canDeleteUser && (
                 <>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => toggleStatus(u)}>
-                    {u.status === 'active' ? (
-                      <>
-                        <UserX className="mr-2 h-4 w-4" />
-                        停用
-                      </>
-                    ) : (
-                      <>
-                        <UserCheck className="mr-2 h-4 w-4" />
-                        启用
-                      </>
-                    )}
+                  <DropdownMenuItem onClick={() => handleDisableUser(u)}>
+                    <UserX className="mr-2 h-4 w-4" />
+                    停用
+                  </DropdownMenuItem>
+                </>
+              )}
+              {u.status === 'inactive' && canUpdateUser && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => handleEnableUser(u)}>
+                    <UserCheck className="mr-2 h-4 w-4" />
+                    启用
+                  </DropdownMenuItem>
+                </>
+              )}
+              {canPurgeUser && u.status === 'inactive' && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handlePurgeUser(u)}>
+                    <ShieldAlert className="mr-2 h-4 w-4" />
+                    彻底删除
                   </DropdownMenuItem>
                 </>
               )}
@@ -316,6 +359,11 @@ export default function AdminPage() {
           </div>
 
           <div className="min-h-[360px]">
+            {usersTruncated && (
+              <p className="mb-2 text-sm text-amber-600">
+                用户总数超过 {USER_FETCH_LIMIT}，当前仅展示前 {USER_FETCH_LIMIT} 条，请用搜索缩小范围
+              </p>
+            )}
             <DataTable columns={userColumns} data={pagedUsers} rowKey={(u) => u.id} emptyText="暂无用户" />
           </div>
 
@@ -364,12 +412,12 @@ export default function AdminPage() {
                           </Button>
                         )}
                         {canCreateRole && (
-                          <Button variant="ghost" size="sm" onClick={() => cloneRole.mutate({ id: role.id, name: `${role.name}-副本` })}>
+                          <Button variant="ghost" size="sm" disabled={cloneRole.isPending} onClick={() => handleCloneRole(role)}>
                             克隆
                           </Button>
                         )}
                         {canDeleteRole && !role.isSystem && (
-                          <Button variant="ghost" size="sm" className="text-destructive" onClick={() => { if (window.confirm(`确认删除角色「${role.name}」？`)) deleteRole.mutate(role.id) }}>
+                          <Button variant="ghost" size="sm" className="text-destructive" onClick={() => handleDeleteRole(role)}>
                             删除
                           </Button>
                         )}
@@ -391,8 +439,9 @@ export default function AdminPage() {
             审计日志
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <DataTable columns={auditColumns} data={auditLogs} rowKey={(log) => log.id} emptyText="暂无审计日志" />
+          <Pagination page={auditPage} pageSize={AUDIT_PAGE_SIZE} total={auditTotal} onPageChange={setAuditPage} />
         </CardContent>
       </Card>
 
@@ -401,7 +450,7 @@ export default function AdminPage() {
         open={userDialog.open}
         mode={userDialog.mode}
         user={userDialog.user}
-        roles={roles.map((r) => ({ code: r.code, name: r.name }))}
+        roles={assignableRoles.map((r) => ({ code: r.code, name: r.name }))}
         onClose={() => setUserDialog((s) => ({ ...s, open: false }))}
       />
       <RoleDialog
@@ -411,6 +460,7 @@ export default function AdminPage() {
         onClose={() => setRoleDialog((s) => ({ ...s, open: false }))}
       />
       <PermissionDialog open={!!permRole} role={permRole} onClose={() => setPermRole(null)} />
+      <ResetPasswordDialog open={!!resetUser} user={resetUser} onClose={() => setResetUser(null)} />
     </PageContainer>
   )
 }

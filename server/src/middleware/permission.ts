@@ -1,11 +1,13 @@
 import type { Request, Response, NextFunction } from 'express'
 import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
+import { recordAudit, clientIp } from './audit'
 
 /**
  * 权限中间件工厂：requirePermission(resource, action)。
  * 默认拒绝：无 req.authUser → 401；角色无对应 permission 记录 → 403。
  * 权限判定统一走 permission 表，禁止硬编码 if(role==='admin')。
+ * 403 拒绝时补记审计（规范 §3.3），使越权尝试可追溯；审计失败不影响主流程。
  */
 export function requirePermission(resource: string, action: string) {
   return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
@@ -20,6 +22,13 @@ export function requirePermission(resource: string, action: string) {
         select: { id: true },
       })
       if (!permission) {
+        // 审计失败（含 IP 提取异常）不得阻断拒绝主流程
+        try {
+          await recordAudit(
+            { userId: authUser.userId, module: 'permission', action: 'denied', detail: { resource, action }, ip: clientIp(req) },
+            req.traceId,
+          )
+        } catch { /* ignore */ }
         throw errors.forbidden(`无权限：${resource}:${action}`)
       }
       next()

@@ -7,8 +7,8 @@ import { SubjectDialog } from '@/components/subject-tree/subject-dialog'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { filterTree, buildSubjectTree, flattenTree } from '@/lib/subject-tree'
 import { exportToExcel } from '@/lib/export'
-import { useSubjectTree, useDeleteSubject, type SubjectTreeItem } from '@/hooks/api-queries'
-import { Search, ChevronsDownUp, ChevronsUpDown, Download, Plus, Pencil, Trash2 } from 'lucide-react'
+import { useSubjectTree, useSubjects, useDeleteSubject, usePurgeSubject, type SubjectTreeItem } from '@/hooks/api-queries'
+import { Search, ChevronsDownUp, ChevronsUpDown, Download, Plus, Pencil, Trash2, ShieldAlert } from 'lucide-react'
 import type { SubjectNode } from '@/types'
 
 const dataTypeLabel: Record<SubjectNode['dataType'], string> = {
@@ -38,6 +38,8 @@ interface SubjectTreePanelProps {
   canCreate?: boolean
   canUpdate?: boolean
   canDelete?: boolean
+  /** 彻底删除已停用科目（物理删除，仅 superadmin） */
+  canPurge?: boolean
   /** 是否显示导出按钮 */
   canExport?: boolean
   /** 导出文件名（不含扩展名） */
@@ -51,12 +53,14 @@ interface SubjectTreePanelProps {
 /**
  * 通用科目树面板（读后端真实科目）：类别筛选 + 搜索 + 展开/折叠 + 科目树 + 新增/编辑/停用 + 导出。
  * 经营分析与静态科目复用同一面板（按 type 取数）。
+ * canPurge 时额外展示「已停用科目」区，支持彻底删除（物理删除，不可恢复，仅 superadmin）。
  */
 export function SubjectTreePanel({
   type,
   canCreate = false,
   canUpdate = false,
   canDelete = false,
+  canPurge = false,
   canExport = false,
   exportFileName = '科目层级',
   exportSheet = '科目层级',
@@ -64,6 +68,13 @@ export function SubjectTreePanel({
 }: SubjectTreePanelProps) {
   const { data, isLoading } = useSubjectTree(type)
   const deleteSubject = useDeleteSubject()
+  const purgeSubject = usePurgeSubject()
+  // 仅 superadmin 需要已停用科目列表（树接口只返回 active）
+  const { data: allSubjects } = useSubjects({ type, pageSize: 1000 }, { enabled: canPurge })
+  const inactiveSubjects = useMemo(
+    () => (canPurge ? (allSubjects?.items ?? []).filter((s) => s.status === 'inactive') : []),
+    [canPurge, allSubjects],
+  )
   const { confirm, element: confirmElement } = useConfirm()
   const [actionError, setActionError] = useState<string | null>(null)
   const flat = useMemo(() => (data ?? []) as SubjectTreeItem[], [data])
@@ -107,6 +118,16 @@ export function SubjectTreePanel({
       await deleteSubject.mutateAsync(item.id)
     } catch (err) {
       setActionError(err instanceof Error ? err.message : '停用失败')
+    }
+  }
+
+  const handlePurge = async (s: { id: string; code: string; name: string }) => {
+    if (!(await confirm({ title: '彻底删除科目', description: `将物理删除科目「${s.name}」（${s.code}），此操作不可恢复！被事实数据/公式引用或存在下级科目时将被拒绝。`, danger: true, confirmText: '彻底删除' }))) return
+    setActionError(null)
+    try {
+      await purgeSubject.mutateAsync(s.id)
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : '彻底删除失败')
     }
   }
 
@@ -239,6 +260,25 @@ export function SubjectTreePanel({
         flat={flat}
         onClose={() => setDialog((d) => ({ ...d, open: false }))}
       />
+
+      {canPurge && inactiveSubjects.length > 0 && (
+        <div className="space-y-2 rounded-lg border border-destructive/30 p-3">
+          <p className="text-sm font-medium text-destructive">已停用科目（{inactiveSubjects.length}）——可彻底删除，操作不可恢复</p>
+          <ul className="space-y-1">
+            {inactiveSubjects.map((s) => (
+              <li key={s.id} className="flex items-center justify-between rounded-md bg-muted/40 px-2 py-1 text-sm">
+                <span>
+                  <span className="font-mono text-xs text-muted-foreground mr-2">{s.code}</span>
+                  {s.name}
+                </span>
+                <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" title="彻底删除（不可恢复）" onClick={() => handlePurge(s)}>
+                  <ShieldAlert className="h-4 w-4" />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {confirmElement}
     </div>
   )

@@ -21,6 +21,17 @@ export interface FormulaSuggestion {
   warnings: string[]
 }
 
+export interface FormulaCheckResult {
+  code: string
+  riskLevel: 'low' | 'medium' | 'high' | 'unknown'
+  issues: string[]
+  suggestion: string | null
+  ruleWarnings: string[]
+}
+
+/** 单次批量检测的条数上限（token 控制） */
+export const FORMULA_CHECK_MAX_ITEMS = 30
+
 const FORMULA_SYSTEM_PROMPT = `你是一个财务指标公式助手。用户会用自然语言描述要计算的指标，并给出可用科目清单（编码+名称）。
 请根据描述，仅使用清单中的科目编码，生成一个四则运算公式。
 严格要求：
@@ -33,6 +44,50 @@ const FORMULA_SYSTEM_PROMPT = `你是一个财务指标公式助手。用户会�
 
 function buildSubjectBlock(subjects: { code: string; name: string; level: number }[]): string {
   return subjects.map((s) => `- ${s.code} ${s.name}（层级${s.level}）`).join('\n')
+}
+
+const FORMULA_CHECK_SYSTEM_PROMPT = `你是一个财务指标公式审查助手。用户会给出若干指标（编码、名称、公式），公式中的操作数为 {科目编码} 形式，并附有科目中文名。
+请逐条审查：公式与指标名称的语义是否一致、业务口径是否合理（例如：率/占比类指标应含除法且分母恰当；差额类指标运算方向是否正确；是否可能遗漏了同类科目）。
+严格按以下格式逐条输出（每条之间用空行分隔，不要输出任何其他内容）：
+编码: <指标编码>
+风险: <低|中|高>
+问题: <无问题写"无"，否则用分号分隔列出问题>
+建议: <无建议写"无"，否则给出一句话修改建议，若建议新公式请用 {科目编码} 形式>`
+
+/** 从 LLM 输出中解析逐条检测结果（编码/风险/问题/建议 四行一组） */
+export function parseCheckOutput(output: string): Map<string, { riskLevel: 'low' | 'medium' | 'high'; issues: string[]; suggestion: string | null }> {
+  const map = new Map<string, { riskLevel: 'low' | 'medium' | 'high'; issues: string[]; suggestion: string | null }>()
+  const blocks = output.split(/\n(?=编码[:：])/)
+  for (const block of blocks) {
+    const lines = block.split('\n').map((l) => l.trim()).filter(Boolean)
+    let code = ''
+    let riskLevel: 'low' | 'medium' | 'high' = 'low'
+    const issues: string[] = []
+    let suggestion: string | null = null
+    for (const line of lines) {
+      const codeMatch = line.match(/^编码[:：]\s*(.+)$/)
+      if (codeMatch) { code = codeMatch[1].trim(); continue }
+      const riskMatch = line.match(/^风险[:：]\s*(.+)$/)
+      if (riskMatch) {
+        const v = riskMatch[1].trim()
+        riskLevel = v.startsWith('高') ? 'high' : v.startsWith('中') ? 'medium' : 'low'
+        continue
+      }
+      const issueMatch = line.match(/^问题[:：]\s*(.+)$/)
+      if (issueMatch) {
+        const v = issueMatch[1].trim()
+        if (v && v !== '无') issues.push(...v.split(/[;；]/).map((s) => s.trim()).filter(Boolean))
+        continue
+      }
+      const sugMatch = line.match(/^建议[:：]\s*(.+)$/)
+      if (sugMatch) {
+        const v = sugMatch[1].trim()
+        if (v && v !== '无') suggestion = v
+      }
+    }
+    if (code) map.set(code, { riskLevel, issues, suggestion })
+  }
+  return map
 }
 
 /** 从 LLM 输出中解析公式与解释 */
@@ -95,6 +150,59 @@ export const AIProxyService = {
 
     await recordAudit({ userId, module: 'ai', action: 'formula_gen', detail: { status: 'success', descriptionLength: userDescription.length } }, traceId)
     return { suggestedFormula: formula, dependsOn, explanation, valid: warnings.length === 0, warnings }
+  },
+
+  /**
+   * AI 公式检测（单条/批量共用）：规则校验 + LLM 语义审查（名称与公式一致性、业务口径合理性）。
+   * 与 generateFormula 一致，仅传科目结构（编码+名称），不传任何数值，跳过脱敏；一次 LLM 调用审查全部条目。
+   */
+  async checkFormulas(params: { items: { code: string; name: string; formula: string }[]; subjectType?: string; userId: string; traceId?: string }): Promise<FormulaCheckResult[]> {
+    const { userId, traceId } = params
+    const subjectType = params.subjectType === 'static' ? 'static' : 'operating'
+    const items = params.items
+    if (items.length === 0) throw errors.badRequest('没有可检测的公式')
+    if (items.length > FORMULA_CHECK_MAX_ITEMS) throw errors.badRequest(`单次最多检测 ${FORMULA_CHECK_MAX_ITEMS} 条公式`)
+
+    const subjects = await prisma.accountSubject.findMany({
+      where: { subjectType, status: 'active' },
+      select: { code: true, name: true },
+      orderBy: { orderNo: 'asc' },
+    })
+    const nameMap = new Map(subjects.map((s) => [s.code, s.name]))
+    const knownCodes = new Set(subjects.map((s) => s.code))
+
+    // 输入防护：指标名称为用户可编辑数据，含可疑内容的条目跳过 AI 语义检测（仅保留规则校验）
+    const blocked = new Set<string>()
+    for (const it of items) {
+      if (!guardInput(it.name).allowed) blocked.add(it.code)
+    }
+    const safeItems = items.filter((it) => !blocked.has(it.code))
+
+    // 公式中的编码附中文名，帮助 LLM 判断语义
+    const describeFormula = (f: string): string =>
+      f.replace(/\{([^}]+)\}/g, (_m, c: string) => `{${c.trim()}}(${nameMap.get(c.trim()) ?? '未知科目'})`)
+
+    let aiMap = new Map<string, { riskLevel: 'low' | 'medium' | 'high'; issues: string[]; suggestion: string | null }>()
+    if (safeItems.length > 0) {
+      const lines = safeItems.map((it) => `- 编码 ${it.code}｜名称 ${it.name}｜公式 ${describeFormula(it.formula)}`)
+      const output = await chatComplete(FORMULA_CHECK_SYSTEM_PROMPT, `待审查指标：\n${lines.join('\n')}`, traceId)
+      aiMap = parseCheckOutput(output)
+    }
+
+    const results: FormulaCheckResult[] = items.map((it) => {
+      const ruleWarnings = validateFormula(it.formula, knownCodes, it.code)
+      if (blocked.has(it.code)) {
+        return { code: it.code, riskLevel: 'unknown', issues: ['指标名称包含可疑内容，已跳过 AI 语义检测'], suggestion: null, ruleWarnings }
+      }
+      const ai = aiMap.get(it.code)
+      if (!ai) {
+        return { code: it.code, riskLevel: 'unknown', issues: ['AI 未返回该条检测结果，请重试'], suggestion: null, ruleWarnings }
+      }
+      return { code: it.code, riskLevel: ai.riskLevel, issues: ai.issues, suggestion: ai.suggestion, ruleWarnings }
+    })
+
+    await recordAudit({ userId, module: 'ai', action: 'formula_check', detail: { count: items.length, blocked: blocked.size } }, traceId)
+    return results
   },
 
   /**
