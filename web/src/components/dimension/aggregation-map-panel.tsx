@@ -16,7 +16,7 @@ interface AggregationMapPanelProps {
  * 汇总主体成员维护：选择汇总主体 → 查看/新增/移除其单体成员映射。
  */
 export function AggregationMapPanel({ canUpdate = false }: AggregationMapPanelProps) {
-  const { data: companiesData } = useCompanies()
+  const { data: companiesData } = useCompanies(canUpdate ? { includeInactive: 'true' } : undefined)
   const [summaryCode, setSummaryCode] = useState<string | null>(null)
   const { data: mapData, isLoading } = useAggregationMap(summaryCode)
   const addMap = useAddAggregationMap()
@@ -86,7 +86,7 @@ export function AggregationMapPanel({ canUpdate = false }: AggregationMapPanelPr
           </SelectTrigger>
           <SelectContent>
             {summaryCompanies.map((c) => (
-              <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
+              <SelectItem key={c.code} value={c.code}>{c.name}{c.status !== 'active' ? '（已停用）' : ''}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -105,7 +105,7 @@ export function AggregationMapPanel({ canUpdate = false }: AggregationMapPanelPr
                 </SelectTrigger>
                 <SelectContent className="max-h-[280px]">
                   {addableSingles.map((c) => (
-                    <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
+                    <SelectItem key={c.code} value={c.code}>{c.name}{c.status !== 'active' ? '（已停用）' : ''}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

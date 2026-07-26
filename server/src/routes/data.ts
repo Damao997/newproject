@@ -111,8 +111,9 @@ router.get('/cross-table', requirePermission('data:browse:view', 'view'), asyncH
 }))
 
 // ===== 公司 =====
-router.get('/companies', requirePermission('data:browse:view', 'view'), asyncHandler(async (_req, res) => {
-  sendOk(res, await DataService.listCompanies())
+router.get('/companies', requirePermission('data:browse:view', 'view'), asyncHandler(async (req, res) => {
+  const includeInactive = req.query.includeInactive === 'true' || req.query.includeInactive === '1'
+  sendOk(res, await DataService.listCompanies(includeInactive))
 }))
 
 router.post('/companies', requirePermission('data:company:create', 'create'), asyncHandler(async (req, res) => {
@@ -127,12 +128,6 @@ router.put('/companies/:id', requirePermission('data:company:update', 'update'),
 
 router.delete('/companies/:id', requirePermission('data:company:delete', 'delete'), asyncHandler(async (req, res) => {
   await DataService.deleteCompany(req.params.id as string, ctxOf(req))
-  sendOk(res, null)
-}))
-
-// 彻底删除公司（高危，仅 superadmin）：需先停用
-router.delete('/companies/:id/purge', requirePermission('data:company:purge', 'delete'), asyncHandler(async (req, res) => {
-  await DataService.purgeCompany(req.params.id as string, ctxOf(req))
   sendOk(res, null)
 }))
 
@@ -155,7 +150,8 @@ router.delete('/aggregation-map/:id', requirePermission('data:company:update', '
 // ===== 科目 =====
 router.get('/subjects', requirePermission('data:browse:view', 'view'), asyncHandler(async (req, res) => {
   const { page, pageSize } = pageParams(req.query)
-  const data = await DataService.listSubjects({ page, pageSize, type: req.query.type as string | undefined, keyword: req.query.keyword as string | undefined })
+  const includeInactive = req.query.includeInactive === 'true' || req.query.includeInactive === '1'
+  const data = await DataService.listSubjects({ page, pageSize, type: req.query.type as string | undefined, keyword: req.query.keyword as string | undefined, includeInactive })
   sendOk(res, data)
 }))
 
@@ -177,12 +173,6 @@ router.put('/subjects/:id', requirePermission('data:subject:update', 'update'), 
 
 router.delete('/subjects/:id', requirePermission('data:subject:delete', 'delete'), asyncHandler(async (req, res) => {
   await DataService.deleteSubject(req.params.id as string, ctxOf(req))
-  sendOk(res, null)
-}))
-
-// 彻底删除科目（高危，仅 superadmin）：需先停用
-router.delete('/subjects/:id/purge', requirePermission('data:subject:purge', 'delete'), asyncHandler(async (req, res) => {
-  await DataService.purgeSubject(req.params.id as string, ctxOf(req))
   sendOk(res, null)
 }))
 

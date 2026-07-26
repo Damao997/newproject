@@ -15,16 +15,14 @@ import {
 } from '@/components/ui/dialog'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { useConfirm } from '@/components/ui/confirm-dialog'
-import { useCompanies, useCreateCompany, useUpdateCompany, useDeleteCompany, usePurgeCompany } from '@/hooks/api-queries'
-import { Plus, Pencil, Trash2, Search, ShieldAlert } from 'lucide-react'
+import { useCompanies, useCreateCompany, useUpdateCompany, useDeleteCompany } from '@/hooks/api-queries'
+import { Plus, Pencil, Trash2, Search, RotateCcw } from 'lucide-react'
 import type { Company } from '@/types'
 
 interface CompanyPanelProps {
   canCreate?: boolean
   canUpdate?: boolean
   canDelete?: boolean
-  /** 彻底删除（物理删除，仅 superadmin） */
-  canPurge?: boolean
 }
 
 interface CompanyForm {
@@ -43,15 +41,15 @@ export function getCompanyDisplayName(company: Company, useShortName: boolean): 
 }
 
 /**
- * 公司主体管理：列表 + 搜索 + 新增/编辑（编码不可变）+ 停用（软删除，引用保护）。
- * canPurge 时对已停用公司提供「彻底删除」（物理删除，不可恢复，仅 superadmin）。
+ * 公司主体管理：列表 + 搜索 + 新增/编辑（编码不可变）+ 停用（软删除，引用保护）+ 重新启用。
+ * 公司为基础数据，仅允许软删除（status→inactive），不允许物理删除。
  */
-export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete = false, canPurge = false }: CompanyPanelProps) {
-  const { data, isLoading } = useCompanies()
+export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete = false }: CompanyPanelProps) {
+  const showInactive = canUpdate || canDelete
+  const { data, isLoading } = useCompanies(showInactive ? { includeInactive: 'true' } : undefined)
   const createCompany = useCreateCompany()
   const updateCompany = useUpdateCompany()
   const deleteCompany = useDeleteCompany()
-  const purgeCompany = usePurgeCompany()
   const { confirm, element: confirmElement } = useConfirm()
 
   const [keyword, setKeyword] = useState('')
@@ -121,17 +119,17 @@ export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete =
     }
   }
 
-  const handlePurge = async (c: Company) => {
-    if (!(await confirm({ title: '彻底删除公司', description: `将物理删除公司「${c.name}」（${c.code}），此操作不可恢复！被事实数据/用户/汇总映射引用时将被拒绝。`, danger: true, confirmText: '彻底删除' }))) return
+  const handleReEnable = async (c: Company) => {
+    if (!(await confirm({ title: '重新启用公司', description: `确认重新启用公司「${c.name}」（${c.code}）？启用后将重新出现在各业务模块中。`, confirmText: '启用' }))) return
     setListError(null)
     try {
-      await purgeCompany.mutateAsync(c.id)
+      await updateCompany.mutateAsync({ id: c.id, data: { status: 'active' } })
     } catch (err) {
-      setListError(err instanceof Error ? err.message : '彻底删除失败')
+      setListError(err instanceof Error ? err.message : '启用失败')
     }
   }
 
-  const hasActions = canUpdate || canDelete || canPurge
+  const hasActions = canUpdate || canDelete
   const columns: DataTableColumn<Company>[] = [
     { key: 'code', header: '公司编码', cellClassName: 'font-mono text-muted-foreground' },
     {
@@ -166,9 +164,9 @@ export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete =
               {canDelete && c.status === 'active' && (
                 <Button variant="ghost" size="sm" onClick={() => handleDelete(c)}><Trash2 className="h-4 w-4" /></Button>
               )}
-              {canPurge && c.status !== 'active' && (
-                <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" title="彻底删除（不可恢复）" onClick={() => handlePurge(c)}>
-                  <ShieldAlert className="h-4 w-4" />
+              {canUpdate && c.status !== 'active' && (
+                <Button variant="ghost" size="sm" className="text-primary hover:text-primary" title="重新启用" onClick={() => handleReEnable(c)}>
+                  <RotateCcw className="h-4 w-4" />
                 </Button>
               )}
             </div>

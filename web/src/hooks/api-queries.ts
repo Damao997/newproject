@@ -74,8 +74,8 @@ export function useAvailablePeriods() {
 }
 
 // ---------------- Data: companies / imports / metrics ----------------
-export function useCompanies() {
-  return useQuery({ queryKey: queryKeys.companies, queryFn: () => api.getCompanies() })
+export function useCompanies(params?: { includeInactive?: string }) {
+  return useQuery({ queryKey: [...queryKeys.companies, params ?? {}] as const, queryFn: () => api.getCompanies(params) })
 }
 
 export function useImports(params: FilterParams = {}) {
@@ -233,23 +233,6 @@ export function useDeleteCompany() {
   })
 }
 
-/** 彻底删除公司（高危，仅 superadmin） */
-export function usePurgeCompany() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (id: string) => api.purgeCompany(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.companies }),
-  })
-}
-
-/** 彻底删除科目（高危，仅 superadmin） */
-export function usePurgeSubject() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (id: string) => api.purgeSubject(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['data', 'subjects'] }),
-  })
-}
 
 // ---------------- Data: 汇总映射 CRUD ----------------
 export function useAggregationMap(summaryCode: string | null) {

@@ -61,8 +61,6 @@ export default function DataPage() {
   // 高危操作（仅 superadmin 持有对应权限码）
   const canArchive = can('data:import', 'archive')
   const canPurgeBatch = can('data:import', 'purge')
-  const canPurgeCompany = can('data:company', 'purge')
-  const canPurgeSubject = can('data:subject', 'purge')
   const canPurgeMetric = can('data:metric', 'purge')
   const canApproveMetric = can('data:metric', 'approve')
   const { confirm, element: confirmElement } = useConfirm()
@@ -273,6 +271,7 @@ export default function DataPage() {
       description: `将物理删除批次《${b.filename}》的全部明细数据，此操作不可恢复！批次记录将保留为“已清除”状态留痕。`,
       danger: true,
       confirmText: '清除数据',
+      requireInput: b.filename,
     }))) return
     setActivateMsg(null)
     try {
@@ -785,7 +784,6 @@ export default function DataPage() {
                     canCreate={can('data:subject', 'create')}
                     canUpdate={can('data:subject', 'update')}
                     canDelete={can('data:subject', 'delete')}
-                    canPurge={canPurgeSubject}
                     canExport={canExport}
                     exportFileName="经营分析科目"
                     exportSheet="经营分析科目"
@@ -798,7 +796,6 @@ export default function DataPage() {
                     canCreate={can('data:subject', 'create')}
                     canUpdate={can('data:subject', 'update')}
                     canDelete={can('data:subject', 'delete')}
-                    canPurge={canPurgeSubject}
                     canExport={canExport}
                     exportFileName="静态科目"
                     exportSheet="静态科目"
@@ -810,7 +807,6 @@ export default function DataPage() {
                     canCreate={can('data:company', 'create')}
                     canUpdate={can('data:company', 'update')}
                     canDelete={can('data:company', 'delete')}
-                    canPurge={canPurgeCompany}
                   />
                 </TabsContent>
                 <TabsContent value="summary">

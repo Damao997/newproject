@@ -307,7 +307,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
   }
 
   const handlePurge = async (row: CalcMetricRow) => {
-    if (!(await confirm({ title: '彻底删除指标', description: `将物理删除指标「${row.name}」（${row.code}）及其全部公式历史版本，此操作不可恢复！`, danger: true, confirmText: '彻底删除' }))) return
+    if (!(await confirm({ title: '彻底删除指标', description: `将物理删除指标「${row.name}」（${row.code}）及其全部公式历史版本，此操作不可恢复！`, danger: true, confirmText: '彻底删除', requireInput: row.code }))) return
     setListError(null)
     try {
       await purgeMetric.mutateAsync(row.id)

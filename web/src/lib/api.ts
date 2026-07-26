@@ -335,10 +335,11 @@ class ApiClient {
     })
   }
 
-  async getCompanies(): Promise<Company[]> {
+  async getCompanies(params?: { includeInactive?: string }): Promise<Company[]> {
     return this.request({
       method: 'GET',
       url: '/data/companies',
+      params,
     })
   }
 
@@ -352,11 +353,6 @@ class ApiClient {
 
   async deleteCompany(id: string): Promise<void> {
     return this.request({ method: 'DELETE', url: `/data/companies/${id}` })
-  }
-
-  /** 彻底删除公司（高危，仅 superadmin）：需先停用 */
-  async purgeCompany(id: string): Promise<void> {
-    return this.request({ method: 'DELETE', url: `/data/companies/${id}/purge` })
   }
 
   async getAggregationMap(summaryCode?: string): Promise<AggregationMap[]> {
@@ -455,13 +451,7 @@ class ApiClient {
     })
   }
 
-  /** 彻底删除科目（高危，仅 superadmin）：需先停用 */
-  async purgeSubject(id: string): Promise<void> {
-    return this.request({
-      method: 'DELETE',
-      url: `/data/subjects/${id}/purge`,
-    })
-  }
+
 
   async exportData(params: FilterParams & { format: 'excel' | 'pdf' }): Promise<Blob> {
     const response = await this.client.get('/data/export', {

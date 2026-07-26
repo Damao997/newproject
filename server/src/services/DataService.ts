@@ -53,8 +53,11 @@ function metricDto(m: { id: string; code: string; name: string; dataType: string
 
 export const DataService = {
   // ===== 公司 =====
-  async listCompanies(): Promise<CompanyDto[]> {
-    const rows = await prisma.company.findMany({ orderBy: { orderNo: 'asc' } })
+  async listCompanies(includeInactive?: boolean): Promise<CompanyDto[]> {
+    const where: Record<string, unknown> = {}
+    // 显式声明 status 以绕过 soft-delete 中间件自动注入
+    if (includeInactive) where.status = { in: ['active', 'inactive'] }
+    const rows = await prisma.company.findMany({ where, orderBy: { orderNo: 'asc' } })
     return rows.map(companyDto)
   },
 
@@ -111,23 +114,7 @@ export const DataService = {
     await recordAudit({ userId: ctx.userId, module: 'data', action: 'delete', targetId: found.code, detail: { entity: 'company', before: { name: found.name, status: found.status } } }, ctx.traceId)
   },
 
-  /**
-   * 物理删除公司（高危，仅 superadmin）。
-   * 前置条件：已停用（inactive）且无任何引用。
-   */
-  async purgeCompany(id: string, ctx: AuditCtx): Promise<void> {
-    const found = await prisma.company.findUnique({ where: { id } })
-    if (!found) throw errors.notFound('公司不存在')
-    if (found.status !== 'inactive') throw errors.badRequest('请先停用该公司再彻底删除')
-    await this.assertCompanyNotReferenced(found.code)
-    try {
-      await prisma.company.delete({ where: { id } })
-    } catch (e) {
-      if ((e as { code?: string }).code === 'P2003') throw errors.conflict('存在关联数据，无法彻底删除')
-      throw e
-    }
-    await recordAudit({ userId: ctx.userId, module: 'data', action: 'delete', targetId: found.code, detail: { entity: 'company', action: 'purge', before: { name: found.name, status: found.status } } }, ctx.traceId)
-  },
+
 
   /** 引用完整性保护：公司被事实数据、用户或汇总映射引用时禁止停用/删除 */
   async assertCompanyNotReferenced(code: string): Promise<void> {
@@ -199,10 +186,12 @@ export const DataService = {
   },
 
   // ===== 科目 =====
-  async listSubjects(params: { page: number; pageSize: number; type?: string; keyword?: string }): Promise<{ items: SubjectDto[]; total: number; page: number; pageSize: number; totalPages: number }> {
+  async listSubjects(params: { page: number; pageSize: number; type?: string; keyword?: string; includeInactive?: boolean }): Promise<{ items: SubjectDto[]; total: number; page: number; pageSize: number; totalPages: number }> {
     const where: Record<string, unknown> = {}
     if (params.type) where.subjectType = params.type
     if (params.keyword) where.OR = [{ name: { contains: params.keyword } }, { code: { contains: params.keyword } }]
+    // 显式声明 status 以绕过 soft-delete 中间件自动注入（见 soft-delete.ts 注释）
+    if (params.includeInactive) where.status = { in: ['active', 'inactive'] }
     const [rows, total] = await Promise.all([
       prisma.accountSubject.findMany({ where, orderBy: { orderNo: 'asc' }, skip: (params.page - 1) * params.pageSize, take: params.pageSize }),
       prisma.accountSubject.count({ where }),
@@ -359,25 +348,7 @@ export const DataService = {
     await recordAudit({ userId: ctx.userId, module: 'data', action: 'delete', targetId: found.code, detail: { entity: 'subject', before: { name: found.name, status: found.status } } }, ctx.traceId)
   },
 
-  /**
-   * 物理删除科目（高危，仅 superadmin）。
-   * 前置条件：已停用、无事实/公式引用、无下级科目。
-   */
-  async purgeSubject(id: string, ctx: AuditCtx): Promise<void> {
-    const found = await prisma.accountSubject.findUnique({ where: { id } })
-    if (!found) throw errors.notFound('科目不存在')
-    if (found.status !== 'inactive') throw errors.badRequest('请先停用该科目再彻底删除')
-    await this.assertSubjectNotReferenced(found.code)
-    const childCount = await prisma.accountSubject.count({ where: { parentCode: found.code, subjectType: found.subjectType } })
-    if (childCount > 0) throw errors.conflict('存在下级科目，无法彻底删除')
-    try {
-      await prisma.accountSubject.delete({ where: { id } })
-    } catch (e) {
-      if ((e as { code?: string }).code === 'P2003') throw errors.conflict('存在关联数据，无法彻底删除')
-      throw e
-    }
-    await recordAudit({ userId: ctx.userId, module: 'data', action: 'delete', targetId: found.code, detail: { entity: 'subject', action: 'purge', before: { name: found.name, status: found.status } } }, ctx.traceId)
-  },
+
 
   /** 引用完整性保护：科目被事实表或指标公式引用时禁止停用/删除 */
   async assertSubjectNotReferenced(code: string): Promise<void> {

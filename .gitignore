@@ -41,8 +41,8 @@ coverage
 .mimocode/node_modules
 .mimocode/.cron-lock
 
-# Qoder internal
-.qoder
+# Qoder internal (repowiki 需纳入版本管理)
+.qoder/better-harness
 
 # Claude internal
 .claude

@@ -1,0 +1,14 @@
+schema_version: 1
+module_path: ""
+title: 财年经营数据分析平台（全栈根项目）
+scope:
+    - .gitignore
+    - CLAUDE.md
+    - ai-generate-error.png
+    - batch-generate-dialog.png
+    - formula-list-page2.png
+    - indicators-analysis-tab.png
+    - package-lock.json
+source_files: []
+depends_on: []
+related_to: []

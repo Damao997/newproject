@@ -4,6 +4,15 @@ import type { PrismaClient } from '@prisma/client'
  * 软删除过滤 —— Prisma 扩展。
  * 对带 status 字段的模型，读操作自动追加 status='active'（见 docs/references/db.md）。
  * 调用方显式传入 status 时以调用方为准（如后台需查看 inactive）。
+ *
+ * 数据删除规则：
+ * - 基础数据（Company、AccountSubject）：仅允许软删除（status→inactive），不允许物理删除。
+ *   原因：被事实表、用户、汇总映射、指标公式引用，物理删除会破坏引用完整性与口径可追溯性。
+ * - 业务配置数据（Metric、User、Role、Counterparty、SubjectAnalysis）：软删除 + 物理删除（需先停用）。
+ *   原因：停用后无引用时可彻底清理，且数据可重建。
+ * - 业务流水数据（FactOperating、FactStatic、FactBudget、TransactionDetail、InventoryRecord、ImportBatch）：
+ *   允许物理删除。原因：可重新导入的流水数据，无长期引用关系。
+ * - 关系配置表（CompanyAggregationMap）：允许物理删除。原因：纯关系映射，无状态字段，可随时重建。
  */
 
 // 带 status（RecordStatus）字段的模型（Prisma 模型名）
