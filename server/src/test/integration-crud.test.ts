@@ -326,6 +326,200 @@ describe('跨公司重分类', () => {
       ),
     ).rejects.toMatchObject({ code: 403 })
   })
+
+  it('部分转移（amount）：源行调减保留、目标累加/新建，合计恰等于转移额', async () => {
+    if (!dbReady) return
+    const batch = await basePrisma.importBatch.findFirst({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true } })
+    if (!batch) return
+    const suffix = Date.now().toString(36)
+    const src = `RPS_${suffix}`
+    const tgt = `RPT_${suffix}`
+    await basePrisma.company.create({ data: { code: src, name: '部分转移源', entityType: 'single', status: 'active' } })
+    await basePrisma.company.create({ data: { code: tgt, name: '部分转移目标', entityType: 'single', status: 'active' } })
+    const scope = { companyCode: null, scopeValue: '*' }
+    try {
+      await basePrisma.factOperating.createMany({
+        data: [
+          { batchId: batch.id, companyCode: src, accountCode: 'OP_001', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 100 },
+          { batchId: batch.id, companyCode: src, accountCode: 'OP_001', period: '2026-06', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 200 },
+        ],
+      })
+      // 目标公司已有 OP_001@2026-05 (50) → 累加；2026-06 无行 → 新建
+      await basePrisma.factOperating.create({ data: { batchId: batch.id, companyCode: tgt, accountCode: 'OP_001', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 50 } })
+
+      const pv = await ReclassificationService.previewCompany(
+        { templateType: 'operating', sourceCompanyCode: src, targetCompanyCode: tgt, transferMode: 'amount', amount: 90 },
+        scope,
+      )
+      expect(pv.affectedRows).toBe(2)
+      expect(pv.totalValue).toBe(300)
+      expect(pv.transferValue).toBe(90)
+      expect(pv.conflictRows).toBe(1)
+      expect(pv.createRows).toBe(1)
+
+      const res = await ReclassificationService.reclassifyCompany(
+        { templateType: 'operating', sourceCompanyCode: src, targetCompanyCode: tgt, transferMode: 'amount', amount: 90 },
+        scope,
+        { userId: adminId, traceId: 'test' },
+      )
+      expect(res.transferValue).toBe(90)
+      expect(res.mergedRows).toBe(1)
+      expect(res.createdRows).toBe(1)
+
+      // 源行保留且合计 = 300 - 90；目标合计 = 50 + 90；总额守恒
+      const srcRows = await basePrisma.factOperating.findMany({ where: { companyCode: src } })
+      expect(srcRows.length).toBe(2)
+      const srcSum = srcRows.reduce((s, r) => s + Number(r.value), 0)
+      expect(srcSum).toBe(210)
+      const tgtRows = await basePrisma.factOperating.findMany({ where: { companyCode: tgt } })
+      const tgtSum = tgtRows.reduce((s, r) => s + Number(r.value), 0)
+      expect(tgtSum).toBe(140)
+
+      // 超额转移 → 400
+      await expect(
+        ReclassificationService.previewCompany(
+          { templateType: 'operating', sourceCompanyCode: src, targetCompanyCode: tgt, transferMode: 'amount', amount: 999999 },
+          scope,
+        ),
+      ).rejects.toMatchObject({ code: 400 })
+    } finally {
+      await basePrisma.factOperating.deleteMany({ where: { companyCode: { in: [src, tgt] } } }).catch(() => undefined)
+      await basePrisma.company.deleteMany({ where: { code: { in: [src, tgt] } } }).catch(() => undefined)
+      await basePrisma.reclassificationLog.deleteMany({ where: { sourceCompany: src } }).catch(() => undefined)
+    }
+  })
+
+  it('部分转移（ratio）：每行按比例调减', async () => {
+    if (!dbReady) return
+    const batch = await basePrisma.importBatch.findFirst({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true } })
+    if (!batch) return
+    const suffix = Date.now().toString(36)
+    const src = `RRS_${suffix}`
+    const tgt = `RRT_${suffix}`
+    await basePrisma.company.create({ data: { code: src, name: '比例转移源', entityType: 'single', status: 'active' } })
+    await basePrisma.company.create({ data: { code: tgt, name: '比例转移目标', entityType: 'single', status: 'active' } })
+    const scope = { companyCode: null, scopeValue: '*' }
+    try {
+      await basePrisma.factOperating.create({
+        data: { batchId: batch.id, companyCode: src, accountCode: 'OP_001', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 100 },
+      })
+      const res = await ReclassificationService.reclassifyCompany(
+        { templateType: 'operating', sourceCompanyCode: src, targetCompanyCode: tgt, transferMode: 'ratio', ratio: 0.3 },
+        scope,
+        { userId: adminId, traceId: 'test' },
+      )
+      expect(res.transferValue).toBe(30)
+      expect(res.createdRows).toBe(1)
+      const srcRow = await basePrisma.factOperating.findFirst({ where: { companyCode: src } })
+      expect(Number(srcRow?.value)).toBe(70)
+      const tgtRow = await basePrisma.factOperating.findFirst({ where: { companyCode: tgt } })
+      expect(Number(tgtRow?.value)).toBe(30)
+    } finally {
+      await basePrisma.factOperating.deleteMany({ where: { companyCode: { in: [src, tgt] } } }).catch(() => undefined)
+      await basePrisma.company.deleteMany({ where: { code: { in: [src, tgt] } } }).catch(() => undefined)
+      await basePrisma.reclassificationLog.deleteMany({ where: { sourceCompany: src } }).catch(() => undefined)
+    }
+  })
+})
+
+describe('同公司科目间金额调整', () => {
+  it('调减+调增不等额：公司总额净变动，日志 type=subject_adjust 落库', async () => {
+    if (!dbReady) return
+    const batch = await basePrisma.importBatch.findFirst({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true } })
+    if (!batch) return
+    const suffix = Date.now().toString(36)
+    const comp = `ADJ_${suffix}`
+    await basePrisma.company.create({ data: { code: comp, name: '科目调整公司', entityType: 'single', status: 'active' } })
+    const scope = { companyCode: null, scopeValue: '*' }
+    // 取两个已存在的经营科目作为源/目标
+    const subjects = await basePrisma.accountSubject.findMany({ where: { subjectType: 'operating', status: 'active', isLeaf: true }, take: 2 })
+    if (subjects.length < 2) return
+    const [srcSub, tgtSub] = subjects
+    try {
+      await basePrisma.factOperating.createMany({
+        data: [
+          { batchId: batch.id, companyCode: comp, accountCode: srcSub.code, period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 300 },
+          { batchId: batch.id, companyCode: comp, accountCode: srcSub.code, period: '2026-06', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 100 },
+        ],
+      })
+
+      const pv = await ReclassificationService.previewAdjustSubject(
+        { templateType: 'operating', companyCode: comp, sourceAccountCode: srcSub.code, targetAccountCode: tgtSub.code, decreaseAmount: 200, increaseAmount: 80, reason: '测试' },
+        scope,
+      )
+      expect(pv.affectedRows).toBe(2)
+      expect(pv.sourceTotal).toBe(400)
+      expect(pv.netChange).toBe(-120)
+
+      const res = await ReclassificationService.adjustSubject(
+        { templateType: 'operating', companyCode: comp, sourceAccountCode: srcSub.code, targetAccountCode: tgtSub.code, decreaseAmount: 200, increaseAmount: 80, reason: '重复计算修正测试' },
+        scope,
+        { userId: adminId, traceId: 'test' },
+      )
+      expect(res.decreaseAmount).toBe(200)
+      expect(res.increaseAmount).toBe(80)
+      expect(res.netChange).toBe(-120)
+
+      // 源科目合计 400-200=200；目标科目新增 80；公司总额 400-120=280
+      const rows = await basePrisma.factOperating.findMany({ where: { companyCode: comp } })
+      const srcSum = rows.filter((r) => r.accountCode === srcSub.code).reduce((s, r) => s + Number(r.value), 0)
+      const tgtSum = rows.filter((r) => r.accountCode === tgtSub.code).reduce((s, r) => s + Number(r.value), 0)
+      expect(srcSum).toBe(200)
+      expect(tgtSum).toBe(80)
+      expect(rows.reduce((s, r) => s + Number(r.value), 0)).toBe(280)
+
+      const logs = await basePrisma.reclassificationLog.findMany({ where: { type: 'subject_adjust', sourceCompany: comp } })
+      expect(logs.length).toBe(1)
+      expect(logs[0].sourceSubject).toBe(srcSub.code)
+      expect(logs[0].targetSubject).toBe(tgtSub.code)
+      expect((logs[0].detail as { reason?: string })?.reason).toBe('重复计算修正测试')
+    } finally {
+      await basePrisma.factOperating.deleteMany({ where: { companyCode: comp } }).catch(() => undefined)
+      await basePrisma.company.deleteMany({ where: { code: comp } }).catch(() => undefined)
+      await basePrisma.reclassificationLog.deleteMany({ where: { sourceCompany: comp } }).catch(() => undefined)
+    }
+  })
+
+  it('纯调减（不传目标科目）：仅源科目减少', async () => {
+    if (!dbReady) return
+    const batch = await basePrisma.importBatch.findFirst({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true } })
+    if (!batch) return
+    const suffix = Date.now().toString(36)
+    const comp = `ADJD_${suffix}`
+    await basePrisma.company.create({ data: { code: comp, name: '纯调减公司', entityType: 'single', status: 'active' } })
+    const scope = { companyCode: null, scopeValue: '*' }
+    const srcSub = await basePrisma.accountSubject.findFirst({ where: { subjectType: 'operating', status: 'active', isLeaf: true } })
+    if (!srcSub) return
+    try {
+      await basePrisma.factOperating.create({
+        data: { batchId: batch.id, companyCode: comp, accountCode: srcSub.code, period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 500 },
+      })
+      const res = await ReclassificationService.adjustSubject(
+        { templateType: 'operating', companyCode: comp, sourceAccountCode: srcSub.code, decreaseAmount: 120, reason: '重复计算调减' },
+        scope,
+        { userId: adminId, traceId: 'test' },
+      )
+      expect(res.decreaseAmount).toBe(120)
+      expect(res.increaseAmount).toBe(0)
+      expect(res.netChange).toBe(-120)
+      const row = await basePrisma.factOperating.findFirst({ where: { companyCode: comp } })
+      expect(Number(row?.value)).toBe(380)
+    } finally {
+      await basePrisma.factOperating.deleteMany({ where: { companyCode: comp } }).catch(() => undefined)
+      await basePrisma.company.deleteMany({ where: { code: comp } }).catch(() => undefined)
+      await basePrisma.reclassificationLog.deleteMany({ where: { sourceCompany: comp } }).catch(() => undefined)
+    }
+  })
+
+  it('调减超过源科目合计 / 公司不在范围 → 报错', async () => {
+    if (!dbReady) return
+    await expect(
+      ReclassificationService.previewAdjustSubject(
+        { templateType: 'operating', companyCode: 'EN330058', sourceAccountCode: 'OP_001', decreaseAmount: 100, reason: 'x' },
+        { companyCode: 'EN330059', scopeValue: '' },
+      ),
+    ).rejects.toMatchObject({ code: 403 })
+  })
 })
 
 describe('科目归类调整', () => {

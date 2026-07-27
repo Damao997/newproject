@@ -32,19 +32,23 @@ const TEMPLATE_LABEL: Record<string, string> = {
 }
 
 /**
- * 跨公司重分类对话框：把源公司某模板类型（可按科目/期间筛选）的生效数据改挂到目标公司。
- * 目标公司已存在同口径数据时合并求和。提交前预览影响并二次确认。
+ * 跨公司重分类对话框：把源公司某模板类型（可按科目/期间筛选）的生效数据转移到目标公司。
+ * 支持三种转移方式：整体迁移（改挂行，冲突合并求和）、按比例/按金额部分转移
+ * （源行调减保留，目标同口径行调增，无则新建）。提交前预览影响并二次确认。
  */
 export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = 'operating', defaultSourceCompany }: ReclassifyCompanyDialogProps) {
   const [templateType, setTemplateType] = useState<string>(defaultTemplateType)
   const [sourceCompanyCode, setSourceCompanyCode] = useState<string>(defaultSourceCompany ?? '')
   const [targetCompanyCode, setTargetCompanyCode] = useState<string>('')
+  const [transferMode, setTransferMode] = useState<'all' | 'ratio' | 'amount'>('all')
+  const [ratioInput, setRatioInput] = useState('')
+  const [amountInput, setAmountInput] = useState('')
   const [periodFrom, setPeriodFrom] = useState('')
   const [periodTo, setPeriodTo] = useState('')
   const [subjectFilterOpen, setSubjectFilterOpen] = useState(false)
   const [subjectKeyword, setSubjectKeyword] = useState('')
   const [selectedSubjects, setSelectedSubjects] = useState<Set<string>>(new Set())
-  const [preview, setPreview] = useState<{ affectedRows: number; totalValue: number; conflictRows: number } | null>(null)
+  const [preview, setPreview] = useState<{ affectedRows: number; totalValue: number; transferValue: number; conflictRows: number; createRows: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
 
@@ -71,12 +75,27 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
     accountCodes: selectedSubjects.size > 0 ? [...selectedSubjects] : undefined,
     periodFrom: periodFrom || undefined,
     periodTo: periodTo || undefined,
+    transferMode,
+    ratio: transferMode === 'ratio' ? Number(ratioInput) / 100 : undefined,
+    amount: transferMode === 'amount' ? Number(amountInput) : undefined,
   })
 
   const reset = () => {
     setPreview(null)
     setError(null)
     setDone(null)
+  }
+
+  const validateTransferInput = (): string | null => {
+    if (transferMode === 'ratio') {
+      const pct = Number(ratioInput)
+      if (!ratioInput || !Number.isFinite(pct) || pct <= 0 || pct > 100) return '请输入 0-100 之间的转移比例'
+    }
+    if (transferMode === 'amount') {
+      const amt = Number(amountInput)
+      if (!amountInput || !Number.isFinite(amt) || amt <= 0) return '请输入大于 0 的转移金额'
+    }
+    return null
   }
 
   const handlePreview = async () => {
@@ -89,6 +108,11 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
     }
     if (sourceCompanyCode === targetCompanyCode) {
       setError('源公司与目标公司不能相同')
+      return
+    }
+    const inputError = validateTransferInput()
+    if (inputError) {
+      setError(inputError)
       return
     }
     try {
@@ -113,9 +137,12 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
     if (!preview || preview.affectedRows === 0) return
     const sourceName = entityCompanies.find((c) => c.code === sourceCompanyCode)?.name ?? sourceCompanyCode
     const targetName = entityCompanies.find((c) => c.code === targetCompanyCode)?.name ?? targetCompanyCode
+    const description = transferMode === 'all'
+      ? `将把「${sourceName}」的 ${preview.affectedRows} 条${TEMPLATE_LABEL[templateType]}明细（合计 ${formatMoney(preview.totalValue)}）改挂到「${targetName}」${preview.conflictRows > 0 ? `，其中 ${preview.conflictRows} 条将与目标公司现有数据合并求和` : ''}。此操作将影响看板与指标且不可撤销，确认继续？`
+      : `将从「${sourceName}」的 ${preview.affectedRows} 条${TEMPLATE_LABEL[templateType]}明细（合计 ${formatMoney(preview.totalValue)}）中转移 ${formatMoney(preview.transferValue)} 到「${targetName}」，源公司保留剩余金额${preview.conflictRows > 0 ? `；${preview.conflictRows} 条将累加到目标公司现有数据` : ''}${preview.createRows > 0 ? `；将新建 ${preview.createRows} 条目标公司明细` : ''}。此操作将影响看板与指标且不可撤销，确认继续？`
     const ok = await confirm({
       title: '确认跨公司重分类',
-      description: `将把「${sourceName}」的 ${preview.affectedRows} 条${TEMPLATE_LABEL[templateType]}明细（合计 ${formatMoney(preview.totalValue)}）改挂到「${targetName}」${preview.conflictRows > 0 ? `，其中 ${preview.conflictRows} 条将与目标公司现有数据合并求和` : ''}。此操作将影响看板与指标且不可撤销，确认继续？`,
+      description,
       danger: true,
       confirmText: '确认重分类',
     })
@@ -123,7 +150,11 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
     setError(null)
     try {
       const res = await reclassifyMutation.mutateAsync(buildPayload())
-      setDone(`重分类完成：迁移 ${res.affectedRows} 条明细${res.mergedRows > 0 ? `，其中 ${res.mergedRows} 条已合并` : ''}。`)
+      setDone(
+        transferMode === 'all'
+          ? `重分类完成：迁移 ${res.affectedRows} 条明细${res.mergedRows > 0 ? `，其中 ${res.mergedRows} 条已合并` : ''}。`
+          : `重分类完成：转移金额 ${formatMoney(res.transferValue)}，涉及 ${res.affectedRows} 条明细${res.mergedRows > 0 ? `，${res.mergedRows} 条已累加` : ''}${res.createdRows > 0 ? `，新建 ${res.createdRows} 条` : ''}。`,
+      )
       setPreview(null)
       setSelectedSubjects(new Set())
     } catch (err) {
@@ -179,6 +210,50 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
+              <Label>转移方式</Label>
+              <Select value={transferMode} onValueChange={(v) => { setTransferMode(v as 'all' | 'ratio' | 'amount'); reset() }}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">整体迁移</SelectItem>
+                  <SelectItem value="ratio">按比例部分转移</SelectItem>
+                  <SelectItem value="amount">按金额部分转移</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {transferMode === 'ratio' && (
+              <div className="space-y-1">
+                <Label>转移比例（%）</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.01"
+                  placeholder="如 30"
+                  value={ratioInput}
+                  onChange={(e) => { setRatioInput(e.target.value); reset() }}
+                />
+              </div>
+            )}
+            {transferMode === 'amount' && (
+              <div className="space-y-1">
+                <Label>转移金额（元）</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  placeholder="如 100000"
+                  value={amountInput}
+                  onChange={(e) => { setAmountInput(e.target.value); reset() }}
+                />
+              </div>
+            )}
+          </div>
+          {transferMode !== 'all' && (
+            <p className="text-xs text-muted-foreground">部分转移：源公司明细调减并保留，目标公司同口径明细调增（无则新建），总额不变。{transferMode === 'amount' && '按金额模式将按各明细金额占比分摊。'}</p>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
               <Label>期间起（可选）</Label>
               <Input type="month" value={periodFrom} onChange={(e) => { setPeriodFrom(e.target.value); reset() }} />
             </div>
@@ -223,15 +298,26 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
                 <p className="text-muted-foreground">当前筛选条件下没有可重分类的数据。</p>
               ) : (
                 <div className="space-y-1">
-                  <p className="text-blue-800">
-                    将迁移 <span className="font-semibold">{preview.affectedRows}</span> 条明细，合计{' '}
-                    <span className="font-mono font-semibold">{formatMoney(preview.totalValue)}</span>。
-                  </p>
+                  {transferMode === 'all' ? (
+                    <p className="text-blue-800">
+                      将迁移 <span className="font-semibold">{preview.affectedRows}</span> 条明细，合计{' '}
+                      <span className="font-mono font-semibold">{formatMoney(preview.totalValue)}</span>。
+                    </p>
+                  ) : (
+                    <p className="text-blue-800">
+                      将从 <span className="font-semibold">{preview.affectedRows}</span> 条明细（合计{' '}
+                      <span className="font-mono font-semibold">{formatMoney(preview.totalValue)}</span>）中转移{' '}
+                      <span className="font-mono font-semibold">{formatMoney(preview.transferValue)}</span>，源公司保留剩余金额。
+                    </p>
+                  )}
                   {preview.conflictRows > 0 && (
                     <p className="flex items-center gap-1 text-amber-700">
                       <AlertTriangle className="h-3.5 w-3.5" />
-                      其中 {preview.conflictRows} 条将与目标公司现有数据合并求和。
+                      其中 {preview.conflictRows} 条将与目标公司现有数据{transferMode === 'all' ? '合并求和' : '累加'}。
                     </p>
+                  )}
+                  {transferMode !== 'all' && preview.createRows > 0 && (
+                    <p className="text-blue-700">将新建 {preview.createRows} 条目标公司明细。</p>
                   )}
                 </div>
               )}

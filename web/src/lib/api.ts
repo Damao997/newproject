@@ -371,15 +371,31 @@ class ApiClient {
   async previewReclassifyCompany(data: {
     templateType: string; sourceCompanyCode: string; targetCompanyCode: string
     accountCodes?: string[]; periodFrom?: string; periodTo?: string
-  }): Promise<{ affectedRows: number; totalValue: number; conflictRows: number }> {
+    transferMode?: 'all' | 'ratio' | 'amount'; ratio?: number; amount?: number
+  }): Promise<{ affectedRows: number; totalValue: number; transferValue: number; conflictRows: number; createRows: number }> {
     return this.request({ method: 'POST', url: '/data/reclassify/company/preview', data })
   }
 
   async reclassifyCompany(data: {
     templateType: string; sourceCompanyCode: string; targetCompanyCode: string
     accountCodes?: string[]; periodFrom?: string; periodTo?: string
-  }): Promise<{ affectedRows: number; mergedRows: number }> {
+    transferMode?: 'all' | 'ratio' | 'amount'; ratio?: number; amount?: number
+  }): Promise<{ affectedRows: number; mergedRows: number; createdRows: number; transferValue: number }> {
     return this.request({ method: 'POST', url: '/data/reclassify/company', data })
+  }
+
+  async previewAdjustSubject(data: {
+    templateType: string; companyCode: string; sourceAccountCode: string; targetAccountCode?: string
+    decreaseAmount: number; increaseAmount?: number; periodFrom?: string; periodTo?: string
+  }): Promise<{ affectedRows: number; sourceTotal: number; decreaseAmount: number; increaseAmount: number; netChange: number }> {
+    return this.request({ method: 'POST', url: '/data/reclassify/subject/preview', data })
+  }
+
+  async adjustSubject(data: {
+    templateType: string; companyCode: string; sourceAccountCode: string; targetAccountCode?: string
+    decreaseAmount: number; increaseAmount?: number; periodFrom?: string; periodTo?: string; reason: string
+  }): Promise<{ affectedRows: number; decreaseAmount: number; increaseAmount: number; netChange: number; mergedRows: number; createdRows: number }> {
+    return this.request({ method: 'POST', url: '/data/reclassify/subject', data })
   }
 
   async getReclassifyLogs(params?: FilterParams & { type?: string }): Promise<PaginatedResponse<ReclassifyLog>> {

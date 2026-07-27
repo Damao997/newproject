@@ -122,7 +122,7 @@ export function AggregationMapPanel({ canUpdate = false }: AggregationMapPanelPr
           <p className="text-xs text-muted-foreground">{isLoading ? '加载中...' : `共 ${rows.length} 个单体成员`}</p>
           {error && <p className="text-xs text-destructive">{error}</p>}
 
-          <DataTable columns={columns} data={rows} rowKey={(r) => r.id} emptyText={isLoading ? '加载中...' : '该汇总主体暂无成员'} />
+          <DataTable columns={columns} data={rows} rowKey={(r) => r.id} dense emptyText={isLoading ? '加载中...' : '该汇总主体暂无成员'} />
         </>
       )}
       {confirmElement}

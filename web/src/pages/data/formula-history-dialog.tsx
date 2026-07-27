@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog'
 import { useMetricHistory, useRollbackMetric, useApproveMetric, useRejectMetric } from '@/hooks/api-queries'
 import { useConfirm } from '@/components/ui/confirm-dialog'
+import { FormulaText } from './formula-text'
 
 interface MetricRef {
   id: string
@@ -121,7 +122,7 @@ export function HistoryDialog({ metric, formatFormula, onClose, canApprove = fal
                       />
                     </td>
                     <td className="p-2 font-mono">v{h.version}</td>
-                    <td className="p-2 font-mono">{h.formula ? formatFormula(h.formula) : '（空）'}</td>
+                    <td className="p-2 font-mono">{h.formula ? <FormulaText text={formatFormula(h.formula)} className="max-w-[260px]" /> : '（空）'}</td>
                     <td className="p-2 text-muted-foreground">{h.description ?? '—'}</td>
                     <td className="p-2">{h.changedByName}</td>
                     <td className="p-2 text-muted-foreground whitespace-nowrap">{new Date(h.changedAt).toLocaleString('zh-CN')}</td>
@@ -153,11 +154,11 @@ export function HistoryDialog({ metric, formatFormula, onClose, canApprove = fal
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div className="rounded-md bg-muted/30 p-2">
                   <p className="font-medium">v{vA.version}</p>
-                  <p className="mt-1 font-mono">{vA.formula ? formatFormula(vA.formula) : '（空）'}</p>
+                  <p className="mt-1 break-all font-mono">{vA.formula ? formatFormula(vA.formula) : '（空）'}</p>
                 </div>
                 <div className="rounded-md bg-muted/30 p-2">
                   <p className="font-medium">v{vB.version}</p>
-                  <p className="mt-1 font-mono">{vB.formula ? formatFormula(vB.formula) : '（空）'}</p>
+                  <p className="mt-1 break-all font-mono">{vB.formula ? formatFormula(vB.formula) : '（空）'}</p>
                 </div>
               </div>
               {(added.length > 0 || removed.length > 0) && (

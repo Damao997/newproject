@@ -66,7 +66,7 @@ function TreeRows({
         return (
           <Fragment key={node.code}>
             <tr className="border-b transition-colors hover:bg-muted/50">
-              <td className="p-4 align-middle">
+              <td className="px-4 py-1.5 leading-[14px] align-middle">
                 <div className="flex items-center" style={{ paddingLeft: depth * 20 }}>
                   {hasChildren ? (
                     <button
@@ -89,16 +89,16 @@ function TreeRows({
                   </span>
                 </div>
               </td>
-              <td className="p-4 align-middle font-mono text-muted-foreground">{node.code}</td>
-              <td className="p-4 align-middle">
+              <td className="px-4 py-1.5 leading-[14px] align-middle font-mono text-muted-foreground">{node.code}</td>
+              <td className="px-4 py-1.5 leading-[14px] align-middle">
                 <Badge variant="outline">level{node.level}</Badge>
               </td>
-              <td className="p-4 align-middle text-muted-foreground">{node.category}</td>
-              <td className="p-4 align-middle">
+              <td className="px-4 py-1.5 leading-[14px] align-middle text-muted-foreground">{node.category}</td>
+              <td className="px-4 py-1.5 leading-[14px] align-middle">
                 <Badge variant={meta.variant}>{meta.label}</Badge>
               </td>
               {actions && (
-                <td className="p-4 align-middle">
+                <td className="px-4 py-1.5 leading-[14px] align-middle">
                   <div className="flex items-center justify-end gap-1">{actions(node)}</div>
                 </td>
               )}
@@ -139,13 +139,13 @@ export function SubjectTree({
       <table className="w-full caption-bottom text-[13px]">
         <thead className="[&_tr]:border-b">
           <tr className="border-b bg-muted/50">
-            <th className="h-11 px-4 text-[13px] text-center align-middle font-medium text-black">科目名称</th>
-            <th className="h-11 px-4 text-[13px] text-center align-middle font-medium text-black">科目编码</th>
-            <th className="h-11 px-4 text-[13px] text-center align-middle font-medium text-black">层级</th>
-            <th className="h-11 px-4 text-[13px] text-center align-middle font-medium text-black">类别</th>
-            <th className="h-11 px-4 text-[13px] text-center align-middle font-medium text-black">数据类型</th>
+            <th className="h-8 px-4 text-[13px] leading-[14px] text-center align-middle font-medium text-black">科目名称</th>
+            <th className="h-8 px-4 text-[13px] leading-[14px] text-center align-middle font-medium text-black">科目编码</th>
+            <th className="h-8 px-4 text-[13px] leading-[14px] text-center align-middle font-medium text-black">层级</th>
+            <th className="h-8 px-4 text-[13px] leading-[14px] text-center align-middle font-medium text-black">类别</th>
+            <th className="h-8 px-4 text-[13px] leading-[14px] text-center align-middle font-medium text-black">数据类型</th>
             {actions && (
-              <th className="h-11 px-4 text-[13px] text-center align-middle font-medium text-black">操作</th>
+              <th className="h-8 px-4 text-[13px] leading-[14px] text-center align-middle font-medium text-black">操作</th>
             )}
           </tr>
         </thead>

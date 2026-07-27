@@ -19,6 +19,7 @@ import {
 } from '@/hooks/api-queries'
 import { Plus, Trash2 } from 'lucide-react'
 import { useConfirm } from '@/components/ui/confirm-dialog'
+import { FormulaText } from './formula-text'
 
 interface RuleManageDialogProps {
   open: boolean
@@ -136,8 +137,8 @@ export function RuleManageDialog({ open, onClose, canUpdate = false, canDelete =
                         </div>
                       ) : (
                         <>
-                          {r.formulaTemplate}
-                          {formatFormula && <p className="text-xs text-muted-foreground">{formatFormula(r.formulaTemplate)}</p>}
+                          <FormulaText text={r.formulaTemplate} className="max-w-[300px]" />
+                          {formatFormula && <FormulaText text={formatFormula(r.formulaTemplate)} className="max-w-[300px] text-xs text-muted-foreground" />}
                         </>
                       )}
                     </td>

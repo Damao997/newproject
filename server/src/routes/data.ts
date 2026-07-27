@@ -267,30 +267,57 @@ router.post('/metrics/formulas/import', requirePermission('data:metric:update', 
 }))
 
 // ===== 跨公司重分类 =====
-router.post('/reclassify/company/preview', requirePermission('data:reclassify:company', 'update'), asyncHandler(async (req, res) => {
-  const b = req.body ?? {}
+const TRANSFER_MODES = ['all', 'ratio', 'amount']
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function companyReclassifyBody(b: any) {
   if (!b.templateType || !b.sourceCompanyCode || !b.targetCompanyCode) throw errors.badRequest('模板类型、源公司、目标公司必填')
-  sendOk(res, await ReclassificationService.previewCompany({
+  if (b.transferMode !== undefined && !TRANSFER_MODES.includes(b.transferMode)) throw errors.badRequest('转移方式不合法')
+  return {
     templateType: b.templateType,
     sourceCompanyCode: b.sourceCompanyCode,
     targetCompanyCode: b.targetCompanyCode,
     accountCodes: Array.isArray(b.accountCodes) ? b.accountCodes : undefined,
     periodFrom: b.periodFrom || undefined,
     periodTo: b.periodTo || undefined,
-  }, scopeOf(req.authUser as AuthUserContext)))
+    transferMode: b.transferMode || undefined,
+    ratio: b.ratio !== undefined && b.ratio !== null && b.ratio !== '' ? Number(b.ratio) : undefined,
+    amount: b.amount !== undefined && b.amount !== null && b.amount !== '' ? Number(b.amount) : undefined,
+  }
+}
+
+router.post('/reclassify/company/preview', requirePermission('data:reclassify:company', 'update'), asyncHandler(async (req, res) => {
+  sendOk(res, await ReclassificationService.previewCompany(companyReclassifyBody(req.body ?? {}), scopeOf(req.authUser as AuthUserContext)))
 }))
 
 router.post('/reclassify/company', requirePermission('data:reclassify:company', 'update'), asyncHandler(async (req, res) => {
-  const b = req.body ?? {}
-  if (!b.templateType || !b.sourceCompanyCode || !b.targetCompanyCode) throw errors.badRequest('模板类型、源公司、目标公司必填')
-  sendOk(res, await ReclassificationService.reclassifyCompany({
+  sendOk(res, await ReclassificationService.reclassifyCompany(companyReclassifyBody(req.body ?? {}), scopeOf(req.authUser as AuthUserContext), ctxOf(req)))
+}))
+
+// ===== 同公司科目间调整 =====
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function adjustSubjectBody(b: any) {
+  if (!b.templateType || !b.companyCode || !b.sourceAccountCode) throw errors.badRequest('模板类型、公司、源科目必填')
+  if (b.decreaseAmount === undefined || b.decreaseAmount === null || b.decreaseAmount === '') throw errors.badRequest('调减金额必填')
+  return {
     templateType: b.templateType,
-    sourceCompanyCode: b.sourceCompanyCode,
-    targetCompanyCode: b.targetCompanyCode,
-    accountCodes: Array.isArray(b.accountCodes) ? b.accountCodes : undefined,
+    companyCode: b.companyCode,
+    sourceAccountCode: b.sourceAccountCode,
+    targetAccountCode: b.targetAccountCode || undefined,
+    decreaseAmount: Number(b.decreaseAmount),
+    increaseAmount: b.increaseAmount !== undefined && b.increaseAmount !== null && b.increaseAmount !== '' ? Number(b.increaseAmount) : undefined,
     periodFrom: b.periodFrom || undefined,
     periodTo: b.periodTo || undefined,
-  }, scopeOf(req.authUser as AuthUserContext), ctxOf(req)))
+    reason: typeof b.reason === 'string' ? b.reason : '',
+  }
+}
+
+router.post('/reclassify/subject/preview', requirePermission('data:reclassify:subject', 'update'), asyncHandler(async (req, res) => {
+  sendOk(res, await ReclassificationService.previewAdjustSubject(adjustSubjectBody(req.body ?? {}), scopeOf(req.authUser as AuthUserContext)))
+}))
+
+router.post('/reclassify/subject', requirePermission('data:reclassify:subject', 'update'), asyncHandler(async (req, res) => {
+  sendOk(res, await ReclassificationService.adjustSubject(adjustSubjectBody(req.body ?? {}), scopeOf(req.authUser as AuthUserContext), ctxOf(req)))
 }))
 
 router.get('/reclassify/logs', requirePermission('data:reclassify:company', 'update'), asyncHandler(async (req, res) => {

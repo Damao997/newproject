@@ -1,21 +1,7 @@
-import { Link, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
-import { usePermission } from '@/hooks/usePermission'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { 
-  LayoutDashboard, 
-  BarChart3, 
-  Database, 
-  Shield, 
-  FileText,
-  TrendingUp,
-  Package,
-  ArrowLeftRight,
-  Wrench,
-  LogOut,
-  User
-} from 'lucide-react'
+import { Menu, LogOut, User } from 'lucide-react'
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -24,24 +10,12 @@ import {
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu'
 
-const navItems = [
-  { path: '/dashboard', label: '首页看板', icon: LayoutDashboard, resource: 'dashboard:view' },
-  { path: '/indicators', label: '财务指标', icon: BarChart3, resource: 'indicators:view' },
-  { path: '/transactions', label: '往来分析', icon: ArrowLeftRight, resource: 'transactions:view' },
-  { path: '/inventory', label: '存货管理', icon: Package, resource: 'inventory:view' },
-  { path: '/reports', label: '分析报告', icon: FileText, resource: 'reports:view' },
-  { path: '/tools', label: '其他工具', icon: Wrench, resource: 'tools:view' },
-  { path: '/data', label: '数据管理', icon: Database, resource: 'data:browse:view' },
-  { path: '/admin', label: '权限管理', icon: Shield, resource: 'admin:users:view' },
-]
+interface HeaderProps {
+  onMenuClick: () => void
+}
 
-export function Header() {
-  const location = useLocation()
+export function Header({ onMenuClick }: HeaderProps) {
   const { user, logout } = useAuthStore()
-  const { permissions } = usePermission()
-
-  // 依据《安全与权限规范》§2.2，仅展示当前角色有 view 权限的模块入口
-  const visibleNavItems = navItems.filter((item) => permissions.includes(item.resource))
 
   const getInitials = (name: string) => {
     return name.slice(0, 1)
@@ -59,41 +33,23 @@ export function Header() {
   }
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-14 items-center">
-        <div className="mr-4 hidden md:flex">
-          <Link to="/dashboard" className="mr-6 flex items-center space-x-2">
-            <TrendingUp className="h-6 w-6 text-primary" />
-            <span className="hidden font-bold sm:inline-block">
-              壹品慧财务分析平台
-            </span>
-          </Link>
+    <header className="z-40 w-full shrink-0 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="flex h-14 items-center px-4">
+        {/* 移动端：菜单按钮 + 品牌标识 */}
+        <div className="flex items-center gap-2 md:hidden">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={onMenuClick}
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+          <img src="/logo.png" alt="壹品慧" className="h-7 w-7 object-contain" />
+          <span className="text-sm font-bold">壹品慧财务分析平台</span>
         </div>
-        
-        <nav className="flex items-center space-x-6 text-sm font-medium">
-          {visibleNavItems.map((item) => {
-            const Icon = item.icon
-            const isActive = location.pathname.startsWith(item.path)
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={`flex items-center space-x-1 transition-colors hover:text-primary ${
-                  isActive ? 'text-primary' : 'text-muted-foreground'
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                <span className="hidden sm:inline-block">{item.label}</span>
-              </Link>
-            )
-          })}
-        </nav>
 
-        <div className="flex flex-1 items-center justify-between space-x-2 md:justify-end">
-          <div className="w-full flex-1 md:w-auto md:flex-none">
-            {/* 搜索框可以在这里添加 */}
-          </div>
-          
+        <div className="flex flex-1 shrink-0 items-center justify-end space-x-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-8 w-8 rounded-full">

@@ -27,6 +27,10 @@ interface DataTableProps<T> {
   footer?: ReactNode
   /** 无数据时的提示文案 */
   emptyText?: string
+  /** 紧凑行距：行高 14px（13px 字体 + 1px），上下内边距收紧 */
+  dense?: boolean
+  /** 最大高度（如 '60vh'）：限高后内部垂直滚动，表头 sticky 固定 */
+  maxHeight?: string
   className?: string
 }
 
@@ -48,19 +52,29 @@ export function DataTable<T>({
   rowKey,
   footer,
   emptyText = '暂无数据',
+  dense = false,
+  maxHeight,
   className,
 }: DataTableProps<T>) {
   return (
-    <div className={cn('overflow-x-auto', className)}>
+    <div
+      className={cn(maxHeight ? 'overflow-auto' : 'overflow-x-auto', className)}
+      style={maxHeight ? { maxHeight } : undefined}
+    >
       <table className="w-full caption-bottom text-[13px]">
-        <thead className="[&_tr]:border-b">
+        <thead className={cn('[&_tr]:border-b', maxHeight && 'sticky top-0 z-20')}>
           <tr className="border-b bg-muted/50">
             {columns.map((col) => (
               <th
                 key={col.key}
                 className={cn(
-                  'h-11 px-4 text-[13px] text-center align-middle font-medium text-black',
+                  'whitespace-nowrap px-4 text-[13px] text-center align-middle font-medium text-black',
+                  dense ? 'h-8 leading-[14px]' : 'h-11',
+                  // 限高 sticky 表头需不透明背景，避免滚动内容透出
+                  maxHeight && 'bg-muted',
                   col.sticky && 'sticky left-0 z-10 bg-muted',
+                  // 冻结列 × 冻结表头交叠处需更高层级
+                  col.sticky && maxHeight && 'z-30',
                   col.headerClassName,
                 )}
               >
@@ -89,7 +103,8 @@ export function DataTable<T>({
                   <td
                     key={col.key}
                     className={cn(
-                      'p-4 align-middle',
+                      dense ? 'px-4 py-1.5 leading-[14px]' : 'p-4',
+                      'whitespace-nowrap align-middle',
                       alignClass[col.align ?? 'left'],
                       col.sticky && 'sticky left-0 z-[1] border-r bg-background group-hover:bg-muted/50',
                       col.cellClassName,

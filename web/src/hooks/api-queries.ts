@@ -270,6 +270,21 @@ export interface ReclassifyCompanyInput {
   accountCodes?: string[]
   periodFrom?: string
   periodTo?: string
+  transferMode?: 'all' | 'ratio' | 'amount'
+  ratio?: number
+  amount?: number
+}
+
+export interface AdjustSubjectInput {
+  templateType: string
+  companyCode: string
+  sourceAccountCode: string
+  targetAccountCode?: string
+  decreaseAmount: number
+  increaseAmount?: number
+  periodFrom?: string
+  periodTo?: string
+  reason: string
 }
 
 export function usePreviewReclassifyCompany() {
@@ -296,6 +311,25 @@ export function useReclassifyLogs(params: FilterParams & { type?: string } = {})
     queryKey: ['data', 'reclassify-logs', params] as const,
     queryFn: () => api.getReclassifyLogs(params),
     placeholderData: keepPreviousData,
+  })
+}
+
+export function usePreviewAdjustSubject() {
+  return useMutation({
+    mutationFn: (data: AdjustSubjectInput) => api.previewAdjustSubject(data),
+  })
+}
+
+export function useAdjustSubject() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: AdjustSubjectInput) => api.adjustSubject(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['data', 'cross-table'] })
+      qc.invalidateQueries({ queryKey: ['indicators'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+      qc.invalidateQueries({ queryKey: ['data', 'reclassify-logs'] })
+    },
   })
 }
 

@@ -41,6 +41,7 @@ import {
 import { Pencil, Sparkles, Wand2, History, Trash2, MoreHorizontal, Plus, Settings2, Calculator, Download, ShieldCheck, ShieldAlert } from 'lucide-react'
 import { HistoryDialog } from './formula-history-dialog'
 import { RuleManageDialog } from './formula-rule-dialog'
+import { FormulaText } from './formula-text'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 
 interface CalcMetricRow {
@@ -476,7 +477,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
     { key: 'category', header: '类别', cellClassName: 'text-muted-foreground' },
     {
       key: 'formula', header: '公式', cellClassName: 'font-mono',
-      render: (r) => (r.formula ? formatFormula(r.formula) : <span className="text-muted-foreground">—</span>),
+      render: (r) => (r.formula ? <FormulaText text={formatFormula(r.formula)} className="max-w-[420px]" /> : <span className="text-muted-foreground">—</span>),
     },
     {
       key: 'actions', header: '操作', align: 'right',
@@ -604,7 +605,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
       </p>
       {listError && <p className="text-xs text-destructive">{listError}</p>}
 
-      <DataTable columns={columns} data={paged} rowKey={(r) => r.code} emptyText="暂无计算类指标" />
+      <DataTable columns={columns} data={paged} rowKey={(r) => r.code} dense emptyText="暂无计算类指标" />
       <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onPageChange={setPage} />
 
       {/* 编辑公式对话框 */}
@@ -871,17 +872,17 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/50">
-                    <th className="p-2 text-left font-medium">
+                    <th className="px-2 py-1.5 leading-[14px] text-left font-medium">
                       <input
                         type="checkbox"
                         checked={validItems.length > 0 && validItems.length === applicableCodes.length}
                         onChange={(e) => setSelected(e.target.checked ? new Set(applicableCodes) : new Set())}
                       />
                     </th>
-                    <th className="p-2 text-left font-medium">指标</th>
-                    <th className="p-2 text-left font-medium">命中规则</th>
-                    <th className="p-2 text-left font-medium">生成公式</th>
-                    <th className="p-2 text-left font-medium">状态</th>
+                    <th className="px-2 py-1.5 leading-[14px] text-left font-medium">指标</th>
+                    <th className="px-2 py-1.5 leading-[14px] text-left font-medium">命中规则</th>
+                    <th className="px-2 py-1.5 leading-[14px] text-left font-medium">生成公式</th>
+                    <th className="px-2 py-1.5 leading-[14px] text-left font-medium">状态</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -889,13 +890,13 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
                     <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">无匹配项</td></tr>
                   ) : displayedBatchResults.map((r) => (
                     <tr key={r.code} className="border-b">
-                      <td className="p-2">
+                      <td className="px-2 py-1.5 leading-[14px]">
                         <input type="checkbox" checked={selected.has(r.code)} disabled={!r.valid || !r.formula} onChange={() => toggleSelect(r.code)} />
                       </td>
-                      <td className="p-2">{r.name}<span className="ml-1 font-mono text-xs text-muted-foreground">{r.code}</span></td>
-                      <td className="p-2 text-muted-foreground">{r.ruleName ?? '—'}</td>
-                      <td className="p-2 font-mono">{r.formula ? formatFormula(r.formula) : '—'}</td>
-                      <td className="p-2">
+                      <td className="px-2 py-1.5 leading-[14px]">{r.name}<span className="ml-1 font-mono text-xs text-muted-foreground">{r.code}</span></td>
+                      <td className="px-2 py-1.5 leading-[14px] text-muted-foreground">{r.ruleName ?? '—'}</td>
+                      <td className="px-2 py-1.5 leading-[14px] font-mono">{r.formula ? <FormulaText text={formatFormula(r.formula)} className="max-w-[280px]" /> : '—'}</td>
+                      <td className="px-2 py-1.5 leading-[14px]">
                         {r.valid ? <Badge variant="success">可应用</Badge> : <Badge variant="secondary" title={r.warnings.join('；')}>跳过</Badge>}
                       </td>
                     </tr>
@@ -921,8 +922,8 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
                     <tbody>
                       {aggregatePreview.map((a) => (
                         <tr key={a.code} className="border-b">
-                          <td className="p-2 align-top">{a.name}<span className="ml-1 font-mono text-muted-foreground">{a.code}</span></td>
-                          <td className="p-2 align-top font-mono text-muted-foreground">= {formatFormula(a.formula)}</td>
+                          <td className="px-2 py-1.5 leading-[14px] align-top">{a.name}<span className="ml-1 font-mono text-muted-foreground">{a.code}</span></td>
+                          <td className="px-2 py-1.5 leading-[14px] align-top font-mono text-muted-foreground"><FormulaText text={`= ${formatFormula(a.formula)}`} className="max-w-[380px]" /></td>
                         </tr>
                       ))}
                     </tbody>
@@ -990,11 +991,11 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/50">
-                    <th className="p-2 text-left font-medium">指标</th>
-                    <th className="p-2 text-left font-medium">公式</th>
-                    <th className="p-2 text-left font-medium">风险</th>
-                    <th className="p-2 text-left font-medium">问题与建议</th>
-                    <th className="p-2 text-right font-medium">操作</th>
+                    <th className="px-2 py-1.5 leading-[14px] text-left font-medium">指标</th>
+                    <th className="px-2 py-1.5 leading-[14px] text-left font-medium">公式</th>
+                    <th className="px-2 py-1.5 leading-[14px] text-left font-medium">风险</th>
+                    <th className="px-2 py-1.5 leading-[14px] text-left font-medium">问题与建议</th>
+                    <th className="px-2 py-1.5 leading-[14px] text-right font-medium">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1002,10 +1003,10 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
                     <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">无匹配项</td></tr>
                   ) : displayedScanResults.map((r) => (
                     <tr key={r.code} className="border-b align-top">
-                      <td className="p-2">{r.name}<span className="ml-1 font-mono text-xs text-muted-foreground">{r.code}</span></td>
-                      <td className="p-2 font-mono text-xs">{formatFormula(r.formula)}</td>
-                      <td className="p-2">{riskBadge(r.riskLevel)}</td>
-                      <td className="p-2 text-xs">
+                      <td className="px-2 py-1.5 leading-[14px]">{r.name}<span className="ml-1 font-mono text-xs text-muted-foreground">{r.code}</span></td>
+                      <td className="px-2 py-1.5 leading-[14px] font-mono text-xs"><FormulaText text={formatFormula(r.formula)} className="max-w-[240px]" /></td>
+                      <td className="px-2 py-1.5 leading-[14px]">{riskBadge(r.riskLevel)}</td>
+                      <td className="px-2 py-1.5 text-xs">
                         {r.ruleWarnings.map((w, i) => (
                           <p key={`rw-${i}`} className="text-destructive">[规则] {w}</p>
                         ))}
@@ -1015,7 +1016,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
                         {r.issues.length === 0 && r.ruleWarnings.length === 0 && <span className="text-muted-foreground">—</span>}
                         {r.suggestion && <p className="text-muted-foreground">建议：{r.suggestion}</p>}
                       </td>
-                      <td className="p-2 text-right">
+                      <td className="px-2 py-1.5 text-right">
                         {effectiveUpdate && (
                           <Button
                             variant="ghost"

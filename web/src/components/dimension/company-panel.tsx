@@ -196,7 +196,7 @@ export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete =
       <p className="text-xs text-muted-foreground">{isLoading ? '加载中...' : `共 ${filtered.length} 家公司`}</p>
       {listError && <p className="text-xs text-destructive">{listError}</p>}
 
-      <DataTable columns={columns} data={filtered} rowKey={(c) => c.id} emptyText={isLoading ? '加载中...' : '暂无公司'} />
+      <DataTable columns={columns} data={filtered} rowKey={(c) => c.id} dense emptyText={isLoading ? '加载中...' : '暂无公司'} />
 
       <Dialog open={dialogOpen} onOpenChange={(o) => !o && setDialogOpen(false)}>
         <DialogContent>

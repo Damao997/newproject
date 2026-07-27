@@ -38,7 +38,7 @@ function valueColCount(isOperating: boolean): number {
 
 /** 数值单元格：按 variant 输出各期间维度列，等宽居中、黑色文本；金额不带「万」单位 */
 function renderValueCells(mv: MetricValue | undefined, isOperating: boolean) {
-  const cell = 'px-4 py-2 align-middle text-center font-mono'
+  const cell = 'whitespace-nowrap px-4 py-2 align-middle text-center font-mono'
   if (isOperating) {
     return (
       <>
@@ -77,7 +77,7 @@ function SubjectCell({
   const hasChildren = node.children.length > 0
   const isExpanded = expandedCodes.has(node.code)
   return (
-    <td className="px-4 py-2 align-middle">
+    <td className="min-w-[180px] px-4 py-2 align-middle">
       <div className="flex items-center" style={{ paddingLeft: indentDepth * 20 }}>
         {hasChildren ? (
           <button
@@ -91,7 +91,7 @@ function SubjectCell({
         ) : (
           <span className="mr-1 inline-block h-5 w-5 shrink-0" />
         )}
-        <span className={cn(indentDepth === 0 && 'font-semibold', 'text-foreground')}>{node.name}</span>
+        <span className={cn(indentDepth === 0 && 'font-semibold', 'whitespace-nowrap text-foreground')}>{node.name}</span>
       </div>
     </td>
   )
@@ -105,7 +105,7 @@ function AnalyzeCell({ node, onAnalyze }: { node: SubjectNode; onAnalyze?: (node
       <button
         type="button"
         onClick={() => onAnalyze(node)}
-        className="inline-flex items-center gap-1 rounded px-2 py-1 text-[12px] text-primary transition-colors hover:bg-primary/10"
+        className="inline-flex items-center gap-1 whitespace-nowrap rounded px-2 py-1 text-[12px] text-primary transition-colors hover:bg-primary/10"
       >
         <MessageSquarePlus className="h-3.5 w-3.5" /> 分析
       </button>
@@ -244,7 +244,7 @@ export function MetricTree({
 }: MetricTreeProps) {
   const isOperating = variant === 'operating'
   const colSpan = 1 + valueColCount(isOperating) + (categoryColumn ? 1 : 0) + (onAnalyze ? 1 : 0)
-  const headBase = 'h-11 px-4 text-[13px] align-middle font-medium text-black'
+  const headBase = 'h-11 whitespace-nowrap px-4 text-[13px] align-middle font-medium text-black'
   return (
     <div className="overflow-x-auto">
       <table className="w-full caption-bottom text-[13px]">

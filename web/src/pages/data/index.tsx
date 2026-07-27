@@ -3,10 +3,19 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { MonthPicker } from '@/components/ui/month-picker'
 import { PageContainer } from '@/components/layout/page-container'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { usePermission } from '@/hooks/usePermission'
-import { useCompanies, useImports, useImport, useCrossTable, useUploadImport, useActivateImport, usePreviewImport, useArchiveImport, usePurgeImport } from '@/hooks/api-queries'
+import { useCompanies, useImports, useImport, useCrossTable, useUploadImport, useActivateImport, usePreviewImport, useArchiveImport, usePurgeImport, useAvailablePeriods } from '@/hooks/api-queries'
 import { validateExcelFile } from '@/lib/file-validation'
 import { exportToExcel } from '@/lib/export'
 import { downloadImportTemplate } from '@/lib/import-template'
@@ -25,6 +34,7 @@ import {
   Trash2,
   Archive,
   ShieldAlert,
+  ChevronDown,
 } from 'lucide-react'
 import { SubjectTreePanel } from '@/components/subject-tree/subject-tree-panel'
 import { CompanyPanel } from '@/components/dimension/company-panel'
@@ -80,12 +90,14 @@ export default function DataPage() {
   const fmtPeriods = (ps: string[]) => (ps.length <= 6 ? ps.join('、') : `${ps.slice(0, 6).join('、')} 等 ${ps.length} 个期间`)
 
   // ---- 数据浏览（交叉表：指标 × 公司）----
-  const [browseCompany, setBrowseCompany] = useState('all')
+  // 公司多选：空数组语义为「全部公司」
+  const [browseCompanies, setBrowseCompanies] = useState<string[]>([])
   const [browsePeriod, setBrowsePeriod] = useState('')
   const [browseSubjectType, setBrowseSubjectType] = useState<'operating' | 'static'>('operating')
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null)
   const { data: companies } = useCompanies()
   const { data: importsData } = useImports({ page: 1, pageSize: 50 })
+  const { data: dynamicPeriods } = useAvailablePeriods()
   const crossParams = useMemo(() => ({
     ...(browsePeriod ? { period: browsePeriod } : {}),
     subjectType: browseSubjectType,
@@ -119,11 +131,22 @@ export default function DataPage() {
     return { batchCount: recentBatches.length, totalRows, successRows, errorRows }
   }, [recentBatches])
 
-  // 交叉表列：全部公司或单选公司
+  // 交叉表列：未勾选时展示全部公司，否则按交叉表返回顺序过滤已选公司
   const visibleCompanyCodes = useMemo(() => {
     const all = crossTable?.companies ?? []
-    return browseCompany === 'all' ? all : all.filter((c) => c === browseCompany)
-  }, [crossTable, browseCompany])
+    return browseCompanies.length === 0 ? all : all.filter((c) => browseCompanies.includes(c))
+  }, [crossTable, browseCompanies])
+
+  // 公司多选触发按钮文案：全部 / 单选名称 / 首选名称 等 N 家
+  const companyTriggerLabel = useMemo(() => {
+    if (browseCompanies.length === 0) return '全部公司'
+    const firstName = companyNameMap.get(browseCompanies[0]) ?? browseCompanies[0]
+    return browseCompanies.length === 1 ? firstName : `${firstName} 等 ${browseCompanies.length} 家`
+  }, [browseCompanies, companyNameMap])
+
+  const toggleBrowseCompany = (code: string, checked: boolean) => {
+    setBrowseCompanies((prev) => (checked ? [...prev, code] : prev.filter((c) => c !== code)))
+  }
 
   type CrossRow = { code: string; name: string; values: Record<string, number> }
   const browseColumns: DataTableColumn<CrossRow>[] = useMemo(() => {
@@ -356,10 +379,10 @@ export default function DataPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center space-x-4">
+                <div className="flex flex-wrap items-center gap-3">
                   <span className="text-sm font-medium">模板类型:</span>
                   <Select value={templateType} onValueChange={(v) => { setTemplateType(v); setPreviewResult(null) }}>
-                    <SelectTrigger className="w-[200px]">
+                    <SelectTrigger className="w-[200px] max-w-full shrink-0">
                       <SelectValue placeholder="选择模板类型" />
                     </SelectTrigger>
                     <SelectContent>
@@ -368,7 +391,7 @@ export default function DataPage() {
                       <SelectItem value="budget">年度预算</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Button variant="outline" size="sm" onClick={() => downloadImportTemplate(templateType as 'operating' | 'static' | 'budget')}>
+                  <Button variant="outline" size="sm" className="shrink-0" onClick={() => downloadImportTemplate(templateType as 'operating' | 'static' | 'budget')}>
                     <Download className="mr-2 h-4 w-4" />
                     下载模板
                   </Button>
@@ -626,10 +649,10 @@ export default function DataPage() {
                 </div>
               </div>
 
-              <div className="flex items-center space-x-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium">选择批次:</span>
                 <Select value={selectedBatchId ?? 'none'} onValueChange={(v) => { setSelectedBatchId(v === 'none' ? null : v); setActivateMsg(null) }}>
-                  <SelectTrigger className="w-[300px]">
+                  <SelectTrigger className="w-[300px] max-w-full shrink-0">
                     <SelectValue placeholder="选择批次查看质量明细" />
                   </SelectTrigger>
                   <SelectContent>
@@ -642,7 +665,7 @@ export default function DataPage() {
                   </SelectContent>
                 </Select>
                 {canImport && selectedBatch && selectedBatch.status !== 'active' && (
-                  <Button size="sm" onClick={handleActivate} disabled={activateMutation.isPending}>
+                  <Button size="sm" className="shrink-0" onClick={handleActivate} disabled={activateMutation.isPending}>
                     {activateMutation.isPending ? '激活中...' : '激活批次'}
                   </Button>
                 )}
@@ -659,6 +682,7 @@ export default function DataPage() {
                   columns={batchColumns}
                   data={recentBatches}
                   rowKey={(b) => b.id}
+                  dense
                   emptyText="暂无导入批次"
                 />
               </div>
@@ -694,6 +718,7 @@ export default function DataPage() {
                     columns={errorColumns}
                     data={batchErrors}
                     rowKey={(e, i) => `${e.row}-${e.column}-${i}`}
+                    dense
                     emptyText={detailFetching ? '加载中...' : '该批次无解析异常'}
                   />
                 </div>
@@ -707,10 +732,10 @@ export default function DataPage() {
               <CardTitle>数据预览（{browseSubjectType === 'operating' ? '经营指标' : '静态指标'} × 公司{crossTable?.period ? ` · ${crossTable.period}` : ''}）</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center space-x-4">
+              <div className="mb-4 flex flex-wrap items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                   <Select value={browseSubjectType} onValueChange={(v) => setBrowseSubjectType(v as 'operating' | 'static')}>
-                    <SelectTrigger className="w-[140px]">
+                    <SelectTrigger className="w-[140px] max-w-full shrink-0">
                       <SelectValue placeholder="指标类型" />
                     </SelectTrigger>
                     <SelectContent>
@@ -718,32 +743,46 @@ export default function DataPage() {
                       <SelectItem value="static">静态指标</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Select value={browseCompany} onValueChange={setBrowseCompany}>
-                    <SelectTrigger className="w-[180px]">
-                      <SelectValue placeholder="选择公司" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">全部公司</SelectItem>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" className="h-9 w-[200px] max-w-full shrink-0 justify-between px-3 font-normal">
+                        <span className="truncate">{companyTriggerLabel}</span>
+                        <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="max-h-[320px] w-[220px] overflow-y-auto">
+                      <DropdownMenuItem
+                        className="text-xs text-muted-foreground"
+                        onSelect={(e) => { e.preventDefault(); setBrowseCompanies(entityCompanies.map((c) => c.code)) }}
+                      >
+                        全选
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-xs text-muted-foreground"
+                        onSelect={(e) => { e.preventDefault(); setBrowseCompanies([]) }}
+                      >
+                        清空（全部公司）
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
                       {entityCompanies.map((company) => (
-                        <SelectItem key={company.code} value={company.code}>{company.name}</SelectItem>
+                        <DropdownMenuCheckboxItem
+                          key={company.code}
+                          checked={browseCompanies.includes(company.code)}
+                          onCheckedChange={(checked) => toggleBrowseCompany(company.code, checked === true)}
+                          onSelect={(e) => e.preventDefault()}
+                        >
+                          {company.name}
+                        </DropdownMenuCheckboxItem>
                       ))}
-                    </SelectContent>
-                  </Select>
-                  <div className="flex items-center space-x-2">
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <div className="flex shrink-0 items-center space-x-2">
                     <span className="text-sm text-muted-foreground">月份:</span>
-                    <input
-                      type="month"
-                      className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                      value={browsePeriod}
-                      onChange={(e) => setBrowsePeriod(e.target.value)}
-                    />
-                    {browsePeriod && (
-                      <Button variant="ghost" size="sm" onClick={() => setBrowsePeriod('')} className="h-9 px-2 text-xs">重置</Button>
-                    )}
+                    <MonthPicker value={browsePeriod} onChange={setBrowsePeriod} availablePeriods={dynamicPeriods ?? []} />
                   </div>
                 </div>
                 {canExport && (
-                  <Button variant="outline" size="sm" onClick={handleBrowseExport}>
+                  <Button variant="outline" size="sm" className="ml-auto shrink-0" onClick={handleBrowseExport}>
                     <Download className="mr-2 h-4 w-4" />
                     导出
                   </Button>
@@ -757,6 +796,8 @@ export default function DataPage() {
                     columns={browseColumns}
                     data={(crossTable?.rows ?? []) as CrossRow[]}
                     rowKey={(r) => r.code}
+                    dense
+                    maxHeight="60vh"
                     emptyText="暂无数据"
                   />
                 </div>

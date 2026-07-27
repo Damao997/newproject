@@ -15,6 +15,7 @@ import { PageContainer } from '@/components/layout/page-container'
 import { MetricTree } from '@/components/subject-tree/metric-tree'
 import { AnalysisDrawer, type AnalysisTarget } from '@/components/indicators/analysis-drawer'
 import { ReclassifyCompanyDialog } from '@/components/reclassify/reclassify-company-dialog'
+import { ReclassifySubjectDialog } from '@/components/reclassify/reclassify-subject-dialog'
 import { ReclassifyLogsDialog } from '@/components/reclassify/reclassify-logs-dialog'
 import { usePermission } from '@/hooks/usePermission'
 import { useCompanies, useOperatingIndicators, useStaticIndicators, useAvailablePeriods, type OperatingRow, type StaticRow } from '@/hooks/api-queries'
@@ -78,6 +79,7 @@ export default function IndicatorsPage() {
   const [expandedCodes, setExpandedCodes] = useState<Set<string>>(new Set())
   const [analysisTarget, setAnalysisTarget] = useState<AnalysisTarget | null>(null)
   const [reclassifyOpen, setReclassifyOpen] = useState(false)
+  const [adjustSubjectOpen, setAdjustSubjectOpen] = useState(false)
   const [reclassifyLogsOpen, setReclassifyLogsOpen] = useState(false)
 
   const isOperating = activeTab === 'operating'
@@ -232,6 +234,12 @@ export default function IndicatorsPage() {
               重分类
             </Button>
           )}
+          {can('data:reclassify', 'subject') && (
+            <Button variant="outline" size="sm" onClick={() => setAdjustSubjectOpen(true)}>
+              <ArrowLeftRight className="mr-2 h-4 w-4" />
+              科目间调整
+            </Button>
+          )}
           {can('data:reclassify', 'company') && (
             <Button variant="outline" size="sm" onClick={() => setReclassifyLogsOpen(true)}>
               <History className="mr-2 h-4 w-4" />
@@ -339,6 +347,14 @@ export default function IndicatorsPage() {
         onClose={() => setReclassifyOpen(false)}
         defaultTemplateType={activeTab}
         defaultSourceCompany={dimFilter.startsWith('company:') ? dimFilter.slice('company:'.length) : undefined}
+      />
+
+      {/* 同公司科目间调整 */}
+      <ReclassifySubjectDialog
+        open={adjustSubjectOpen}
+        onClose={() => setAdjustSubjectOpen(false)}
+        defaultTemplateType={activeTab}
+        defaultCompany={dimFilter.startsWith('company:') ? dimFilter.slice('company:'.length) : undefined}
       />
 
       {/* 重分类记录 */}
