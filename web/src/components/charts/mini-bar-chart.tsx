@@ -53,7 +53,7 @@ export function MiniBarChart({ data, max, valueFormatter, barColors = DEFAULT_BA
               </span>
               <div className="flex items-center gap-3">
                 {item.hint && <span className="text-xs text-muted-foreground">{item.hint}</span>}
-                <span className="font-mono text-sm font-semibold text-foreground">
+                <span className="font-num text-sm font-semibold text-foreground">
                   {valueFormatter ? valueFormatter(item.value) : item.value}
                 </span>
               </div>

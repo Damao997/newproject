@@ -179,7 +179,6 @@ export const FormulaRuleService = {
           data: {
             formula: item.formula,
             dependsOn: item.dependsOn as never,
-            isDerived: true,
             version: { increment: 1 },
           },
         })

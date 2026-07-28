@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { MonthPicker } from '@/components/ui/month-picker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Dialog,
@@ -12,9 +13,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useConfirm } from '@/components/ui/confirm-dialog'
-import { useCompanies, useSubjects, usePreviewReclassifyCompany, useReclassifyCompany } from '@/hooks/api-queries'
+import {
+  useCompanies,
+  useSubjects,
+  useAvailablePeriods,
+  usePreviewReclassifyCompany,
+  useReclassifyCompany,
+} from '@/hooks/api-queries'
 import { formatMoney, cn } from '@/lib/utils'
-import { AlertTriangle, Search } from 'lucide-react'
+import { ArrowLeftRight } from 'lucide-react'
+import { TEMPLATE_LABEL, FeedbackAlert, PreviewStats, SubjectMultiPicker, SectionTitle, type PreviewStatItem } from './shared'
 
 interface ReclassifyCompanyDialogProps {
   open: boolean
@@ -25,16 +33,20 @@ interface ReclassifyCompanyDialogProps {
   defaultSourceCompany?: string
 }
 
-const TEMPLATE_LABEL: Record<string, string> = {
-  operating: '经营数据',
-  static: '静态数据',
-  budget: '年度预算',
+interface PreviewData {
+  affectedRows: number
+  totalValue: number
+  transferValue: number
+  conflictRows: number
+  createRows: number
 }
 
 /**
  * 跨公司重分类对话框：把源公司某模板类型（可按科目/期间筛选）的生效数据转移到目标公司。
+ * 布局分区：数据范围（模板/期间/科目）→ 转移设置（源/目标 + 方式）→ 预览与执行。
  * 支持三种转移方式：整体迁移（改挂行，冲突合并求和）、按比例/按金额部分转移
  * （源行调减保留，目标同口径行调增，无则新建）。提交前预览影响并二次确认。
+ * 期间选择使用与数据浏览模块一致的 MonthPicker（全平台统一）。
  */
 export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = 'operating', defaultSourceCompany }: ReclassifyCompanyDialogProps) {
   const [templateType, setTemplateType] = useState<string>(defaultTemplateType)
@@ -45,25 +57,20 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
   const [amountInput, setAmountInput] = useState('')
   const [periodFrom, setPeriodFrom] = useState('')
   const [periodTo, setPeriodTo] = useState('')
-  const [subjectFilterOpen, setSubjectFilterOpen] = useState(false)
-  const [subjectKeyword, setSubjectKeyword] = useState('')
   const [selectedSubjects, setSelectedSubjects] = useState<Set<string>>(new Set())
-  const [preview, setPreview] = useState<{ affectedRows: number; totalValue: number; transferValue: number; conflictRows: number; createRows: number } | null>(null)
+  const [preview, setPreview] = useState<PreviewData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
 
   const { confirm, element: confirmElement } = useConfirm()
   const { data: companies } = useCompanies()
+  const { data: availablePeriods } = useAvailablePeriods()
   const entityCompanies = useMemo(() => (companies ?? []).filter((c) => c.type === 'entity'), [companies])
 
   // 科目候选：静态模板取静态科目，否则取经营科目
   const subjectType = templateType === 'static' ? 'static' : 'operating'
   const { data: subjectsData } = useSubjects({ type: subjectType, pageSize: 1000 })
-  const subjectOptions = useMemo(() => {
-    const kw = subjectKeyword.trim().toLowerCase()
-    const items = subjectsData?.items ?? []
-    return kw ? items.filter((s) => s.name.toLowerCase().includes(kw) || s.code.toLowerCase().includes(kw)) : items
-  }, [subjectsData, subjectKeyword])
+  const subjectOptions = useMemo(() => subjectsData?.items ?? [], [subjectsData])
 
   const previewMutation = usePreviewReclassifyCompany()
   const reclassifyMutation = useReclassifyCompany()
@@ -86,33 +93,41 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
     setDone(null)
   }
 
-  const validateTransferInput = (): string | null => {
-    if (transferMode === 'ratio') {
-      const pct = Number(ratioInput)
-      if (!ratioInput || !Number.isFinite(pct) || pct <= 0 || pct > 100) return '请输入 0-100 之间的转移比例'
-    }
-    if (transferMode === 'amount') {
-      const amt = Number(amountInput)
-      if (!amountInput || !Number.isFinite(amt) || amt <= 0) return '请输入大于 0 的转移金额'
-    }
+  // ---- 字段级校验（输入非空且非法时红框 + 内联提示）----
+  const periodError = periodFrom && periodTo && periodTo < periodFrom ? '期间止不能早于期间起' : null
+  const ratioError = (() => {
+    if (transferMode !== 'ratio' || ratioInput === '') return null
+    const pct = Number(ratioInput)
+    return !Number.isFinite(pct) || pct <= 0 || pct > 100 ? '比例须为 0-100 之间的数值' : null
+  })()
+  const amountError = (() => {
+    if (transferMode !== 'amount' || amountInput === '') return null
+    const amt = Number(amountInput)
+    return !Number.isFinite(amt) || amt <= 0 ? '金额须大于 0' : null
+  })()
+
+  const validateBeforePreview = (): string | null => {
+    if (!sourceCompanyCode || !targetCompanyCode) return '请选择源公司与目标公司'
+    if (sourceCompanyCode === targetCompanyCode) return '源公司与目标公司不能相同'
+    if (periodError) return periodError
+    if (transferMode === 'ratio' && (ratioInput === '' || ratioError)) return ratioError ?? '请输入转移比例'
+    if (transferMode === 'amount' && (amountInput === '' || amountError)) return amountError ?? '请输入转移金额'
     return null
   }
 
+  const handleSwap = () => {
+    if (!sourceCompanyCode && !targetCompanyCode) return
+    const src = sourceCompanyCode
+    setSourceCompanyCode(targetCompanyCode)
+    setTargetCompanyCode(src)
+    reset()
+  }
+
   const handlePreview = async () => {
-    setError(null)
-    setDone(null)
-    setPreview(null)
-    if (!sourceCompanyCode || !targetCompanyCode) {
-      setError('请选择源公司与目标公司')
-      return
-    }
-    if (sourceCompanyCode === targetCompanyCode) {
-      setError('源公司与目标公司不能相同')
-      return
-    }
-    const inputError = validateTransferInput()
-    if (inputError) {
-      setError(inputError)
+    reset()
+    const invalid = validateBeforePreview()
+    if (invalid) {
+      setError(invalid)
       return
     }
     try {
@@ -162,173 +177,174 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
     }
   }
 
+  const previewItems: PreviewStatItem[] = preview
+    ? transferMode === 'all'
+      ? [
+          { label: '迁移明细', value: `${preview.affectedRows} 条` },
+          { label: '合计金额', value: formatMoney(preview.totalValue), tone: 'primary' },
+          { label: '合并求和', value: `${preview.conflictRows} 条`, tone: preview.conflictRows > 0 ? 'warning' : 'default' },
+        ]
+      : [
+          { label: '匹配明细', value: `${preview.affectedRows} 条` },
+          { label: '源数据合计', value: formatMoney(preview.totalValue) },
+          { label: '计划转移额', value: formatMoney(preview.transferValue), tone: 'primary' },
+          { label: '累加到现有行', value: `${preview.conflictRows} 条` },
+          { label: '新建明细行', value: `${preview.createRows} 条` },
+        ]
+    : []
+
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>跨公司数据重分类</DialogTitle>
-          <DialogDescription>将源公司已生效的数据改挂到目标公司，看板与指标将即时刷新。</DialogDescription>
+          <DialogDescription>将源公司已生效的数据转移到目标公司，看板与指标将即时刷新。</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <Label>模板类型</Label>
-            <Select value={templateType} onValueChange={(v) => { setTemplateType(v); reset(); setSelectedSubjects(new Set()) }}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="operating">经营数据</SelectItem>
-                <SelectItem value="static">静态数据</SelectItem>
-                <SelectItem value="budget">年度预算</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label>源公司</Label>
-              <Select value={sourceCompanyCode} onValueChange={(v) => { setSourceCompanyCode(v); reset() }}>
-                <SelectTrigger><SelectValue placeholder="选择源公司" /></SelectTrigger>
-                <SelectContent className="max-h-[280px]">
-                  {entityCompanies.map((c) => (
-                    <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>目标公司</Label>
-              <Select value={targetCompanyCode} onValueChange={(v) => { setTargetCompanyCode(v); reset() }}>
-                <SelectTrigger><SelectValue placeholder="选择目标公司" /></SelectTrigger>
-                <SelectContent className="max-h-[280px]">
-                  {entityCompanies.filter((c) => c.code !== sourceCompanyCode).map((c) => (
-                    <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label>转移方式</Label>
-              <Select value={transferMode} onValueChange={(v) => { setTransferMode(v as 'all' | 'ratio' | 'amount'); reset() }}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">整体迁移</SelectItem>
-                  <SelectItem value="ratio">按比例部分转移</SelectItem>
-                  <SelectItem value="amount">按金额部分转移</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {transferMode === 'ratio' && (
+        <div className="space-y-4">
+          {/* ===== 数据范围 ===== */}
+          <section className="space-y-2">
+            <SectionTitle>数据范围</SectionTitle>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="space-y-1">
-                <Label>转移比例（%）</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={100}
-                  step="0.01"
-                  placeholder="如 30"
-                  value={ratioInput}
-                  onChange={(e) => { setRatioInput(e.target.value); reset() }}
-                />
+                <Label>模板类型</Label>
+                <Select value={templateType} onValueChange={(v) => { setTemplateType(v); reset(); setSelectedSubjects(new Set()) }}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="operating">经营数据</SelectItem>
+                    <SelectItem value="static">静态数据</SelectItem>
+                    <SelectItem value="budget">年度预算</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            )}
-            {transferMode === 'amount' && (
               <div className="space-y-1">
-                <Label>转移金额（元）</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  placeholder="如 100000"
-                  value={amountInput}
-                  onChange={(e) => { setAmountInput(e.target.value); reset() }}
-                />
+                <Label>期间起（可选）</Label>
+                <MonthPicker className={cn('w-full', periodError && 'border-destructive')} value={periodFrom} onChange={(v) => { setPeriodFrom(v); reset() }} availablePeriods={availablePeriods ?? []} placeholder="不限" />
               </div>
-            )}
-          </div>
-          {transferMode !== 'all' && (
-            <p className="text-xs text-muted-foreground">部分转移：源公司明细调减并保留，目标公司同口径明细调增（无则新建），总额不变。{transferMode === 'amount' && '按金额模式将按各明细金额占比分摊。'}</p>
-          )}
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label>期间起（可选）</Label>
-              <Input type="month" value={periodFrom} onChange={(e) => { setPeriodFrom(e.target.value); reset() }} />
-            </div>
-            <div className="space-y-1">
-              <Label>期间止（可选）</Label>
-              <Input type="month" value={periodTo} onChange={(e) => { setPeriodTo(e.target.value); reset() }} />
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <button
-              type="button"
-              className="text-sm text-primary hover:underline"
-              onClick={() => setSubjectFilterOpen((v) => !v)}
-            >
-              {subjectFilterOpen ? '收起科目筛选' : '按科目筛选（可选）'}
-              {selectedSubjects.size > 0 && `（已选 ${selectedSubjects.size} 个）`}
-            </button>
-            {subjectFilterOpen && (
-              <div className="space-y-2 rounded-md border p-2">
-                <div className="relative">
-                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="搜索科目名称或编码..." value={subjectKeyword} onChange={(e) => setSubjectKeyword(e.target.value)} className="pl-8" />
-                </div>
-                <div className="max-h-[180px] space-y-1 overflow-y-auto">
-                  {subjectOptions.map((s) => (
-                    <label key={s.code} className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-muted">
-                      <input type="checkbox" checked={selectedSubjects.has(s.code)} onChange={() => toggleSubject(s.code)} />
-                      <span className="font-mono text-xs text-muted-foreground">{s.code}</span>
-                      <span>{s.name}</span>
-                    </label>
-                  ))}
-                  {subjectOptions.length === 0 && <p className="py-2 text-center text-xs text-muted-foreground">无匹配科目</p>}
-                </div>
+              <div className="space-y-1">
+                <Label>期间止（可选）</Label>
+                <MonthPicker className={cn('w-full', periodError && 'border-destructive')} value={periodTo} onChange={(v) => { setPeriodTo(v); reset() }} availablePeriods={availablePeriods ?? []} placeholder="不限" />
               </div>
-            )}
-          </div>
+            </div>
+            {periodError && <p className="text-xs text-destructive">{periodError}</p>}
+            <div className="space-y-1">
+              <Label>科目筛选（可选）</Label>
+              <SubjectMultiPicker
+                options={subjectOptions}
+                selected={selectedSubjects}
+                onToggle={toggleSubject}
+                onClear={() => { setSelectedSubjects(new Set()); setPreview(null) }}
+                placeholder="全部科目"
+              />
+            </div>
+          </section>
 
-          {preview && (
-            <div className={cn('rounded-lg border p-3 text-sm', preview.affectedRows === 0 ? 'border-muted bg-muted/30' : 'border-blue-200 bg-blue-50')}>
-              {preview.affectedRows === 0 ? (
-                <p className="text-muted-foreground">当前筛选条件下没有可重分类的数据。</p>
-              ) : (
+          {/* ===== 转移设置 ===== */}
+          <section className="space-y-2">
+            <SectionTitle>转移设置</SectionTitle>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+              <div className="flex-1 space-y-1">
+                <Label>源公司</Label>
+                <Select value={sourceCompanyCode} onValueChange={(v) => { setSourceCompanyCode(v); reset() }}>
+                  <SelectTrigger><SelectValue placeholder="选择源公司" /></SelectTrigger>
+                  <SelectContent className="max-h-[280px]">
+                    {entityCompanies.map((c) => (
+                      <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="mx-auto h-9 w-9 shrink-0 text-muted-foreground sm:mx-0"
+                title="交换源公司与目标公司"
+                onClick={handleSwap}
+                disabled={!sourceCompanyCode && !targetCompanyCode}
+              >
+                <ArrowLeftRight className="h-4 w-4" />
+              </Button>
+              <div className="flex-1 space-y-1">
+                <Label>目标公司</Label>
+                <Select value={targetCompanyCode} onValueChange={(v) => { setTargetCompanyCode(v); reset() }}>
+                  <SelectTrigger><SelectValue placeholder="选择目标公司" /></SelectTrigger>
+                  <SelectContent className="max-h-[280px]">
+                    {entityCompanies.filter((c) => c.code !== sourceCompanyCode).map((c) => (
+                      <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label>转移方式</Label>
+                <Select value={transferMode} onValueChange={(v) => { setTransferMode(v as 'all' | 'ratio' | 'amount'); reset() }}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">整体迁移</SelectItem>
+                    <SelectItem value="ratio">按比例部分转移</SelectItem>
+                    <SelectItem value="amount">按金额部分转移</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {transferMode === 'ratio' && (
                 <div className="space-y-1">
-                  {transferMode === 'all' ? (
-                    <p className="text-blue-800">
-                      将迁移 <span className="font-semibold">{preview.affectedRows}</span> 条明细，合计{' '}
-                      <span className="font-mono font-semibold">{formatMoney(preview.totalValue)}</span>。
-                    </p>
-                  ) : (
-                    <p className="text-blue-800">
-                      将从 <span className="font-semibold">{preview.affectedRows}</span> 条明细（合计{' '}
-                      <span className="font-mono font-semibold">{formatMoney(preview.totalValue)}</span>）中转移{' '}
-                      <span className="font-mono font-semibold">{formatMoney(preview.transferValue)}</span>，源公司保留剩余金额。
-                    </p>
-                  )}
-                  {preview.conflictRows > 0 && (
-                    <p className="flex items-center gap-1 text-amber-700">
-                      <AlertTriangle className="h-3.5 w-3.5" />
-                      其中 {preview.conflictRows} 条将与目标公司现有数据{transferMode === 'all' ? '合并求和' : '累加'}。
-                    </p>
-                  )}
-                  {transferMode !== 'all' && preview.createRows > 0 && (
-                    <p className="text-blue-700">将新建 {preview.createRows} 条目标公司明细。</p>
-                  )}
+                  <Label>转移比例（%）</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="0.01"
+                    placeholder="如 30"
+                    value={ratioInput}
+                    aria-invalid={!!ratioError}
+                    className={cn(ratioError && 'border-destructive focus-visible:ring-destructive')}
+                    onChange={(e) => { setRatioInput(e.target.value); reset() }}
+                  />
+                  {ratioError && <p className="text-xs text-destructive">{ratioError}</p>}
+                </div>
+              )}
+              {transferMode === 'amount' && (
+                <div className="space-y-1">
+                  <Label>转移金额（元）</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="如 100000"
+                    value={amountInput}
+                    aria-invalid={!!amountError}
+                    className={cn(amountError && 'border-destructive focus-visible:ring-destructive')}
+                    onChange={(e) => { setAmountInput(e.target.value); reset() }}
+                  />
+                  {amountError && <p className="text-xs text-destructive">{amountError}</p>}
                 </div>
               )}
             </div>
-          )}
+            {transferMode !== 'all' && (
+              <p className="text-xs text-muted-foreground">
+                部分转移：源公司明细调减并保留，目标公司同口径明细调增（无则新建），总额不变。
+                {transferMode === 'amount' && '按金额模式将按各明细金额占比分摊。'}
+              </p>
+            )}
+          </section>
 
-          {done && <p className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">{done}</p>}
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {/* ===== 预览与执行 ===== */}
+          <section className="space-y-2">
+            <SectionTitle>预览与执行</SectionTitle>
+            {!preview && !done && !error && (
+              <p className="text-xs text-muted-foreground">设置完成后点击「预览影响」查看将变更的数据范围与金额。</p>
+            )}
+            {preview && (preview.affectedRows === 0 ? <PreviewStats items={[]} empty /> : <PreviewStats items={previewItems} />)}
+            {done && <FeedbackAlert kind="success">{done}</FeedbackAlert>}
+            {error && <FeedbackAlert kind="error">{error}</FeedbackAlert>}
+          </section>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" onClick={onClose}>关闭</Button>
           <Button variant="outline" onClick={handlePreview} disabled={previewMutation.isPending || !sourceCompanyCode || !targetCompanyCode}>
             {previewMutation.isPending ? '预览中...' : '预览影响'}

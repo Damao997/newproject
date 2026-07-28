@@ -61,7 +61,7 @@ export function MonthPicker({
         <button
           type="button"
           className={cn(
-            'flex h-9 w-[150px] items-center gap-2 rounded-md border border-input bg-background px-3 text-sm shadow-sm transition-colors hover:bg-muted/50 focus:outline-none focus:ring-1 focus:ring-ring',
+            'flex h-9 w-[150px] items-center gap-2 rounded-md border border-input bg-background px-3 text-sm text-black shadow-sm transition-colors hover:bg-muted/50 focus:outline-none focus:ring-1 focus:ring-ring',
             !value && 'text-muted-foreground',
             className,
           )}
@@ -112,7 +112,7 @@ export function MonthPicker({
                 type="button"
                 onClick={() => pick(period)}
                 className={cn(
-                  'relative h-9 rounded-md text-[13px] transition-colors',
+                  'relative h-9 rounded-md text-[13px] text-black transition-colors',
                   isSelected
                     ? 'bg-primary font-medium text-primary-foreground'
                     : 'hover:bg-muted',

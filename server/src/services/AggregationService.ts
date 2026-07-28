@@ -18,6 +18,7 @@ export interface ValueNode {
   category: string
   dataType: 'data' | 'calc' | 'display'
   direction: 'debit' | 'credit'
+  valueType: 'amount' | 'quantity' | 'ratio'
   isLeaf: boolean
   values: Record<string, number>
   children: ValueNode[]
@@ -30,6 +31,7 @@ interface SubjectRow {
   parentCode: string | null
   category: string
   direction: 'debit' | 'credit'
+  valueType: 'amount' | 'quantity' | 'ratio'
   isLeaf: boolean
   dataType: 'data' | 'calc' | 'display'
   orderNo: number
@@ -108,7 +110,7 @@ async function loadSubjects(subjectType: 'operating' | 'static'): Promise<Subjec
     orderBy: { orderNo: 'asc' },
     select: {
       code: true, name: true, level: true, parentCode: true, category: true,
-      direction: true, isLeaf: true, orderNo: true,
+      direction: true, valueType: true, isLeaf: true, orderNo: true,
     },
   })
   // dataType 来自 metric 表
@@ -206,7 +208,7 @@ function buildTree(subjects: SubjectRow[], leafValues: Map<string, Record<string
   for (const s of subjects) {
     byCode.set(s.code, {
       code: s.code, name: s.name, level: s.level, category: s.category,
-      dataType: s.dataType, direction: s.direction, isLeaf: s.isLeaf,
+      dataType: s.dataType, direction: s.direction, valueType: s.valueType, isLeaf: s.isLeaf,
       values: { ...emptyDims }, children: [],
     })
   }

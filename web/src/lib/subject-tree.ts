@@ -49,6 +49,7 @@ export interface FlatSubjectItem {
   parentCode: string | null
   category: string
   dataType: 'data' | 'calc' | 'display'
+  valueType?: 'amount' | 'quantity' | 'ratio'
 }
 
 export function buildSubjectTree(flat: FlatSubjectItem[]): SubjectNode[] {
@@ -60,6 +61,7 @@ export function buildSubjectTree(flat: FlatSubjectItem[]): SubjectNode[] {
       level: item.level,
       category: item.category,
       dataType: item.dataType,
+      valueType: item.valueType,
       children: [],
     })
   }

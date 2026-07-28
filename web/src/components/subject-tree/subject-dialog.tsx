@@ -24,8 +24,17 @@ interface SubjectDialogProps {
   onClose: () => void
 }
 
+type SubjectValueType = 'amount' | 'quantity' | 'ratio'
+
+/** 按科目名称推断值类型（与后端 seed 打标规则一致），仅作新建时的默认建议 */
+function inferValueType(name: string): SubjectValueType {
+  if (/率|占比/.test(name)) return 'ratio'
+  if (/户数|天数|（户）|\(户\)|人数/.test(name)) return 'quantity'
+  return 'amount'
+}
+
 /**
- * 科目新增/编辑弹窗。编码仅新增可填（编码不可变）；名称/类别/上级/叶子可编辑。
+ * 科目新增/编辑弹窗。编码仅新增可填（编码不可变）；名称/类别/上级/叶子/值类型可编辑。
  */
 export function SubjectDialog({ open, mode, type, subject, flat, onClose }: SubjectDialogProps) {
   const createSubject = useCreateSubject()
@@ -37,6 +46,9 @@ export function SubjectDialog({ open, mode, type, subject, flat, onClose }: Subj
   const [category, setCategory] = useState('')
   const [parentCode, setParentCode] = useState<string>('none')
   const [isLeaf, setIsLeaf] = useState<'true' | 'false'>('true')
+  const [valueType, setValueType] = useState<SubjectValueType>('amount')
+  // 新建模式下用户未手动选择前，随名称自动推断值类型；手动选择后不再覆盖
+  const [valueTypeTouched, setValueTypeTouched] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   /** 向上追溯到 level0 根，返回根名作为 category（成为根时用自身名） */
@@ -60,12 +72,16 @@ export function SubjectDialog({ open, mode, type, subject, flat, onClose }: Subj
       setCategory(subject.category)
       setParentCode(subject.parentCode ?? 'none')
       setIsLeaf(subject.isLeaf ? 'true' : 'false')
+      setValueType(subject.valueType ?? 'amount')
+      setValueTypeTouched(true) // 编辑模式不随名称自动推断
     } else {
       setCode('')
       setName('')
       setCategory('')
       setParentCode('none')
       setIsLeaf('true')
+      setValueType('amount')
+      setValueTypeTouched(false)
     }
   }, [open, mode, subject])
 
@@ -80,6 +96,11 @@ export function SubjectDialog({ open, mode, type, subject, flat, onClose }: Subj
     if (mode === 'edit') {
       setCategory(deriveRootCategory(v === 'none' ? null : v, name.trim()))
     }
+  }
+
+  const handleNameChange = (v: string) => {
+    setName(v)
+    if (mode === 'create' && !valueTypeTouched) setValueType(inferValueType(v))
   }
 
   const submit = async () => {
@@ -97,6 +118,7 @@ export function SubjectDialog({ open, mode, type, subject, flat, onClose }: Subj
           category: category.trim() || name.trim(),
           parentCode: parentCode === 'none' ? null : parentCode,
           isLeaf: isLeaf === 'true',
+          valueType,
           code: code.trim(),
           level: parent ? parent.level + 1 : 0,
         }
@@ -106,11 +128,12 @@ export function SubjectDialog({ open, mode, type, subject, flat, onClose }: Subj
           // 换父归类：category 向下传播，走重分类路径
           await reclassifySubject.mutateAsync({ id: subject.id, parentCode: newParentCode })
         }
-        // 其余可编辑字段（名称/叶子）；非换父时同步 category/parentCode
+        // 其余可编辑字段（名称/叶子/值类型）；非换父时同步 category/parentCode
         const fieldPayload: Record<string, unknown> = {
           name: name.trim(),
           type,
           isLeaf: isLeaf === 'true',
+          valueType,
         }
         if (!parentChanged) {
           fieldPayload.category = category.trim() || name.trim()
@@ -140,11 +163,22 @@ export function SubjectDialog({ open, mode, type, subject, flat, onClose }: Subj
           </div>
           <div className="space-y-1">
             <Label>科目名称</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="科目名称" />
+            <Input value={name} onChange={(e) => handleNameChange(e.target.value)} placeholder="科目名称" />
           </div>
           <div className="space-y-1">
             <Label>类别{parentChanged && <span className="ml-1 text-xs text-muted-foreground">（随上级自动推导）</span>}</Label>
             <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="如：收入（留空取名称）" readOnly={parentChanged} />
+          </div>
+          <div className="space-y-1">
+            <Label>值类型{mode === 'create' && !valueTypeTouched && <span className="ml-1 text-xs text-muted-foreground">（随名称自动推断，可手动调整）</span>}</Label>
+            <Select value={valueType} onValueChange={(v) => { setValueType(v as SubjectValueType); setValueTypeTouched(true) }}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="amount">金额（万元，千分位两位小数）</SelectItem>
+                <SelectItem value="quantity">数量（整数，如户数/天数）</SelectItem>
+                <SelectItem value="ratio">比率（百分比展示，同比按百分点差）</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1">
             <Label>是否叶子</Label>

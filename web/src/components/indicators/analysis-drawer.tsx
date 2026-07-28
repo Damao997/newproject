@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label'
 import { RichTextEditor } from '@/components/editor/rich-text-editor'
 import { useAnalyses, useCreateAnalysis, useUpdateAnalysis, useDeleteAnalysis } from '@/hooks/api-queries'
 import { streamAI, type StreamController } from '@/lib/ai-stream'
-import { formatMoneyWan, formatPercent } from '@/lib/utils'
+import { formatMetricValue, formatPercent, type MetricValueType } from '@/lib/utils'
 import { calcYoy, calcAchievement, type MetricValue } from '@/lib/metric-values'
 
 /** 将 AI 初稿纯文本包装为带 data-ai-suggested 标识的 HTML 段 */
@@ -26,6 +26,8 @@ export interface AnalysisTarget {
   subjectCode: string
   subjectName: string
   subjectType: 'operating' | 'static'
+  /** 值类型：决定指标上下文的格式化与单位标注（缺省金额） */
+  valueType?: MetricValueType
   fiscalYear: string
   period: string
   metric?: MetricValue
@@ -41,7 +43,7 @@ function ContextChip({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col rounded-md border bg-muted/30 px-3 py-1.5">
       <span className="text-[11px] text-muted-foreground">{label}</span>
-      <span className="font-mono text-[13px] text-foreground">{value}</span>
+      <span className="font-num text-[13px] text-foreground">{value}</span>
     </div>
   )
 }
@@ -177,16 +179,22 @@ export function AnalysisDrawer({ open, target, onClose }: AnalysisDrawerProps) {
           </button>
         </div>
 
-        {/* 指标上下文 */}
-        {m && (
-          <div className="grid grid-cols-3 gap-2 border-b px-5 py-3 sm:grid-cols-5">
-            <ContextChip label="预算(万)" value={formatMoneyWan(m.budget)} />
-            <ContextChip label="本月实际(万)" value={formatMoneyWan(m.actual)} />
-            <ContextChip label="同期(万)" value={formatMoneyWan(m.samePeriod)} />
-            <ContextChip label="同比" value={formatPercent(calcYoy(m))} />
-            <ContextChip label="达成率" value={formatPercent(calcAchievement(m))} />
-          </div>
-        )}
+        {/* 指标上下文：按值类型格式化，仅金额类标注“(万)”；比率科目同比为百分点差 */}
+        {m && (() => {
+          const vt = target.valueType
+          const unit = vt === 'ratio' || vt === 'quantity' ? '' : '(万)'
+          const fmt = (v: number) => formatMetricValue(v, vt)
+          const yoyText = vt === 'ratio' ? `${((m.actual - m.samePeriod) * 100).toFixed(1)}pp` : formatPercent(calcYoy(m))
+          return (
+            <div className="grid grid-cols-3 gap-2 border-b px-5 py-3 sm:grid-cols-5">
+              <ContextChip label={`预算${unit}`} value={fmt(m.budget)} />
+              <ContextChip label={`本月实际${unit}`} value={fmt(m.actual)} />
+              <ContextChip label={`同期${unit}`} value={fmt(m.samePeriod)} />
+              <ContextChip label="同比" value={yoyText} />
+              <ContextChip label="达成率" value={formatPercent(calcAchievement(m))} />
+            </div>
+          )
+        })()}
 
         {/* 表单 */}
         <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">

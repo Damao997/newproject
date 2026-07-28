@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { MonthPicker } from '@/components/ui/month-picker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Dialog,
@@ -13,9 +14,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useConfirm } from '@/components/ui/confirm-dialog'
-import { useCompanies, useSubjects, usePreviewAdjustSubject, useAdjustSubject } from '@/hooks/api-queries'
+import {
+  useCompanies,
+  useSubjects,
+  useAvailablePeriods,
+  usePreviewAdjustSubject,
+  useAdjustSubject,
+} from '@/hooks/api-queries'
 import { formatMoney, cn } from '@/lib/utils'
-import { AlertTriangle, Search } from 'lucide-react'
+import { Equal, MinusCircle, PlusCircle } from 'lucide-react'
+import { TEMPLATE_LABEL, FeedbackAlert, PreviewStats, SubjectPicker, SectionTitle, type PreviewStatItem } from './shared'
 
 interface ReclassifySubjectDialogProps {
   open: boolean
@@ -26,78 +34,18 @@ interface ReclassifySubjectDialogProps {
   defaultCompany?: string
 }
 
-const TEMPLATE_LABEL: Record<string, string> = {
-  operating: '经营数据',
-  static: '静态数据',
-  budget: '年度预算',
-}
-
-interface SubjectOption { code: string; name: string }
-
-/** 科目搜索下拉：输入关键字过滤，单选 */
-function SubjectPicker({ label, options, value, onChange, excludeCode, placeholder }: {
-  label: string
-  options: SubjectOption[]
-  value: string
-  onChange: (code: string) => void
-  excludeCode?: string
-  placeholder?: string
-}) {
-  const [keyword, setKeyword] = useState('')
-  const [listOpen, setListOpen] = useState(false)
-  const filtered = useMemo(() => {
-    const kw = keyword.trim().toLowerCase()
-    const items = options.filter((s) => s.code !== excludeCode)
-    return kw ? items.filter((s) => s.name.toLowerCase().includes(kw) || s.code.toLowerCase().includes(kw)) : items
-  }, [options, keyword, excludeCode])
-  const selected = options.find((s) => s.code === value)
-
-  return (
-    <div className="space-y-1">
-      <Label>{label}</Label>
-      <button
-        type="button"
-        className="flex h-9 w-full items-center justify-between rounded-md border bg-transparent px-3 py-1 text-left text-sm shadow-sm"
-        onClick={() => setListOpen((v) => !v)}
-      >
-        {selected ? (
-          <span className="truncate">
-            <span className="font-mono text-xs text-muted-foreground">{selected.code}</span> {selected.name}
-          </span>
-        ) : (
-          <span className="text-muted-foreground">{placeholder ?? '选择科目'}</span>
-        )}
-      </button>
-      {listOpen && (
-        <div className="space-y-2 rounded-md border p-2">
-          <div className="relative">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="搜索科目名称或编码..." value={keyword} onChange={(e) => setKeyword(e.target.value)} className="pl-8" />
-          </div>
-          <div className="max-h-[160px] space-y-1 overflow-y-auto">
-            {filtered.map((s) => (
-              <button
-                key={s.code}
-                type="button"
-                className={cn('flex w-full items-center gap-2 rounded px-1 py-0.5 text-left text-sm hover:bg-muted', value === s.code && 'bg-muted')}
-                onClick={() => { onChange(s.code); setListOpen(false) }}
-              >
-                <span className="font-mono text-xs text-muted-foreground">{s.code}</span>
-                <span>{s.name}</span>
-              </button>
-            ))}
-            {filtered.length === 0 && <p className="py-2 text-center text-xs text-muted-foreground">无匹配科目</p>}
-          </div>
-        </div>
-      )}
-    </div>
-  )
+interface PreviewData {
+  affectedRows: number
+  sourceTotal: number
+  decreaseAmount: number
+  increaseAmount: number
+  netChange: number
 }
 
 /**
- * 同公司科目间调整对话框：把公司内源科目某期间的部分金额调减，
- * 可选调增到目标科目（调增额可与调减额不相等，公司总额随净差变化，需填写调整原因）。
- * 典型场景：修正某科目重复计算（只减不增）、科目口径迁移（等额调整）。
+ * 同公司科目间调整对话框：调减侧/调增侧对称双栏布局，输入即实时显示净变动。
+ * 调增侧整体可留空表示纯调减（如修正重复计算）；调增额可与调减额不相等，公司总额随净差变化，
+ * 因此调整原因必填留痕。期间选择使用与数据浏览模块一致的 MonthPicker（全平台统一）。
  */
 export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = 'operating', defaultCompany }: ReclassifySubjectDialogProps) {
   const [templateType, setTemplateType] = useState<string>(defaultTemplateType)
@@ -109,12 +57,14 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
   const [periodFrom, setPeriodFrom] = useState('')
   const [periodTo, setPeriodTo] = useState('')
   const [reason, setReason] = useState('')
-  const [preview, setPreview] = useState<{ affectedRows: number; sourceTotal: number; decreaseAmount: number; increaseAmount: number; netChange: number } | null>(null)
+  const [reasonTouched, setReasonTouched] = useState(false)
+  const [preview, setPreview] = useState<PreviewData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
 
   const { confirm, element: confirmElement } = useConfirm()
   const { data: companies } = useCompanies()
+  const { data: availablePeriods } = useAvailablePeriods()
   const entityCompanies = useMemo(() => (companies ?? []).filter((c) => c.type === 'entity'), [companies])
 
   // 科目候选：静态模板取静态科目，否则取经营科目
@@ -143,27 +93,42 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
     setDone(null)
   }
 
-  const validateInput = (): string | null => {
+  // ---- 字段级校验与本地实时净变动 ----
+  const periodError = periodFrom && periodTo && periodTo < periodFrom ? '期间止不能早于期间起' : null
+  const decreaseError = (() => {
+    if (decreaseInput === '') return null
+    const dec = Number(decreaseInput)
+    return !Number.isFinite(dec) || dec <= 0 ? '调减金额须大于 0' : null
+  })()
+  const increaseError = (() => {
+    if (increaseInput === '') return null
+    const inc = Number(increaseInput)
+    if (!Number.isFinite(inc) || inc < 0) return '调增金额须大于等于 0'
+    if (inc > 0 && !targetAccountCode) return '调增金额大于 0 时须选择目标科目'
+    return null
+  })()
+  const reasonError = reasonTouched && !reason.trim() ? '请填写调整原因' : null
+
+  const decValue = decreaseError || decreaseInput === '' ? 0 : Number(decreaseInput)
+  const incValue = increaseError || increaseInput === '' ? 0 : Number(increaseInput)
+  const localNet = Math.round((incValue - decValue) * 100) / 100
+  const isPureDecrease = increaseInput === '' && !targetAccountCode
+
+  const validateBeforePreview = (): string | null => {
     if (!companyCode) return '请选择公司'
     if (!sourceAccountCode) return '请选择源科目'
-    const dec = Number(decreaseInput)
-    if (!decreaseInput || !Number.isFinite(dec) || dec <= 0) return '请输入大于 0 的调减金额'
-    if (increaseInput !== '') {
-      const inc = Number(increaseInput)
-      if (!Number.isFinite(inc) || inc < 0) return '调增金额必须大于等于 0'
-      if (inc > 0 && !targetAccountCode) return '调增金额大于 0 时必须选择目标科目'
-    }
+    if (decreaseInput === '' || decreaseError) return decreaseError ?? '请输入调减金额'
+    if (increaseError) return increaseError
     if (targetAccountCode && targetAccountCode === sourceAccountCode) return '源科目与目标科目不能相同'
+    if (periodError) return periodError
     return null
   }
 
   const handlePreview = async () => {
-    setError(null)
-    setDone(null)
-    setPreview(null)
-    const inputError = validateInput()
-    if (inputError) {
-      setError(inputError)
+    reset()
+    const invalid = validateBeforePreview()
+    if (invalid) {
+      setError(invalid)
       return
     }
     try {
@@ -177,6 +142,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
   const handleSubmit = async () => {
     if (!preview || preview.affectedRows === 0) return
     if (!reason.trim()) {
+      setReasonTouched(true)
       setError('请填写调整原因')
       return
     }
@@ -201,115 +167,202 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
     }
   }
 
+  const previewItems: PreviewStatItem[] = preview
+    ? [
+        { label: '源科目匹配', value: `${preview.affectedRows} 条` },
+        { label: '源科目合计', value: formatMoney(preview.sourceTotal) },
+        { label: '调减金额', value: `-${formatMoney(preview.decreaseAmount)}`, tone: 'primary' },
+        ...(preview.increaseAmount > 0 ? [{ label: '调增金额', value: `+${formatMoney(preview.increaseAmount)}`, tone: 'primary' as const }] : []),
+        { label: '净变动', value: formatMoney(preview.netChange), tone: preview.netChange !== 0 ? 'warning' : 'default' },
+      ]
+    : []
+
+  const submitDisabledReason = !preview
+    ? '请先预览影响'
+    : preview.affectedRows === 0
+      ? '当前条件下无可调整数据'
+      : !reason.trim()
+        ? '请填写调整原因'
+        : null
+
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>科目间金额调整</DialogTitle>
           <DialogDescription>同一公司内源科目调减、目标科目调增，两者金额可不相等（如修正重复计算时只减不增）。</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label>模板类型</Label>
-              <Select value={templateType} onValueChange={(v) => { setTemplateType(v); reset(); setSourceAccountCode(''); setTargetAccountCode('') }}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="operating">经营数据</SelectItem>
-                  <SelectItem value="static">静态数据</SelectItem>
-                  <SelectItem value="budget">年度预算</SelectItem>
-                </SelectContent>
-              </Select>
+        <div className="space-y-4">
+          {/* ===== 数据范围 ===== */}
+          <section className="space-y-2">
+            <SectionTitle>数据范围</SectionTitle>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label>模板类型</Label>
+                <Select value={templateType} onValueChange={(v) => { setTemplateType(v); reset(); setSourceAccountCode(''); setTargetAccountCode('') }}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="operating">经营数据</SelectItem>
+                    <SelectItem value="static">静态数据</SelectItem>
+                    <SelectItem value="budget">年度预算</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>公司</Label>
+                <Select value={companyCode} onValueChange={(v) => { setCompanyCode(v); reset() }}>
+                  <SelectTrigger><SelectValue placeholder="选择公司" /></SelectTrigger>
+                  <SelectContent className="max-h-[280px]">
+                    {entityCompanies.map((c) => (
+                      <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>期间起（可选）</Label>
+                <MonthPicker className={cn('w-full', periodError && 'border-destructive')} value={periodFrom} onChange={(v) => { setPeriodFrom(v); reset() }} availablePeriods={availablePeriods ?? []} placeholder="不限" />
+              </div>
+              <div className="space-y-1">
+                <Label>期间止（可选）</Label>
+                <MonthPicker className={cn('w-full', periodError && 'border-destructive')} value={periodTo} onChange={(v) => { setPeriodTo(v); reset() }} availablePeriods={availablePeriods ?? []} placeholder="不限" />
+              </div>
             </div>
-            <div className="space-y-1">
-              <Label>公司</Label>
-              <Select value={companyCode} onValueChange={(v) => { setCompanyCode(v); reset() }}>
-                <SelectTrigger><SelectValue placeholder="选择公司" /></SelectTrigger>
-                <SelectContent className="max-h-[280px]">
-                  {entityCompanies.map((c) => (
-                    <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+            {periodError && <p className="text-xs text-destructive">{periodError}</p>}
+          </section>
 
-          <SubjectPicker
-            label="源科目（调减）"
-            options={subjectOptions}
-            value={sourceAccountCode}
-            onChange={(code) => { setSourceAccountCode(code); reset() }}
-            placeholder="选择要调减的科目"
-          />
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label>调减金额（元）</Label>
-              <Input type="number" min={0} step="0.01" placeholder="如 50000" value={decreaseInput} onChange={(e) => { setDecreaseInput(e.target.value); reset() }} />
-            </div>
-            <div className="space-y-1">
-              <Label>调增金额（元，可选）</Label>
-              <Input type="number" min={0} step="0.01" placeholder="留空即仅调减" value={increaseInput} onChange={(e) => { setIncreaseInput(e.target.value); reset() }} />
-            </div>
-          </div>
-
-          <SubjectPicker
-            label="目标科目（调增，可选）"
-            options={subjectOptions}
-            value={targetAccountCode}
-            onChange={(code) => { setTargetAccountCode(code); reset() }}
-            excludeCode={sourceAccountCode}
-            placeholder="留空即仅调减源科目"
-          />
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label>期间起（可选）</Label>
-              <Input type="month" value={periodFrom} onChange={(e) => { setPeriodFrom(e.target.value); reset() }} />
-            </div>
-            <div className="space-y-1">
-              <Label>期间止（可选）</Label>
-              <Input type="month" value={periodTo} onChange={(e) => { setPeriodTo(e.target.value); reset() }} />
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <Label>调整原因（必填）</Label>
-            <Textarea rows={2} placeholder="如：××科目 5 月数据重复计算，调减重复部分" value={reason} onChange={(e) => setReason(e.target.value)} />
-          </div>
-
-          {preview && (
-            <div className={cn('rounded-lg border p-3 text-sm', preview.affectedRows === 0 ? 'border-muted bg-muted/30' : 'border-blue-200 bg-blue-50')}>
-              {preview.affectedRows === 0 ? (
-                <p className="text-muted-foreground">当前筛选条件下没有可调整的数据。</p>
-              ) : (
+          {/* ===== 调整设置：调减侧 / 调增侧 对称双栏 ===== */}
+          <section className="space-y-2">
+            <SectionTitle>调整设置</SectionTitle>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {/* 调减侧 */}
+              <div className="space-y-2 rounded-lg border border-red-200 bg-red-50/40 p-3">
+                <p className="flex items-center gap-1.5 text-sm font-medium text-red-700">
+                  <MinusCircle className="h-4 w-4" />
+                  调减侧（源科目）
+                </p>
                 <div className="space-y-1">
-                  <p className="text-blue-800">
-                    源科目匹配 <span className="font-semibold">{preview.affectedRows}</span> 条明细（合计{' '}
-                    <span className="font-mono font-semibold">{formatMoney(preview.sourceTotal)}</span>），将调减{' '}
-                    <span className="font-mono font-semibold">{formatMoney(preview.decreaseAmount)}</span>
-                    {preview.increaseAmount > 0 && (
-                      <>，目标科目调增 <span className="font-mono font-semibold">{formatMoney(preview.increaseAmount)}</span></>
-                    )}
-                    。
-                  </p>
-                  {preview.netChange !== 0 && (
-                    <p className="flex items-center gap-1 text-amber-700">
-                      <AlertTriangle className="h-3.5 w-3.5" />
-                      本次调整将使公司总额净变动 {formatMoney(preview.netChange)}。
-                    </p>
-                  )}
+                  <Label>源科目 <span className="text-destructive">*</span></Label>
+                  <SubjectPicker
+                    options={subjectOptions}
+                    value={sourceAccountCode}
+                    onChange={(code) => { setSourceAccountCode(code); reset() }}
+                    placeholder="选择要调减的科目"
+                  />
                 </div>
-              )}
-            </div>
-          )}
+                <div className="space-y-1">
+                  <Label>调减金额（元） <span className="text-destructive">*</span></Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="如 50000"
+                    value={decreaseInput}
+                    aria-invalid={!!decreaseError}
+                    className={cn('bg-background', decreaseError && 'border-destructive focus-visible:ring-destructive')}
+                    onChange={(e) => { setDecreaseInput(e.target.value); reset() }}
+                  />
+                  {decreaseError && <p className="text-xs text-destructive">{decreaseError}</p>}
+                </div>
+              </div>
 
-          {done && <p className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">{done}</p>}
-          {error && <p className="text-sm text-destructive">{error}</p>}
+              {/* 调增侧（可整体留空 = 纯调减） */}
+              <div className={cn('space-y-2 rounded-lg border border-green-200 bg-green-50/40 p-3 transition-opacity', isPureDecrease && 'opacity-70')}>
+                <div className="flex items-center justify-between">
+                  <p className="flex items-center gap-1.5 text-sm font-medium text-green-700">
+                    <PlusCircle className="h-4 w-4" />
+                    调增侧（可选）
+                  </p>
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-primary transition-colors hover:bg-primary/10 disabled:pointer-events-none disabled:opacity-40"
+                    title="将调增金额设为与调减金额相等"
+                    disabled={decreaseInput === '' || !!decreaseError}
+                    onClick={() => { setIncreaseInput(decreaseInput); reset() }}
+                  >
+                    <Equal className="h-3 w-3" />
+                    等额调整
+                  </button>
+                </div>
+                <div className="space-y-1">
+                  <Label>目标科目</Label>
+                  <SubjectPicker
+                    options={subjectOptions}
+                    value={targetAccountCode}
+                    onChange={(code) => { setTargetAccountCode(code); reset() }}
+                    excludeCode={sourceAccountCode}
+                    placeholder="留空即仅调减"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>调增金额（元）</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="留空即仅调减"
+                    value={increaseInput}
+                    aria-invalid={!!increaseError}
+                    className={cn('bg-background', increaseError && 'border-destructive focus-visible:ring-destructive')}
+                    onChange={(e) => { setIncreaseInput(e.target.value); reset() }}
+                  />
+                  {increaseError && <p className="text-xs text-destructive">{increaseError}</p>}
+                </div>
+              </div>
+            </div>
+
+            {/* 实时净变动提示（无需等预览） */}
+            {decValue > 0 && (
+              <div
+                className={cn(
+                  'rounded-md border p-2.5 text-sm',
+                  localNet !== 0 ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-muted bg-muted/30 text-muted-foreground',
+                )}
+              >
+                {localNet !== 0
+                  ? <>本次调整将使公司总额净变动 <span className="font-num font-semibold">{formatMoney(localNet)}</span>{isPureDecrease && '（仅调减）'}。</>
+                  : <>调减与调增等额，公司总额不变。</>}
+              </div>
+            )}
+          </section>
+
+          {/* ===== 调整原因 ===== */}
+          <section className="space-y-1">
+            <Label>调整原因 <span className="text-destructive">*</span></Label>
+            <Textarea
+              rows={2}
+              placeholder="如：××科目 5 月数据重复计算，调减重复部分"
+              value={reason}
+              aria-invalid={!!reasonError}
+              className={cn(reasonError && 'border-destructive focus-visible:ring-destructive')}
+              onChange={(e) => setReason(e.target.value)}
+              onBlur={() => setReasonTouched(true)}
+            />
+            {reasonError && <p className="text-xs text-destructive">{reasonError}</p>}
+          </section>
+
+          {/* ===== 预览与执行 ===== */}
+          <section className="space-y-2">
+            <SectionTitle>预览与执行</SectionTitle>
+            {!preview && !done && !error && (
+              <p className="text-xs text-muted-foreground">设置完成后点击「预览影响」查看源科目匹配情况与金额变化。</p>
+            )}
+            {preview && (preview.affectedRows === 0
+              ? <PreviewStats items={[]} empty />
+              : <PreviewStats
+                  items={previewItems}
+                  warning={preview.netChange !== 0 ? <>本次调整将使公司总额净变动 <span className="font-num font-semibold">{formatMoney(preview.netChange)}</span>，请确认业务依据。</> : undefined}
+                />)}
+            {done && <FeedbackAlert kind="success">{done}</FeedbackAlert>}
+            {error && <FeedbackAlert kind="error">{error}</FeedbackAlert>}
+          </section>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="gap-2 sm:gap-0">
+          <div className="flex flex-1 items-center">
+            {submitDisabledReason && <span className="text-xs text-muted-foreground">{submitDisabledReason}</span>}
+          </div>
           <Button variant="outline" onClick={onClose}>关闭</Button>
           <Button variant="outline" onClick={handlePreview} disabled={previewMutation.isPending || !companyCode || !sourceAccountCode || !decreaseInput}>
             {previewMutation.isPending ? '预览中...' : '预览影响'}

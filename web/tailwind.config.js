@@ -53,8 +53,14 @@ export default {
         sm: "calc(var(--radius) - 4px)",
       },
       fontFamily: {
-        sans: ["Inter", "Noto Sans SC", "sans-serif"],
+        // 全局正文统一微软雅黑（非 Windows 环境回退 system-ui）
+        sans: ['"Microsoft YaHei"', '"微软雅黑"', "system-ui", "sans-serif"],
         mono: ["JetBrains Mono", "monospace"],
+        // 数字展示专用：微软雅黑 + tnum 等宽数字特性，保证表格数字对齐
+        num: [
+          ['"Microsoft YaHei"', '"微软雅黑"', "sans-serif"],
+          { fontFeatureSettings: '"tnum"' },
+        ],
       },
       keyframes: {
         "accordion-down": {

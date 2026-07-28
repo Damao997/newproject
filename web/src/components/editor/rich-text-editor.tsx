@@ -177,7 +177,7 @@ export function RichTextEditor({ value, onChange, placeholder, className, editab
     editable,
     editorProps: {
       attributes: {
-        class: 'prose-editor min-h-[200px] max-w-none px-3 py-2 text-[13px] focus:outline-none',
+        class: 'prose-editor min-h-[200px] max-w-none px-3 py-2 text-[13px] text-black focus:outline-none',
         'data-placeholder': placeholder ?? '请输入分析内容…',
       },
     },

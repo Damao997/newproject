@@ -601,6 +601,7 @@ export const ReclassificationService = {
       periodTo: r.periodTo,
       affectedRows: r.affectedRows,
       operator: nameMap.get(r.operatedBy) ?? r.operatedBy,
+      detail: r.detail,
       createdAt: r.createdAt.toISOString(),
     }))
     return { items, total, page: params.page, pageSize: params.pageSize, totalPages: Math.ceil(total / params.pageSize) }

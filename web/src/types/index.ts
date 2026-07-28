@@ -136,9 +136,26 @@ export interface ImportError {
   message: string
 }
 
+/** 重分类操作日志明细（detail JSON，按 type 部分字段可用） */
+export interface ReclassifyLogDetail {
+  /** company：转移方式与金额 */
+  transferMode?: 'all' | 'ratio' | 'amount'
+  ratio?: number | null
+  amount?: number | null
+  transferValue?: number
+  mergedRows?: number
+  createdRows?: number
+  accountCodes?: string[] | null
+  /** subject_adjust：调减/调增与原因 */
+  decreaseAmount?: number
+  increaseAmount?: number
+  netChange?: number
+  reason?: string
+}
+
 export interface ReclassifyLog {
   id: string
-  type: 'company' | 'subject'
+  type: 'company' | 'subject' | 'subject_adjust'
   templateType: string | null
   sourceCompany: string | null
   targetCompany: string | null
@@ -148,6 +165,7 @@ export interface ReclassifyLog {
   periodTo: string | null
   affectedRows: number
   operator: string
+  detail?: ReclassifyLogDetail | null
   createdAt: string
 }
 
@@ -199,6 +217,8 @@ export interface SubjectNode {
   category: string
   /** 数据类型：数据类/计算类/展示类 */
   dataType: 'data' | 'calc' | 'display'
+  /** 值类型：金额/数量/比率，决定数值格式化与同比语义（缺省按金额） */
+  valueType?: 'amount' | 'quantity' | 'ratio'
   children: SubjectNode[]
 }
 
@@ -240,6 +260,8 @@ export interface FilterParams {
   pageSize?: number
   /** 科目类型筛选（data/subjects 接口） */
   type?: string
+  /** 是否包含已停用科目（data/subjects 接口，query 串传 'true'） */
+  includeInactive?: string
 }
 
 // ===== 往来分析模块 =====

@@ -13,6 +13,12 @@ const dataTypeMeta: Record<
   display: { label: '展示类', variant: 'warning' },
 }
 
+// 非金额值类型轻量徽标（金额为默认不标注，避免噪音）
+const valueTypeLabel: Record<string, string> = {
+  quantity: '数量',
+  ratio: '比率',
+}
+
 interface SubjectTreeProps {
   nodes: SubjectNode[]
   /** 已展开的科目编码集合（受控） */
@@ -95,7 +101,12 @@ function TreeRows({
               </td>
               <td className="px-4 py-1.5 leading-[14px] align-middle text-muted-foreground">{node.category}</td>
               <td className="px-4 py-1.5 leading-[14px] align-middle">
-                <Badge variant={meta.variant}>{meta.label}</Badge>
+                <div className="flex items-center gap-1">
+                  <Badge variant={meta.variant}>{meta.label}</Badge>
+                  {node.valueType && valueTypeLabel[node.valueType] && (
+                    <Badge variant="outline">{valueTypeLabel[node.valueType]}</Badge>
+                  )}
+                </div>
               </td>
               {actions && (
                 <td className="px-4 py-1.5 leading-[14px] align-middle">

@@ -100,7 +100,7 @@ async function seedCalcMetricFormulas(prisma: PrismaClient): Promise<void> {
 
   let count = 0
   for (const [selfCode, plan] of plans) {
-    await prisma.metric.update({ where: { code: selfCode }, data: { formula: plan.formula, dependsOn: plan.deps as never, isDerived: true } })
+    await prisma.metric.update({ where: { code: selfCode }, data: { formula: plan.formula, dependsOn: plan.deps as never } })
     count++
   }
   console.log(`[seed] 计算类指标公式 ${count} 条 完成`)
@@ -237,11 +237,11 @@ export async function seedDomain(prisma: PrismaClient): Promise<void> {
       where: { code: s.code },
       update: {
         name: s.name, subjectType: s.subjectType, level: s.level, parentCode: s.parentCode,
-        category: s.category, direction: s.direction, isLeaf: s.isLeaf, orderNo: s.orderNo,
+        category: s.category, direction: s.direction, valueType: s.valueType, isLeaf: s.isLeaf, orderNo: s.orderNo,
       },
       create: {
         code: s.code, name: s.name, subjectType: s.subjectType, level: s.level, parentCode: s.parentCode,
-        category: s.category, direction: s.direction, isLeaf: s.isLeaf, orderNo: s.orderNo,
+        category: s.category, direction: s.direction, valueType: s.valueType, isLeaf: s.isLeaf, orderNo: s.orderNo,
       },
     })
   }
@@ -252,11 +252,8 @@ export async function seedDomain(prisma: PrismaClient): Promise<void> {
     const dataType = metricDataTypeOf(s)
     await prisma.metric.upsert({
       where: { code: s.code },
-      update: { name: s.name, category: s.category, dataType, direction: s.direction, isDerived: dataType === 'calc' },
-      create: {
-        code: s.code, name: s.name, category: s.category, dataType,
-        direction: s.direction, isDerived: dataType === 'calc',
-      },
+      update: { name: s.name, category: s.category, dataType },
+      create: { code: s.code, name: s.name, category: s.category, dataType },
     })
   }
   console.log(`[seed] 指标 ${allSubjects.length} 条 完成`)

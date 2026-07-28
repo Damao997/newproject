@@ -33,10 +33,15 @@ function companyDto(c: { id: string; code: string; name: string; shortName: stri
 export interface AggregationMapDto { id: string; summaryCompanyCode: string; summaryCompanyName: string; singleCompanyCode: string; singleCompanyName: string; isInternalElimination: boolean }
 
 // ---------------- 科目 ----------------
-export interface SubjectDto { id: string; code: string; name: string; type: string; level: number; parentCode: string | null; category: string; direction: string; isLeaf: boolean; status: string }
+export interface SubjectDto { id: string; code: string; name: string; type: string; level: number; parentCode: string | null; category: string; direction: string; valueType: string; isLeaf: boolean; status: string }
 
-function subjectDto(s: { id: string; code: string; name: string; subjectType: string; level: number; parentCode: string | null; category: string; direction: string; isLeaf: boolean; status: string }): SubjectDto {
-  return { id: s.id, code: s.code, name: s.name, type: s.subjectType, level: s.level, parentCode: s.parentCode, category: s.category, direction: s.direction, isLeaf: s.isLeaf, status: s.status }
+function subjectDto(s: { id: string; code: string; name: string; subjectType: string; level: number; parentCode: string | null; category: string; direction: string; valueType: string; isLeaf: boolean; status: string }): SubjectDto {
+  return { id: s.id, code: s.code, name: s.name, type: s.subjectType, level: s.level, parentCode: s.parentCode, category: s.category, direction: s.direction, valueType: s.valueType, isLeaf: s.isLeaf, status: s.status }
+}
+
+/** 校验并归一化值类型入参；非法/缺省返回 undefined（update 不改动） */
+function normalizeValueType(v?: string): 'amount' | 'quantity' | 'ratio' | undefined {
+  return v === 'amount' || v === 'quantity' || v === 'ratio' ? v : undefined
 }
 
 // ---------------- 指标 ----------------
@@ -199,7 +204,7 @@ export const DataService = {
     return { items: rows.map(subjectDto), total, page: params.page, pageSize: params.pageSize, totalPages: Math.ceil(total / params.pageSize) }
   },
 
-  async createSubject(input: { code: string; name: string; type?: string; level?: number; parentCode?: string | null; category?: string; direction?: string; isLeaf?: boolean }, ctx: AuditCtx): Promise<SubjectDto> {
+  async createSubject(input: { code: string; name: string; type?: string; level?: number; parentCode?: string | null; category?: string; direction?: string; valueType?: string; isLeaf?: boolean }, ctx: AuditCtx): Promise<SubjectDto> {
     const exists = await prisma.accountSubject.findUnique({ where: { code: input.code } })
     if (exists) throw errors.conflict('科目编码已存在')
     const created = await prisma.accountSubject.create({
@@ -210,6 +215,7 @@ export const DataService = {
         parentCode: input.parentCode ?? null,
         category: input.category ?? input.name,
         direction: (input.direction === 'credit' ? 'credit' : 'debit'),
+        valueType: normalizeValueType(input.valueType) ?? 'amount',
         isLeaf: input.isLeaf ?? true,
       },
     })
@@ -217,7 +223,7 @@ export const DataService = {
     return subjectDto(created)
   },
 
-  async updateSubject(id: string, input: { name?: string; category?: string; direction?: string; isLeaf?: boolean; parentCode?: string | null; status?: string }, ctx: AuditCtx): Promise<SubjectDto> {
+  async updateSubject(id: string, input: { name?: string; category?: string; direction?: string; valueType?: string; isLeaf?: boolean; parentCode?: string | null; status?: string }, ctx: AuditCtx): Promise<SubjectDto> {
     const found = await prisma.accountSubject.findUnique({ where: { id } })
     if (!found) throw errors.notFound('科目不存在')
     // code 不可变（变更 code 会破坏事实/指标引用，接口不接受 code）
@@ -231,6 +237,7 @@ export const DataService = {
         name: input.name ?? undefined,
         category: input.category ?? undefined,
         direction: input.direction === 'credit' ? 'credit' : input.direction === 'debit' ? 'debit' : undefined,
+        valueType: normalizeValueType(input.valueType),
         isLeaf: input.isLeaf ?? undefined,
         parentCode: input.parentCode === undefined ? undefined : input.parentCode,
         status: input.status === 'inactive' ? 'inactive' : input.status === 'active' ? 'active' : undefined,
@@ -368,8 +375,8 @@ export const DataService = {
     }
   },
 
-  /** 科目树（扁平列表，含 dataType）：取该 type 全部 active 科目 + 左联 metric 取 dataType */
-  async getSubjectTree(type: 'operating' | 'static'): Promise<{ id: string; code: string; name: string; level: number; parentCode: string | null; category: string; direction: string; isLeaf: boolean; dataType: string }[]> {
+  /** 科目树（扁平列表，含 dataType/valueType）：取该 type 全部 active 科目 + 左联 metric 取 dataType */
+  async getSubjectTree(type: 'operating' | 'static'): Promise<{ id: string; code: string; name: string; level: number; parentCode: string | null; category: string; direction: string; valueType: string; isLeaf: boolean; dataType: string }[]> {
     const subjects = await prisma.accountSubject.findMany({ where: { subjectType: type, status: 'active' }, orderBy: { orderNo: 'asc' } })
     const codes = subjects.map((s) => s.code)
     const metrics = await prisma.metric.findMany({ where: { code: { in: codes } }, select: { code: true, dataType: true } })
@@ -382,6 +389,7 @@ export const DataService = {
       parentCode: s.parentCode,
       category: s.category,
       direction: s.direction,
+      valueType: s.valueType,
       isLeaf: s.isLeaf,
       dataType: dtMap.get(s.code) ?? 'data',
     }))
@@ -420,7 +428,6 @@ export const DataService = {
         formula: input.formula ?? null,
         dependsOn: (dependsOn ?? []) as never,
         sourceAccountCodes: (input.sourceAccountCodes ?? undefined) as never,
-        isDerived: dataType === 'calc',
         createdBy: ctx.userId,
       },
     })

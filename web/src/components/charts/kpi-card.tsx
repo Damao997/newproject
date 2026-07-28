@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { KpiSparkline } from './kpi-sparkline'
-import { formatMoney, formatPercent, getChangePrefix } from '@/lib/utils'
+import { formatMoneyWan, formatPercent, getChangePrefix } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { 
   TrendingUp, 
@@ -57,8 +57,8 @@ export function KpiCard({ data, index = 0 }: KpiCardProps) {
       </CardHeader>
       <CardContent className="px-5 pb-4">
         <div className="mb-3 flex items-baseline gap-2">
-          <span className="font-mono text-[28px] font-bold leading-tight tracking-tight text-foreground">
-            {data.unit === '%' ? formatPercent(data.value / 100) : formatMoney(data.value)}
+          <span className="font-num text-[28px] font-bold leading-tight tracking-tight text-foreground">
+            {data.unit === '%' ? formatPercent(data.value / 100) : formatMoneyWan(data.value)}
           </span>
         </div>
         <div className="flex items-center justify-between">
@@ -79,7 +79,7 @@ export function KpiCard({ data, index = 0 }: KpiCardProps) {
             ) : (
               <ArrowDownRight className="h-3 w-3" />
             )}
-            <span>{changePrefix}{(Math.abs(data.change) * 100).toFixed(1)}%</span>
+            <span className="font-num">{changePrefix}{(Math.abs(data.change) * 100).toFixed(1)}%</span>
           </span>
           <span className="text-[10px] text-[#64748B]">同比</span>
         </div>

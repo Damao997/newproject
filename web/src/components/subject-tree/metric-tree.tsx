@@ -1,6 +1,6 @@
 import { Fragment } from 'react'
 import { ChevronRight, ChevronDown, MessageSquarePlus } from 'lucide-react'
-import { cn, formatMoneyWan, formatPercent, getChangeColor } from '@/lib/utils'
+import { cn, formatMetricValue, formatPercent, getChangeColor } from '@/lib/utils'
 import { calcYoy, calcAchievement, calcYtdYoy, type MetricValue } from '@/lib/metric-values'
 import type { SubjectNode } from '@/types'
 
@@ -22,11 +22,11 @@ interface MetricTreeProps {
   emptyText?: string
 }
 
-/** 涨跌彩色百分比（红涨绿跌、无箭头、等宽居中） */
-function ChangeText({ value }: { value: number }) {
+/** 涨跌彩色变化值（红涨绿跌、无箭头、等宽数字居中）：比率科目用百分点差 pp，其余用相对百分比 */
+function ChangeText({ value, unit = '%' }: { value: number; unit?: '%' | 'pp' }) {
   return (
-    <span className={cn('font-mono', getChangeColor(value))}>
-      {(value * 100).toFixed(1)}%
+    <span className={cn('font-num', getChangeColor(value))}>
+      {(value * 100).toFixed(1)}{unit}
     </span>
   )
 }
@@ -36,28 +36,34 @@ function valueColCount(isOperating: boolean): number {
   return isOperating ? 8 : 3
 }
 
-/** 数值单元格：按 variant 输出各期间维度列，等宽居中、黑色文本；金额不带「万」单位 */
-function renderValueCells(mv: MetricValue | undefined, isOperating: boolean) {
-  const cell = 'whitespace-nowrap px-4 py-2 align-middle text-center font-mono'
+/** 数值单元格：按 variant + 值类型输出各期间维度列（金额/数量/比率分型格式化）；比率科目同比为百分点差 */
+function renderValueCells(mv: MetricValue | undefined, isOperating: boolean, valueType?: SubjectNode['valueType']) {
+  const cell = 'whitespace-nowrap px-4 py-2 align-middle text-center font-num'
+  const isRatio = valueType === 'ratio'
+  const fmt = (v: number) => formatMetricValue(v, valueType)
+  // 比率科目：同比 = 本期比率 - 同期比率（pp），避免 20%→22% 被显示成 +10% 的误导
+  const yoy = (mv: MetricValue) => (isRatio ? <ChangeText value={mv.actual - mv.samePeriod} unit="pp" /> : <ChangeText value={calcYoy(mv)} />)
   if (isOperating) {
     return (
       <>
-        <td className={cell}>{mv ? formatMoneyWan(mv.budget) : '-'}</td>
-        <td className={cell}>{mv ? formatMoneyWan(mv.actual) : '-'}</td>
-        <td className={cell}>{mv ? formatMoneyWan(mv.samePeriod) : '-'}</td>
-        <td className={cn(cell, 'font-medium')}>{mv ? <ChangeText value={calcYoy(mv)} /> : '-'}</td>
+        <td className={cell}>{mv ? fmt(mv.budget) : '-'}</td>
+        <td className={cell}>{mv ? fmt(mv.actual) : '-'}</td>
+        <td className={cell}>{mv ? fmt(mv.samePeriod) : '-'}</td>
+        <td className={cn(cell, 'font-medium')}>{mv ? yoy(mv) : '-'}</td>
         <td className={cell}>{mv ? formatPercent(calcAchievement(mv)) : '-'}</td>
-        <td className={cell}>{mv ? formatMoneyWan(mv.ytd) : '-'}</td>
-        <td className={cell}>{mv ? formatMoneyWan(mv.samePeriodYtd) : '-'}</td>
-        <td className={cn(cell, 'font-medium')}>{mv ? <ChangeText value={calcYtdYoy(mv)} /> : '-'}</td>
+        <td className={cell}>{mv ? fmt(mv.ytd) : '-'}</td>
+        <td className={cell}>{mv ? fmt(mv.samePeriodYtd) : '-'}</td>
+        <td className={cn(cell, 'font-medium')}>
+          {mv ? (isRatio ? <ChangeText value={mv.ytd - mv.samePeriodYtd} unit="pp" /> : <ChangeText value={calcYtdYoy(mv)} />) : '-'}
+        </td>
       </>
     )
   }
   return (
     <>
-      <td className={cell}>{mv ? formatMoneyWan(mv.actual) : '-'}</td>
-      <td className={cell}>{mv ? formatMoneyWan(mv.samePeriod) : '-'}</td>
-      <td className={cn(cell, 'font-medium')}>{mv ? <ChangeText value={calcYoy(mv)} /> : '-'}</td>
+      <td className={cell}>{mv ? fmt(mv.actual) : '-'}</td>
+      <td className={cell}>{mv ? fmt(mv.samePeriod) : '-'}</td>
+      <td className={cn(cell, 'font-medium')}>{mv ? yoy(mv) : '-'}</td>
     </>
   )
 }
@@ -140,7 +146,7 @@ function MetricRows({
           <Fragment key={node.code}>
             <tr className="border-b transition-colors hover:bg-muted/50">
               <SubjectCell node={node} indentDepth={depth} expandedCodes={expandedCodes} onToggle={onToggle} />
-              {renderValueCells(valueMap.get(node.code), isOperating)}
+              {renderValueCells(valueMap.get(node.code), isOperating, node.valueType)}
               <AnalyzeCell node={node} onAnalyze={onAnalyze} />
             </tr>
             {hasChildren && isExpanded && (
@@ -214,7 +220,7 @@ function CategoryRows({
                   expandedCodes={expandedCodes}
                   onToggle={onToggle}
                 />
-                {renderValueCells(valueMap.get(node.code), isOperating)}
+                {renderValueCells(valueMap.get(node.code), isOperating, node.valueType)}
                 <AnalyzeCell node={node} onAnalyze={onAnalyze} />
               </tr>
             ))}

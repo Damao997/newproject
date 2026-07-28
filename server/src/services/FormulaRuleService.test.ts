@@ -84,6 +84,6 @@ describe('FormulaRuleService 集成（真实 DB）', () => {
 
     const metric = await basePrisma.metric.findUnique({ where: { code } })
     expect(metric?.formula).toBe('{OP_040} / {OP_001}')
-    expect(metric?.isDerived).toBe(true)
+    expect(metric?.dependsOn).toEqual(['OP_040', 'OP_001'])
   })
 })

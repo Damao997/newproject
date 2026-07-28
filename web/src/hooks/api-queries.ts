@@ -34,7 +34,7 @@ export interface OperatingResult {
   companyCount: number
 }
 export interface OperatingRow {
-  code: string; name: string; level: number; category: string; dataType: string; isLeaf: boolean
+  code: string; name: string; level: number; category: string; dataType: string; valueType: 'amount' | 'quantity' | 'ratio'; isLeaf: boolean
   budget: number; actual: number; samePeriod: number; ytd: number; samePeriodYtd: number
   yoy: number; achievement: number; ytdYoy: number; children?: OperatingRow[]
 }
@@ -44,7 +44,7 @@ export interface StaticResult {
   companyCount: number
 }
 export interface StaticRow {
-  code: string; name: string; level: number; category: string; dataType: string; isLeaf: boolean
+  code: string; name: string; level: number; category: string; dataType: string; valueType: 'amount' | 'quantity' | 'ratio'; isLeaf: boolean
   current: number; yearStart: number; samePeriod: number; lastYearStart: number; yoy: number; children?: StaticRow[]
 }
 
@@ -109,6 +109,7 @@ export interface SubjectTreeItem {
   direction: string
   isLeaf: boolean
   dataType: 'data' | 'calc' | 'display'
+  valueType?: 'amount' | 'quantity' | 'ratio'
 }
 
 export function useSubjectTree(type: 'operating' | 'static') {
@@ -145,7 +146,7 @@ export function useDeleteSubject() {
 export interface CrossTable {
   period: string
   companies: string[]
-  rows: { code: string; name: string; values: Record<string, number> }[]
+  rows: { code: string; name: string; valueType?: 'amount' | 'quantity' | 'ratio'; values: Record<string, number> }[]
 }
 export function useCrossTable(params: { period?: string; subjectType?: 'operating' | 'static' } = {}) {
   return useQuery({

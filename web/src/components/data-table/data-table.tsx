@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 export interface DataTableColumn<T> {
@@ -31,6 +31,12 @@ interface DataTableProps<T> {
   dense?: boolean
   /** 最大高度（如 '60vh'）：限高后内部垂直滚动，表头 sticky 固定 */
   maxHeight?: string
+  /** 行点击回调（提供后行显示 pointer 光标，可配合 expandedKeys 实现展开） */
+  onRowClick?: (row: T, rowIndex: number) => void
+  /** 展开行集合（以 rowKey 为准），命中时在该行下方渲染 renderExpanded 内容 */
+  expandedKeys?: Set<string | number>
+  /** 展开行内容渲染（跨整行 colSpan） */
+  renderExpanded?: (row: T) => ReactNode
   className?: string
 }
 
@@ -54,6 +60,9 @@ export function DataTable<T>({
   emptyText = '暂无数据',
   dense = false,
   maxHeight,
+  onRowClick,
+  expandedKeys,
+  renderExpanded,
   className,
 }: DataTableProps<T>) {
   return (
@@ -94,29 +103,42 @@ export function DataTable<T>({
               </td>
             </tr>
           ) : (
-            data.map((row, rowIndex) => (
-              <tr
-                key={rowKey(row, rowIndex)}
-                className="group border-b transition-colors hover:bg-muted/50"
-              >
-                {columns.map((col) => (
-                  <td
-                    key={col.key}
-                    className={cn(
-                      dense ? 'px-4 py-1.5 leading-[14px]' : 'p-4',
-                      'whitespace-nowrap align-middle',
-                      alignClass[col.align ?? 'left'],
-                      col.sticky && 'sticky left-0 z-[1] border-r bg-background group-hover:bg-muted/50',
-                      col.cellClassName,
-                    )}
+            data.map((row, rowIndex) => {
+              const key = rowKey(row, rowIndex)
+              const expanded = expandedKeys?.has(key) && renderExpanded
+              return (
+                <Fragment key={key}>
+                  <tr
+                    className={cn('group border-b transition-colors hover:bg-muted/50', onRowClick && 'cursor-pointer')}
+                    onClick={onRowClick ? () => onRowClick(row, rowIndex) : undefined}
                   >
-                    {col.render
-                      ? col.render(row, rowIndex)
-                      : ((row as Record<string, unknown>)[col.key] as ReactNode)}
-                  </td>
-                ))}
-              </tr>
-            ))
+                    {columns.map((col) => (
+                      <td
+                        key={col.key}
+                        className={cn(
+                          dense ? 'px-4 py-1.5 leading-[14px]' : 'p-4',
+                          'whitespace-nowrap align-middle',
+                          alignClass[col.align ?? 'left'],
+                          col.sticky && 'sticky left-0 z-[1] border-r bg-background group-hover:bg-muted/50',
+                          col.cellClassName,
+                        )}
+                      >
+                        {col.render
+                          ? col.render(row, rowIndex)
+                          : ((row as Record<string, unknown>)[col.key] as ReactNode)}
+                      </td>
+                    ))}
+                  </tr>
+                  {expanded && (
+                    <tr className="border-b bg-muted/20">
+                      <td colSpan={columns.length} className="px-4 py-2">
+                        {renderExpanded(row)}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })
           )}
         </tbody>
         {footer && <tfoot>{footer}</tfoot>}

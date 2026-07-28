@@ -18,6 +18,7 @@ export interface OperatingRow {
   level: number
   category: string
   dataType: string
+  valueType: string
   isLeaf: boolean
   budget: number
   actual: number
@@ -36,6 +37,7 @@ export interface StaticRow {
   level: number
   category: string
   dataType: string
+  valueType: string
   isLeaf: boolean
   current: number
   yearStart: number
@@ -52,15 +54,21 @@ function serializeOperating(node: ValueNode): OperatingRow {
   const samePeriod = v[OPERATING_DIMS.SAME_PERIOD_ACTUAL] ?? 0
   const ytd = v[OPERATING_DIMS.YTD_ACTUAL] ?? 0
   const samePeriodYtd = v[OPERATING_DIMS.SAME_PERIOD_YTD] ?? 0
+  // 比率类科目同比用百分点差（pp），避免相对变化率误导（20%→22% 不应显示 +10%）
+  const isRatio = node.valueType === 'ratio'
   return {
     code: node.code, name: node.name, level: node.level, category: node.category,
-    dataType: node.dataType, isLeaf: node.isLeaf,
+    dataType: node.dataType, valueType: node.valueType, isLeaf: node.isLeaf,
     budget, actual, samePeriod, ytd, samePeriodYtd,
-    yoy: calcYoy(actual, samePeriod),
+    yoy: isRatio ? round2pp((actual - samePeriod) * 100) : calcYoy(actual, samePeriod),
     achievement: calcAchievement(actual, budget),
-    ytdYoy: calcYoy(ytd, samePeriodYtd),
+    ytdYoy: isRatio ? round2pp((ytd - samePeriodYtd) * 100) : calcYoy(ytd, samePeriodYtd),
     children: node.children.map(serializeOperating),
   }
+}
+
+function round2pp(n: number): number {
+  return Number(n.toFixed(2))
 }
 
 function serializeStatic(node: ValueNode): StaticRow {
@@ -69,11 +77,12 @@ function serializeStatic(node: ValueNode): StaticRow {
   const yearStart = v[STATIC_DIMS.YEAR_START] ?? 0
   const samePeriod = v[STATIC_DIMS.SAME_PERIOD_AMOUNT] ?? 0
   const lastYearStart = v[STATIC_DIMS.LAST_YEAR_START] ?? 0
+  const isRatio = node.valueType === 'ratio'
   return {
     code: node.code, name: node.name, level: node.level, category: node.category,
-    dataType: node.dataType, isLeaf: node.isLeaf,
+    dataType: node.dataType, valueType: node.valueType, isLeaf: node.isLeaf,
     current, yearStart, samePeriod, lastYearStart,
-    yoy: calcYoy(current, samePeriod),
+    yoy: isRatio ? round2pp((current - samePeriod) * 100) : calcYoy(current, samePeriod),
     children: node.children.map(serializeStatic),
   }
 }
@@ -83,15 +92,15 @@ async function structuralTree(subjectType: 'operating' | 'static'): Promise<unkn
   const rows = await prisma.accountSubject.findMany({
     where: { subjectType },
     orderBy: { orderNo: 'asc' },
-    select: { code: true, name: true, level: true, parentCode: true, category: true },
+    select: { code: true, name: true, level: true, parentCode: true, category: true, valueType: true },
   })
   const metrics = await prisma.metric.findMany({ select: { code: true, dataType: true } })
   const dt = new Map(metrics.map((m) => [m.code, m.dataType]))
-  interface Node { code: string; name: string; level: number; category: string; dataType: string; children: Node[] }
+  interface Node { code: string; name: string; level: number; category: string; dataType: string; valueType: string; children: Node[] }
   const byCode = new Map<string, Node>()
   const roots: Node[] = []
   for (const r of rows) {
-    byCode.set(r.code, { code: r.code, name: r.name, level: r.level, category: r.category, dataType: dt.get(r.code) ?? 'data', children: [] })
+    byCode.set(r.code, { code: r.code, name: r.name, level: r.level, category: r.category, dataType: dt.get(r.code) ?? 'data', valueType: r.valueType, children: [] })
   }
   for (const r of rows) {
     const n = byCode.get(r.code) as Node
@@ -166,7 +175,7 @@ export const IndicatorsService = {
   },
 
   /** 交叉表：指标（行）× 公司（列）的本月实际（经营）或本期金额（静态） */
-  async getCross(scope: Scope, body: { companyCodes?: string[]; metricCodes?: string[]; period?: string; subjectType?: 'operating' | 'static' }): Promise<{ period: string; companies: string[]; rows: { code: string; name: string; values: Record<string, number> }[] }> {
+  async getCross(scope: Scope, body: { companyCodes?: string[]; metricCodes?: string[]; period?: string; subjectType?: 'operating' | 'static' }): Promise<{ period: string; companies: string[]; rows: { code: string; name: string; valueType: string; values: Record<string, number> }[] }> {
     const subjectType = body.subjectType === 'static' ? 'static' : 'operating'
     const scopeCompanies = await resolveCompanyCodes(scope)
     // 请求的公司码（可能含汇总主体）逐个经映射展开为单体成员，再取权限交集
@@ -202,13 +211,14 @@ export const IndicatorsService = {
       const level0 = await prisma.accountSubject.findMany({ where: { subjectType, level: 0 }, orderBy: { orderNo: 'asc' }, select: { code: true } })
       codes = level0.map((r) => r.code)
     }
-    const nameRows = await prisma.accountSubject.findMany({ where: { code: { in: codes } }, select: { code: true, name: true } })
+    const nameRows = await prisma.accountSubject.findMany({ where: { code: { in: codes } }, select: { code: true, name: true, valueType: true } })
     const nameMap = new Map(nameRows.map((r) => [r.code, r.name]))
+    const vtMap = new Map(nameRows.map((r) => [r.code, r.valueType as string]))
 
     const rows = codes.map((code) => {
       const values: Record<string, number> = {}
       for (const cc of companies) values[cc] = perCompany.get(cc)?.get(code) ?? 0
-      return { code, name: nameMap.get(code) ?? code, values }
+      return { code, name: nameMap.get(code) ?? code, valueType: vtMap.get(code) ?? 'amount', values }
     })
     return { period, companies, rows }
   },

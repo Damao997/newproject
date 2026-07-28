@@ -36,6 +36,13 @@ enum Direction {
   credit
 }
 
+// 科目值类型：金额（万元）/ 数量（户、天等）/ 比率（0-1 小数，展示乘 100 加 %）
+enum ValueType {
+  amount
+  quantity
+  ratio
+}
+
 enum RecordStatus {
   active
   inactive
@@ -172,6 +179,7 @@ model AccountSubject {
   parentCode  String?      @map("parent_code")
   category    String
   direction   Direction
+  valueType   ValueType    @default(amount) @map("value_type")
   isLeaf      Boolean      @map("is_leaf")
   status      RecordStatus @default(active)
   orderNo     Int          @default(0) @map("order_no")
@@ -462,7 +470,6 @@ model ReportTemplate {
 
 model Report {
   id             String       @id @default(uuid())
-  templateId     String?      @map("template_id")
   title          String
   fiscalYear     String       @map("fiscal_year")
   period         String
@@ -484,7 +491,6 @@ model ReportSection {
   analysisId String?  @map("analysis_id")
   title      String
   content    String?
-  autoData   Json?    @map("auto_data") @db.JsonB
   orderNo    Int      @default(0) @map("order_no")
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
@@ -648,14 +654,9 @@ model Metric {
   formula            String?
   dependsOn          Json?          @map("depends_on") @db.JsonB
   sourceAccountCodes Json?          @map("source_account_codes") @db.JsonB
-  direction          Direction?
-  isDerived          Boolean        @default(false) @map("is_derived")
-  description        String?
-  owner              String?
   version            Int            @default(1)
   status             RecordStatus   @default(active)
   createdBy          String?        @map("created_by")
-  aiSuggested        Boolean        @default(false) @map("ai_suggested")
   createdAt          DateTime       @default(now()) @map("created_at")
   updatedAt          DateTime       @updatedAt @map("updated_at")
 
@@ -686,12 +687,10 @@ model ImportBatch {
   uploadedById    String?         @map("uploaded_by_id")
   uploadedAt      DateTime        @default(now()) @map("uploaded_at")
   fiscalYear      String?         @map("fiscal_year")
-  period          String?
   status          ImportStatus
   rowCount        Int             @default(0) @map("row_count")
   detailCount     Int             @default(0) @map("detail_count")
   errorCount      Int             @default(0) @map("error_count")
-  mappingSchemeId String?         @map("mapping_scheme_id")
   sourceType      String?         @map("source_type")
   fileHash        String?         @map("file_hash")
   dataType        ImportDataType  @map("data_type")

@@ -17,6 +17,7 @@ export interface DecoratedSubject {
   parentCode: string | null
   category: string
   direction: 'debit' | 'credit'
+  valueType: 'amount' | 'quantity' | 'ratio'
   isLeaf: boolean
   dataType: 'data' | 'calc' | 'display'
   orderNo: number
@@ -135,6 +136,21 @@ const OP_DEBIT_CATEGORIES = new Set(['成本', '费用'])
 // 静态科目：负债/权益类为贷方，资产类为借方
 const STATIC_CREDIT_NAMES = new Set(['总负债', '预收账款', '应付账款', '内部往来', '应付股利', '权益净资产', '累计未分配利润(万元)'])
 
+// 值类型显式覆盖：名称规则无法准确判定的科目（劳效比为倍数，按纯数字展示）
+const VALUE_TYPE_OVERRIDES = new Map<string, 'amount' | 'quantity' | 'ratio'>([
+  ['劳效比', 'quantity'],
+  ['费效比', 'ratio'],
+])
+
+/** 按科目名称推断值类型：含“率/占比”为比率；含“户数/天数/（户）”为数量；其余为金额 */
+export function inferValueType(name: string): 'amount' | 'quantity' | 'ratio' {
+  const override = VALUE_TYPE_OVERRIDES.get(name)
+  if (override) return override
+  if (/率|占比/.test(name)) return 'ratio'
+  if (/户数|天数|（户）|\(户\)|人数/.test(name)) return 'quantity'
+  return 'amount'
+}
+
 /** 前序遍历装饰：赋 code/level/category/parentCode/isLeaf/direction/orderNo */
 export function decorateTree(raw: RawSubjectNode[], prefix: 'OP' | 'ST'): DecoratedSubject[] {
   const subjectType = prefix === 'OP' ? 'operating' : 'static'
@@ -162,6 +178,7 @@ export function decorateTree(raw: RawSubjectNode[], prefix: 'OP' | 'ST'): Decora
         parentCode,
         category: rootCategory,
         direction,
+        valueType: inferValueType(n.name),
         isLeaf,
         dataType: n.dataType,
         orderNo: ++order,

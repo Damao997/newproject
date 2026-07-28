@@ -1,5 +1,6 @@
 import ReactECharts from 'echarts-for-react'
 import type { EChartsOption, SeriesOption } from 'echarts'
+import { formatMoneyWan } from '@/lib/utils'
 import type { TrendData } from '@/types'
 
 interface TrendChartProps {
@@ -11,6 +12,9 @@ export function TrendChart({ data, showBudget = true }: TrendChartProps) {
   const periods = data.map(d => d.period)
   
   const option: EChartsOption = {
+    textStyle: {
+      fontFamily: "'Microsoft YaHei', '微软雅黑', sans-serif",
+    },
     tooltip: {
       trigger: 'axis',
       axisPointer: {
@@ -40,7 +44,7 @@ export function TrendChart({ data, showBudget = true }: TrendChartProps) {
               <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color}"></span>
               <span style="color:#64748B;font-size:12px">${item.seriesName}</span>
             </div>
-            <span style="font-weight:500;font-family:'JetBrains Mono',monospace;font-size:13px">${item.value.toFixed(2)} 万</span>
+            <span style="font-weight:500;font-family:'Microsoft YaHei','微软雅黑',sans-serif;font-variant-numeric:tabular-nums;font-size:13px">${formatMoneyWan(item.value)}</span>
           </div>`
         })
         return result

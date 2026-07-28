@@ -682,7 +682,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
             </div>
             {trialResult && (
               <div className="rounded-md bg-muted/50 p-2 text-xs">
-                <p>期间：{trialResult.period ?? '—'}　试算结果：<span className="font-mono font-semibold">{trialResult.value ?? '无法计算'}</span></p>
+                <p>期间：{trialResult.period ?? '—'}　试算结果：<span className="font-num font-semibold">{trialResult.value ?? '无法计算'}</span></p>
                 {trialResult.operands.length > 0 && (
                   <p className="mt-1 text-muted-foreground">
                     取值：{trialResult.operands.map((o) => `${o.name}=${o.value}`).join('，')}

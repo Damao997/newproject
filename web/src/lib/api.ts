@@ -436,6 +436,7 @@ class ApiClient {
     direction: string
     isLeaf: boolean
     dataType: 'data' | 'calc' | 'display'
+    valueType?: 'amount' | 'quantity' | 'ratio'
   }[]> {
     return this.request({
       method: 'GET',

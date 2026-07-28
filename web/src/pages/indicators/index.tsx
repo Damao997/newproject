@@ -12,6 +12,13 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { PageContainer } from '@/components/layout/page-container'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { MetricTree } from '@/components/subject-tree/metric-tree'
 import { AnalysisDrawer, type AnalysisTarget } from '@/components/indicators/analysis-drawer'
 import { ReclassifyCompanyDialog } from '@/components/reclassify/reclassify-company-dialog'
@@ -22,7 +29,7 @@ import { useCompanies, useOperatingIndicators, useStaticIndicators, useAvailable
 import { exportToExcel } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import type { MetricValue } from '@/lib/metric-values'
-import { Download, ChevronsDownUp, ChevronsUpDown, ArrowLeftRight, History } from 'lucide-react'
+import { Download, ChevronsDownUp, ChevronsUpDown, ChevronDown, ArrowLeftRight, History } from 'lucide-react'
 import type { SubjectNode } from '@/types'
 
 /** 收集含子节点的科目编码（用于全部展开） */
@@ -55,6 +62,7 @@ function adapt(items: Row[], isOperating: boolean): { nodes: SubjectNode[]; map:
       return {
         code: r.code, name: r.name, level: r.level, category: r.category,
         dataType: r.dataType as SubjectNode['dataType'],
+        valueType: r.valueType,
         children: r.children ? walk(r.children as Row[]) : [],
       }
     })
@@ -164,6 +172,7 @@ export default function IndicatorsPage() {
       subjectCode: node.code,
       subjectName: node.name,
       subjectType: activeTab,
+      valueType: node.valueType,
       fiscalYear: effectivePeriod.slice(0, 4),
       period: effectivePeriod,
       metric: activeValueMap.get(node.code),
@@ -172,15 +181,18 @@ export default function IndicatorsPage() {
 
   const handleExport = async () => {
     const pct = (v: number) => `${v.toFixed(1)}%`
+    // 分型导出：比率列乘 100 加 %，数量取整，金额保持数值；比率科目同比为百分点差 pp（后端已按 pp 返回）
+    const fmtVal = (v: number, vt: string) => (vt === 'ratio' ? `${(v * 100).toFixed(1)}%` : vt === 'quantity' ? Math.round(v) : v)
+    const fmtYoy = (v: number, vt: string) => (vt === 'ratio' ? `${v.toFixed(1)}pp` : pct(v))
     const flat = flattenForExport(activeItems as Row[])
     if (isOperating) {
       const rows = flat.map(({ row, depth }) => {
         const o = row as OperatingRow
         return {
           account: `${'　'.repeat(depth)}${o.name}`,
-          budget: o.budget, actual: o.actual, samePeriod: o.samePeriod,
-          yoy: pct(o.yoy), achievement: pct(o.achievement),
-          ytd: o.ytd, samePeriodYtd: o.samePeriodYtd, ytdYoy: pct(o.ytdYoy),
+          budget: fmtVal(o.budget, o.valueType), actual: fmtVal(o.actual, o.valueType), samePeriod: fmtVal(o.samePeriod, o.valueType),
+          yoy: fmtYoy(o.yoy, o.valueType), achievement: pct(o.achievement),
+          ytd: fmtVal(o.ytd, o.valueType), samePeriodYtd: fmtVal(o.samePeriodYtd, o.valueType), ytdYoy: fmtYoy(o.ytdYoy, o.valueType),
         }
       })
       await exportToExcel({
@@ -204,7 +216,7 @@ export default function IndicatorsPage() {
         const s = row as StaticRow
         return {
           account: `${'　'.repeat(depth)}${s.name}`,
-          actual: s.current, samePeriod: s.samePeriod, yoy: pct(s.yoy),
+          actual: fmtVal(s.current, s.valueType), samePeriod: fmtVal(s.samePeriod, s.valueType), yoy: fmtYoy(s.yoy, s.valueType),
         }
       })
       await exportToExcel({
@@ -228,23 +240,39 @@ export default function IndicatorsPage() {
       className="space-y-3"
       actions={
         <div className="flex items-center gap-2">
-          {can('data:reclassify', 'company') && (
-            <Button variant="outline" size="sm" onClick={() => setReclassifyOpen(true)}>
-              <ArrowLeftRight className="mr-2 h-4 w-4" />
-              重分类
-            </Button>
-          )}
-          {can('data:reclassify', 'subject') && (
-            <Button variant="outline" size="sm" onClick={() => setAdjustSubjectOpen(true)}>
-              <ArrowLeftRight className="mr-2 h-4 w-4" />
-              科目间调整
-            </Button>
-          )}
-          {can('data:reclassify', 'company') && (
-            <Button variant="outline" size="sm" onClick={() => setReclassifyLogsOpen(true)}>
-              <History className="mr-2 h-4 w-4" />
-              重分类记录
-            </Button>
+          {(can('data:reclassify', 'company') || can('data:reclassify', 'subject')) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <ArrowLeftRight className="mr-2 h-4 w-4" />
+                  数据调整
+                  <ChevronDown className="ml-1.5 h-3.5 w-3.5 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                {can('data:reclassify', 'company') && (
+                  <DropdownMenuItem onClick={() => setReclassifyOpen(true)}>
+                    <ArrowLeftRight className="mr-2 h-4 w-4" />
+                    跨公司重分类
+                  </DropdownMenuItem>
+                )}
+                {can('data:reclassify', 'subject') && (
+                  <DropdownMenuItem onClick={() => setAdjustSubjectOpen(true)}>
+                    <ArrowLeftRight className="mr-2 h-4 w-4" />
+                    科目间调整
+                  </DropdownMenuItem>
+                )}
+                {can('data:reclassify', 'company') && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => setReclassifyLogsOpen(true)}>
+                      <History className="mr-2 h-4 w-4" />
+                      重分类记录
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
           {can('indicators', 'export') ? (
             <Button variant="outline" size="sm" onClick={handleExport} disabled={isLoading || activeItems.length === 0}>

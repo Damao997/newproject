@@ -3,6 +3,8 @@ import {
   formatMoney,
   formatMoneyWan,
   formatPercent,
+  formatQuantity,
+  formatMetricValue,
   getChangeColor,
   getChangePrefix,
 } from '@/lib/utils'
@@ -28,12 +30,35 @@ describe('formatMoneyWan', () => {
 })
 
 describe('formatPercent', () => {
-  it('将小数转换为百分比字符串', () => {
-    expect(formatPercent(0.1234)).toBe('12.34%')
+  it('将小数转换为百分比字符串（保留 1 位小数）', () => {
+    expect(formatPercent(0.1234)).toBe('12.3%')
+    expect(formatPercent(0.235)).toBe('23.5%')
   })
 
   it('处理整数百分比', () => {
-    expect(formatPercent(1)).toBe('100.00%')
+    expect(formatPercent(1)).toBe('100.0%')
+  })
+})
+
+describe('formatQuantity', () => {
+  it('千分位整数，不带小数', () => {
+    expect(formatQuantity(12345.67)).toBe('12,346')
+    expect(formatQuantity(3)).toBe('3')
+  })
+})
+
+describe('formatMetricValue', () => {
+  it('金额（缺省/amount）千分位两位小数', () => {
+    expect(formatMetricValue(1234.5)).toBe('1,234.50')
+    expect(formatMetricValue(1234.5, 'amount')).toBe('1,234.50')
+  })
+
+  it('数量整数', () => {
+    expect(formatMetricValue(3, 'quantity')).toBe('3')
+  })
+
+  it('比率百分比（1 位小数）', () => {
+    expect(formatMetricValue(0.235, 'ratio')).toBe('23.5%')
   })
 })
 

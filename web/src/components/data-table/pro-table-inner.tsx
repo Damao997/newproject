@@ -1,5 +1,6 @@
 import ProTable from '@ant-design/pro-table'
 import type { ProColumns } from '@ant-design/pro-table'
+import { ConfigProvider } from 'antd'
 import type { DataTableColumn } from './data-table'
 
 interface ProTableInnerProps<T> {
@@ -29,16 +30,18 @@ export default function ProTableInner<T extends Record<string, unknown>>({
   }))
 
   return (
-    <ProTable<T>
-      columns={proColumns}
-      dataSource={data}
-      rowKey={(row) => String(rowKey(row, 0))}
-      search={false}
-      options={false}
-      toolBarRender={false}
-      virtual
-      scroll={{ y: 480 }}
-      pagination={false}
-    />
+    <ConfigProvider theme={{ token: { fontFamily: "'Microsoft YaHei', '微软雅黑', system-ui, sans-serif" } }}>
+      <ProTable<T>
+        columns={proColumns}
+        dataSource={data}
+        rowKey={(row) => String(rowKey(row, 0))}
+        search={false}
+        options={false}
+        toolBarRender={false}
+        virtual
+        scroll={{ y: 480 }}
+        pagination={false}
+      />
+    </ConfigProvider>
   )
 }
