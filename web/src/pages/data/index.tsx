@@ -37,10 +37,13 @@ import {
   ShieldAlert,
   ChevronDown,
   ChevronRight,
+  ArrowLeftRight,
 } from 'lucide-react'
 import { SubjectTreePanel } from '@/components/subject-tree/subject-tree-panel'
 import { CompanyPanel } from '@/components/dimension/company-panel'
 import { AggregationMapPanel } from '@/components/dimension/aggregation-map-panel'
+import { ReclassifyCompanyDialog } from '@/components/reclassify/reclassify-company-dialog'
+import { ReclassifySubjectDialog } from '@/components/reclassify/reclassify-subject-dialog'
 import { FormulaMaintenance } from './formula-maintenance'
 
 /** 批次生命周期状态中文标签 */
@@ -60,6 +63,9 @@ const templateTypeLabel: Record<string, string> = {
   inventory: '存货数据',
 }
 
+/** 导入质量概览折叠偏好的 localStorage key（'1' = 收起） */
+const QUALITY_COLLAPSED_KEY = 'data-quality-overview-collapsed'
+
 interface ImportErrorRow {
   row: number
   column: string
@@ -75,12 +81,13 @@ export default function DataPage() {
   const canPurgeBatch = can('data:import', 'purge')
   const canPurgeMetric = can('data:metric', 'purge')
   const canApproveMetric = can('data:metric', 'approve')
+  const canReclassifyCompany = can('data:reclassify', 'company')
+  const canReclassifySubject = can('data:reclassify', 'subject')
   const { confirm, element: confirmElement } = useConfirm()
 
   const [activeTab, setActiveTab] = useState(canImport ? 'import' : 'browse')
 
   // 导入质量概览折叠偏好：localStorage 持久化（'1' = 收起），读写失败静默降级为展开
-  const QUALITY_COLLAPSED_KEY = 'data-quality-overview-collapsed'
   const [qualityOpen, setQualityOpen] = useState<boolean>(() => {
     try {
       return localStorage.getItem(QUALITY_COLLAPSED_KEY) !== '1'
@@ -96,6 +103,10 @@ export default function DataPage() {
       /* 隐私模式等场景忽略 */
     }
   }
+
+  // 数据编辑入口：复用重分类/科目调整通道（校验、预览影响、二次确认、审计留痕均在对话框内）
+  const [adjustSubjectOpen, setAdjustSubjectOpen] = useState(false)
+  const [reclassifyCompanyOpen, setReclassifyCompanyOpen] = useState(false)
 
   // ---- 导入 ----
   const [templateType, setTemplateType] = useState('operating')
@@ -163,6 +174,9 @@ export default function DataPage() {
     const firstName = companyNameMap.get(browseCompanies[0]) ?? browseCompanies[0]
     return browseCompanies.length === 1 ? firstName : `${firstName} 等 ${browseCompanies.length} 家`
   }, [browseCompanies, companyNameMap])
+
+  // 编辑对话框预填：公司多选恰好只选 1 家时预填该公司
+  const singleBrowseCompany = browseCompanies.length === 1 ? browseCompanies[0] : undefined
 
   const toggleBrowseCompany = (code: string, checked: boolean) => {
     setBrowseCompanies((prev) => (checked ? [...prev, code] : prev.filter((c) => c !== code)))
@@ -824,12 +838,26 @@ export default function DataPage() {
                     <MonthPicker value={browsePeriod} onChange={setBrowsePeriod} availablePeriods={dynamicPeriods ?? []} />
                   </div>
                 </div>
-                {canExport && (
-                  <Button variant="outline" size="sm" className="ml-auto shrink-0" onClick={handleBrowseExport}>
-                    <Download className="mr-2 h-4 w-4" />
-                    导出
-                  </Button>
-                )}
+                <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">
+                  {canReclassifySubject && (
+                    <Button variant="outline" size="sm" onClick={() => setAdjustSubjectOpen(true)}>
+                      <ArrowLeftRight className="mr-2 h-4 w-4" />
+                      科目调整
+                    </Button>
+                  )}
+                  {canReclassifyCompany && (
+                    <Button variant="outline" size="sm" onClick={() => setReclassifyCompanyOpen(true)}>
+                      <ArrowLeftRight className="mr-2 h-4 w-4" />
+                      跨公司重分类
+                    </Button>
+                  )}
+                  {canExport && (
+                    <Button variant="outline" size="sm" onClick={handleBrowseExport}>
+                      <Download className="mr-2 h-4 w-4" />
+                      导出
+                    </Button>
+                  )}
+                </div>
               </div>
               {crossLoading ? (
                 <div className="min-h-[320px] py-12 text-center text-sm text-muted-foreground">数据加载中...</div>
@@ -919,6 +947,24 @@ export default function DataPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* 同公司科目间调整（预填当前指标类型与单选公司） */}
+      <ReclassifySubjectDialog
+        key={`adjust-${browseSubjectType}-${singleBrowseCompany ?? 'all'}`}
+        open={adjustSubjectOpen}
+        onClose={() => setAdjustSubjectOpen(false)}
+        defaultTemplateType={browseSubjectType}
+        defaultCompany={singleBrowseCompany}
+      />
+
+      {/* 跨公司重分类（预填当前指标类型与单选源公司） */}
+      <ReclassifyCompanyDialog
+        key={`reclassify-${browseSubjectType}-${singleBrowseCompany ?? 'all'}`}
+        open={reclassifyCompanyOpen}
+        onClose={() => setReclassifyCompanyOpen(false)}
+        defaultTemplateType={browseSubjectType}
+        defaultSourceCompany={singleBrowseCompany}
+      />
       {confirmElement}
     </PageContainer>
   )
