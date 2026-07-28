@@ -20,8 +20,9 @@ import { validateExcelFile } from '@/lib/file-validation'
 import { exportToExcel } from '@/lib/export'
 import { downloadImportTemplate } from '@/lib/import-template'
 import { type ImportPreviewResult } from '@/lib/api'
-import { formatMoney, cn } from '@/lib/utils'
+import { formatMoneyWan, formatMetricValue, cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
+import { Collapsible } from '@/components/ui/collapsible'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import type { ImportBatch } from '@/types'
 import {
@@ -35,6 +36,7 @@ import {
   Archive,
   ShieldAlert,
   ChevronDown,
+  ChevronRight,
 } from 'lucide-react'
 import { SubjectTreePanel } from '@/components/subject-tree/subject-tree-panel'
 import { CompanyPanel } from '@/components/dimension/company-panel'
@@ -76,6 +78,24 @@ export default function DataPage() {
   const { confirm, element: confirmElement } = useConfirm()
 
   const [activeTab, setActiveTab] = useState(canImport ? 'import' : 'browse')
+
+  // 导入质量概览折叠偏好：localStorage 持久化（'1' = 收起），读写失败静默降级为展开
+  const QUALITY_COLLAPSED_KEY = 'data-quality-overview-collapsed'
+  const [qualityOpen, setQualityOpen] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(QUALITY_COLLAPSED_KEY) !== '1'
+    } catch {
+      return true
+    }
+  })
+  const handleQualityOpenChange = (open: boolean) => {
+    setQualityOpen(open)
+    try {
+      localStorage.setItem(QUALITY_COLLAPSED_KEY, open ? '0' : '1')
+    } catch {
+      /* 隐私模式等场景忽略 */
+    }
+  }
 
   // ---- 导入 ----
   const [templateType, setTemplateType] = useState('operating')
@@ -148,7 +168,7 @@ export default function DataPage() {
     setBrowseCompanies((prev) => (checked ? [...prev, code] : prev.filter((c) => c !== code)))
   }
 
-  type CrossRow = { code: string; name: string; values: Record<string, number> }
+  type CrossRow = { code: string; name: string; valueType?: 'amount' | 'quantity' | 'ratio'; values: Record<string, number> }
   const browseColumns: DataTableColumn<CrossRow>[] = useMemo(() => {
     const cols: DataTableColumn<CrossRow>[] = [
       { key: 'name', header: '指标', cellClassName: 'font-medium', sticky: true },
@@ -158,8 +178,9 @@ export default function DataPage() {
         key: code,
         header: companyNameMap.get(code) ?? code,
         align: 'right',
-        cellClassName: 'font-mono',
-        render: (r) => formatMoney(r.values[code] ?? 0),
+        cellClassName: 'font-num',
+        // 按科目值类型渲染：金额千分位 / 数量整数 / 比率百分比
+        render: (r) => formatMetricValue(r.values[code] ?? 0, r.valueType),
       })
     }
     return cols
@@ -167,7 +188,7 @@ export default function DataPage() {
 
   // 异常明细表列
   const errorColumns: DataTableColumn<ImportErrorRow>[] = useMemo(() => [
-    { key: 'row', header: '行号', align: 'right', cellClassName: 'font-mono text-muted-foreground', render: (e) => (e.row > 0 ? e.row : '-') },
+    { key: 'row', header: '行号', align: 'right', cellClassName: 'font-num text-muted-foreground', render: (e) => (e.row > 0 ? e.row : '-') },
     { key: 'column', header: '列', cellClassName: 'font-mono text-muted-foreground' },
     { key: 'message', header: '错误信息', cellClassName: 'text-destructive' },
   ], [])
@@ -318,9 +339,9 @@ export default function DataPage() {
           </Badge>
         ),
       },
-      { key: 'detailCount', header: '入库明细', align: 'right', cellClassName: 'font-mono', render: (b) => b.detailCount ?? b.rowCount ?? b.successCount + b.errorCount },
+      { key: 'detailCount', header: '入库明细', align: 'right', cellClassName: 'font-num', render: (b) => b.detailCount ?? b.rowCount ?? b.successCount + b.errorCount },
       {
-        key: 'quality', header: '成功/异常', align: 'right', cellClassName: 'font-mono',
+        key: 'quality', header: '成功/异常', align: 'right', cellClassName: 'font-num',
         render: (b) => (
           <span>
             <span className="text-green-700">{b.successCount}</span>
@@ -487,8 +508,8 @@ export default function DataPage() {
                           </p>
                         </div>
                         <div className="rounded-lg border bg-background p-2">
-                          <p className="text-xs text-muted-foreground">金额合计</p>
-                          <p className="mt-1 text-sm font-semibold font-mono">{formatMoney(previewResult.summary.totalValue)}</p>
+                          <p className="text-xs text-muted-foreground">金额合计(万)</p>
+                          <p className="mt-1 text-sm font-semibold font-num">{formatMoneyWan(previewResult.summary.totalValue)}</p>
                         </div>
                       </div>
                     )}
@@ -555,7 +576,7 @@ export default function DataPage() {
                               {previewResult.sampleRows.rows.map((row, i) => (
                                 <tr key={i} className="border-b last:border-0">
                                   {row.map((cell, j) => (
-                                    <td key={j} className="whitespace-nowrap p-2 font-mono text-muted-foreground">
+                                    <td key={j} className="whitespace-nowrap p-2 font-num text-muted-foreground">
                                       {typeof cell === 'number' ? cell.toLocaleString('zh-CN', { maximumFractionDigits: 2 }) : cell}
                                     </td>
                                   ))}
@@ -579,7 +600,7 @@ export default function DataPage() {
                           <tbody>
                             {previewResult.errors.slice(0, 50).map((e, i) => (
                               <tr key={`${e.row}-${e.column}-${i}`} className="border-b">
-                                <td className="p-2 font-mono text-muted-foreground">{e.row > 0 ? e.row : '-'}</td>
+                                <td className="p-2 font-num text-muted-foreground">{e.row > 0 ? e.row : '-'}</td>
                                 <td className="p-2 font-mono text-muted-foreground">{e.column}</td>
                                 <td className="p-2 text-destructive">{e.message}</td>
                               </tr>
@@ -623,13 +644,34 @@ export default function DataPage() {
         <TabsContent value="browse" className="space-y-4">
           {/* 导入质量概览 + 完整性验证 + 异常明细 */}
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <AlertTriangle className="mr-2 h-5 w-5" />
-                导入质量概览
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
+            <Collapsible
+              open={qualityOpen}
+              onOpenChange={handleQualityOpenChange}
+              trigger={(open) => (
+                <span className="flex flex-wrap items-center justify-between gap-2 p-6">
+                  <span className="flex items-center text-2xl font-semibold leading-none tracking-tight">
+                    <AlertTriangle className="mr-2 h-5 w-5" />
+                    导入质量概览
+                  </span>
+                  <span className="flex items-center gap-3 text-muted-foreground">
+                    {/* 收起态摘要：关键质量数字一瞥（异常 > 0 红色强调） */}
+                    {!open && (
+                      <span className="font-num text-sm">
+                        {qualityStats.batchCount} 批次 · {qualityStats.totalRows} 条 ·{' '}
+                        <span className={cn(qualityStats.errorRows > 0 && 'font-medium text-red-700')}>
+                          异常 {qualityStats.errorRows}
+                        </span>
+                      </span>
+                    )}
+                    <span className="flex items-center gap-1 text-xs">
+                      {open ? '收起' : '展开'}
+                      {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                    </span>
+                  </span>
+                </span>
+              )}
+            >
+              <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <div className="rounded-lg border bg-muted/30 p-3">
                   <p className="text-xs text-muted-foreground">导入批次</p>
@@ -723,7 +765,8 @@ export default function DataPage() {
                   />
                 </div>
               )}
-            </CardContent>
+              </CardContent>
+            </Collapsible>
           </Card>
 
           {/* 数据预览交叉表 */}
