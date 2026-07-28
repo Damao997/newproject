@@ -236,7 +236,7 @@ export default function LoginPage() {
 
         {/* 底部：公司信息 + 版本号（frontend-design-proposal 5.2） */}
         <p className="mt-6 text-center text-xs text-muted-foreground">
-          壹品慧 · 数据分析平台 © 2026 · v1.0.0beta
+          壹品慧 · 数据分析平台 © 2026 · v1.0.1 beta
         </p>
       </div>
     </div>

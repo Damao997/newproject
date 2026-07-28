@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import type { AnalysisInput, AnalysisItem, ReportDetail, ReportListItem, ReportSectionInput, ReportVersionItem, ReportExportData } from '@/lib/api'
+import type { AnalysisInput, AnalysisItem, AvailablePeriodsResult, ReportDetail, ReportListItem, ReportSectionInput, ReportVersionItem, ReportExportData } from '@/lib/api'
 import type { FilterParams } from '@/types'
 
 /**
@@ -9,7 +9,7 @@ import type { FilterParams } from '@/types'
  */
 
 export const queryKeys = {
-  dashboardOverview: ['dashboard', 'overview'] as const,
+  dashboardOverview: (p?: unknown) => ['dashboard', 'overview', p ?? null] as const,
   indicatorsOperating: (p: unknown) => ['indicators', 'operating', p] as const,
   indicatorsStatic: (p: unknown) => ['indicators', 'static', p] as const,
   companies: ['data', 'companies'] as const,
@@ -22,8 +22,12 @@ export const queryKeys = {
 }
 
 // ---------------- Dashboard ----------------
-export function useDashboardOverview() {
-  return useQuery({ queryKey: queryKeys.dashboardOverview, queryFn: () => api.getDashboardOverview() })
+export function useDashboardOverview(period?: string) {
+  return useQuery({
+    queryKey: queryKeys.dashboardOverview(period),
+    queryFn: () => api.getDashboardOverview(period ? { period } : undefined),
+    placeholderData: keepPreviousData,
+  })
 }
 
 // ---------------- Indicators ----------------
@@ -66,7 +70,7 @@ export function useStaticIndicators(params: { companyCode?: string }) {
 }
 
 export function useAvailablePeriods() {
-  return useQuery<string[]>({
+  return useQuery<AvailablePeriodsResult>({
     queryKey: ['indicators', 'periods'],
     queryFn: () => api.getAvailablePeriods(),
     staleTime: 5 * 60 * 1000,
@@ -146,7 +150,7 @@ export function useDeleteSubject() {
 export interface CrossTable {
   period: string
   companies: string[]
-  rows: { code: string; name: string; valueType?: 'amount' | 'quantity' | 'ratio'; values: Record<string, number> }[]
+  rows: { code: string; name: string; valueType?: 'amount' | 'quantity' | 'ratio'; level: number; parentCode: string | null; isLeaf: boolean; values: Record<string, number> }[]
 }
 export function useCrossTable(params: { period?: string; subjectType?: 'operating' | 'static' } = {}) {
   return useQuery({
@@ -269,8 +273,7 @@ export interface ReclassifyCompanyInput {
   sourceCompanyCode: string
   targetCompanyCode: string
   accountCodes?: string[]
-  periodFrom?: string
-  periodTo?: string
+  period: string
   transferMode?: 'all' | 'ratio' | 'amount'
   ratio?: number
   amount?: number
@@ -283,8 +286,7 @@ export interface AdjustSubjectInput {
   targetAccountCode?: string
   decreaseAmount: number
   increaseAmount?: number
-  periodFrom?: string
-  periodTo?: string
+  period: string
   reason: string
 }
 
@@ -312,6 +314,19 @@ export function useReclassifyLogs(params: FilterParams & { type?: string } = {})
     queryKey: ['data', 'reclassify-logs', params] as const,
     queryFn: () => api.getReclassifyLogs(params),
     placeholderData: keepPreviousData,
+  })
+}
+
+export function useRevertReclassifyLog() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.revertReclassifyLog(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['data', 'cross-table'] })
+      qc.invalidateQueries({ queryKey: ['indicators'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+      qc.invalidateQueries({ queryKey: ['data', 'reclassify-logs'] })
+    },
   })
 }
 
@@ -390,7 +405,15 @@ export function useRoles() {
   return useQuery({ queryKey: queryKeys.roles, queryFn: () => api.getRoles() })
 }
 
-export function useAuditLogs(params: FilterParams = {}) {
+/** 审计日志查询参数：在通用分页/时间范围之外支持角色/模块/用户关键字筛选 */
+export interface AuditLogParams extends FilterParams {
+  module?: string
+  action?: string
+  role?: string
+  username?: string
+}
+
+export function useAuditLogs(params: AuditLogParams = {}) {
   return useQuery({ queryKey: queryKeys.auditLogs(params), queryFn: () => api.getAuditLogs(params), placeholderData: keepPreviousData })
 }
 

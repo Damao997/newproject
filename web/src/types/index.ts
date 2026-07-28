@@ -6,6 +6,8 @@ export interface User {
   /** 后端下发的角色权限码列表（`resource:action`），旧会话可能缺失 */
   permissions?: string[]
   dataScope: string
+  /** 多选数据范围编码数组（可混合单体与汇总主体），管理列表接口下发 */
+  dataScopeCodes?: string[]
   status: 'active' | 'inactive'
   lastLoginAt?: string
   createdAt: string
@@ -161,10 +163,17 @@ export interface ReclassifyLog {
   targetCompany: string | null
   sourceSubject: string | null
   targetSubject: string | null
+  /** 调整期间（单月；历史记录回退 periodFrom） */
+  period: string | null
   periodFrom: string | null
   periodTo: string | null
   affectedRows: number
   operator: string
+  /** 撤销时间（null = 未撤销） */
+  revertedAt: string | null
+  revertedBy: string | null
+  /** 是否可撤销（含行级快照且未撤销） */
+  revertible: boolean
   detail?: ReclassifyLogDetail | null
   createdAt: string
 }

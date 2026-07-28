@@ -12,13 +12,15 @@ import type { AuthUserContext } from '../types/express'
 const router = Router()
 
 function scopeOf(authUser: AuthUserContext) {
-  return { companyCode: authUser.companyCode, scopeValue: authUser.scopeValue }
+  return { companyCode: authUser.companyCode, scopeValue: authUser.scopeValue, dataScopeCodes: authUser.dataScopeCodes }
 }
 
 router.use(authenticate)
 
 router.get('/overview', requirePermission('dashboard:view', 'view'), asyncHandler(async (req, res) => {
-  const data = await DashboardService.getOverview(scopeOf(req.authUser as AuthUserContext))
+  const data = await DashboardService.getOverview(scopeOf(req.authUser as AuthUserContext), {
+    period: req.query.period as string | undefined,
+  })
   sendOk(res, data)
 }))
 

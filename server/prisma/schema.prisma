@@ -305,21 +305,24 @@ model FactBudget {
   @@map("fact_budget")
 }
 
-// 4.4 重分类记录表（跨公司/科目归类调整的审计追溯）
+// 4.4 重分类记录表（跨公司/科目归类调整的审计追溯，含行级快照支持撤销）
 model ReclassificationLog {
-  id            String   @id @default(uuid())
-  type          String // 'company' | 'subject'
-  templateType  String?  @map("template_type")
-  sourceCompany String?  @map("source_company")
-  targetCompany String?  @map("target_company")
-  sourceSubject String?  @map("source_subject")
-  targetSubject String?  @map("target_subject")
-  periodFrom    String?  @map("period_from")
-  periodTo      String?  @map("period_to")
-  affectedRows  Int      @default(0) @map("affected_rows")
-  operatedBy    String   @map("operated_by")
-  detail        Json?    @db.JsonB
-  createdAt     DateTime @default(now()) @map("created_at")
+  id            String    @id @default(uuid())
+  type          String // 'company' | 'subject' | 'subject_adjust'
+  templateType  String?   @map("template_type")
+  sourceCompany String?   @map("source_company")
+  targetCompany String?   @map("target_company")
+  sourceSubject String?   @map("source_subject")
+  targetSubject String?   @map("target_subject")
+  period        String?
+  periodFrom    String?   @map("period_from")
+  periodTo      String?   @map("period_to")
+  affectedRows  Int       @default(0) @map("affected_rows")
+  operatedBy    String    @map("operated_by")
+  revertedAt    DateTime? @map("reverted_at")
+  revertedBy    String?   @map("reverted_by")
+  detail        Json?     @db.JsonB
+  createdAt     DateTime  @default(now()) @map("created_at")
 
   @@index([type, createdAt])
   @@map("reclassification_log")
@@ -578,6 +581,8 @@ model User {
   roleId          String       @map("role_id")
   companyCode     String?      @map("company_code")
   orgScopeBu    Json?        @map("org_scope_bu") @db.JsonB
+  // 多选数据范围：公司编码数组（可混合 EN 单体与 ET 汇总），优先于 companyCode 生效
+  dataScopeCodes  Json?        @map("data_scope_codes") @db.JsonB
   status          RecordStatus @default(active)
   refreshTokenJti String?      @map("refresh_token_jti")
   createdAt       DateTime     @default(now()) @map("created_at")

@@ -51,8 +51,9 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
       roleCode: user.role.code,
       scopeValue: user.role.scopeValue,
       companyCode: user.companyCode ?? null,
-      // orgScopeBu 为 Json? 字段，运行时校验为字符串数组后收窄类型
+      // orgScopeBu / dataScopeCodes 为 Json? 字段，运行时校验为字符串数组后收窄类型
       orgScopeBu: Array.isArray(user.orgScopeBu) ? (user.orgScopeBu as string[]) : null,
+      dataScopeCodes: Array.isArray(user.dataScopeCodes) ? (user.dataScopeCodes as string[]) : null,
     }
     req.authUser = context
     next()

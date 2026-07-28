@@ -135,9 +135,9 @@ describe('preview 激活影响预告与 KPI 覆盖（真实 DB）', () => {
     await basePrisma.importBatch.delete({ where: { id: impactBatchId } }).catch(() => undefined)
   })
 
-  it('activationImpact 返回 新增/重叠/消失 三类期间集合', async () => {
+  it('activationImpact 返回 新增/重叠/保留 三类期间集合', async () => {
     if (!dbReady || !company || !subject || !impactBatchId) return
-    // 文件包含 2098-02（重叠）与 2098-03（新增）；active 批次含 2098-01（将消失）
+    // 文件包含 2098-02（重叠）与 2098-03（新增）；active 批次含 2098-01（按期间合并下将保留）
     const buf = makeXlsx([
       ['单体维度', company.name, company.name],
       ['月份', new Date(2098, 1, 15), new Date(2098, 2, 15)],
@@ -148,9 +148,9 @@ describe('preview 激活影响预告与 KPI 覆盖（真实 DB）', () => {
     const impact = res.activationImpact
     expect(impact?.activeBatch).toBeTruthy()
     expect(impact!.overlappingPeriods).toContain(P_OVERLAP)
-    expect(impact!.vanishingPeriods).toContain(P_VANISH)
+    expect(impact!.retainedPeriods).toContain(P_VANISH)
     expect(impact!.newPeriods).toContain(P_NEW)
-    expect(impact!.vanishingPeriods).not.toContain(P_OVERLAP)
+    expect(impact!.retainedPeriods).not.toContain(P_OVERLAP)
     expect(impact!.newPeriods).not.toContain(P_OVERLAP)
   })
 
@@ -174,5 +174,67 @@ describe('preview 激活影响预告与 KPI 覆盖（真实 DB）', () => {
     if (rootCategory && ['收入', '成本', '毛利', '费用'].includes(rootCategory)) {
       expect(kc.covered).toContain(rootCategory)
     }
+  })
+})
+
+describe('activate 按期间合并（真实 DB）', () => {
+  const P1 = '2097-01'
+  const P2 = '2097-02'
+  const P3 = '2097-03'
+  const COMP = '__TEST_PM_COMP__'
+  const ACC = '__TEST_PM_ACC__'
+  const createdBatchIds: string[] = []
+
+  const makeBatch = async (fileName: string, lifecycleStatus: 'draft' | 'active', periods: string[]) => {
+    const b = await basePrisma.importBatch.create({
+      data: { fileName, status: 'success', dataType: 'operating', lifecycleStatus, sourceType: 'upload', fiscalYear: 'FY2096' },
+    })
+    createdBatchIds.push(b.id)
+    if (periods.length > 0) {
+      await basePrisma.factOperating.createMany({
+        data: periods.map((p) => ({
+          batchId: b.id, companyCode: COMP, accountCode: ACC,
+          period: p, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2096', value: 1,
+        })),
+      })
+    }
+    return b
+  }
+
+  afterAll(async () => {
+    if (createdBatchIds.length === 0) return
+    await basePrisma.factOperating.deleteMany({ where: { batchId: { in: createdBatchIds } } }).catch(() => undefined)
+    await basePrisma.importBatch.deleteMany({ where: { id: { in: createdBatchIds } } }).catch(() => undefined)
+  })
+
+  it('重叠期间被替换、非重叠保留；旧批次清空后自动归档', async () => {
+    if (!dbReady) return
+    // 注意：测试会临时影响同 dataType 的现有 active 批次（测试期间与真实数据不重叠，不会删除真实事实行）
+    const a = await makeBatch('__test_pm_A__.xlsx', 'active', [P1, P2])
+    const b = await makeBatch('__test_pm_B__.xlsx', 'draft', [P2, P3])
+
+    await ImportService.activate(b.id, 'test-user', 'trace')
+
+    // A 的重叠期间 P2 行被删除，P1 保留；A 仍 active（未清空）；B active
+    const aRows = await basePrisma.factOperating.findMany({ where: { batchId: a.id }, select: { period: true } })
+    expect(aRows.map((r) => r.period)).toEqual([P1])
+    const aBatch = await basePrisma.importBatch.findUnique({ where: { id: a.id } })
+    expect(aBatch?.lifecycleStatus).toBe('active')
+    const bBatch = await basePrisma.importBatch.findUnique({ where: { id: b.id } })
+    expect(bBatch?.lifecycleStatus).toBe('active')
+
+    // 再激活覆盖 P1 的批次 C：A 清空后自动归档，B 仍 active
+    const c = await makeBatch('__test_pm_C__.xlsx', 'draft', [P1])
+    await ImportService.activate(c.id, 'test-user', 'trace')
+    const aBatch2 = await basePrisma.importBatch.findUnique({ where: { id: a.id } })
+    expect(aBatch2?.lifecycleStatus).toBe('archived')
+    expect(await basePrisma.factOperating.count({ where: { batchId: a.id } })).toBe(0)
+    const bBatch2 = await basePrisma.importBatch.findUnique({ where: { id: b.id } })
+    expect(bBatch2?.lifecycleStatus).toBe('active')
+
+    // 多 active 批次共存：可用期间包含 P1/P2/P3（B 提供 P2/P3，C 提供 P1）
+    const activeBatches = await basePrisma.importBatch.findMany({ where: { dataType: 'operating', lifecycleStatus: 'active', id: { in: createdBatchIds } }, select: { id: true } })
+    const periods = await basePrisma.factOperating.findMany({ where: { batchId: { in: activeBatches.map((x) => x.id) } }, distinct: ['period'], select: { period: true } })
+    expect(periods.map((r) => r.period).sort()).toEqual([P1, P2, P3])
   })
 })

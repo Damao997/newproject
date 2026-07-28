@@ -10,7 +10,7 @@ import type { ValueNode } from './AggregationService'
  * 全部经 scope 过滤；多公司自动汇总求和。
  */
 
-type Scope = Pick<AuthUserContext, 'companyCode' | 'scopeValue'>
+type Scope = Pick<AuthUserContext, 'companyCode' | 'scopeValue'> & { dataScopeCodes?: string[] | null }
 
 interface Kpi { title: string; value: number; unit: string; change: number; trend: number[]; icon: string }
 interface Trend { period: string; revenue: number; cost: number; profit: number; budget: number }
@@ -36,12 +36,12 @@ function changeRate(cur: number, base: number): number {
   return base ? round2((cur - base) / base) : 0
 }
 
-/** active 经营批次内的可用期间（升序） */
+/** active 经营批次内的可用期间（升序；多批次按期间共存，汇总全部 active 批次） */
 async function availablePeriods(): Promise<string[]> {
-  const batch = await prisma.importBatch.findFirst({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true } })
-  if (!batch) return []
+  const batches = await prisma.importBatch.findMany({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true } })
+  if (batches.length === 0) return []
   const rows = await prisma.factOperating.findMany({
-    where: { batchId: batch.id },
+    where: { batchId: { in: batches.map((b) => b.id) } },
     distinct: ['period'],
     orderBy: { period: 'asc' },
     select: { period: true },
@@ -63,10 +63,11 @@ async function monthlyTrend(companyCodes: string[], periods: string[]): Promise<
 }
 
 export const DashboardService = {
-  async getOverview(scope: Scope): Promise<{ kpiData: Kpi[]; trendData: Trend[]; alerts: unknown[]; lastUpdatedAt: string }> {
+  async getOverview(scope: Scope, params: { period?: string } = {}): Promise<{ kpiData: Kpi[]; trendData: Trend[]; alerts: unknown[]; lastUpdatedAt: string; period: string; availablePeriods: string[] }> {
     const companyCodes = await resolveCompanyCodes(scope)
     const periods = await availablePeriods()
-    const period = periods[periods.length - 1] ?? (await latestOperatingPeriod())
+    // 选定期仅接受可用期间内的值，缺省取最新期；趋势不受选定期影响
+    const period = (params.period && periods.includes(params.period) ? params.period : periods[periods.length - 1]) ?? (await latestOperatingPeriod())
     const trendData = await monthlyTrend(companyCodes, periods)
 
     const tree = await AggregationService.buildOperatingTree(companyCodes, period)
@@ -91,7 +92,7 @@ export const DashboardService = {
     const alerts = await this.getAlerts(scope)
     const lastBatch = await prisma.importBatch.findFirst({ where: { lifecycleStatus: 'active' }, orderBy: { updatedAt: 'desc' }, select: { updatedAt: true } })
 
-    return { kpiData, trendData, alerts, lastUpdatedAt: (lastBatch?.updatedAt ?? new Date()).toISOString() }
+    return { kpiData, trendData, alerts, lastUpdatedAt: (lastBatch?.updatedAt ?? new Date()).toISOString(), period, availablePeriods: periods }
   },
 
   async getDrill(scope: Scope, params: { companyCode?: string; period?: string }): Promise<{ kpiData: Kpi[]; trendData: Trend[] }> {

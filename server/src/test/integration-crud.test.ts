@@ -139,9 +139,33 @@ describe('用户与角色', () => {
     const cloned = await AdminService.cloneRole(role.id, '测试角色副本', ctx())
     tempRoleCodes.push(cloned.code)
     expect(cloned.id).not.toBe(role.id)
-    // 预置角色权限只读
-    const adminRole = await basePrisma.role.findUnique({ where: { code: 'admin' }, select: { id: true } })
-    await expect(AdminService.updateRolePermissions(adminRole!.id, [], ctx())).rejects.toMatchObject({ code: 403 })
+    // superadmin 角色权限固定为全量，禁止修改（系统失管保护）
+    const superRole = await basePrisma.role.findUnique({ where: { code: 'superadmin' }, select: { id: true } })
+    await expect(AdminService.updateRolePermissions(superRole!.id, [], ctx())).rejects.toMatchObject({ code: 403 })
+    // 预置角色（非 superadmin）现可编辑：以原权限集回写验证放行且不改变数据
+    const viewerRole = await basePrisma.role.findUnique({ where: { code: 'viewer' }, include: { permissions: { select: { resource: true, action: true } } } })
+    await AdminService.updateRolePermissions(viewerRole!.id, viewerRole!.permissions.map((p) => ({ resource: p.resource, action: p.action })), ctx())
+    const viewerPermCount = await basePrisma.permission.count({ where: { roleId: viewerRole!.id } })
+    expect(viewerPermCount).toBe(viewerRole!.permissions.length)
+  })
+
+  it('创建用户：多选数据范围校验与写入/清空', async () => {
+    if (!dbReady) return
+    const username = `scope.user.${Date.now().toString(36)}`
+    tempUsernames.push(username)
+    // 无效编码 → 400
+    await expect(
+      AdminService.createUser({ username, name: '范围用户', password: 'Test@123456', role: 'viewer', dataScopeCodes: ['NOT_EXIST'] }, ctx()),
+    ).rejects.toMatchObject({ code: 400 })
+    const companies = await basePrisma.company.findMany({ where: { status: 'active' }, take: 2, select: { code: true } })
+    if (companies.length < 2) return
+    const codes = companies.map((c) => c.code)
+    const created = await AdminService.createUser({ username, name: '范围用户', password: 'Test@123456', role: 'viewer', dataScopeCodes: codes }, ctx())
+    expect(created.dataScope).toBe(codes.join(','))
+    expect(created.dataScopeCodes).toEqual(codes)
+    // 更新为空数组 → 清空，回退角色范围（viewer scopeValue='' → 无）
+    const updated = await AdminService.updateUser(created.id, { dataScopeCodes: [] }, ctx())
+    expect(updated.dataScope).toBe('无')
   })
 
   it('权限清单与审计日志分页', async () => {
@@ -151,6 +175,19 @@ describe('用户与角色', () => {
     const logs = await AdminService.listAuditLogs({ page: 1, pageSize: 10 })
     expect(logs.total).toBeGreaterThanOrEqual(0)
     expect(Array.isArray(logs.items)).toBe(true)
+  })
+
+  it('审计日志：按角色/用户名/时间范围筛选', async () => {
+    if (!dbReady) return
+    // 角色 + 用户名关键字：命中项的用户名均含关键字
+    const byUser = await AdminService.listAuditLogs({ page: 1, pageSize: 10, role: 'admin', username: 'admin' })
+    expect(Array.isArray(byUser.items)).toBe(true)
+    byUser.items.forEach((i) => expect(i.username.toLowerCase()).toContain('admin'))
+    // 时间范围：全量区间的总数不小于窄区间
+    const all = await AdminService.listAuditLogs({ page: 1, pageSize: 1 })
+    const ranged = await AdminService.listAuditLogs({ page: 1, pageSize: 1, startDate: '2000-01-01', endDate: '2000-01-02' })
+    expect(ranged.total).toBeLessThanOrEqual(all.total)
+    expect(ranged.total).toBe(0)
   })
 })
 
@@ -273,7 +310,7 @@ describe('公式试算递归展开 calc 依赖', () => {
 })
 
 describe('跨公司重分类', () => {
-  it('preview + 执行：源公司数据改挂目标公司（含合并求和）', async () => {
+  it('preview + 执行：源公司单月数据改挂目标公司（含合并求和），可按快照撤销', async () => {
     if (!dbReady) return
     const batch = await basePrisma.importBatch.findFirst({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true } })
     if (!batch) return
@@ -287,29 +324,43 @@ describe('跨公司重分类', () => {
       await basePrisma.factOperating.createMany({
         data: [
           { batchId: batch.id, companyCode: src, accountCode: 'OP_001', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 100 },
-          { batchId: batch.id, companyCode: src, accountCode: 'OP_001', period: '2026-06', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 200 },
+          { batchId: batch.id, companyCode: src, accountCode: 'OP_002', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 200 },
         ],
       })
       // 目标公司已有 OP_001@2026-05 (50) → 合并
       await basePrisma.factOperating.create({ data: { batchId: batch.id, companyCode: tgt, accountCode: 'OP_001', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 50 } })
 
-      const pv = await ReclassificationService.previewCompany({ templateType: 'operating', sourceCompanyCode: src, targetCompanyCode: tgt }, scope)
+      const pv = await ReclassificationService.previewCompany({ templateType: 'operating', sourceCompanyCode: src, targetCompanyCode: tgt, period: '2026-05' }, scope)
       expect(pv.affectedRows).toBe(2)
       expect(pv.totalValue).toBe(300)
       expect(pv.conflictRows).toBe(1)
 
-      const res = await ReclassificationService.reclassifyCompany({ templateType: 'operating', sourceCompanyCode: src, targetCompanyCode: tgt }, scope, { userId: adminId, traceId: 'test' })
+      const res = await ReclassificationService.reclassifyCompany({ templateType: 'operating', sourceCompanyCode: src, targetCompanyCode: tgt, period: '2026-05' }, scope, { userId: adminId, traceId: 'test' })
       expect(res.affectedRows).toBe(2)
       expect(res.mergedRows).toBe(1)
 
       expect(await basePrisma.factOperating.count({ where: { companyCode: src } })).toBe(0)
-      const tgtRows = await basePrisma.factOperating.findMany({ where: { companyCode: tgt, accountCode: 'OP_001' }, orderBy: { period: 'asc' } })
+      const tgtRows = await basePrisma.factOperating.findMany({ where: { companyCode: tgt }, orderBy: { accountCode: 'asc' } })
       expect(tgtRows.length).toBe(2)
       expect(Number(tgtRows[0].value)).toBe(150) // 100 + 50 合并
       expect(Number(tgtRows[1].value)).toBe(200)
 
       const logs = await basePrisma.reclassificationLog.findMany({ where: { type: 'company', sourceCompany: src } })
-      expect(logs.length).toBeGreaterThanOrEqual(1)
+      expect(logs.length).toBe(1)
+      expect(logs[0].period).toBe('2026-05')
+
+      // 撤销：按快照逆向恢复（合并行回写 + 改挂行改回 + 删除行重建）
+      const revert = await ReclassificationService.revertLog(logs[0].id, scope, { userId: adminId, traceId: 'test' })
+      expect(revert.restoredRows).toBeGreaterThan(0)
+      const srcAfter = await basePrisma.factOperating.findMany({ where: { companyCode: src } })
+      expect(srcAfter.reduce((s, r) => s + Number(r.value), 0)).toBe(300)
+      const tgtAfter = await basePrisma.factOperating.findMany({ where: { companyCode: tgt } })
+      expect(tgtAfter.length).toBe(1)
+      expect(Number(tgtAfter[0].value)).toBe(50)
+      const reverted = await basePrisma.reclassificationLog.findUnique({ where: { id: logs[0].id } })
+      expect(reverted?.revertedAt).toBeTruthy()
+      // 重复撤销 → 409
+      await expect(ReclassificationService.revertLog(logs[0].id, scope, { userId: adminId, traceId: 'test' })).rejects.toMatchObject({ code: 409 })
     } finally {
       await basePrisma.factOperating.deleteMany({ where: { companyCode: { in: [src, tgt] } } }).catch(() => undefined)
       await basePrisma.company.deleteMany({ where: { code: { in: [src, tgt] } } }).catch(() => undefined)
@@ -321,10 +372,20 @@ describe('跨公司重分类', () => {
     if (!dbReady) return
     await expect(
       ReclassificationService.previewCompany(
-        { templateType: 'operating', sourceCompanyCode: 'EN330059', targetCompanyCode: 'EN330058' },
+        { templateType: 'operating', sourceCompanyCode: 'EN330059', targetCompanyCode: 'EN330058', period: '2026-05' },
         { companyCode: 'EN330059', scopeValue: '' },
       ),
     ).rejects.toMatchObject({ code: 403 })
+  })
+
+  it('未传单月期间 → 400', async () => {
+    if (!dbReady) return
+    await expect(
+      ReclassificationService.previewCompany(
+        { templateType: 'operating', sourceCompanyCode: 'EN330059', targetCompanyCode: 'EN330058', period: '' },
+        { companyCode: null, scopeValue: '*' },
+      ),
+    ).rejects.toMatchObject({ code: 400 })
   })
 
   it('部分转移（amount）：源行调减保留、目标累加/新建，合计恰等于转移额', async () => {
@@ -341,14 +402,14 @@ describe('跨公司重分类', () => {
       await basePrisma.factOperating.createMany({
         data: [
           { batchId: batch.id, companyCode: src, accountCode: 'OP_001', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 100 },
-          { batchId: batch.id, companyCode: src, accountCode: 'OP_001', period: '2026-06', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 200 },
+          { batchId: batch.id, companyCode: src, accountCode: 'OP_002', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 200 },
         ],
       })
-      // 目标公司已有 OP_001@2026-05 (50) → 累加；2026-06 无行 → 新建
+      // 目标公司已有 OP_001@2026-05 (50) → 累加；OP_002 无行 → 新建
       await basePrisma.factOperating.create({ data: { batchId: batch.id, companyCode: tgt, accountCode: 'OP_001', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 50 } })
 
       const pv = await ReclassificationService.previewCompany(
-        { templateType: 'operating', sourceCompanyCode: src, targetCompanyCode: tgt, transferMode: 'amount', amount: 90 },
+        { templateType: 'operating', sourceCompanyCode: src, targetCompanyCode: tgt, period: '2026-05', transferMode: 'amount', amount: 90 },
         scope,
       )
       expect(pv.affectedRows).toBe(2)
@@ -358,7 +419,7 @@ describe('跨公司重分类', () => {
       expect(pv.createRows).toBe(1)
 
       const res = await ReclassificationService.reclassifyCompany(
-        { templateType: 'operating', sourceCompanyCode: src, targetCompanyCode: tgt, transferMode: 'amount', amount: 90 },
+        { templateType: 'operating', sourceCompanyCode: src, targetCompanyCode: tgt, period: '2026-05', transferMode: 'amount', amount: 90 },
         scope,
         { userId: adminId, traceId: 'test' },
       )
@@ -378,7 +439,7 @@ describe('跨公司重分类', () => {
       // 超额转移 → 400
       await expect(
         ReclassificationService.previewCompany(
-          { templateType: 'operating', sourceCompanyCode: src, targetCompanyCode: tgt, transferMode: 'amount', amount: 999999 },
+          { templateType: 'operating', sourceCompanyCode: src, targetCompanyCode: tgt, period: '2026-05', transferMode: 'amount', amount: 999999 },
           scope,
         ),
       ).rejects.toMatchObject({ code: 400 })
@@ -404,7 +465,7 @@ describe('跨公司重分类', () => {
         data: { batchId: batch.id, companyCode: src, accountCode: 'OP_001', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 100 },
       })
       const res = await ReclassificationService.reclassifyCompany(
-        { templateType: 'operating', sourceCompanyCode: src, targetCompanyCode: tgt, transferMode: 'ratio', ratio: 0.3 },
+        { templateType: 'operating', sourceCompanyCode: src, targetCompanyCode: tgt, period: '2026-05', transferMode: 'ratio', ratio: 0.3 },
         scope,
         { userId: adminId, traceId: 'test' },
       )
@@ -444,15 +505,15 @@ describe('同公司科目间金额调整', () => {
       })
 
       const pv = await ReclassificationService.previewAdjustSubject(
-        { templateType: 'operating', companyCode: comp, sourceAccountCode: srcSub.code, targetAccountCode: tgtSub.code, decreaseAmount: 200, increaseAmount: 80, reason: '测试' },
+        { templateType: 'operating', companyCode: comp, sourceAccountCode: srcSub.code, targetAccountCode: tgtSub.code, decreaseAmount: 200, increaseAmount: 80, period: '2026-05', reason: '测试' },
         scope,
       )
-      expect(pv.affectedRows).toBe(2)
-      expect(pv.sourceTotal).toBe(400)
+      expect(pv.affectedRows).toBe(1)
+      expect(pv.sourceTotal).toBe(300)
       expect(pv.netChange).toBe(-120)
 
       const res = await ReclassificationService.adjustSubject(
-        { templateType: 'operating', companyCode: comp, sourceAccountCode: srcSub.code, targetAccountCode: tgtSub.code, decreaseAmount: 200, increaseAmount: 80, reason: '重复计算修正测试' },
+        { templateType: 'operating', companyCode: comp, sourceAccountCode: srcSub.code, targetAccountCode: tgtSub.code, decreaseAmount: 200, increaseAmount: 80, period: '2026-05', reason: '重复计算修正测试' },
         scope,
         { userId: adminId, traceId: 'test' },
       )
@@ -460,7 +521,7 @@ describe('同公司科目间金额调整', () => {
       expect(res.increaseAmount).toBe(80)
       expect(res.netChange).toBe(-120)
 
-      // 源科目合计 400-200=200；目标科目新增 80；公司总额 400-120=280
+      // 仅作用于 2026-05：源科目 300-200 + 保留 100 = 200；目标科目新增 80；公司总额 400-120=280
       const rows = await basePrisma.factOperating.findMany({ where: { companyCode: comp } })
       const srcSum = rows.filter((r) => r.accountCode === srcSub.code).reduce((s, r) => s + Number(r.value), 0)
       const tgtSum = rows.filter((r) => r.accountCode === tgtSub.code).reduce((s, r) => s + Number(r.value), 0)
@@ -472,7 +533,14 @@ describe('同公司科目间金额调整', () => {
       expect(logs.length).toBe(1)
       expect(logs[0].sourceSubject).toBe(srcSub.code)
       expect(logs[0].targetSubject).toBe(tgtSub.code)
+      expect(logs[0].period).toBe('2026-05')
       expect((logs[0].detail as { reason?: string })?.reason).toBe('重复计算修正测试')
+
+      // 撤销：恢复至调整前（源 400、目标 0）
+      await ReclassificationService.revertLog(logs[0].id, scope, { userId: adminId, traceId: 'test' })
+      const after = await basePrisma.factOperating.findMany({ where: { companyCode: comp } })
+      expect(after.filter((r) => r.accountCode === srcSub.code).reduce((s, r) => s + Number(r.value), 0)).toBe(400)
+      expect(after.filter((r) => r.accountCode === tgtSub.code).reduce((s, r) => s + Number(r.value), 0)).toBe(0)
     } finally {
       await basePrisma.factOperating.deleteMany({ where: { companyCode: comp } }).catch(() => undefined)
       await basePrisma.company.deleteMany({ where: { code: comp } }).catch(() => undefined)
@@ -495,7 +563,7 @@ describe('同公司科目间金额调整', () => {
         data: { batchId: batch.id, companyCode: comp, accountCode: srcSub.code, period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 500 },
       })
       const res = await ReclassificationService.adjustSubject(
-        { templateType: 'operating', companyCode: comp, sourceAccountCode: srcSub.code, decreaseAmount: 120, reason: '重复计算调减' },
+        { templateType: 'operating', companyCode: comp, sourceAccountCode: srcSub.code, decreaseAmount: 120, period: '2026-05', reason: '重复计算调减' },
         scope,
         { userId: adminId, traceId: 'test' },
       )
@@ -515,7 +583,7 @@ describe('同公司科目间金额调整', () => {
     if (!dbReady) return
     await expect(
       ReclassificationService.previewAdjustSubject(
-        { templateType: 'operating', companyCode: 'EN330058', sourceAccountCode: 'OP_001', decreaseAmount: 100, reason: 'x' },
+        { templateType: 'operating', companyCode: 'EN330058', sourceAccountCode: 'OP_001', decreaseAmount: 100, period: '2026-05', reason: 'x' },
         { companyCode: 'EN330059', scopeValue: '' },
       ),
     ).rejects.toMatchObject({ code: 403 })

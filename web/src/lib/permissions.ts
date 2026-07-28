@@ -13,7 +13,7 @@ import type { UserRole } from '@/types'
  * 说明：后端就绪后应改为使用登录接口返回的权限列表，届时本文件仅作兜底。
  */
 
-/** 管理员拥有的全部常规权限码（对齐 §2.3 46 项，去除公开路由 auth:login） */
+/** 管理员拥有的全部常规权限码（对齐 §2.3，去除公开路由 auth:login 与高危码；权限配置编辑已收紧为 superadmin 专属） */
 const ADMIN_PERMISSIONS: string[] = [
   'dashboard:view', 'dashboard:export',
   'indicators:view', 'indicators:export',
@@ -29,14 +29,14 @@ const ADMIN_PERMISSIONS: string[] = [
   'tools:view',
   'admin:users:view', 'admin:users:create', 'admin:users:update', 'admin:users:delete', 'admin:users:reset-password', 'admin:users:export',
   'admin:roles:view', 'admin:roles:create', 'admin:roles:update', 'admin:roles:delete',
-  'admin:permissions:view', 'admin:permissions:update',
+  'admin:permissions:view',
 ]
 
 /**
  * 高危操作权限码：仅超级管理员（superadmin）持有。
- * 含物理删除（purge）、指标审批、公式规则管理、批次归档/清除。
+ * 含物理删除（purge）、指标审批、公式规则管理、批次归档/清除、权限配置编辑。
  */
-const HIGH_RISK_PERMISSIONS: string[] = [
+export const HIGH_RISK_PERMISSIONS: string[] = [
   'data:metric:approve',
   'data:formula-rule:manage',
   'data:import:archive',
@@ -45,6 +45,8 @@ const HIGH_RISK_PERMISSIONS: string[] = [
   'data:subject:purge',
   'data:metric:purge',
   'admin:users:purge',
+  // 权限配置的增删改仅 superadmin 可操作（与 server/prisma/seed.ts 同步）
+  'admin:permissions:update',
 ]
 
 export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {

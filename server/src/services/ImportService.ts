@@ -53,15 +53,15 @@ export interface ImportErrorItem {
 /** 预览覆盖摘要（对外 DTO：剔除仅供服务层内部对比用的 periods/accountCodes） */
 export type PreviewSummaryDto = Omit<PreviewSummary, 'periods' | 'accountCodes'>
 
-/** 激活影响预告：按 activate 的整体替换语义（budget 按财年）对比文件与当前生效批次的期间集合 */
+/** 激活影响预告：按 activate 的按期间合并语义（budget 按财年）对比文件与当前生效批次的期间集合 */
 export interface ActivationImpact {
   activeBatch: { id: string; filename: string } | null
   /** 文件有而生效批次无（激活后新增） */
   newPeriods: string[]
   /** 双方都有（激活后被本文件数据替换） */
   overlappingPeriods: string[]
-  /** 生效批次有而文件无（激活后从看板/指标消失） */
-  vanishingPeriods: string[]
+  /** 生效批次有而文件无（按期间合并：激活后继续保留生效） */
+  retainedPeriods: string[]
 }
 
 /** 看板 KPI 可见性检查：文件科目沿科目树上溯到根后覆盖的根类别 */
@@ -91,7 +91,7 @@ async function computeActivationImpact(template: ImportTemplate, filePeriods: st
       : { dataType: template, lifecycleStatus: 'active' as const }
   const batches = await prisma.importBatch.findMany({ where, select: { id: true, fileName: true }, orderBy: { updatedAt: 'desc' } })
   if (batches.length === 0) {
-    return { activeBatch: null, newPeriods: filePeriods, overlappingPeriods: [], vanishingPeriods: [] }
+    return { activeBatch: null, newPeriods: filePeriods, overlappingPeriods: [], retainedPeriods: [] }
   }
   const batchIds = batches.map((b) => b.id)
   let activePeriods: string[]
@@ -111,7 +111,7 @@ async function computeActivationImpact(template: ImportTemplate, filePeriods: st
     activeBatch: { id: batches[0].id, filename: batches[0].fileName },
     newPeriods: filePeriods.filter((p) => !activeSet.has(p)),
     overlappingPeriods: filePeriods.filter((p) => activeSet.has(p)),
-    vanishingPeriods: [...activeSet].filter((p) => !fileSet.has(p)).sort(),
+    retainedPeriods: [...activeSet].filter((p) => !fileSet.has(p)).sort(),
   }
 }
 
@@ -337,29 +337,76 @@ export const ImportService = {
     return toDto(b, true)
   },
 
-  /** 激活批次：置 active，归档同 dataType 的旧 active 批次 */
+  /**
+   * 激活批次：置 active。期间策略：
+   * - operating/static 按期间合并：删除旧 active 批次中与本批次重叠期间的事实行（operating 按 period、static 按快照月），
+   *   旧批次清空后自动归档，否则保持 active（多批次按期间共存）；
+   * - budget 按财年整体替换：归档同 dataType 且同 fiscalYear 的旧 active；
+   * - transaction/inventory 维持整体替换。
+   */
   async activate(id: string, userId: string, traceId?: string): Promise<ImportBatchDto> {
     const b = await prisma.importBatch.findUnique({ where: { id } })
     if (!b) throw errors.notFound('导入批次不存在')
     if (b.lifecycleStatus === 'active') return toDto(b)
 
-    const updated = await prisma.$transaction(async (tx) => {
-      // 预算按财年管理：仅归档同 dataType 且同 fiscalYear 的旧 active（允许多财年预算共存）；
-      // 经营/静态维持整体替换（归档同 dataType 全部旧 active）。
-      const archiveWhere =
-        b.dataType === 'budget'
-          ? { dataType: b.dataType, lifecycleStatus: 'active' as const, fiscalYear: b.fiscalYear }
-          : { dataType: b.dataType, lifecycleStatus: 'active' as const }
-      await tx.importBatch.updateMany({
-        where: archiveWhere,
-        data: { lifecycleStatus: 'archived' },
-      })
-      return tx.importBatch.update({
+    const { updated, replacedPeriods, deletedRows } = await prisma.$transaction(async (tx) => {
+      let replaced: string[] = []
+      let deleted = 0
+      if (b.dataType === 'operating' || b.dataType === 'static') {
+        const oldActive = await tx.importBatch.findMany({
+          where: { dataType: b.dataType, lifecycleStatus: 'active' },
+          select: { id: true },
+        })
+        const oldIds = oldActive.map((x) => x.id)
+        if (oldIds.length > 0) {
+          if (b.dataType === 'operating') {
+            const rows = await tx.factOperating.findMany({ where: { batchId: id }, distinct: ['period'], select: { period: true } })
+            const newPeriods = rows.map((r) => r.period)
+            if (newPeriods.length > 0) {
+              const res = await tx.factOperating.deleteMany({ where: { batchId: { in: oldIds }, period: { in: newPeriods } } })
+              deleted = res.count
+              replaced = newPeriods.sort()
+            }
+            for (const oldId of oldIds) {
+              const remaining = await tx.factOperating.count({ where: { batchId: oldId } })
+              if (remaining === 0) await tx.importBatch.update({ where: { id: oldId }, data: { lifecycleStatus: 'archived' } })
+            }
+          } else {
+            const snaps = await tx.factStatic.findMany({ where: { batchId: id }, distinct: ['snapshotDate'], select: { snapshotDate: true } })
+            const newMonths = new Set(snaps.map((s) => ymOfDate(s.snapshotDate)))
+            if (newMonths.size > 0) {
+              const oldSnaps = await tx.factStatic.findMany({ where: { batchId: { in: oldIds } }, distinct: ['snapshotDate'], select: { snapshotDate: true } })
+              const delDates = oldSnaps.map((s) => s.snapshotDate).filter((d) => newMonths.has(ymOfDate(d)))
+              if (delDates.length > 0) {
+                const res = await tx.factStatic.deleteMany({ where: { batchId: { in: oldIds }, snapshotDate: { in: delDates } } })
+                deleted = res.count
+              }
+              replaced = [...newMonths].sort()
+            }
+            for (const oldId of oldIds) {
+              const remaining = await tx.factStatic.count({ where: { batchId: oldId } })
+              if (remaining === 0) await tx.importBatch.update({ where: { id: oldId }, data: { lifecycleStatus: 'archived' } })
+            }
+          }
+        }
+      } else {
+        // budget 按财年隔离；其余类型整体替换
+        const archiveWhere =
+          b.dataType === 'budget'
+            ? { dataType: b.dataType, lifecycleStatus: 'active' as const, fiscalYear: b.fiscalYear }
+            : { dataType: b.dataType, lifecycleStatus: 'active' as const }
+        await tx.importBatch.updateMany({
+          where: archiveWhere,
+          data: { lifecycleStatus: 'archived' },
+        })
+      }
+      const batch = await tx.importBatch.update({
         where: { id },
         data: { lifecycleStatus: 'active', status: 'success' },
       })
+      return { updated: batch, replacedPeriods: replaced, deletedRows: deleted }
     })
-    await recordAudit({ userId, module: 'data', action: 'update', targetId: id, detail: { action: 'activate' } }, traceId)
+    await recordAudit({ userId, module: 'data', action: 'update', targetId: id, detail: { action: 'activate', replacedPeriods, deletedRows } }, traceId)
     return toDto(updated)
   },
 

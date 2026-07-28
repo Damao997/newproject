@@ -12,7 +12,7 @@ import type { AuthUserContext } from '../types/express'
  * - 导出：返回结构化章节（标题+纯文本正文），由前端 docx/jspdf 生成 Word/PDF。
  */
 
-type Scope = Pick<AuthUserContext, 'companyCode' | 'scopeValue'>
+type Scope = Pick<AuthUserContext, 'companyCode' | 'scopeValue'> & { dataScopeCodes?: string[] | null }
 
 export interface CompanyScope {
   type: 'company' | 'summary'

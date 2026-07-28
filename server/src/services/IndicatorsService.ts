@@ -3,6 +3,7 @@ import { AggregationService, resolveCompanyCodes, flattenValueTree, type ValueNo
 import { OPERATING_DIMS, STATIC_DIMS, calcYoy, calcAchievement } from '../lib/metric-values'
 import { buildExcel } from '../lib/excel'
 import { errors } from '../lib/errors'
+import { fiscalYearLabel, getFiscalStartMonth } from '../lib/period'
 import type { AuthUserContext } from '../types/express'
 
 /**
@@ -10,7 +11,7 @@ import type { AuthUserContext } from '../types/express'
  * 同比/达成率由后端计算，不存库（见 CLAUDE.md 公式计算铁律）。
  */
 
-type Scope = Pick<AuthUserContext, 'companyCode' | 'scopeValue'>
+type Scope = Pick<AuthUserContext, 'companyCode' | 'scopeValue'> & { dataScopeCodes?: string[] | null }
 
 export interface OperatingRow {
   code: string
@@ -110,24 +111,24 @@ async function structuralTree(subjectType: 'operating' | 'static'): Promise<unkn
   return roots
 }
 
-/** 最新经营期间（active 批次内的最大 period），无数据回退 2025-06 */
+/** 最新经营期间（全部 active 批次内的最大 period），无数据回退 2025-06 */
 export async function latestOperatingPeriod(): Promise<string> {
-  const batch = await prisma.importBatch.findFirst({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true } })
-  if (!batch) return '2025-06'
+  const batches = await prisma.importBatch.findMany({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true } })
+  if (batches.length === 0) return '2025-06'
   const row = await prisma.factOperating.findFirst({
-    where: { batchId: batch.id },
+    where: { batchId: { in: batches.map((b) => b.id) } },
     orderBy: { period: 'desc' },
     select: { period: true },
   })
   return row?.period ?? '2025-06'
 }
 
-/** 最新静态快照期间（active 静态批次内最大快照月），无则回退最新经营期 */
+/** 最新静态快照期间（全部 active 静态批次内最大快照月），无则回退最新经营期 */
 export async function latestStaticPeriod(): Promise<string> {
-  const batch = await prisma.importBatch.findFirst({ where: { dataType: 'static', lifecycleStatus: 'active' }, select: { id: true } })
-  if (!batch) return latestOperatingPeriod()
+  const batches = await prisma.importBatch.findMany({ where: { dataType: 'static', lifecycleStatus: 'active' }, select: { id: true } })
+  if (batches.length === 0) return latestOperatingPeriod()
   const row = await prisma.factStatic.findFirst({
-    where: { batchId: batch.id },
+    where: { batchId: { in: batches.map((b) => b.id) } },
     orderBy: { snapshotDate: 'desc' },
     select: { snapshotDate: true },
   })
@@ -174,8 +175,8 @@ export const IndicatorsService = {
     return found
   },
 
-  /** 交叉表：指标（行）× 公司（列）的本月实际（经营）或本期金额（静态） */
-  async getCross(scope: Scope, body: { companyCodes?: string[]; metricCodes?: string[]; period?: string; subjectType?: 'operating' | 'static' }): Promise<{ period: string; companies: string[]; rows: { code: string; name: string; valueType: string; values: Record<string, number> }[] }> {
+  /** 交叉表：指标（行）× 公司（列）的本月实际（经营）或本期金额（静态）；未指定 metricCodes 时返回全部层级科目（树前序）供前端展开浏览 */
+  async getCross(scope: Scope, body: { companyCodes?: string[]; metricCodes?: string[]; period?: string; subjectType?: 'operating' | 'static' }): Promise<{ period: string; companies: string[]; rows: { code: string; name: string; valueType: string; level: number; parentCode: string | null; isLeaf: boolean; values: Record<string, number> }[] }> {
     const subjectType = body.subjectType === 'static' ? 'static' : 'operating'
     const scopeCompanies = await resolveCompanyCodes(scope)
     // 请求的公司码（可能含汇总主体）逐个经映射展开为单体成员，再取权限交集
@@ -205,34 +206,67 @@ export const IndicatorsService = {
       perCompany.set(cc, m)
     }
 
-    // 行：指定 metricCodes，或默认取 level0 节点
-    let codes = body.metricCodes
-    if (!codes || codes.length === 0) {
-      const level0 = await prisma.accountSubject.findMany({ where: { subjectType, level: 0 }, orderBy: { orderNo: 'asc' }, select: { code: true } })
-      codes = level0.map((r) => r.code)
+    // 行元信息：全量 active 科目（按 orderNo），附层级/父码/叶子标记
+    const subjects = await prisma.accountSubject.findMany({
+      where: { subjectType },
+      orderBy: { orderNo: 'asc' },
+      select: { code: true, name: true, valueType: true, level: true, parentCode: true, isLeaf: true },
+    })
+    const metaMap = new Map(subjects.map((s) => [s.code, s]))
+    // 行顺序：指定 metricCodes 按传入顺序；否则按科目树前序（保证父在前、子紧随其后，便于前端展开）
+    let codes: string[]
+    if (body.metricCodes && body.metricCodes.length > 0) {
+      codes = body.metricCodes
+    } else {
+      const childrenMap = new Map<string, string[]>()
+      const roots: string[] = []
+      for (const s of subjects) {
+        if (s.parentCode && metaMap.has(s.parentCode)) {
+          const list = childrenMap.get(s.parentCode) ?? []
+          list.push(s.code)
+          childrenMap.set(s.parentCode, list)
+        } else {
+          roots.push(s.code)
+        }
+      }
+      codes = []
+      const walk = (code: string): void => {
+        codes.push(code)
+        for (const ch of childrenMap.get(code) ?? []) walk(ch)
+      }
+      roots.forEach(walk)
     }
-    const nameRows = await prisma.accountSubject.findMany({ where: { code: { in: codes } }, select: { code: true, name: true, valueType: true } })
-    const nameMap = new Map(nameRows.map((r) => [r.code, r.name]))
-    const vtMap = new Map(nameRows.map((r) => [r.code, r.valueType as string]))
 
     const rows = codes.map((code) => {
+      const meta = metaMap.get(code)
       const values: Record<string, number> = {}
       for (const cc of companies) values[cc] = perCompany.get(cc)?.get(code) ?? 0
-      return { code, name: nameMap.get(code) ?? code, valueType: vtMap.get(code) ?? 'amount', values }
+      return {
+        code,
+        name: meta?.name ?? code,
+        valueType: (meta?.valueType as string) ?? 'amount',
+        level: meta?.level ?? 0,
+        parentCode: meta?.parentCode ?? null,
+        isLeaf: meta?.isLeaf ?? true,
+        values,
+      }
     })
     return { period, companies, rows }
   },
 
-  async getAvailablePeriods(): Promise<string[]> {
-    const batch = await prisma.importBatch.findFirst({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true } })
-    if (!batch) return []
+  /** 可用期间与财年列表：汇总全部 active 经营批次的期间，财年由期间派生（降序） */
+  async getAvailablePeriods(): Promise<{ periods: string[]; fiscalYears: string[]; fiscalStartMonth: number }> {
+    const batches = await prisma.importBatch.findMany({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true } })
+    if (batches.length === 0) return { periods: [], fiscalYears: [], fiscalStartMonth: getFiscalStartMonth() }
     const rows = await prisma.factOperating.findMany({
-      where: { batchId: batch.id },
+      where: { batchId: { in: batches.map((b) => b.id) } },
       distinct: ['period'],
       orderBy: { period: 'asc' },
       select: { period: true },
     })
-    return rows.map((r) => r.period)
+    const periods = rows.map((r) => r.period)
+    const fiscalYears = [...new Set(periods.map((p) => fiscalYearLabel(p)))].sort().reverse()
+    return { periods, fiscalYears, fiscalStartMonth: getFiscalStartMonth() }
   },
 
   /** 导出经营/静态指标为 Excel */

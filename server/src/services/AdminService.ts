@@ -14,16 +14,20 @@ interface AuditCtx { userId: string; traceId?: string; actorRoleId?: string }
 
 interface UserRow {
   id: string; username: string; displayName: string; companyCode: string | null
+  dataScopeCodes?: unknown
   status: string; createdAt: Date; updatedAt: Date; role: { code: string; scopeValue: string }
 }
 
 function userDto(u: UserRow) {
+  const codes = Array.isArray(u.dataScopeCodes) ? (u.dataScopeCodes as string[]) : []
   let dataScope: string
-  if (u.companyCode) dataScope = u.companyCode
+  if (codes.length > 0) dataScope = codes.join(',')
+  else if (u.companyCode) dataScope = u.companyCode
   else if (u.role.scopeValue === '*') dataScope = '全部'
   else dataScope = '无'
   return {
     id: u.id, username: u.username, name: u.displayName, role: u.role.code, dataScope,
+    dataScopeCodes: codes,
     status: u.status, createdAt: u.createdAt.toISOString(), updatedAt: u.updatedAt.toISOString(),
   }
 }
@@ -35,6 +39,24 @@ function assertPasswordRule(password: string): void {
   if (!password || password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
     throw errors.badRequest('密码至少 8 位，且需同时包含字母与数字')
   }
+}
+
+/**
+ * 校验并归一化多选数据范围：去重后逐一核对 company 表存在且启用（可混合单体与汇总主体）。
+ * 未提供时返回 undefined（不触碰）；空数组表示清空（回退到角色 scopeValue）。
+ */
+async function normalizeDataScopeCodes(codes: unknown): Promise<string[] | undefined> {
+  if (codes === undefined || codes === null) return undefined
+  if (!Array.isArray(codes) || codes.some((c) => typeof c !== 'string')) {
+    throw errors.badRequest('数据范围格式不正确，应为公司编码数组')
+  }
+  const unique = [...new Set((codes as string[]).map((c) => c.trim()).filter(Boolean))]
+  if (unique.length === 0) return []
+  const found = await prisma.company.findMany({ where: { code: { in: unique }, status: 'active' }, select: { code: true } })
+  const foundSet = new Set(found.map((c) => c.code))
+  const invalid = unique.filter((c) => !foundSet.has(c))
+  if (invalid.length > 0) throw errors.badRequest(`数据范围包含无效的公司编码：${invalid.join('、')}`)
+  return unique
 }
 
 /**
@@ -78,18 +100,21 @@ export const AdminService = {
     return { items: rows.map(userDto), total, page: params.page, pageSize: params.pageSize, totalPages: Math.ceil(total / params.pageSize) }
   },
 
-  async createUser(input: { username: string; name?: string; password: string; role: string; companyCode?: string }, ctx: AuditCtx) {
+  async createUser(input: { username: string; name?: string; password: string; role: string; companyCode?: string; dataScopeCodes?: string[] }, ctx: AuditCtx) {
     const exists = await prisma.user.findUnique({ where: { username: input.username } })
     if (exists) throw errors.conflict('用户名已存在')
     const role = await prisma.role.findUnique({ where: { code: input.role } })
     if (!role) throw errors.badRequest('角色不存在')
     await assertRoleAssignable(ctx.actorRoleId, role.id)
     assertPasswordRule(input.password)
+    const scopeCodes = await normalizeDataScopeCodes(input.dataScopeCodes)
     const passwordHash = await hashPassword(input.password)
     const created = await prisma.user.create({
       data: {
         username: input.username, displayName: input.name ?? input.username, passwordHash, roleId: role.id,
-        companyCode: input.companyCode ?? null,
+        // 提供多选范围时由新字段全权接管，companyCode 置空；否则保留旧单值路径
+        companyCode: scopeCodes !== undefined ? null : (input.companyCode ?? null),
+        dataScopeCodes: scopeCodes !== undefined ? scopeCodes : undefined,
       },
       include: USER_INCLUDE,
     })
@@ -97,11 +122,12 @@ export const AdminService = {
     return userDto(created)
   },
 
-  async updateUser(id: string, input: { name?: string; role?: string; companyCode?: string | null; status?: string }, ctx: AuditCtx) {
+  async updateUser(id: string, input: { name?: string; role?: string; companyCode?: string | null; dataScopeCodes?: string[]; status?: string }, ctx: AuditCtx) {
     const found = await prisma.user.findUnique({ where: { id } })
     if (!found) throw errors.notFound('用户不存在')
     // 防提权：不可操作高于自身权限的账号
     await assertRoleAssignable(ctx.actorRoleId, found.roleId)
+    const scopeCodes = await normalizeDataScopeCodes(input.dataScopeCodes)
     let roleId: string | undefined
     if (input.role) {
       const role = await prisma.role.findUnique({ where: { code: input.role } })
@@ -119,7 +145,9 @@ export const AdminService = {
       data: {
         displayName: input.name ?? undefined,
         roleId,
-        companyCode: input.companyCode === undefined ? undefined : input.companyCode,
+        // 提供多选范围时由新字段全权接管，companyCode 置空；未提供时保留旧单值路径
+        companyCode: scopeCodes !== undefined ? null : (input.companyCode === undefined ? undefined : input.companyCode),
+        dataScopeCodes: scopeCodes !== undefined ? scopeCodes : undefined,
         status: input.status === 'inactive' ? 'inactive' : input.status === 'active' ? 'active' : undefined,
       },
       include: USER_INCLUDE,
@@ -240,23 +268,46 @@ export const AdminService = {
   },
 
   async updateRolePermissions(roleId: string, permissions: { resource: string; action: string }[], ctx: AuditCtx): Promise<void> {
-    const role = await prisma.role.findUnique({ where: { id: roleId } })
+    const role = await prisma.role.findUnique({ where: { id: roleId }, include: { permissions: { select: { resource: true, action: true } } } })
     if (!role) throw errors.notFound('角色不存在')
-    if (role.isSystem) throw errors.forbidden('预置角色权限只读，不可修改')
+    // 系统失管保护：superadmin 角色权限集固定为全量，禁止修改；其余角色（含预置）均可编辑
+    if (role.code === 'superadmin') throw errors.forbidden('超级管理员角色权限不可修改')
+    const keyOf = (p: { resource: string; action: string }) => `${p.resource}#${p.action}`
+    const beforeKeys = new Set(role.permissions.map(keyOf))
+    const afterKeys = new Set(permissions.map(keyOf))
+    const added = permissions.filter((p) => !beforeKeys.has(keyOf(p))).map((p) => p.resource)
+    const removed = role.permissions.filter((p) => !afterKeys.has(keyOf(p))).map((p) => p.resource)
     await prisma.$transaction(async (tx) => {
       await tx.permission.deleteMany({ where: { roleId } })
       if (permissions.length > 0) {
         await tx.permission.createMany({ data: permissions.map((p) => ({ roleId, resource: p.resource, action: p.action })), skipDuplicates: true })
       }
     })
-    await recordAudit({ userId: ctx.userId, module: 'admin', action: 'permission_change', targetId: roleId }, ctx.traceId)
+    // detail 仅记录权限码变更摘要，便于审计追溯
+    await recordAudit({
+      userId: ctx.userId, module: 'admin', action: 'permission_change', targetId: roleId,
+      detail: { role: role.code, before: role.permissions.length, after: permissions.length, added, removed },
+    }, ctx.traceId)
   },
 
   // ===== 审计日志 =====
-  async listAuditLogs(params: { page: number; pageSize: number; module?: string; action?: string }) {
+  async listAuditLogs(params: {
+    page: number; pageSize: number; module?: string; action?: string
+    role?: string; username?: string; startDate?: string; endDate?: string
+  }) {
     const where: Record<string, unknown> = {}
     if (params.module) where.module = params.module
     if (params.action) where.action = params.action
+    // 按操作用户的角色/用户名关键字筛选（关联 user 过滤，自然排除无用户的记录）
+    const userWhere: Record<string, unknown> = {}
+    if (params.role) userWhere.role = { code: params.role }
+    if (params.username) userWhere.username = { contains: params.username, mode: 'insensitive' }
+    if (Object.keys(userWhere).length > 0) where.user = userWhere
+    // 时间范围：endDate 取当日末尾，保证闭区间语义
+    const createdAt: Record<string, Date> = {}
+    if (params.startDate) createdAt.gte = new Date(`${params.startDate}T00:00:00`)
+    if (params.endDate) createdAt.lte = new Date(`${params.endDate}T23:59:59.999`)
+    if (Object.keys(createdAt).length > 0) where.createdAt = createdAt
     const [rows, total] = await Promise.all([
       prisma.auditLog.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (params.page - 1) * params.pageSize, take: params.pageSize }),
       prisma.auditLog.count({ where }),

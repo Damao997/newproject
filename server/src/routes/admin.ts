@@ -109,7 +109,12 @@ router.get('/permissions', requirePermission('admin:permissions:view', 'view'), 
 // ===== 审计日志 =====
 router.get('/audit-logs', requirePermission('admin:users:view', 'view'), asyncHandler(async (req, res) => {
   const { page, pageSize } = pageParams(req.query)
-  sendOk(res, await AdminService.listAuditLogs({ page, pageSize, module: req.query.module as string | undefined, action: req.query.action as string | undefined }))
+  const q = req.query as Record<string, string | undefined>
+  sendOk(res, await AdminService.listAuditLogs({
+    page, pageSize,
+    module: q.module, action: q.action,
+    role: q.role, username: q.username, startDate: q.startDate, endDate: q.endDate,
+  }))
 }))
 
 export default router

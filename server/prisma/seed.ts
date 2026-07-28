@@ -93,6 +93,8 @@ const HIGH_RISK_RESOURCES = [
   'data:subject:purge',
   'data:metric:purge',
   'admin:users:purge',
+  // 权限配置的增删改仅 superadmin 可操作（数据驱动收紧，不硬编码角色名）
+  'admin:permissions:update',
 ]
 
 /** superadmin：全量（含高危码） */

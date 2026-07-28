@@ -62,7 +62,7 @@ export interface PreviewSummary {
   periods: string[]
   totalValue: number
   zeroValueCount: number
-  /** 文件内重复条数（唯一键与 DB 约束一致），入库时将被 skipDuplicates 跳过 */
+  /** 文件内重复条数（唯一键与 DB 约束一致），导入时按科目求和合并入库 */
   duplicateCount: number
   /** 重复示例（最多 5 条，"公司名 × 科目名 × 期间"） */
   duplicateSamples: string[]
@@ -355,7 +355,26 @@ export function parseImportWorkbook(buffer: Buffer, template: ImportTemplate, re
   }
 
   finalizeResult(result, resolvers)
+  mergeDuplicates(result)
   return result
+}
+
+/** 文件内重复行按唯一键（同公司+科目+期间）求和合并，保证入库前无重复 */
+function mergeDuplicates(result: ParseResult): void {
+  const mergeBy = <T extends { value: number }>(rows: T[], keyOf: (r: T) => string): T[] => {
+    if (rows.length === 0) return rows
+    const byKey = new Map<string, T>()
+    for (const r of rows) {
+      const key = keyOf(r)
+      const prev = byKey.get(key)
+      if (prev) prev.value = Number((prev.value + r.value).toFixed(2))
+      else byKey.set(key, { ...r })
+    }
+    return [...byKey.values()]
+  }
+  result.operating = mergeBy(result.operating, (r) => `${r.companyCode}|${r.accountCode}|${r.period}|${r.periodDimCode}`)
+  result.static = mergeBy(result.static, (r) => `${r.companyCode}|${r.accountCode}|${r.snapshotDate.toISOString()}|${r.periodDimCode}`)
+  result.budget = mergeBy(result.budget, (r) => `${r.companyCode}|${r.accountCode}|${r.fiscalYear}|${r.period}`)
 }
 
 /** 反转 名称→编码 Map 为 编码→名称（同 code 多名称时保留先出现者，即全名优先于简称） */

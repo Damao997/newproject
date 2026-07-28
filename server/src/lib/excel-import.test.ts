@@ -236,15 +236,16 @@ describe('excel-import 覆盖摘要 summary', () => {
     expect([...res.summary.accountCodes].sort()).toEqual(['OP_010', 'OP_011'])
   })
 
-  it('文件内重复：同公司同科目同月份被检出并给出名称化示例', () => {
-    // 两列同为 2026-03，unpivot 后唯一键相同 → 入库时将被 skipDuplicates 丢弃
+  it('文件内重复：同公司同科目同月份被检出并按科目求和合并', () => {
+    // 两列同为 2026-03，unpivot 后唯一键相同 → 入库前求和合并为一条
     const buf = makeXlsx([
       ['单体维度', '杭州公司', '杭州公司'],
       ['月份', new Date(2026, 2, 10), new Date(2026, 2, 20)],
       ['灶具收入', 100, 120],
     ])
     const res = parseImportWorkbook(buf, 'operating', resolvers)
-    expect(res.operating.length).toBe(2)
+    expect(res.operating.length).toBe(1)
+    expect(res.operating[0].value).toBe(220)
     expect(res.summary.duplicateCount).toBe(1)
     expect(res.summary.duplicateSamples.length).toBe(1)
     expect(res.summary.duplicateSamples[0]).toContain('杭州公司')

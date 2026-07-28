@@ -30,7 +30,7 @@ function ctxOf(req: { authUser?: AuthUserContext; traceId: string }) {
   return { userId: (req.authUser as AuthUserContext).userId, traceId: req.traceId }
 }
 function scopeOf(a: AuthUserContext) {
-  return { companyCode: a.companyCode, scopeValue: a.scopeValue }
+  return { companyCode: a.companyCode, scopeValue: a.scopeValue, dataScopeCodes: a.dataScopeCodes }
 }
 function pageParams(q: Record<string, unknown>) {
   const page = Math.max(Number(q.page) || 1, 1)
@@ -268,18 +268,19 @@ router.post('/metrics/formulas/import', requirePermission('data:metric:update', 
 
 // ===== 跨公司重分类 =====
 const TRANSFER_MODES = ['all', 'ratio', 'amount']
+const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function companyReclassifyBody(b: any) {
   if (!b.templateType || !b.sourceCompanyCode || !b.targetCompanyCode) throw errors.badRequest('模板类型、源公司、目标公司必填')
+  if (typeof b.period !== 'string' || !PERIOD_RE.test(b.period)) throw errors.badRequest('请选择调整期间（单月 YYYY-MM）')
   if (b.transferMode !== undefined && !TRANSFER_MODES.includes(b.transferMode)) throw errors.badRequest('转移方式不合法')
   return {
     templateType: b.templateType,
     sourceCompanyCode: b.sourceCompanyCode,
     targetCompanyCode: b.targetCompanyCode,
     accountCodes: Array.isArray(b.accountCodes) ? b.accountCodes : undefined,
-    periodFrom: b.periodFrom || undefined,
-    periodTo: b.periodTo || undefined,
+    period: b.period,
     transferMode: b.transferMode || undefined,
     ratio: b.ratio !== undefined && b.ratio !== null && b.ratio !== '' ? Number(b.ratio) : undefined,
     amount: b.amount !== undefined && b.amount !== null && b.amount !== '' ? Number(b.amount) : undefined,
@@ -299,6 +300,7 @@ router.post('/reclassify/company', requirePermission('data:reclassify:company', 
 function adjustSubjectBody(b: any) {
   if (!b.templateType || !b.companyCode || !b.sourceAccountCode) throw errors.badRequest('模板类型、公司、源科目必填')
   if (b.decreaseAmount === undefined || b.decreaseAmount === null || b.decreaseAmount === '') throw errors.badRequest('调减金额必填')
+  if (typeof b.period !== 'string' || !PERIOD_RE.test(b.period)) throw errors.badRequest('请选择调整期间（单月 YYYY-MM）')
   return {
     templateType: b.templateType,
     companyCode: b.companyCode,
@@ -306,8 +308,7 @@ function adjustSubjectBody(b: any) {
     targetAccountCode: b.targetAccountCode || undefined,
     decreaseAmount: Number(b.decreaseAmount),
     increaseAmount: b.increaseAmount !== undefined && b.increaseAmount !== null && b.increaseAmount !== '' ? Number(b.increaseAmount) : undefined,
-    periodFrom: b.periodFrom || undefined,
-    periodTo: b.periodTo || undefined,
+    period: b.period,
     reason: typeof b.reason === 'string' ? b.reason : '',
   }
 }
@@ -323,6 +324,11 @@ router.post('/reclassify/subject', requirePermission('data:reclassify:subject', 
 router.get('/reclassify/logs', requirePermission('data:reclassify:company', 'update'), asyncHandler(async (req, res) => {
   const { page, pageSize } = pageParams(req.query)
   sendOk(res, await ReclassificationService.listLogs({ page, pageSize, type: req.query.type as string | undefined }))
+}))
+
+// 撤销重分类/科目调整（按日志快照逆向恢复）
+router.post('/reclassify/logs/:id/revert', requirePermission('data:reclassify:company', 'update'), asyncHandler(async (req, res) => {
+  sendOk(res, await ReclassificationService.revertLog(req.params.id as string, scopeOf(req.authUser as AuthUserContext), ctxOf(req)))
 }))
 
 // ===== 导出 =====

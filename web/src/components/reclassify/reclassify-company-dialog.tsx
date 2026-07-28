@@ -42,11 +42,11 @@ interface PreviewData {
 }
 
 /**
- * 跨公司重分类对话框：把源公司某模板类型（可按科目/期间筛选）的生效数据转移到目标公司。
+ * 跨公司重分类对话框：把源公司某模板类型（可按科目筛选）指定单月的生效数据转移到目标公司。
  * 布局分区：数据范围（模板/期间/科目）→ 转移设置（源/目标 + 方式）→ 预览与执行。
  * 支持三种转移方式：整体迁移（改挂行，冲突合并求和）、按比例/按金额部分转移
  * （源行调减保留，目标同口径行调增，无则新建）。提交前预览影响并二次确认。
- * 期间选择使用与数据浏览模块一致的 MonthPicker（全平台统一）。
+ * 期间按单月必选（与后端口径一致）；本年累计由查询时按财年实时聚合，自动反映调整结果。
  */
 export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = 'operating', defaultSourceCompany }: ReclassifyCompanyDialogProps) {
   const [templateType, setTemplateType] = useState<string>(defaultTemplateType)
@@ -55,8 +55,7 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
   const [transferMode, setTransferMode] = useState<'all' | 'ratio' | 'amount'>('all')
   const [ratioInput, setRatioInput] = useState('')
   const [amountInput, setAmountInput] = useState('')
-  const [periodFrom, setPeriodFrom] = useState('')
-  const [periodTo, setPeriodTo] = useState('')
+  const [period, setPeriod] = useState('')
   const [selectedSubjects, setSelectedSubjects] = useState<Set<string>>(new Set())
   const [preview, setPreview] = useState<PreviewData | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -64,7 +63,8 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
 
   const { confirm, element: confirmElement } = useConfirm()
   const { data: companies } = useCompanies()
-  const { data: availablePeriods } = useAvailablePeriods()
+  const { data: periodsData } = useAvailablePeriods()
+  const availablePeriods = periodsData?.periods ?? []
   const entityCompanies = useMemo(() => (companies ?? []).filter((c) => c.type === 'entity'), [companies])
 
   // 科目候选：静态模板取静态科目，否则取经营科目
@@ -80,8 +80,7 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
     sourceCompanyCode,
     targetCompanyCode,
     accountCodes: selectedSubjects.size > 0 ? [...selectedSubjects] : undefined,
-    periodFrom: periodFrom || undefined,
-    periodTo: periodTo || undefined,
+    period,
     transferMode,
     ratio: transferMode === 'ratio' ? Number(ratioInput) / 100 : undefined,
     amount: transferMode === 'amount' ? Number(amountInput) : undefined,
@@ -94,7 +93,6 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
   }
 
   // ---- 字段级校验（输入非空且非法时红框 + 内联提示）----
-  const periodError = periodFrom && periodTo && periodTo < periodFrom ? '期间止不能早于期间起' : null
   const ratioError = (() => {
     if (transferMode !== 'ratio' || ratioInput === '') return null
     const pct = Number(ratioInput)
@@ -109,7 +107,7 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
   const validateBeforePreview = (): string | null => {
     if (!sourceCompanyCode || !targetCompanyCode) return '请选择源公司与目标公司'
     if (sourceCompanyCode === targetCompanyCode) return '源公司与目标公司不能相同'
-    if (periodError) return periodError
+    if (!period) return '请选择调整期间（单月）'
     if (transferMode === 'ratio' && (ratioInput === '' || ratioError)) return ratioError ?? '请输入转移比例'
     if (transferMode === 'amount' && (amountInput === '' || amountError)) return amountError ?? '请输入转移金额'
     return null
@@ -205,7 +203,7 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
           {/* ===== 数据范围 ===== */}
           <section className="space-y-2">
             <SectionTitle>数据范围</SectionTitle>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label>模板类型</Label>
                 <Select value={templateType} onValueChange={(v) => { setTemplateType(v); reset(); setSelectedSubjects(new Set()) }}>
@@ -218,15 +216,11 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label>期间起（可选）</Label>
-                <MonthPicker className={cn('w-full', periodError && 'border-destructive')} value={periodFrom} onChange={(v) => { setPeriodFrom(v); reset() }} availablePeriods={availablePeriods ?? []} placeholder="不限" />
-              </div>
-              <div className="space-y-1">
-                <Label>期间止（可选）</Label>
-                <MonthPicker className={cn('w-full', periodError && 'border-destructive')} value={periodTo} onChange={(v) => { setPeriodTo(v); reset() }} availablePeriods={availablePeriods ?? []} placeholder="不限" />
+                <Label>调整期间（单月） <span className="text-destructive">*</span></Label>
+                <MonthPicker className="w-full" value={period} onChange={(v) => { setPeriod(v); reset() }} availablePeriods={availablePeriods} placeholder="选择月份" />
+                {templateType === 'budget' && <p className="text-xs text-muted-foreground">预算数据按该月所属财年整体匹配。</p>}
               </div>
             </div>
-            {periodError && <p className="text-xs text-destructive">{periodError}</p>}
             <div className="space-y-1">
               <Label>科目筛选（可选）</Label>
               <SubjectMultiPicker
@@ -346,7 +340,7 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
 
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" onClick={onClose}>关闭</Button>
-          <Button variant="outline" onClick={handlePreview} disabled={previewMutation.isPending || !sourceCompanyCode || !targetCompanyCode}>
+          <Button variant="outline" onClick={handlePreview} disabled={previewMutation.isPending || !sourceCompanyCode || !targetCompanyCode || !period}>
             {previewMutation.isPending ? '预览中...' : '预览影响'}
           </Button>
           <Button variant="destructive" onClick={handleSubmit} disabled={!preview || preview.affectedRows === 0 || reclassifyMutation.isPending}>

@@ -12,24 +12,15 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { PageContainer } from '@/components/layout/page-container'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { MetricTree } from '@/components/subject-tree/metric-tree'
 import { AnalysisDrawer, type AnalysisTarget } from '@/components/indicators/analysis-drawer'
-import { ReclassifyCompanyDialog } from '@/components/reclassify/reclassify-company-dialog'
-import { ReclassifySubjectDialog } from '@/components/reclassify/reclassify-subject-dialog'
-import { ReclassifyLogsDialog } from '@/components/reclassify/reclassify-logs-dialog'
 import { usePermission } from '@/hooks/usePermission'
 import { useCompanies, useOperatingIndicators, useStaticIndicators, useAvailablePeriods, type OperatingRow, type StaticRow } from '@/hooks/api-queries'
+import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { exportToExcel } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import type { MetricValue } from '@/lib/metric-values'
-import { Download, ChevronsDownUp, ChevronsUpDown, ChevronDown, ArrowLeftRight, History } from 'lucide-react'
+import { Download, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
 import type { SubjectNode } from '@/types'
 
 /** 收集含子节点的科目编码（用于全部展开） */
@@ -86,14 +77,16 @@ export default function IndicatorsPage() {
   const [periodFilter, setPeriodFilter] = useState('')
   const [expandedCodes, setExpandedCodes] = useState<Set<string>>(new Set())
   const [analysisTarget, setAnalysisTarget] = useState<AnalysisTarget | null>(null)
-  const [reclassifyOpen, setReclassifyOpen] = useState(false)
-  const [adjustSubjectOpen, setAdjustSubjectOpen] = useState(false)
-  const [reclassifyLogsOpen, setReclassifyLogsOpen] = useState(false)
 
   const isOperating = activeTab === 'operating'
 
-  const { data: dynamicPeriods } = useAvailablePeriods()
-  const periods = dynamicPeriods ?? []
+  const fiscalYear = usePeriodStore((s) => s.fiscalYear)
+  const { data: periodsData } = useAvailablePeriods()
+  // 期间候选按全局选中财年过滤
+  const periods = useMemo(
+    () => filterPeriodsByFiscalYear(periodsData?.periods ?? [], fiscalYear, periodsData?.fiscalStartMonth ?? 1),
+    [periodsData, fiscalYear],
+  )
 
   useEffect(() => {
     if (periods.length === 0) return
@@ -240,40 +233,6 @@ export default function IndicatorsPage() {
       className="space-y-3"
       actions={
         <div className="flex items-center gap-2">
-          {(can('data:reclassify', 'company') || can('data:reclassify', 'subject')) && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <ArrowLeftRight className="mr-2 h-4 w-4" />
-                  数据调整
-                  <ChevronDown className="ml-1.5 h-3.5 w-3.5 opacity-60" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-44">
-                {can('data:reclassify', 'company') && (
-                  <DropdownMenuItem onClick={() => setReclassifyOpen(true)}>
-                    <ArrowLeftRight className="mr-2 h-4 w-4" />
-                    跨公司重分类
-                  </DropdownMenuItem>
-                )}
-                {can('data:reclassify', 'subject') && (
-                  <DropdownMenuItem onClick={() => setAdjustSubjectOpen(true)}>
-                    <ArrowLeftRight className="mr-2 h-4 w-4" />
-                    科目间调整
-                  </DropdownMenuItem>
-                )}
-                {can('data:reclassify', 'company') && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => setReclassifyLogsOpen(true)}>
-                      <History className="mr-2 h-4 w-4" />
-                      重分类记录
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
           {can('indicators', 'export') ? (
             <Button variant="outline" size="sm" onClick={handleExport} disabled={isLoading || activeItems.length === 0}>
               <Download className="mr-2 h-4 w-4" />
@@ -368,25 +327,6 @@ export default function IndicatorsPage() {
 
       {/* 单项分析抽屉 */}
       <AnalysisDrawer open={analysisTarget !== null} target={analysisTarget} onClose={() => setAnalysisTarget(null)} />
-
-      {/* 跨公司重分类 */}
-      <ReclassifyCompanyDialog
-        open={reclassifyOpen}
-        onClose={() => setReclassifyOpen(false)}
-        defaultTemplateType={activeTab}
-        defaultSourceCompany={dimFilter.startsWith('company:') ? dimFilter.slice('company:'.length) : undefined}
-      />
-
-      {/* 同公司科目间调整 */}
-      <ReclassifySubjectDialog
-        open={adjustSubjectOpen}
-        onClose={() => setAdjustSubjectOpen(false)}
-        defaultTemplateType={activeTab}
-        defaultCompany={dimFilter.startsWith('company:') ? dimFilter.slice('company:'.length) : undefined}
-      />
-
-      {/* 重分类记录 */}
-      <ReclassifyLogsDialog open={reclassifyLogsOpen} onClose={() => setReclassifyLogsOpen(false)} />
     </PageContainer>
   )
 }

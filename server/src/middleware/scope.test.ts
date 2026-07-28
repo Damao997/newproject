@@ -60,4 +60,68 @@ describe('scope 数据范围', () => {
       expect(scope).toEqual({ type: 'none' })
     })
   })
+
+  describe('resolveScope 多选数据范围（dataScopeCodes）', () => {
+    function makeClient(companies: { code: string; entityType: string }[], maps: { singleCompanyCode: string }[]) {
+      return {
+        company: { findMany: vi.fn().mockResolvedValue(companies) },
+        companyAggregationMap: { findMany: vi.fn().mockResolvedValue(maps) },
+      } as never
+    }
+
+    it('仅单体编码 → 直接采用，不查汇总映射', async () => {
+      const client = makeClient([{ code: 'EN000001', entityType: 'single' }], [])
+      const scope = await resolveScope(client, {
+        companyCode: null,
+        scopeValue: '',
+        dataScopeCodes: ['EN000001'],
+      })
+      expect(scope).toEqual({ type: 'companies', companyCodes: ['EN000001'] })
+    })
+
+    it('含汇总主体 → 展开为下属单体并保留自身编码，去重', async () => {
+      const client = makeClient(
+        [{ code: 'EN000001', entityType: 'single' }, { code: 'ET0001', entityType: 'summary' }],
+        [{ singleCompanyCode: 'EN000001' }, { singleCompanyCode: 'EN000002' }],
+      )
+      const scope = await resolveScope(client, {
+        companyCode: null,
+        scopeValue: '',
+        dataScopeCodes: ['EN000001', 'ET0001'],
+      })
+      expect(scope.type).toBe('companies')
+      const codes = (scope as { companyCodes: string[] }).companyCodes
+      expect([...codes].sort()).toEqual(['EN000001', 'EN000002', 'ET0001'])
+    })
+
+    it('编码均已失效 → none（默认拒绝），不回退角色全量', async () => {
+      const client = makeClient([], [])
+      const scope = await resolveScope(client, {
+        companyCode: null,
+        scopeValue: '*',
+        dataScopeCodes: ['EN_GONE'],
+      })
+      expect(scope).toEqual({ type: 'none' })
+    })
+
+    it('空数组 → 回退既有优先级（角色全量）', async () => {
+      const client = makeClient([], [])
+      const scope = await resolveScope(client, {
+        companyCode: null,
+        scopeValue: '*',
+        dataScopeCodes: [],
+      })
+      expect(scope).toEqual({ type: 'all' })
+    })
+
+    it('多选范围优先于 companyCode 单值', async () => {
+      const client = makeClient([{ code: 'EN000002', entityType: 'single' }], [])
+      const scope = await resolveScope(client, {
+        companyCode: 'EN000001',
+        scopeValue: '',
+        dataScopeCodes: ['EN000002'],
+      })
+      expect(scope).toEqual({ type: 'companies', companyCodes: ['EN000002'] })
+    })
+  })
 })

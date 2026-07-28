@@ -1,15 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { KpiCard } from '@/components/charts/kpi-card'
 import { TrendChart } from '@/components/charts/trend-chart'
 import { PageContainer } from '@/components/layout/page-container'
 import { StatusIndicator } from '@/components/ui/status-indicator'
 import { KpiGridSkeleton, ChartSkeleton, ListSkeleton } from '@/components/ui/skeleton-blocks'
 import { usePermission } from '@/hooks/usePermission'
-import { useDashboardOverview } from '@/hooks/api-queries'
+import { useDashboardOverview, useAvailablePeriods } from '@/hooks/api-queries'
+import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { exportToExcel } from '@/lib/export'
 import { 
   Download, 
@@ -24,15 +26,29 @@ interface DashboardAlert { id: string; severity: string; title: string; message:
 
 export default function DashboardPage() {
   const [compareType, setCompareType] = useState<'yoy' | 'mom'>('yoy')
+  const [selectedPeriod, setSelectedPeriod] = useState('')
   const { can } = usePermission()
   const navigate = useNavigate()
 
+  // 期间候选：可用期间按全局选中财年过滤；未选时后端默认取最新期
+  const fiscalYear = usePeriodStore((s) => s.fiscalYear)
+  const { data: periodsData } = useAvailablePeriods()
+  const periodOptions = useMemo(
+    () => filterPeriodsByFiscalYear(periodsData?.periods ?? [], fiscalYear, periodsData?.fiscalStartMonth ?? 1),
+    [periodsData, fiscalYear],
+  )
+  // 财年切换后已选期间不在候选内时回退默认（最新期）
+  useEffect(() => {
+    if (selectedPeriod && !periodOptions.includes(selectedPeriod)) setSelectedPeriod('')
+  }, [periodOptions, selectedPeriod])
+
   // 真实后端数据（React Query），加载期展示骨架屏
-  const { data, isLoading } = useDashboardOverview()
+  const { data, isLoading } = useDashboardOverview(selectedPeriod || (fiscalYear ? periodOptions[periodOptions.length - 1] : undefined))
   const kpiData = data?.kpiData ?? []
   const trendData = data?.trendData ?? []
   const alerts = (data?.alerts ?? []) as DashboardAlert[]
   const lastUpdatedAt = data?.lastUpdatedAt
+  const currentPeriod = selectedPeriod || data?.period || ''
 
   const handleExport = async () => {
     await exportToExcel({
@@ -58,10 +74,23 @@ export default function DashboardPage() {
   return (
     <PageContainer
       title="首页看板"
-      description={`数据更新时间: ${lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleString('zh-CN') : new Date().toLocaleDateString('zh-CN')}`}
+      description={`数据更新时间: ${lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleString('zh-CN') : new Date().toLocaleDateString('zh-CN')}${currentPeriod ? ` · 当前期间: ${currentPeriod}` : ''}`}
       actions={
         <div className="flex items-center gap-3">
           <StatusIndicator variant="active" label="数据实时同步" colored className="mr-1 hidden sm:inline-flex" />
+          {periodOptions.length > 0 && (
+            <Select value={selectedPeriod || 'latest'} onValueChange={(v) => setSelectedPeriod(v === 'latest' ? '' : v)}>
+              <SelectTrigger className="h-9 w-[130px]" title="选择预览期间（KPI 按选定期计算）">
+                <SelectValue placeholder="最新期间" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="latest">最新期间</SelectItem>
+                {[...periodOptions].reverse().map((p) => (
+                  <SelectItem key={p} value={p}>{p}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           {can('dashboard', 'export') && (
             <Button variant="outline" size="sm" className="h-9 px-4" onClick={handleExport}>
               <Download className="mr-2 h-4 w-4" />

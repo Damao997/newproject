@@ -69,7 +69,7 @@ async function expandSummaries(codes: string[]): Promise<string[]> {
 
 /** 解析当前用户的有效公司编码集合（叠加可选的公司过滤；汇总主体自动展开为单体成员） */
 export async function resolveCompanyCodes(
-  authUser: Pick<AuthUserContext, 'companyCode' | 'scopeValue'>,
+  authUser: Pick<AuthUserContext, 'companyCode' | 'scopeValue'> & { dataScopeCodes?: string[] | null },
   requestedCompany?: string,
 ): Promise<string[]> {
   const scope = await resolveScope(prisma, authUser)

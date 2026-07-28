@@ -45,7 +45,7 @@ interface PreviewData {
 /**
  * 同公司科目间调整对话框：调减侧/调增侧对称双栏布局，输入即实时显示净变动。
  * 调增侧整体可留空表示纯调减（如修正重复计算）；调增额可与调减额不相等，公司总额随净差变化，
- * 因此调整原因必填留痕。期间选择使用与数据浏览模块一致的 MonthPicker（全平台统一）。
+ * 因此调整原因必填留痕。期间按单月必选（与后端口径一致）；本年累计由查询时按财年实时聚合，自动反映调整结果。
  */
 export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = 'operating', defaultCompany }: ReclassifySubjectDialogProps) {
   const [templateType, setTemplateType] = useState<string>(defaultTemplateType)
@@ -54,8 +54,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
   const [targetAccountCode, setTargetAccountCode] = useState('')
   const [decreaseInput, setDecreaseInput] = useState('')
   const [increaseInput, setIncreaseInput] = useState('')
-  const [periodFrom, setPeriodFrom] = useState('')
-  const [periodTo, setPeriodTo] = useState('')
+  const [period, setPeriod] = useState('')
   const [reason, setReason] = useState('')
   const [reasonTouched, setReasonTouched] = useState(false)
   const [preview, setPreview] = useState<PreviewData | null>(null)
@@ -64,7 +63,8 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
 
   const { confirm, element: confirmElement } = useConfirm()
   const { data: companies } = useCompanies()
-  const { data: availablePeriods } = useAvailablePeriods()
+  const { data: periodsData } = useAvailablePeriods()
+  const availablePeriods = periodsData?.periods ?? []
   const entityCompanies = useMemo(() => (companies ?? []).filter((c) => c.type === 'entity'), [companies])
 
   // 科目候选：静态模板取静态科目，否则取经营科目
@@ -82,8 +82,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
     targetAccountCode: targetAccountCode || undefined,
     decreaseAmount: Number(decreaseInput),
     increaseAmount: increaseInput !== '' ? Number(increaseInput) : undefined,
-    periodFrom: periodFrom || undefined,
-    periodTo: periodTo || undefined,
+    period,
     reason: reason.trim(),
   })
 
@@ -94,7 +93,6 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
   }
 
   // ---- 字段级校验与本地实时净变动 ----
-  const periodError = periodFrom && periodTo && periodTo < periodFrom ? '期间止不能早于期间起' : null
   const decreaseError = (() => {
     if (decreaseInput === '') return null
     const dec = Number(decreaseInput)
@@ -120,7 +118,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
     if (decreaseInput === '' || decreaseError) return decreaseError ?? '请输入调减金额'
     if (increaseError) return increaseError
     if (targetAccountCode && targetAccountCode === sourceAccountCode) return '源科目与目标科目不能相同'
-    if (periodError) return periodError
+    if (!period) return '请选择调整期间（单月）'
     return null
   }
 
@@ -221,15 +219,11 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label>期间起（可选）</Label>
-                <MonthPicker className={cn('w-full', periodError && 'border-destructive')} value={periodFrom} onChange={(v) => { setPeriodFrom(v); reset() }} availablePeriods={availablePeriods ?? []} placeholder="不限" />
-              </div>
-              <div className="space-y-1">
-                <Label>期间止（可选）</Label>
-                <MonthPicker className={cn('w-full', periodError && 'border-destructive')} value={periodTo} onChange={(v) => { setPeriodTo(v); reset() }} availablePeriods={availablePeriods ?? []} placeholder="不限" />
+                <Label>调整期间（单月） <span className="text-destructive">*</span></Label>
+                <MonthPicker className="w-full" value={period} onChange={(v) => { setPeriod(v); reset() }} availablePeriods={availablePeriods} placeholder="选择月份" />
+                {templateType === 'budget' && <p className="text-xs text-muted-foreground">预算数据按该月所属财年整体匹配。</p>}
               </div>
             </div>
-            {periodError && <p className="text-xs text-destructive">{periodError}</p>}
           </section>
 
           {/* ===== 调整设置：调减侧 / 调增侧 对称双栏 ===== */}
@@ -364,7 +358,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
             {submitDisabledReason && <span className="text-xs text-muted-foreground">{submitDisabledReason}</span>}
           </div>
           <Button variant="outline" onClick={onClose}>关闭</Button>
-          <Button variant="outline" onClick={handlePreview} disabled={previewMutation.isPending || !companyCode || !sourceAccountCode || !decreaseInput}>
+          <Button variant="outline" onClick={handlePreview} disabled={previewMutation.isPending || !companyCode || !sourceAccountCode || !decreaseInput || !period}>
             {previewMutation.isPending ? '预览中...' : '预览影响'}
           </Button>
           <Button variant="destructive" onClick={handleSubmit} disabled={!preview || preview.affectedRows === 0 || !reason.trim() || adjustMutation.isPending}>

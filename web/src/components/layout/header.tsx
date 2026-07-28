@@ -1,7 +1,10 @@
 import { useAuthStore } from '@/stores/authStore'
+import { usePeriodStore } from '@/stores/periodStore'
+import { useAvailablePeriods } from '@/hooks/api-queries'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { Menu, LogOut, User } from 'lucide-react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Menu, LogOut, User, CalendarRange } from 'lucide-react'
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -16,6 +19,11 @@ interface HeaderProps {
 
 export function Header({ onMenuClick }: HeaderProps) {
   const { user, logout } = useAuthStore()
+  // 全局财年选择：看板/指标/数据浏览的期间候选按此过滤；'all' 表示全部财年
+  const fiscalYear = usePeriodStore((s) => s.fiscalYear)
+  const setFiscalYear = usePeriodStore((s) => s.setFiscalYear)
+  const { data: periodsData } = useAvailablePeriods()
+  const fiscalYears = periodsData?.fiscalYears ?? []
 
   const getInitials = (name: string) => {
     return name.slice(0, 1)
@@ -50,6 +58,25 @@ export function Header({ onMenuClick }: HeaderProps) {
         </div>
 
         <div className="flex flex-1 shrink-0 items-center justify-end space-x-2">
+          {fiscalYears.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <CalendarRange className="hidden h-4 w-4 text-muted-foreground sm:block" />
+              <Select
+                value={fiscalYear && fiscalYears.includes(fiscalYear) ? fiscalYear : 'all'}
+                onValueChange={(v) => setFiscalYear(v === 'all' ? null : v)}
+              >
+                <SelectTrigger className="h-8 w-[120px] text-xs" title="财年选择（影响看板/指标/数据浏览的期间候选）">
+                  <SelectValue placeholder="全部财年" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部财年</SelectItem>
+                  {fiscalYears.map((fy) => (
+                    <SelectItem key={fy} value={fy}>{fy}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-8 w-8 rounded-full">

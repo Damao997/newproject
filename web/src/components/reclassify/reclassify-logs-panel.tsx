@@ -1,25 +1,19 @@
 import { useState } from 'react'
-import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { Pagination } from '@/components/data-table/pagination'
-import { useReclassifyLogs } from '@/hooks/api-queries'
+import { useConfirm } from '@/components/ui/confirm-dialog'
+import { useReclassifyLogs, useRevertReclassifyLog } from '@/hooks/api-queries'
 import { formatMoney, cn } from '@/lib/utils'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, Undo2 } from 'lucide-react'
 import { TYPE_LABEL, TEMPLATE_LABEL_SHORT } from './shared'
 import type { ReclassifyLog } from '@/types'
 
-interface ReclassifyLogsDialogProps {
-  open: boolean
-  onClose: () => void
+interface ReclassifyLogsPanelProps {
+  /** 是否可执行撤销（data:reclassify:company 权限） */
+  canRevert: boolean
 }
 
 const PAGE_SIZE = 10
@@ -83,13 +77,13 @@ function AmountDetail({ log }: { log: ReclassifyLog }) {
   return <span className="text-muted-foreground">-</span>
 }
 
-/** 行展开明细：期间范围、原因、合并/新建行数等 */
+/** 行展开明细：调整期间、原因、合并/新建行数、撤销留痕等 */
 function ExpandedDetail({ log }: { log: ReclassifyLog }) {
   const d = log.detail
-  const period = log.periodFrom || log.periodTo ? `${log.periodFrom ?? '不限'} ~ ${log.periodTo ?? '不限'}` : '全部期间'
+  const period = log.period ?? (log.periodFrom || log.periodTo ? `${log.periodFrom ?? '不限'} ~ ${log.periodTo ?? '不限'}` : '全部期间')
   return (
     <div className="space-y-1 py-1 text-xs text-muted-foreground">
-      <p>期间范围：{period}</p>
+      <p>调整期间：{period}</p>
       {log.type === 'company' && d && (
         <p>
           合并 {d.mergedRows ?? 0} 行，新建 {d.createdRows ?? 0} 行
@@ -102,17 +96,26 @@ function ExpandedDetail({ log }: { log: ReclassifyLog }) {
           {d.reason && <p className="text-foreground">调整原因：{d.reason}</p>}
         </>
       )}
+      {log.revertedAt && (
+        <p className="text-amber-700">已于 {new Date(log.revertedAt).toLocaleString('zh-CN')} 由 {log.revertedBy ?? '-'} 撤销。</p>
+      )}
       {!d && <p>无更多明细（历史记录）。</p>}
     </div>
   )
 }
 
-/** 重分类记录对话框：分页展示跨公司/科目归类/科目调整历史，行点击展开查看原因与行数明细。 */
-export function ReclassifyLogsDialog({ open, onClose }: ReclassifyLogsDialogProps) {
+/**
+ * 重分类记录面板（内嵌于数据管理页）：分页展示跨公司/科目归类/科目调整历史，
+ * 行点击展开查看原因与行数明细；含快照的记录支持一键撤销（逆向恢复事实行）。
+ */
+export function ReclassifyLogsPanel({ canRevert }: ReclassifyLogsPanelProps) {
   const [type, setType] = useState('all')
   const [page, setPage] = useState(1)
   const [expandedKeys, setExpandedKeys] = useState<Set<string | number>>(new Set())
-  const { data, isFetching } = useReclassifyLogs(open ? { page, pageSize: PAGE_SIZE, type: type === 'all' ? undefined : type } : { page: 1, pageSize: PAGE_SIZE })
+  const [message, setMessage] = useState<string | null>(null)
+  const { confirm, element: confirmElement } = useConfirm()
+  const { data, isFetching } = useReclassifyLogs({ page, pageSize: PAGE_SIZE, type: type === 'all' ? undefined : type })
+  const revertMutation = useRevertReclassifyLog()
 
   const items = (data?.items ?? []) as ReclassifyLog[]
   const total = data?.total ?? 0
@@ -126,6 +129,23 @@ export function ReclassifyLogsDialog({ open, onClose }: ReclassifyLogsDialogProp
     })
   }
 
+  const handleRevert = async (log: ReclassifyLog) => {
+    const ok = await confirm({
+      title: '撤销重分类',
+      description: `将按操作快照逆向恢复本次${TYPE_LABEL[log.type] ?? log.type}（${new Date(log.createdAt).toLocaleString('zh-CN')}，影响 ${log.affectedRows} 行）涉及的事实数据，看板与指标将即时刷新。确认撤销？`,
+      danger: true,
+      confirmText: '确认撤销',
+    })
+    if (!ok) return
+    setMessage(null)
+    try {
+      const res = await revertMutation.mutateAsync(log.id)
+      setMessage(`撤销完成：已恢复 ${res.restoredRows} 条明细。`)
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : '撤销失败')
+    }
+  }
+
   const columns: DataTableColumn<ReclassifyLog>[] = [
     { key: 'createdAt', header: '时间', cellClassName: 'whitespace-nowrap text-muted-foreground', render: (r) => new Date(r.createdAt).toLocaleString('zh-CN') },
     {
@@ -133,54 +153,70 @@ export function ReclassifyLogsDialog({ open, onClose }: ReclassifyLogsDialogProp
       render: (r) => <Badge variant="outline" className={TYPE_BADGE_CLASS[r.type]}>{TYPE_LABEL[r.type] ?? r.type}</Badge>,
     },
     { key: 'target', header: '源 → 目标', render: (r) => <SourceTarget log={r} /> },
+    { key: 'period', header: '期间', cellClassName: 'font-num text-xs', render: (r) => r.period ?? (r.periodFrom ? `${r.periodFrom}~${r.periodTo ?? ''}` : '全部') },
     { key: 'amount', header: '金额明细', render: (r) => <AmountDetail log={r} /> },
     {
       key: 'affectedRows', header: '影响行数', align: 'right', cellClassName: 'font-num',
       render: (r) => (r.type === 'subject' ? '-' : r.affectedRows),
     },
     { key: 'operator', header: '操作人' },
+    {
+      key: 'status', header: '状态',
+      render: (r) => r.revertedAt
+        ? <Badge variant="outline" className="border-transparent bg-muted text-muted-foreground">已撤销</Badge>
+        : <Badge variant="outline" className="border-transparent bg-green-100 text-green-800">已生效</Badge>,
+    },
   ]
+  if (canRevert) {
+    columns.push({
+      key: 'actions', header: '操作', align: 'right',
+      render: (r) => r.revertible ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          title="撤销本次调整（逆向恢复）"
+          disabled={revertMutation.isPending}
+          onClick={(e) => { e.stopPropagation(); handleRevert(r) }}
+        >
+          <Undo2 className="mr-1 h-4 w-4" />
+          撤销
+        </Button>
+      ) : (
+        <span className="text-xs text-muted-foreground">{r.revertedAt ? '已撤销' : '不可撤销'}</span>
+      ),
+    })
+  }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>重分类记录</DialogTitle>
-          <DialogDescription>跨公司重分类、科目归类与科目间调整的操作历史，点击行查看明细。</DialogDescription>
-        </DialogHeader>
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-muted-foreground">类型:</span>
+        <Select value={type} onValueChange={(v) => { setType(v); setPage(1); setExpandedKeys(new Set()) }}>
+          <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">全部</SelectItem>
+            <SelectItem value="company">跨公司</SelectItem>
+            <SelectItem value="subject">科目归类</SelectItem>
+            <SelectItem value="subject_adjust">科目调整</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">类型:</span>
-            <Select value={type} onValueChange={(v) => { setType(v); setPage(1); setExpandedKeys(new Set()) }}>
-              <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部</SelectItem>
-                <SelectItem value="company">跨公司</SelectItem>
-                <SelectItem value="subject">科目归类</SelectItem>
-                <SelectItem value="subject_adjust">科目调整</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+      {message && <p className="text-xs text-muted-foreground">{message}</p>}
 
-          <div className="overflow-x-auto">
-            <DataTable
-              columns={columns}
-              data={items}
-              rowKey={(r) => r.id}
-              emptyText={isFetching ? '加载中...' : '暂无重分类记录'}
-              onRowClick={toggleExpanded}
-              expandedKeys={expandedKeys}
-              renderExpanded={(r) => <ExpandedDetail log={r} />}
-            />
-          </div>
-          <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
-        </div>
-
-        <div className="flex justify-end">
-          <Button variant="outline" onClick={onClose}>关闭</Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+      <div className="overflow-x-auto">
+        <DataTable
+          columns={columns}
+          data={items}
+          rowKey={(r) => r.id}
+          emptyText={isFetching ? '加载中...' : '暂无重分类记录'}
+          onRowClick={toggleExpanded}
+          expandedKeys={expandedKeys}
+          renderExpanded={(r) => <ExpandedDetail log={r} />}
+        />
+      </div>
+      <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
+      {confirmElement}
+    </div>
   )
 }

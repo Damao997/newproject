@@ -58,8 +58,11 @@ function findUserWithRole(where: { id: string } | { username: string }) {
 }
 
 function toFrontendUser(user: UserWithRole): FrontendUser {
+  const scopeCodes = Array.isArray(user.dataScopeCodes) ? (user.dataScopeCodes as string[]) : []
   let dataScope: string
-  if (user.companyCode) {
+  if (scopeCodes.length > 0) {
+    dataScope = scopeCodes.join(',')
+  } else if (user.companyCode) {
     dataScope = user.companyCode
   } else if (user.role.scopeValue === '*') {
     dataScope = '全部'

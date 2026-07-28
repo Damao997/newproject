@@ -243,7 +243,7 @@ export const AIProxyService = {
    */
   async analyzeStream(
     params: {
-      scope: Pick<AuthUserContext, 'companyCode' | 'scopeValue'>
+      scope: Pick<AuthUserContext, 'companyCode' | 'scopeValue'> & { dataScopeCodes?: string[] | null }
       companyCode: string
       subjectCode: string
       subjectType?: 'operating' | 'static'

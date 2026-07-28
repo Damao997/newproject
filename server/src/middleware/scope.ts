@@ -3,7 +3,8 @@ import type { AuthUserContext } from '../types/express'
 
 /**
  * 数据范围（scope）过滤 —— Prisma 扩展。
- * 两优先级（见 docs/references/security.md）：
+ * 优先级（见 docs/references/security.md）：
+ *   0. user.data_scope_codes 非空 → 多选范围（汇总主体展开为下属单体 + 自身编码）
  *   1. user.company_code 非空 → 精确绑定单体公司
  *   2. company_code 空且 role.scope_value='*' → 全量
  *   兜底：无范围 → none（空结果，默认拒绝，防越权）
@@ -93,9 +94,35 @@ export function applyScope<T extends PrismaClient | { $extends: unknown }>(clien
  * 依据当前用户上下文解析数据范围。
  */
 export async function resolveScope(
-  _client: Pick<PrismaClient, 'company'>,
-  authUser: Pick<AuthUserContext, 'companyCode' | 'scopeValue'> & { orgScopeBu?: string[] | null },
+  _client: Pick<PrismaClient, 'company' | 'companyAggregationMap'>,
+  authUser: Pick<AuthUserContext, 'companyCode' | 'scopeValue'> & {
+    orgScopeBu?: string[] | null
+    dataScopeCodes?: string[] | null
+  },
 ): Promise<DataScope> {
+  // 优先级 0：多选数据范围（单体 + 汇总主体），汇总主体展开为下属单体并保留自身编码
+  if (authUser.dataScopeCodes && authUser.dataScopeCodes.length > 0) {
+    const codes = [...new Set(authUser.dataScopeCodes)]
+    const companies = await _client.company.findMany({
+      where: { code: { in: codes }, status: 'active' },
+      select: { code: true, entityType: true },
+    })
+    const resolved = new Set(companies.map((c) => c.code))
+    const summaryCodes = companies.filter((c) => c.entityType === 'summary').map((c) => c.code)
+    if (summaryCodes.length > 0) {
+      const maps = await _client.companyAggregationMap.findMany({
+        where: { summaryCompanyCode: { in: summaryCodes } },
+        select: { singleCompanyCode: true },
+      })
+      for (const m of maps) resolved.add(m.singleCompanyCode)
+    }
+    // 配置了范围但编码均已失效 → 默认拒绝，防越权
+    if (resolved.size > 0) {
+      return { type: 'companies', companyCodes: [...resolved] }
+    }
+    return { type: 'none' }
+  }
+
   // 优先级 1：精确绑定单体公司
   if (authUser.companyCode) {
     return { type: 'companies', companyCodes: [authUser.companyCode] }

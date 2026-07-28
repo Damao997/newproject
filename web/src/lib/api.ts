@@ -26,9 +26,17 @@ export interface ImportPreviewResult {
     activeBatch: { id: string; filename: string } | null
     newPeriods: string[]
     overlappingPeriods: string[]
-    vanishingPeriods: string[]
+    /** 生效批次有而文件无（按期间合并：激活后继续保留生效） */
+    retainedPeriods: string[]
   } | null
   kpiCoverage?: { covered: string[]; missing: string[] } | null
+}
+
+/** 可用期间与财年列表（财年降序，由 active 批次期间派生） */
+export interface AvailablePeriodsResult {
+  periods: string[]
+  fiscalYears: string[]
+  fiscalStartMonth: number
 }
 
 class ApiClient {
@@ -136,15 +144,18 @@ class ApiClient {
   }
 
   // Dashboard API
-  async getDashboardOverview(): Promise<{
+  async getDashboardOverview(params?: { period?: string }): Promise<{
     kpiData: KpiData[]
     trendData: TrendData[]
     alerts: Alert[]
     lastUpdatedAt: string
+    period: string
+    availablePeriods: string[]
   }> {
     return this.request({
       method: 'GET',
       url: '/dashboard/overview',
+      params,
     })
   }
 
@@ -204,7 +215,7 @@ class ApiClient {
     })
   }
 
-  async getAvailablePeriods(): Promise<string[]> {
+  async getAvailablePeriods(): Promise<AvailablePeriodsResult> {
     return this.request({
       method: 'GET',
       url: '/indicators/periods',
@@ -370,7 +381,7 @@ class ApiClient {
   // ---------------- 数据重分类 ----------------
   async previewReclassifyCompany(data: {
     templateType: string; sourceCompanyCode: string; targetCompanyCode: string
-    accountCodes?: string[]; periodFrom?: string; periodTo?: string
+    accountCodes?: string[]; period: string
     transferMode?: 'all' | 'ratio' | 'amount'; ratio?: number; amount?: number
   }): Promise<{ affectedRows: number; totalValue: number; transferValue: number; conflictRows: number; createRows: number }> {
     return this.request({ method: 'POST', url: '/data/reclassify/company/preview', data })
@@ -378,7 +389,7 @@ class ApiClient {
 
   async reclassifyCompany(data: {
     templateType: string; sourceCompanyCode: string; targetCompanyCode: string
-    accountCodes?: string[]; periodFrom?: string; periodTo?: string
+    accountCodes?: string[]; period: string
     transferMode?: 'all' | 'ratio' | 'amount'; ratio?: number; amount?: number
   }): Promise<{ affectedRows: number; mergedRows: number; createdRows: number; transferValue: number }> {
     return this.request({ method: 'POST', url: '/data/reclassify/company', data })
@@ -386,20 +397,24 @@ class ApiClient {
 
   async previewAdjustSubject(data: {
     templateType: string; companyCode: string; sourceAccountCode: string; targetAccountCode?: string
-    decreaseAmount: number; increaseAmount?: number; periodFrom?: string; periodTo?: string
+    decreaseAmount: number; increaseAmount?: number; period: string
   }): Promise<{ affectedRows: number; sourceTotal: number; decreaseAmount: number; increaseAmount: number; netChange: number }> {
     return this.request({ method: 'POST', url: '/data/reclassify/subject/preview', data })
   }
 
   async adjustSubject(data: {
     templateType: string; companyCode: string; sourceAccountCode: string; targetAccountCode?: string
-    decreaseAmount: number; increaseAmount?: number; periodFrom?: string; periodTo?: string; reason: string
+    decreaseAmount: number; increaseAmount?: number; period: string; reason: string
   }): Promise<{ affectedRows: number; decreaseAmount: number; increaseAmount: number; netChange: number; mergedRows: number; createdRows: number }> {
     return this.request({ method: 'POST', url: '/data/reclassify/subject', data })
   }
 
   async getReclassifyLogs(params?: FilterParams & { type?: string }): Promise<PaginatedResponse<ReclassifyLog>> {
     return this.request({ method: 'GET', url: '/data/reclassify/logs', params })
+  }
+
+  async revertReclassifyLog(id: string): Promise<{ restoredRows: number }> {
+    return this.request({ method: 'POST', url: `/data/reclassify/logs/${id}/revert` })
   }
 
   async reclassifySubject(id: string, parentCode: string | null): Promise<AccountSubject> {

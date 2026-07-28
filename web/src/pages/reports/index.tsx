@@ -152,7 +152,7 @@ function CreateReportDialog({ open, onOpenChange, onCreated }: { open: boolean; 
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>新建分析报告</DialogTitle>
-          <DialogDescription>选择公司或汇总主体（ET），随后可拉取其名下单项分析编制总体报告。</DialogDescription>
+          <DialogDescription>选择公司或汇总主体，随后可拉取其名下单项分析编制总体报告。</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1.5">

@@ -21,6 +21,8 @@ export interface AuthUserContext {
   scopeValue: string
   companyCode: string | null
   orgScopeBu: string[] | null
+  /** 多选数据范围（公司编码数组，可混合单体与汇总），优先于 companyCode */
+  dataScopeCodes: string[] | null
 }
 
 export {}

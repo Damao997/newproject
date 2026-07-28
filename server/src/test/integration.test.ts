@@ -86,13 +86,17 @@ describe('服务层集成（真实 DB）', () => {
     expect(Array.isArray(ov.trendData)).toBe(true)
   })
 
-  it('交叉表：指定单体公司列 + level0 行', async () => {
+  it('交叉表：指定单体公司列 + 全层级科目行（树前序，含 level/parentCode）', async () => {
     if (!dbReady) return
     const singles = await prisma.company.findMany({ where: { entityType: 'single', status: 'active' }, take: 2, select: { code: true } })
     const codes = singles.map((c) => c.code)
     const cross = await IndicatorsService.getCross(ADMIN_SCOPE, { companyCodes: codes })
     expect(cross.companies).toEqual(codes)
     expect(cross.rows.length).toBeGreaterThan(0)
+    // 未指定 metricCodes 时返回全部层级（不再仅 level0），首行为根节点
+    expect(cross.rows[0].level).toBe(0)
+    expect(cross.rows[0].parentCode).toBeNull()
+    expect(cross.rows.some((r) => r.level > 0)).toBe(true)
   })
 
   it('管理：用户 ≥ 6，预置角色 ≥ 6（含 superadmin 与预置权限）', async () => {
