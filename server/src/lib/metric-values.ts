@@ -92,7 +92,7 @@ export function calcYoy(actual: number, samePeriod: number): number {
   return samePeriod ? round2(((actual - samePeriod) / samePeriod) * 100) : 0
 }
 
-/** 达成率 = 本月实际 / 预算金额 */
-export function calcAchievement(actual: number, budget: number): number {
-  return budget ? round2((actual / budget) * 100) : 0
+/** 达成率 = 本年累计 / 全年预算（预算为年度值，须用 YTD 累计作分子） */
+export function calcAchievement(ytd: number, budget: number): number {
+  return budget ? round2((ytd / budget) * 100) : 0
 }

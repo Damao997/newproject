@@ -205,6 +205,22 @@ model PeriodDimension {
   @@map("period_dimension")
 }
 
+// 3.4-1 往来会计科目主数据（集团统一科目表 CG_COA_ACCOUNT 中六大往来相关科目）
+model TransactionAccount {
+  code            String       @id // 12 位科目段值，如 112202010101
+  name            String // 科目说明
+  transactionType String       @map("transaction_type") // 六大往来类型
+  direction       String // AR / AP
+  note            String? // 科目表附加说明
+  orderNo         Int          @default(0) @map("order_no")
+  status          RecordStatus @default(active)
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  @@index([transactionType])
+  @@map("transaction_account")
+}
+
 // 3.5 客商表
 model Counterparty {
   id            String       @id @default(uuid())
@@ -512,6 +528,7 @@ model ReportVersion {
   changedBy     String?  @map("changed_by")
   changedAt     DateTime @default(now()) @map("changed_at")
 
+  @@unique([reportId, versionNo])
   @@index([reportId])
   @@map("report_version")
 }
@@ -701,6 +718,8 @@ model ImportBatch {
   dataType        ImportDataType  @map("data_type")
   lifecycleStatus LifecycleStatus @default(draft) @map("lifecycle_status")
   errorsJson      Json?           @map("errors_json") @db.JsonB
+  // 往来导入申报覆盖范围：[{companyCode, period, transactionType, recordCount}]，含 0 条的空 Sheet，供覆盖矩阵区分“已导入无数据”与“缺失”
+  coverageJson    Json?           @map("coverage_json") @db.JsonB
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")
 
@@ -771,20 +790,6 @@ model Alert {
   acknowledged     Boolean  @default(false)
 
   @@map("alert")
-}
-
-// 7.12 公式规则表（AI 辅助/批量公式生成）
-model FormulaRule {
-  id              String   @id @default(uuid())
-  name            String   @unique // 规则名/匹配关键词（如 毛利率）
-  formulaTemplate String   @map("formula_template") // 如 "{OP_040} / {OP_001}"
-  refCodes        Json?    @map("ref_codes") @db.JsonB // 引用科目编码数组
-  description     String?
-  enabled         Boolean  @default(true)
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-
-  @@map("formula_rule")
 }
 
 // ============================================================

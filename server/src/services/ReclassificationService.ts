@@ -11,8 +11,10 @@ import type { AuthUserContext } from '../types/express'
  *   all：整行改挂目标公司，同唯一键行合并求和（值相加、删除源行），合计不变；
  *   ratio/amount：部分金额转移，源行 value 调减（行保留），目标公司同唯一键行调增，
  *   无对应行则新建，转移合计恰等于计划金额，总额守恒。
- * - 同公司科目间调整（adjustSubject）：源科目调减、目标科目调增，两者金额可以不相等
- *   （如修正重复计算时只减不增），公司总额可能变化，须填写调整原因留痕。
+ * - 同公司科目间调整（adjustSubject）：支持三种调整方式（adjustMode）——
+ *   both：源科目调减 + 目标科目调增，两者金额可以不相等；
+ *   decrease：仅调减源科目（如修正重复计算）；increase：仅调增目标科目（如补录遗漏）。
+ *   公司总额随净差变化，须填写调整原因留痕。金额单位与事实表一致（万元）。
  * - 期间口径：均按单月（period 必填 YYYY-MM）调整；预算模板按期间所属财年匹配。
  * - 科目树换父见 DataService.reclassifySubject。
  * 每次操作写 ReclassificationLog（含行级快照 snapshot，支持 revertLog 撤销）+ 审计日志；
@@ -23,6 +25,8 @@ import type { AuthUserContext } from '../types/express'
 type Scope = Pick<AuthUserContext, 'companyCode' | 'scopeValue'> & { dataScopeCodes?: string[] | null }
 type TemplateType = 'operating' | 'static' | 'budget'
 type TransferMode = 'all' | 'ratio' | 'amount'
+export type AdjustMode = 'both' | 'decrease' | 'increase'
+type SubjectValueType = 'amount' | 'quantity' | 'ratio'
 
 interface AuditCtx { userId: string; traceId?: string }
 
@@ -52,11 +56,15 @@ export interface PreviewResult {
 export interface AdjustSubjectParams {
   templateType: TemplateType
   companyCode: string
-  sourceAccountCode: string
-  /** 可选：不传即纯调减（如修正重复计算） */
+  /** 调整方式：both=调减+调增；decrease=仅调减；increase=仅调增。未传按旧参数推断（兼容） */
+  adjustMode?: AdjustMode
+  /** decrease/both 模式必填 */
+  sourceAccountCode?: string
+  /** increase/both 模式必填 */
   targetAccountCode?: string
-  decreaseAmount: number
-  /** 可与 decreaseAmount 不相等，公司总额随净差变化 */
+  /** decrease/both 模式必填（万元） */
+  decreaseAmount?: number
+  /** increase/both 模式必填（万元）；可与 decreaseAmount 不相等，公司总额随净差变化 */
   increaseAmount?: number
   /** 调整期间（单月 YYYY-MM，必填）；预算模板按期所属财年匹配 */
   period: string
@@ -66,9 +74,13 @@ export interface AdjustSubjectParams {
 export interface AdjustSubjectPreview {
   affectedRows: number
   sourceTotal: number
+  /** increase 模式：目标科目现有合计（万元/数量） */
+  targetTotal?: number
   decreaseAmount: number
   increaseAmount: number
   netChange: number
+  /** 调整口径值类型（取源科目；increase 模式取目标科目），供前端分型格式化 */
+  valueType: SubjectValueType
 }
 
 const num = (v: unknown): number => Number(String(v ?? 0))
@@ -131,15 +143,27 @@ function periodFilterOf(templateType: TemplateType, period: string): FactFilter 
   return { periodFrom: period, periodTo: period }
 }
 
-/** 科目校验：静态模板对应静态科目，其余对应经营科目 */
-async function validateSubjects(templateType: TemplateType, source: string, target?: string): Promise<void> {
-  if (target && source === target) throw errors.badRequest('源科目与目标科目不能相同')
+/**
+ * 科目间调整专用校验：存在性 + 值类型规则，返回调整口径的 valueType。
+ * - 比率类科目由公式计算，禁止直接调增调减；
+ * - both 模式源/目标值类型必须一致（金额↔金额、数量↔数量）；
+ * - 口径 valueType：decrease/both 取源科目，increase 取目标科目。
+ */
+async function loadAndValidateAdjustSubjects(templateType: TemplateType, mode: AdjustMode, source?: string, target?: string): Promise<SubjectValueType> {
+  if (source && target && source === target) throw errors.badRequest('源科目与目标科目不能相同')
   const subjectType = templateType === 'static' ? 'static' : 'operating'
-  const codes = target ? [source, target] : [source]
-  const found = await prisma.accountSubject.findMany({ where: { code: { in: codes }, subjectType }, select: { code: true } })
-  const foundSet = new Set(found.map((s) => s.code))
-  if (!foundSet.has(source)) throw errors.badRequest('源科目不存在')
-  if (target && !foundSet.has(target)) throw errors.badRequest('目标科目不存在')
+  const codes = [source, target].filter(Boolean) as string[]
+  const found = await prisma.accountSubject.findMany({ where: { code: { in: codes }, subjectType }, select: { code: true, valueType: true } })
+  const byCode = new Map(found.map((s) => [s.code, s.valueType as SubjectValueType]))
+  if (source && !byCode.has(source)) throw errors.badRequest('源科目不存在')
+  if (target && !byCode.has(target)) throw errors.badRequest('目标科目不存在')
+  const sourceVt = source ? byCode.get(source) : undefined
+  const targetVt = target ? byCode.get(target) : undefined
+  if (sourceVt === 'ratio' || targetVt === 'ratio') throw errors.badRequest('比率类科目由公式计算，不支持金额调整')
+  if (mode === 'both' && sourceVt && targetVt && sourceVt !== targetVt) {
+    throw errors.badRequest('源科目与目标科目的值类型必须一致（金额/数量）')
+  }
+  return (mode === 'increase' ? targetVt : sourceVt) ?? 'amount'
 }
 
 // ---- 各事实表的 where 构造、期间键与新建行数据 ----
@@ -243,18 +267,18 @@ function tableOps(db: any, templateType: TemplateType): TableOps {
 /** 跨公司匹配键：科目 + 期间键 */
 const companyKeyOf = (ops: TableOps) => (r: Row) => `${r.accountCode}|${ops.periodKeyOf(r)}`
 
-// ---- 金额分摊（分为单位整数运算，避免浮点误差）----
+// ---- 金额/数量分摊（按最小单位整数运算，避免浮点误差；金额 unit=100 分为单位，数量 unit=1 整数单位）----
 
 /**
  * 按各行 value 占比分摊 amount，尾差在有容量的行间微调，
  * 保证 sum(结果) === amount 且每行分摊额不超过该行 value。
  */
-function allocateAmount(values: number[], amount: number): number[] {
-  const cents = values.map((v) => Math.round(v * 100))
+function allocateAmount(values: number[], amount: number, unit = 100): number[] {
+  const cents = values.map((v) => Math.round(v * unit))
   if (cents.some((c) => c < 0)) throw errors.badRequest('筛选范围内存在负值明细，请改用比例模式或缩小筛选范围')
   const total = cents.reduce((s, c) => s + c, 0)
-  let amt = Math.round(amount * 100)
-  if (amt > total) throw errors.badRequest(`转移/调整金额不能超过源数据合计 ${round2(total / 100)}`)
+  let amt = Math.round(amount * unit)
+  if (amt > total) throw errors.badRequest(`转移/调整金额不能超过源数据合计 ${round2(total / unit)}${unit === 100 ? ' 万元' : ''}`)
   const xs = cents.map((c) => Math.min(c, Math.round((amt * c) / (total || 1))))
   let diff = amt - xs.reduce((s, x) => s + x, 0)
   for (let i = 0; i < xs.length && diff !== 0; i++) {
@@ -268,14 +292,14 @@ function allocateAmount(values: number[], amount: number): number[] {
       diff += sub
     }
   }
-  return xs.map((x) => x / 100)
+  return xs.map((x) => x / unit)
 }
 
 /** 按权重占比分摊 amount（无上限约束），尾差落在首个非零权重行 */
-function allocateByWeights(weights: number[], amount: number): number[] {
-  const w = weights.map((v) => Math.round(v * 100))
+function allocateByWeights(weights: number[], amount: number, unit = 100): number[] {
+  const w = weights.map((v) => Math.round(v * unit))
   const total = w.reduce((s, c) => s + c, 0)
-  const amt = Math.round(amount * 100)
+  const amt = Math.round(amount * unit)
   if (total <= 0) throw errors.badRequest('无有效分摊权重')
   const xs = w.map((c) => Math.round((amt * c) / total))
   let diff = amt - xs.reduce((s, x) => s + x, 0)
@@ -285,7 +309,7 @@ function allocateByWeights(weights: number[], amount: number): number[] {
       diff = 0
     }
   }
-  return xs.map((x) => x / 100)
+  return xs.map((x) => x / unit)
 }
 
 /** 计算每条源行的计划转移额 */
@@ -392,35 +416,43 @@ async function adjustSubjectInTx(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tx: any,
   p: AdjustSubjectParams,
+  mode: AdjustMode,
+  valueType: SubjectValueType,
   periodFilter: FactFilter,
   batchIds: string[],
 ): Promise<AdjustResult> {
   const ops = tableOps(tx, p.templateType)
-  const sourceRows = await ops.delegate.findMany({ where: ops.where({ ...periodFilter, accountCodes: [p.sourceAccountCode] }, batchIds, p.companyCode) })
-  if (sourceRows.length === 0) throw errors.conflict('没有符合筛选条件的可调整数据')
-
+  // 分摊最小单位：金额按分（两位小数），数量按整数
+  const unit = valueType === 'quantity' ? 1 : 100
   const snapshot = emptySnapshot()
-  // 调减：按源行 value 占比分摊，分为单位运算保证合计恰等于 decreaseAmount
-  const decXs = allocateAmount(sourceRows.map((r) => num(r.value)), p.decreaseAmount)
   let affected = 0
   let decreased = 0
-  for (let i = 0; i < sourceRows.length; i++) {
-    if (decXs[i] === 0) continue
-    snapshot.updated.push({ id: sourceRows[i].id, data: { value: num(sourceRows[i].value) } })
-    await ops.delegate.update({ where: { id: sourceRows[i].id }, data: { value: round2(num(sourceRows[i].value) - decXs[i]) } })
-    decreased += decXs[i]
-    affected++
-  }
-
-  // 调增：按调减的期间分布同比例分摊到目标科目（存在累加、不存在新建）
   let merged = 0
   let created = 0
   let increased = 0
+
+  // 调减侧（decrease/both）：按源行 value 占比分摊，分为单位运算保证合计恰等于 decreaseAmount
+  let decXs: number[] = []
+  let sourceRows: Row[] = []
+  if (mode !== 'increase') {
+    sourceRows = await ops.delegate.findMany({ where: ops.where({ ...periodFilter, accountCodes: [p.sourceAccountCode as string] }, batchIds, p.companyCode) })
+    if (sourceRows.length === 0) throw errors.conflict('没有符合筛选条件的可调整数据')
+    decXs = allocateAmount(sourceRows.map((r) => num(r.value)), p.decreaseAmount as number, unit)
+    for (let i = 0; i < sourceRows.length; i++) {
+      if (decXs[i] === 0) continue
+      snapshot.updated.push({ id: sourceRows[i].id, data: { value: num(sourceRows[i].value) } })
+      await ops.delegate.update({ where: { id: sourceRows[i].id }, data: { value: round2(num(sourceRows[i].value) - decXs[i]) } })
+      decreased += decXs[i]
+      affected++
+    }
+  }
+
+  // 调增侧（both）：按调减的期间分布同比例分摊到目标科目（存在累加、不存在新建）
   const increaseAmount = p.increaseAmount ?? 0
-  if (p.targetAccountCode && increaseAmount > 0) {
+  if (mode === 'both' && p.targetAccountCode && increaseAmount > 0) {
     const targetRows = await ops.delegate.findMany({ where: ops.where({ ...periodFilter, accountCodes: [p.targetAccountCode] }, batchIds, p.companyCode) })
     const targetByKey = new Map(targetRows.map((r) => [ops.periodKeyOf(r), r]))
-    const incXs = allocateByWeights(decXs, increaseAmount)
+    const incXs = allocateByWeights(decXs, increaseAmount, unit)
     for (let i = 0; i < sourceRows.length; i++) {
       const x = incXs[i]
       if (x === 0) continue
@@ -437,19 +469,72 @@ async function adjustSubjectInTx(
       increased += x
     }
   }
+
+  // 仅调增（increase）：目标当期行存在则按各行 value 权重分摊累加（权重合计 ≤0 时全额落首行）；
+  // 无目标行时取同公司同期任意事实行作模板新建（批次/期间维度/财年沿用模板行）
+  if (mode === 'increase') {
+    const amount = p.increaseAmount as number
+    const target = p.targetAccountCode as string
+    const targetRows = await ops.delegate.findMany({ where: ops.where({ ...periodFilter, accountCodes: [target] }, batchIds, p.companyCode) })
+    if (targetRows.length > 0) {
+      let incXs: number[]
+      try {
+        incXs = allocateByWeights(targetRows.map((r) => num(r.value)), amount, unit)
+      } catch {
+        incXs = targetRows.map((_, i) => (i === 0 ? amount : 0))
+      }
+      for (let i = 0; i < targetRows.length; i++) {
+        const x = incXs[i]
+        if (x === 0) continue
+        snapshot.updated.push({ id: targetRows[i].id, data: { value: num(targetRows[i].value) } })
+        await ops.delegate.update({ where: { id: targetRows[i].id }, data: { value: round2(num(targetRows[i].value) + x) } })
+        merged++
+        increased += x
+        affected++
+      }
+    } else {
+      const templateRows = await ops.delegate.findMany({ where: ops.where(periodFilter, batchIds, p.companyCode) })
+      if (templateRows.length === 0) throw errors.conflict('该公司该期间暂无生效数据，无法调增')
+      const createdRow = await ops.delegate.create({ data: ops.createData(templateRows[0], p.companyCode, target, amount) })
+      snapshot.created.push(createdRow.id)
+      created++
+      increased += amount
+      affected++
+    }
+  }
   return { affected, merged, created, decreased: round2(decreased), increased: round2(increased), snapshot }
 }
 
-function validateAdjustParams(p: AdjustSubjectParams): void {
-  if (typeof p.decreaseAmount !== 'number' || !Number.isFinite(p.decreaseAmount) || p.decreaseAmount <= 0) {
-    throw errors.badRequest('调减金额必须为大于 0 的数值')
+/** 解析调整方式：未传时按旧参数推断（有调增侧为 both，否则仅调减），兼容历史调用 */
+function resolveAdjustMode(p: AdjustSubjectParams): AdjustMode {
+  if (p.adjustMode) {
+    if (!['both', 'decrease', 'increase'].includes(p.adjustMode)) throw errors.badRequest('调整方式不合法')
+    return p.adjustMode
   }
-  if (p.increaseAmount !== undefined) {
-    if (typeof p.increaseAmount !== 'number' || !Number.isFinite(p.increaseAmount) || p.increaseAmount < 0) {
-      throw errors.badRequest('调增金额必须为大于等于 0 的数值')
-    }
-    if (p.increaseAmount > 0 && !p.targetAccountCode) throw errors.badRequest('调增金额大于 0 时必须选择目标科目')
+  if ((p.increaseAmount ?? 0) > 0) {
+    if (!p.targetAccountCode) throw errors.badRequest('调增金额大于 0 时必须选择目标科目')
+    return 'both'
   }
+  return 'decrease'
+}
+
+function validateAmount(v: unknown, label: string, valueType: SubjectValueType): void {
+  if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) throw errors.badRequest(`${label}必须为大于 0 的数值${valueType === 'quantity' ? '' : '（万元）'}`)
+  // 数量类科目按整数个口径调整，不允许小数
+  if (valueType === 'quantity' && !Number.isInteger(v)) throw errors.badRequest(`${label}必须为大于 0 的整数（数量类科目）`)
+}
+
+/** 字段必填校验（不含金额分型规则，金额校验需先加载科目 valueType 后进行） */
+function requireAdjustFields(p: AdjustSubjectParams, mode: AdjustMode): void {
+  if (mode !== 'increase' && !p.sourceAccountCode) throw errors.badRequest('请选择源科目')
+  if (mode !== 'decrease' && !p.targetAccountCode) throw errors.badRequest('请选择目标科目')
+}
+
+/** 金额/数量校验：按调整口径 valueType 分型（金额允许两位小数，数量要求正整数） */
+function validateAdjustAmounts(p: AdjustSubjectParams, mode: AdjustMode, valueType: SubjectValueType): void {
+  const label = valueType === 'quantity' ? '数量' : '金额'
+  if (mode !== 'increase') validateAmount(p.decreaseAmount, `调减${label}`, valueType)
+  if (mode !== 'decrease') validateAmount(p.increaseAmount, `调增${label}`, valueType)
 }
 
 async function validateCompanyExists(code: string): Promise<void> {
@@ -536,26 +621,42 @@ export const ReclassificationService = {
   },
 
   async previewAdjustSubject(params: AdjustSubjectParams, scope: Scope): Promise<AdjustSubjectPreview> {
-    validateAdjustParams(params)
+    const mode = resolveAdjustMode(params)
+    requireAdjustFields(params, mode)
     const periodFilter = periodFilterOf(params.templateType, params.period)
     await validateCompanyExists(params.companyCode)
     await assertCompaniesInScope(scope, [params.companyCode])
-    await validateSubjects(params.templateType, params.sourceAccountCode, params.targetAccountCode)
-    const increaseAmount = params.increaseAmount ?? 0
-    const netChange = round2(increaseAmount - params.decreaseAmount)
+    const valueType = await loadAndValidateAdjustSubjects(params.templateType, mode, mode === 'increase' ? undefined : params.sourceAccountCode, mode === 'decrease' ? undefined : params.targetAccountCode)
+    validateAdjustAmounts(params, mode, valueType)
+    const decreaseAmount = mode === 'increase' ? 0 : (params.decreaseAmount as number)
+    const increaseAmount = mode === 'decrease' ? 0 : (params.increaseAmount as number)
+    const netChange = round2(increaseAmount - decreaseAmount)
     const batchIds = await activeBatchIds(params.templateType)
     if (batchIds.length === 0) {
-      return { affectedRows: 0, sourceTotal: 0, decreaseAmount: params.decreaseAmount, increaseAmount, netChange }
+      return { affectedRows: 0, sourceTotal: 0, targetTotal: 0, decreaseAmount, increaseAmount, netChange, valueType }
     }
     const ops = tableOps(prisma, params.templateType)
+    if (mode === 'increase') {
+      // 仅调增：目标当期行存在则逆向分摊到各行；无目标行时需同期任意事实行作模板新建 1 行
+      const targetRows = await ops.delegate.findMany({
+        where: ops.where({ ...periodFilter, accountCodes: [params.targetAccountCode as string] }, batchIds, params.companyCode),
+      })
+      const targetTotal = round2(targetRows.reduce((s, r) => s + num(r.value), 0))
+      let affectedRows = targetRows.length
+      if (affectedRows === 0) {
+        const templateRows = await ops.delegate.findMany({ where: ops.where(periodFilter, batchIds, params.companyCode) })
+        affectedRows = templateRows.length > 0 ? 1 : 0
+      }
+      return { affectedRows, sourceTotal: 0, targetTotal, decreaseAmount, increaseAmount, netChange, valueType }
+    }
     const sourceRows = await ops.delegate.findMany({
-      where: ops.where({ ...periodFilter, accountCodes: [params.sourceAccountCode] }, batchIds, params.companyCode),
+      where: ops.where({ ...periodFilter, accountCodes: [params.sourceAccountCode as string] }, batchIds, params.companyCode),
     })
     const sourceTotal = round2(sourceRows.reduce((s, r) => s + num(r.value), 0))
-    if (sourceRows.length > 0 && params.decreaseAmount > sourceTotal) {
-      throw errors.badRequest(`调减金额不能超过源科目合计 ${sourceTotal}`)
+    if (sourceRows.length > 0 && decreaseAmount > sourceTotal) {
+      throw errors.badRequest(`调减${valueType === 'quantity' ? '数量' : '金额'}不能超过源科目合计 ${sourceTotal}${valueType === 'quantity' ? '' : ' 万元'}`)
     }
-    return { affectedRows: sourceRows.length, sourceTotal, decreaseAmount: params.decreaseAmount, increaseAmount, netChange }
+    return { affectedRows: sourceRows.length, sourceTotal, decreaseAmount, increaseAmount, netChange, valueType }
   },
 
   async adjustSubject(
@@ -563,16 +664,18 @@ export const ReclassificationService = {
     scope: Scope,
     ctx: AuditCtx,
   ): Promise<{ affectedRows: number; decreaseAmount: number; increaseAmount: number; netChange: number; mergedRows: number; createdRows: number }> {
-    validateAdjustParams(params)
+    const mode = resolveAdjustMode(params)
+    requireAdjustFields(params, mode)
     const periodFilter = periodFilterOf(params.templateType, params.period)
     if (!params.reason || !params.reason.trim()) throw errors.badRequest('请填写调整原因')
     await validateCompanyExists(params.companyCode)
     await assertCompaniesInScope(scope, [params.companyCode])
-    await validateSubjects(params.templateType, params.sourceAccountCode, params.targetAccountCode)
+    const valueType = await loadAndValidateAdjustSubjects(params.templateType, mode, mode === 'increase' ? undefined : params.sourceAccountCode, mode === 'decrease' ? undefined : params.targetAccountCode)
+    validateAdjustAmounts(params, mode, valueType)
     const batchIds = await activeBatchIds(params.templateType)
     if (batchIds.length === 0) throw errors.conflict('该模板类型暂无生效批次，无可调整数据')
 
-    const result = await prisma.$transaction(async (tx) => adjustSubjectInTx(tx, params, periodFilter, batchIds))
+    const result = await prisma.$transaction(async (tx) => adjustSubjectInTx(tx, params, mode, valueType, periodFilter, batchIds))
     const netChange = round2(result.increased - result.decreased)
 
     await prisma.reclassificationLog.create({
@@ -580,14 +683,16 @@ export const ReclassificationService = {
         type: 'subject_adjust',
         templateType: params.templateType,
         sourceCompany: params.companyCode,
-        sourceSubject: params.sourceAccountCode,
-        targetSubject: params.targetAccountCode ?? null,
+        sourceSubject: mode === 'increase' ? null : params.sourceAccountCode,
+        targetSubject: mode === 'decrease' ? null : (params.targetAccountCode ?? null),
         period: params.period,
         periodFrom: params.period,
         periodTo: params.period,
         affectedRows: result.affected,
         operatedBy: ctx.userId,
         detail: {
+          adjustMode: mode,
+          valueType,
           decreaseAmount: result.decreased,
           increaseAmount: result.increased,
           netChange,
@@ -603,9 +708,13 @@ export const ReclassificationService = {
         userId: ctx.userId,
         module: 'data',
         action: 'reclassify',
-        targetId: `${params.companyCode}:${params.sourceAccountCode}->${params.targetAccountCode ?? '(仅调减)'}`,
+        targetId: mode === 'increase'
+          ? `${params.companyCode}:(仅调增)->${params.targetAccountCode}`
+          : `${params.companyCode}:${params.sourceAccountCode}->${mode === 'decrease' ? '(仅调减)' : (params.targetAccountCode ?? '(仅调减)')}`,
         detail: {
           kind: 'subject_adjust',
+          adjustMode: mode,
+          valueType,
           templateType: params.templateType,
           decreaseAmount: result.decreased,
           increaseAmount: result.increased,

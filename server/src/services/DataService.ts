@@ -1,9 +1,10 @@
 import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
-import { validateFormulaChange, extractCodes } from './FormulaRuleService'
+import { validateFormulaChange, extractCodes, extractOperandRefs, PSEUDO_OPERANDS } from './FormulaRuleService'
 import { evaluateFormula, topoSortMetrics } from '../lib/formula'
 import { OPERATING_DIMS } from '../lib/metric-values'
+import { fiscalYearStartPeriod, periodMinusYears, fiscalYtdDays } from '../lib/period'
 import { buildExcel } from '../lib/excel'
 
 /**
@@ -396,10 +397,12 @@ export const DataService = {
   },
 
   // ===== 指标 =====
-  async listMetrics(params: { page: number; pageSize: number; keyword?: string; dataType?: string }): Promise<{ items: MetricDto[]; total: number; page: number; pageSize: number; totalPages: number }> {
+  async listMetrics(params: { page: number; pageSize: number; keyword?: string; dataType?: string; includeInactive?: boolean }): Promise<{ items: MetricDto[]; total: number; page: number; pageSize: number; totalPages: number }> {
     const where: Record<string, unknown> = {}
     if (params.dataType) where.dataType = params.dataType
     if (params.keyword) where.OR = [{ name: { contains: params.keyword } }, { code: { contains: params.keyword } }]
+    // 显式声明 status 以接管软删除过滤：公式维护页需展示已停用指标（恢复/彻底删除入口）
+    if (params.includeInactive) where.status = { in: ['active', 'inactive'] }
     const [rows, total] = await Promise.all([
       prisma.metric.findMany({ where, orderBy: { createdAt: 'asc' }, skip: (params.page - 1) * params.pageSize, take: params.pageSize }),
       prisma.metric.count({ where }),
@@ -418,6 +421,11 @@ export const DataService = {
     const exists = await prisma.metric.findUnique({ where: { code: input.code } })
     if (exists) throw errors.conflict('指标编码已存在')
     const dataType = input.dataType === 'calc' ? 'calc' : input.dataType === 'display' ? 'display' : 'data'
+    // 前置条件：计算类指标与科目体系同编码，科目不存在时禁止创建孤儿指标
+    if (dataType === 'calc') {
+      const subject = await prisma.accountSubject.findFirst({ where: { code: input.code } })
+      if (!subject) throw errors.badRequest(`科目体系中不存在编码为 ${input.code} 的科目，请先在维度/科目体系中创建`)
+    }
     let dependsOn = input.dependsOn
     if (dataType === 'calc' && input.formula) {
       dependsOn = await this.validateCalcMetric(input.code, input.formula)
@@ -443,6 +451,8 @@ export const DataService = {
   async updateMetric(id: string, input: { name?: string; formula?: string | null; dependsOn?: string[]; sourceAccountCodes?: string[]; status?: string }, ctx: AuditCtx): Promise<MetricDto> {
     const found = await prisma.metric.findUnique({ where: { id } })
     if (!found) throw errors.notFound('指标不存在')
+    // 恢复启用须走 restoreMetric 单一通道（含公式有效性复检），禁止经由普通更新绕过
+    if (input.status === 'active' && found.status === 'inactive') throw errors.badRequest('请使用恢复启用操作激活已停用指标')
 
     const before = found.formula
     let formulaData: string | null | undefined
@@ -483,11 +493,112 @@ export const DataService = {
     return metricDto(updated)
   },
 
+  /** 查询引用了指定编码的活跃指标（停用/转换前的一致性检查） */
+  async findMetricReferrers(code: string): Promise<{ code: string; name: string }[]> {
+    const all = await prisma.metric.findMany({ where: { status: 'active', formula: { not: null } }, select: { code: true, name: true, formula: true } })
+    return all
+      .filter((m) => m.code !== code && m.formula && extractCodes(m.formula).includes(code))
+      .map((m) => ({ code: m.code, name: m.name }))
+  },
+
   async deleteMetric(id: string, ctx: AuditCtx): Promise<void> {
     const found = await prisma.metric.findUnique({ where: { id } })
     if (!found) throw errors.notFound('指标不存在')
+    // 严格策略：被其他活跃指标公式引用时禁止停用，避免静默破坏引用方公式
+    const referrers = await this.findMetricReferrers(found.code)
+    if (referrers.length > 0) {
+      throw errors.conflict(`该指标被以下指标公式引用，无法停用：${referrers.map((r) => `${r.name}（${r.code}）`).join('、')}`)
+    }
     await prisma.metric.update({ where: { id }, data: { status: 'inactive' } })
     await recordAudit({ userId: ctx.userId, module: 'data', action: 'metric_change', targetId: found.code, detail: { action: 'delete' } }, ctx.traceId)
+  },
+
+  /**
+   * 恢复启用已停用指标：重新校验公式有效性（停用期间依赖可能已失效）。
+   * 校验失败时默认拒绝；clearFormula=true 则清空公式后恢复（version+1 并写历史）。
+   */
+  async restoreMetric(id: string, input: { clearFormula?: boolean }, ctx: AuditCtx): Promise<MetricDto> {
+    const found = await prisma.metric.findUnique({ where: { id } })
+    if (!found) throw errors.notFound('指标不存在')
+    if (found.status !== 'inactive') throw errors.badRequest('该指标未停用，无需恢复')
+
+    let clearedFormula = false
+    if (found.dataType === 'calc' && found.formula) {
+      const { warnings } = await validateFormulaChange(found.code, found.formula)
+      if (warnings.length > 0) {
+        if (!input.clearFormula) throw errors.badRequest(`公式依赖已失效：${warnings.join('；')}。可选择清空公式后恢复`)
+        clearedFormula = true
+      }
+    }
+
+    const updated = await prisma.metric.update({
+      where: { id },
+      data: clearedFormula
+        ? { status: 'active', formula: null, dependsOn: [] as never, version: { increment: 1 } }
+        : { status: 'active' },
+    })
+    if (clearedFormula) {
+      await prisma.metricDefinitionHistory.create({
+        data: { metricId: id, version: updated.version, formula: '', description: '恢复启用（公式失效已清空）', changedBy: ctx.userId },
+      })
+    }
+    await recordAudit({ userId: ctx.userId, module: 'data', action: 'metric_change', targetId: found.code, detail: { action: 'restore', before: 'inactive', after: 'active', clearedFormula } }, ctx.traceId)
+    return metricDto(updated)
+  },
+
+  /**
+   * 指标类型转换（高危）：data ↔ calc。
+   * data → calc：可同时携带公式（走全图校验，version+1 写历史）；
+   * calc → data：被活跃指标引用时拒绝，清空公式与依赖（原有公式时 version+1 写历史）。
+   */
+  async convertMetricType(id: string, input: { dataType: string; formula?: string }, ctx: AuditCtx): Promise<MetricDto> {
+    const found = await prisma.metric.findUnique({ where: { id } })
+    if (!found) throw errors.notFound('指标不存在')
+    if (found.status !== 'active') throw errors.badRequest('请先恢复启用该指标再转换类型')
+    const target = input.dataType
+    if (target !== 'data' && target !== 'calc') throw errors.badRequest('目标类型仅支持 data 或 calc')
+    if (found.dataType === target) throw errors.badRequest('指标已是目标类型，无需转换')
+    if (found.dataType === 'display') throw errors.badRequest('展示类指标不支持类型转换')
+
+    const before = found.formula
+    if (target === 'calc') {
+      // data → calc：科目体系存在性前置校验（与 createMetric 口径一致），可选携带公式
+      const subject = await prisma.accountSubject.findFirst({ where: { code: found.code } })
+      if (!subject) throw errors.badRequest(`科目体系中不存在编码为 ${found.code} 的科目，无法转换为计算类`)
+      const formula = input.formula?.trim() || null
+      let dependsOn: string[] = []
+      if (formula) dependsOn = await this.validateCalcMetric(found.code, formula)
+      const versionInc = formula ? 1 : 0
+      const updated = await prisma.metric.update({
+        where: { id },
+        data: { dataType: 'calc', formula, dependsOn: dependsOn as never, version: { increment: versionInc } },
+      })
+      if (versionInc > 0) {
+        await prisma.metricDefinitionHistory.create({
+          data: { metricId: id, version: updated.version, formula: formula as string, description: '转换为计算类', changedBy: ctx.userId },
+        })
+      }
+      await recordAudit({ userId: ctx.userId, module: 'data', action: 'metric_change', targetId: found.code, detail: { action: 'convert', from: 'data', to: 'calc', before, after: formula } }, ctx.traceId)
+      return metricDto(updated)
+    }
+
+    // calc → data：引用检查 + 清空公式
+    const referrers = await this.findMetricReferrers(found.code)
+    if (referrers.length > 0) {
+      throw errors.conflict(`该指标被以下指标公式引用，无法转换为数据类：${referrers.map((r) => `${r.name}（${r.code}）`).join('、')}`)
+    }
+    const versionInc = before ? 1 : 0
+    const updated = await prisma.metric.update({
+      where: { id },
+      data: { dataType: 'data', formula: null, dependsOn: [] as never, version: { increment: versionInc } },
+    })
+    if (versionInc > 0) {
+      await prisma.metricDefinitionHistory.create({
+        data: { metricId: id, version: updated.version, formula: '', description: '转换为数据类（清空公式）', changedBy: ctx.userId },
+      })
+    }
+    await recordAudit({ userId: ctx.userId, module: 'data', action: 'metric_change', targetId: found.code, detail: { action: 'convert', from: 'calc', to: 'data', before, after: null } }, ctx.traceId)
+    return metricDto(updated)
   },
 
   /**
@@ -587,14 +698,76 @@ export const DataService = {
     }
     const allCodeList = [...allCodes]
 
-    // 2）一次性取全量 code 的事实值
+    // 2）一次性取全量 code 的事实值（经营科目取 ACTUAL_MONTH，静态科目取同期间快照月，支持跨类型公式如 ROA）
     const where: Record<string, unknown> = { batchId: batch.id, period, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, accountCode: { in: allCodeList } }
     if (input.companyCode) where.companyCode = input.companyCode
     const facts = await prisma.factOperating.groupBy({ by: ['accountCode'], where, _sum: { value: true } })
     const valueMap = new Map(facts.map((f) => [f.accountCode, Number(f._sum.value ?? 0)]))
 
-    // 3）拓扑序求值 calc 指标（环检测由 topoSortMetrics 负责），写回 evalValues
+    // 2b）跨维度引用（{CODE@维度}/{DAYS_YTD}）：收集全部公式的复合键需求并逐维取值
     const evalValues: Record<string, number> = {}
+    const allFormulas = [input.formula, ...allCodeList.filter((c) => calcFormulaByCode.has(c)).map((c) => calcFormulaByCode.get(c) as string)]
+    const dimRefs = new Map<string, Set<string>>() // 维度码 → 引用该维度的 code 集合
+    let needsDays = false
+    for (const f of allFormulas) {
+      for (const r of extractOperandRefs(f)) {
+        if (PSEUDO_OPERANDS.has(r.code)) { needsDays = true; continue }
+        if (!r.dim) continue
+        const set = dimRefs.get(r.dim) ?? new Set<string>()
+        set.add(r.code)
+        dimRefs.set(r.dim, set)
+      }
+    }
+    if (needsDays) evalValues.DAYS_YTD = fiscalYtdDays(period)
+    const prevPeriod = periodMinusYears(period, 1)
+    const fyStart = fiscalYearStartPeriod(period)
+    const prevFyStart = fiscalYearStartPeriod(prevPeriod)
+    // 经营维度复合键：单期（本月/同期）或区间求和（本年累计/同期累计）；预算维度试算不支持（记 0）
+    const opDimRanges: Record<string, { gte: string; lte: string }> = {
+      ACTUAL_MONTH: { gte: period, lte: period },
+      SAME_PERIOD_ACTUAL: { gte: prevPeriod, lte: prevPeriod },
+      YTD_ACTUAL: { gte: fyStart, lte: period },
+      SAME_PERIOD_YTD: { gte: prevFyStart, lte: prevPeriod },
+    }
+    for (const [dim, codeSet] of dimRefs) {
+      const range = opDimRanges[dim]
+      const opRefCodes = [...codeSet].filter((c) => !c.startsWith('ST_'))
+      if (!range || opRefCodes.length === 0) continue
+      const dimWhere: Record<string, unknown> = { batchId: batch.id, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, period: range, accountCode: { in: opRefCodes } }
+      if (input.companyCode) dimWhere.companyCode = input.companyCode
+      const grouped = await prisma.factOperating.groupBy({ by: ['accountCode'], where: dimWhere, _sum: { value: true } })
+      for (const g of grouped) evalValues[`${g.accountCode}@${dim}`] = Number(g._sum.value ?? 0)
+    }
+    // 静态维度复合键目标快照月
+    const stDimMonths: Record<string, string> = {
+      CURRENT_AMOUNT: period,
+      YEAR_START: fyStart,
+      SAME_PERIOD_AMOUNT: prevPeriod,
+      LAST_YEAR_START: prevFyStart,
+    }
+    const stCodes = allCodeList.filter((c) => c.startsWith('ST_'))
+    if (stCodes.length > 0) {
+      const stBatches = await prisma.importBatch.findMany({ where: { dataType: 'static', lifecycleStatus: 'active' }, select: { id: true } })
+      if (stBatches.length > 0) {
+        const stWhere: Record<string, unknown> = { batchId: { in: stBatches.map((b) => b.id) }, accountCode: { in: stCodes } }
+        if (input.companyCode) stWhere.companyCode = input.companyCode
+        const stFacts = await prisma.factStatic.groupBy({ by: ['accountCode', 'snapshotDate'], where: stWhere, _sum: { value: true } })
+        for (const g of stFacts) {
+          const d = g.snapshotDate as Date
+          const mon = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+          if (mon === period) valueMap.set(g.accountCode, (valueMap.get(g.accountCode) ?? 0) + Number(g._sum.value ?? 0))
+          // 静态复合键：命中目标快照月的维度引用累加
+          for (const [dim, mon2] of Object.entries(stDimMonths)) {
+            if (mon === mon2 && dimRefs.get(dim)?.has(g.accountCode)) {
+              const k = `${g.accountCode}@${dim}`
+              evalValues[k] = (evalValues[k] ?? 0) + Number(g._sum.value ?? 0)
+            }
+          }
+        }
+      }
+    }
+
+    // 3）拓扑序求值 calc 指标（环检测由 topoSortMetrics 负责），写回 evalValues
     for (const c of allCodeList) evalValues[c] = valueMap.get(c) ?? 0
     const calcNodes = allCodeList
       .filter((c) => calcFormulaByCode.has(c))
@@ -614,10 +787,31 @@ export const DataService = {
       }
     }
 
-    // 4）操作数仍返回直接 code，value 取展开后的值
+    // 4）操作数回显：按直接引用（含维度后缀/伪操作数）展示，value 取展开后的值
+    const DIM_LABELS: Record<string, string> = {
+      BUDGET_AMOUNT: '预算', ACTUAL_MONTH: '本月实际', SAME_PERIOD_ACTUAL: '同期实际', YTD_ACTUAL: '本年累计', SAME_PERIOD_YTD: '同期累计',
+      CURRENT_AMOUNT: '本期', YEAR_START: '年初', SAME_PERIOD_AMOUNT: '同期', LAST_YEAR_START: '上年年初',
+    }
     const subjects = await prisma.accountSubject.findMany({ where: { code: { in: codes } }, select: { code: true, name: true } })
     const nameMap = new Map(subjects.map((s) => [s.code, s.name]))
-    const operands = codes.map((code) => ({ code, name: nameMap.get(code) ?? code, value: evalValues[code] ?? 0, hasData: hasDataMap.get(code) ?? false }))
+    const seen = new Set<string>()
+    const operands: { code: string; name: string; value: number; hasData: boolean }[] = []
+    for (const r of extractOperandRefs(input.formula)) {
+      const key = r.dim ? `${r.code}@${r.dim}` : r.code
+      if (seen.has(key)) continue
+      seen.add(key)
+      if (PSEUDO_OPERANDS.has(r.code)) {
+        operands.push({ code: key, name: '期间天数', value: evalValues[r.code] ?? 0, hasData: true })
+        continue
+      }
+      const baseName = nameMap.get(r.code) ?? r.code
+      operands.push({
+        code: key,
+        name: r.dim ? `${baseName}(${DIM_LABELS[r.dim] ?? r.dim})` : baseName,
+        value: r.dim ? (evalValues[key] ?? 0) : (evalValues[r.code] ?? 0),
+        hasData: r.dim ? evalValues[key] !== undefined : (hasDataMap.get(r.code) ?? false),
+      })
+    }
     let value: number | null = null
     try {
       value = Number(evaluateFormula(input.formula, evalValues).toFixed(2))

@@ -56,4 +56,44 @@ describe('Pagination', () => {
     const prev = screen.getByText('上一页') as HTMLButtonElement
     expect(prev.disabled).toBe(true)
   })
+
+  it('传 onPageSizeChange 才渲染每页条数下拉', () => {
+    const onPageChange = vi.fn()
+    const { rerender } = render(<Pagination page={1} pageSize={20} total={100} onPageChange={onPageChange} />)
+    expect(screen.queryByLabelText('每页条数')).toBeNull()
+    rerender(
+      <Pagination page={1} pageSize={20} total={100} onPageChange={onPageChange} onPageSizeChange={vi.fn()} />,
+    )
+    expect(screen.getByLabelText('每页条数')).toBeInTheDocument()
+  })
+
+  it('跳转框：合法页码跳转、越界 clamp、非数字忽略', () => {
+    const onPageChange = vi.fn()
+    render(<Pagination page={1} pageSize={10} total={35} onPageChange={onPageChange} />)
+    const input = screen.getByLabelText('跳转页码')
+
+    fireEvent.change(input, { target: { value: '3' } })
+    fireEvent.click(screen.getByText('跳转'))
+    expect(onPageChange).toHaveBeenLastCalledWith(3)
+
+    // 总页数为 4，输入 999 应 clamp 到 4
+    fireEvent.change(input, { target: { value: '999' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onPageChange).toHaveBeenLastCalledWith(4)
+
+    onPageChange.mockClear()
+    fireEvent.change(input, { target: { value: 'abc' } })
+    fireEvent.click(screen.getByText('跳转'))
+    expect(onPageChange).not.toHaveBeenCalled()
+  })
+
+  it('总页数为 1 时不渲染跳转框', () => {
+    render(<Pagination page={1} pageSize={20} total={10} onPageChange={vi.fn()} />)
+    expect(screen.queryByLabelText('跳转页码')).toBeNull()
+  })
+
+  it('summary 覆盖默认统计文案', () => {
+    render(<Pagination page={1} pageSize={20} total={7} onPageChange={vi.fn()} summary="共 7 份报告" />)
+    expect(screen.getByText('共 7 份报告')).toBeInTheDocument()
+  })
 })

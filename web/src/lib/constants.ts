@@ -58,7 +58,7 @@ export const FINANCIAL_COLORS = {
 export const PAGINATION = {
   DEFAULT_PAGE: 1,
   DEFAULT_PAGE_SIZE: 20,
-  PAGE_SIZE_OPTIONS: [10, 20, 50, 100],
+  PAGE_SIZE_OPTIONS: [20, 50, 100, 200],
 } as const
 
 /** 权限码模块段→中文名（权限配置弹窗分组标题） */
@@ -111,12 +111,12 @@ export const PERMISSION_LABELS: Record<string, string> = {
   'data:reclassify:subject': '科目重分类',
   'data:export': '导出数据',
   'data:metric:approve': '指标审批',
-  'data:formula-rule:manage': '公式规则管理',
   'data:import:archive': '归档导入批次',
   'data:import:purge': '清除导入批次',
   'data:company:purge': '彻底删除公司',
   'data:subject:purge': '彻底删除科目',
   'data:metric:purge': '彻底删除指标',
+  'data:metric:convert': '指标类型转换',
   'tools:view': '查看其他工具',
   'admin:users:view': '查看用户',
   'admin:users:create': '新增用户',

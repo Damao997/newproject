@@ -6,16 +6,20 @@ import { asyncHandler } from '../lib/async-handler'
 import { sendOk } from '../lib/response'
 import { errors } from '../lib/errors'
 import { AppError } from '../lib/errors'
-import { AIProxyService, FORMULA_CHECK_MAX_ITEMS } from '../services/AIProxyService'
-import { FormulaRuleService } from '../services/FormulaRuleService'
+import { AIProxyService } from '../services/AIProxyService'
+import { ReportService } from '../services/ReportService'
 import type { Response } from 'express'
 import type { AuthUserContext } from '../types/express'
 
 /**
- * AI 路由（/api/v1/ai）。本期：公式生成（单条 LLM + 批量规则）。
- * 权限沿用 data:metric:create / data:metric:update。
+ * AI 路由（/api/v1/ai）。本期：报告润色/追加分析/总体概述（SSE）+ 单条 LLM 公式生成。
+ * 权限沿用 reports:create / data:metric:create。
  */
 const router = Router()
+
+function scopeOf(authUser: AuthUserContext) {
+  return { companyCode: authUser.companyCode, scopeValue: authUser.scopeValue, dataScopeCodes: authUser.dataScopeCodes }
+}
 
 router.use(authenticate)
 
@@ -91,6 +95,38 @@ router.post(
   }),
 )
 
+// 报告总体概述（各章节摘录 → SSE 流式生成概述初稿；scope 校验在 SSE 开启前完成）
+router.post(
+  '/report-summary',
+  requirePermission('reports:create', 'create'),
+  aiRateLimiter,
+  asyncHandler(async (req, res) => {
+    const authUser = req.authUser as AuthUserContext
+    const reportId = String(req.body?.reportId ?? '')
+    if (!reportId) throw errors.badRequest('reportId 为必填项')
+    // 先完成 scope/存在性校验（此时仍可返回普通 JSON 错误），再开启 SSE
+    const exportData = await ReportService.exportStructured(scopeOf(authUser), reportId)
+    initSSE(res)
+    try {
+      const { finalText } = await AIProxyService.summarizeStream(
+        {
+          title: exportData.title,
+          sections: exportData.sections.filter((s) => !s.missing).map((s) => ({ title: s.title, plainText: s.plainText })),
+          userId: authUser.userId,
+          traceId: req.traceId,
+        },
+        (delta) => sseWrite(res, { type: 'token', content: delta }),
+      )
+      sseWrite(res, { type: 'done', finalText })
+    } catch (err) {
+      const message = err instanceof AppError ? err.message : 'AI 概述生成失败'
+      sseWrite(res, { type: 'error', error: message })
+    } finally {
+      res.end()
+    }
+  }),
+)
+
 // 单条 AI 公式生成（DeepSeek，限流）
 router.post(
   '/formula',
@@ -106,108 +142,6 @@ router.post(
       userId: (req.authUser as AuthUserContext).userId,
       traceId: req.traceId,
     })
-    sendOk(res, data)
-  }),
-)
-
-// AI 公式检测（单条/批量共用，一次 LLM 调用审查多条，限流）
-router.post(
-  '/formula/check',
-  requirePermission('data:metric:update', 'update'),
-  aiRateLimiter,
-  asyncHandler(async (req, res) => {
-    const raw = Array.isArray(req.body?.items) ? req.body.items : []
-    const items = raw
-      .filter((it: { code?: unknown; name?: unknown; formula?: unknown }) =>
-        typeof it.code === 'string' && typeof it.name === 'string' && typeof it.formula === 'string' && it.formula.trim())
-      .map((it: { code: string; name: string; formula: string }) => ({ code: it.code, name: it.name, formula: it.formula.trim() }))
-    if (items.length === 0) throw errors.badRequest('没有可检测的公式')
-    if (items.length > FORMULA_CHECK_MAX_ITEMS) throw errors.badRequest(`单次最多检测 ${FORMULA_CHECK_MAX_ITEMS} 条公式`)
-    const subjectType = req.body?.subjectType === 'static' ? 'static' : 'operating'
-    const data = await AIProxyService.checkFormulas({
-      items,
-      subjectType,
-      userId: (req.authUser as AuthUserContext).userId,
-      traceId: req.traceId,
-    })
-    sendOk(res, data)
-  }),
-)
-
-// 公式规则列表
-router.get(
-  '/formula-rules',
-  requirePermission('data:formula-rule:manage', 'manage'),
-  asyncHandler(async (_req, res) => {
-    sendOk(res, await FormulaRuleService.listRules())
-  }),
-)
-
-// 公式规则新增
-router.post(
-  '/formula-rules',
-  requirePermission('data:formula-rule:manage', 'manage'),
-  asyncHandler(async (req, res) => {
-    const b = req.body ?? {}
-    if (!b.name || !b.formulaTemplate) throw errors.badRequest('规则名称与公式模板必填')
-    sendOk(res, await FormulaRuleService.createRule(b, { userId: (req.authUser as AuthUserContext).userId, traceId: req.traceId }))
-  }),
-)
-
-// 公式规则修改
-router.put(
-  '/formula-rules/:id',
-  requirePermission('data:formula-rule:manage', 'manage'),
-  asyncHandler(async (req, res) => {
-    sendOk(res, await FormulaRuleService.updateRule(req.params.id as string, req.body ?? {}, { userId: (req.authUser as AuthUserContext).userId, traceId: req.traceId }))
-  }),
-)
-
-// 公式规则启停
-router.post(
-  '/formula-rules/:id/toggle',
-  requirePermission('data:formula-rule:manage', 'manage'),
-  asyncHandler(async (req, res) => {
-    const enabled = Boolean(req.body?.enabled)
-    sendOk(res, await FormulaRuleService.toggleRule(req.params.id as string, enabled, { userId: (req.authUser as AuthUserContext).userId, traceId: req.traceId }))
-  }),
-)
-
-// 公式规则删除
-router.delete(
-  '/formula-rules/:id',
-  requirePermission('data:formula-rule:manage', 'manage'),
-  asyncHandler(async (req, res) => {
-    await FormulaRuleService.deleteRule(req.params.id as string, { userId: (req.authUser as AuthUserContext).userId, traceId: req.traceId })
-    sendOk(res, null)
-  }),
-)
-
-// 批量生成公式（预览，不落库）
-router.post(
-  '/formula/batch-preview',
-  requirePermission('data:metric:create', 'create'),
-  asyncHandler(async (req, res) => {
-    const subjectType = req.body?.subjectType === 'static' ? 'static' : 'operating'
-    sendOk(res, await FormulaRuleService.batchGenerate({ subjectType }))
-  }),
-)
-
-// 批量应用公式（落库）
-router.post(
-  '/formula/batch-apply',
-  requirePermission('data:metric:update', 'update'),
-  asyncHandler(async (req, res) => {
-    const items = Array.isArray(req.body?.items) ? req.body.items : []
-    const validItems = items
-      .filter((it: { code?: unknown; formula?: unknown }) => typeof it.code === 'string' && typeof it.formula === 'string' && it.formula)
-      .map((it: { code: string; formula: string; dependsOn?: string[] }) => ({
-        code: it.code,
-        formula: it.formula,
-        dependsOn: Array.isArray(it.dependsOn) ? it.dependsOn : [],
-      }))
-    if (validItems.length === 0) throw errors.badRequest('没有可应用的有效公式')
-    const data = await FormulaRuleService.batchApply(validItems, (req.authUser as AuthUserContext).userId, req.traceId)
     sendOk(res, data)
   }),
 )

@@ -56,12 +56,12 @@ const PERMISSIONS: { resource: string; action: string }[] = [
   { resource: 'data:export', action: 'export' },
   // 数据管理（高危操作，仅 superadmin）
   { resource: 'data:metric:approve', action: 'approve' },
-  { resource: 'data:formula-rule:manage', action: 'manage' },
   { resource: 'data:import:archive', action: 'import' },
   { resource: 'data:import:purge', action: 'delete' },
   { resource: 'data:company:purge', action: 'delete' },
   { resource: 'data:subject:purge', action: 'delete' },
   { resource: 'data:metric:purge', action: 'delete' },
+  { resource: 'data:metric:convert', action: 'update' },
   // 其他工具
   { resource: 'tools:view', action: 'view' },
   // 权限管理
@@ -86,12 +86,12 @@ const ALL_RESOURCES = PERMISSIONS.map((p) => p.resource)
 // ---- 高危操作权限码：仅授予 superadmin，admin 及其他角色一律排除 ----
 const HIGH_RISK_RESOURCES = [
   'data:metric:approve',
-  'data:formula-rule:manage',
   'data:import:archive',
   'data:import:purge',
   'data:company:purge',
   'data:subject:purge',
   'data:metric:purge',
+  'data:metric:convert',
   'admin:users:purge',
   // 权限配置的增删改仅 superadmin 可操作（数据驱动收紧，不硬编码角色名）
   'admin:permissions:update',

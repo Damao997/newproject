@@ -3,16 +3,23 @@ import { AppError } from './errors'
 /**
  * 公式引擎（见 数据模型规范 §8.3）：
  * - 仅白名单字符：数字 . + - * / ( ) 空格；禁止 eval。
- * - 操作数引用格式：{metric_code}，先替换为数值再解析。
+ * - 操作数引用格式：{metric_code} 或 {metric_code@期间维度码}（跨期间引用），先替换为数值再解析。
+ * - 伪操作数 {DAYS_YTD}：财年累计天数，由求值上下文注入。
  * - 依赖 DAG 拓扑排序 + 环检测（环报错 METRIC_CIRCULAR_REF）。
  */
 
 const SAFE_EXPR = /^[0-9+\-*/().\s]+$/
 
-/** 将 {CODE} 替换为对应数值；缺失操作数视为 0 */
+/** 操作数正则：{CODE} 或 {CODE@DIM}（DIM 为大写维度码） */
+export const OPERAND_RE = /\{([A-Za-z0-9_\u4e00-\u9fa5]+)(?:@([A-Z_]+))?\}/g
+
+/**
+ * 将 {CODE}/{CODE@DIM} 替换为对应数值；取值顺序：复合键 'CODE@DIM' → 裸键 'CODE' → 0。
+ * 带后缀时不回退裸键（避免跨维度取错列值）；无后缀保持现有语义。
+ */
 export function substituteOperands(formula: string, values: Record<string, number>): string {
-  return formula.replace(/\{([A-Za-z0-9_\u4e00-\u9fa5]+)\}/g, (_m, code: string) => {
-    const v = values[code]
+  return formula.replace(OPERAND_RE, (_m, code: string, dim: string | undefined) => {
+    const v = dim ? values[`${code}@${dim}`] : values[code]
     return Number.isFinite(v) ? String(v) : '0'
   })
 }

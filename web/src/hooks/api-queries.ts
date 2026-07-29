@@ -36,6 +36,10 @@ export interface OperatingResult {
   total: number
   period: string
   companyCount: number
+  /** 本次结果是否已去除跨公司重分类影响（模拟口径） */
+  reclassifyExcluded?: boolean
+  /** 因批次替换/缺快照无法回溯的重分类记录数 */
+  skippedReclassifyLogs?: number
 }
 export interface OperatingRow {
   code: string; name: string; level: number; category: string; dataType: string; valueType: 'amount' | 'quantity' | 'ratio'; isLeaf: boolean
@@ -46,13 +50,15 @@ export interface StaticResult {
   items: StaticRow[]
   total: number
   companyCount: number
+  reclassifyExcluded?: boolean
+  skippedReclassifyLogs?: number
 }
 export interface StaticRow {
   code: string; name: string; level: number; category: string; dataType: string; valueType: 'amount' | 'quantity' | 'ratio'; isLeaf: boolean
   current: number; yearStart: number; samePeriod: number; lastYearStart: number; yoy: number; children?: StaticRow[]
 }
 
-export function useOperatingIndicators(params: { companyCode?: string; period?: string }) {
+export function useOperatingIndicators(params: { companyCode?: string; period?: string; excludeReclassify?: boolean }) {
   return useQuery({
     queryKey: queryKeys.indicatorsOperating(params),
     queryFn: () => api.getOperatingIndicators(params as FilterParams) as unknown as Promise<OperatingResult>,
@@ -61,7 +67,7 @@ export function useOperatingIndicators(params: { companyCode?: string; period?: 
   })
 }
 
-export function useStaticIndicators(params: { companyCode?: string }) {
+export function useStaticIndicators(params: { companyCode?: string; excludeReclassify?: boolean }) {
   return useQuery({
     queryKey: queryKeys.indicatorsStatic(params),
     queryFn: () => api.getStaticIndicators(params as FilterParams) as unknown as Promise<StaticResult>,
@@ -282,9 +288,11 @@ export interface ReclassifyCompanyInput {
 export interface AdjustSubjectInput {
   templateType: string
   companyCode: string
-  sourceAccountCode: string
+  /** 调整方式：both=调减+调增；decrease=仅调减；increase=仅调增 */
+  adjustMode?: 'both' | 'decrease' | 'increase'
+  sourceAccountCode?: string
   targetAccountCode?: string
-  decreaseAmount: number
+  decreaseAmount?: number
   increaseAmount?: number
   period: string
   reason: string
@@ -392,6 +400,24 @@ export function usePurgeMetric() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => api.purgeMetric(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['data', 'metrics'] }),
+  })
+}
+
+/** 恢复启用已停用指标；clearFormula=true 时公式失效可清空后恢复 */
+export function useRestoreMetric() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { id: string; clearFormula?: boolean }) => api.restoreMetric(vars.id, { clearFormula: vars.clearFormula }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['data', 'metrics'] }),
+  })
+}
+
+/** 指标类型转换（高危，仅 superadmin）：data ↔ calc */
+export function useConvertMetric() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { id: string; dataType: 'data' | 'calc'; formula?: string }) => api.convertMetric(vars.id, { dataType: vars.dataType, formula: vars.formula }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['data', 'metrics'] }),
   })
 }
@@ -515,53 +541,10 @@ export interface FormulaSuggestion {
   valid: boolean
   warnings: string[]
 }
-export interface FormulaGenItem {
-  code: string
-  name: string
-  formula: string | null
-  dependsOn: string[]
-  explanation: string
-  valid: boolean
-  warnings: string[]
-  ruleName: string | null
-}
 
 export function useGenerateFormula() {
   return useMutation({
     mutationFn: (data: { userDescription: string; subjectType?: string }) => api.generateFormula(data),
-  })
-}
-
-// ---------------- AI 公式检测 ----------------
-export interface FormulaCheckItem {
-  code: string
-  riskLevel: 'low' | 'medium' | 'high' | 'unknown'
-  issues: string[]
-  suggestion: string | null
-  ruleWarnings: string[]
-}
-
-export function useCheckFormulas() {
-  return useMutation({
-    mutationFn: (data: { items: { code: string; name: string; formula: string }[]; subjectType?: string }) => api.checkFormulas(data),
-  })
-}
-
-export function useFormulaRules() {
-  return useQuery({ queryKey: ['ai', 'formula-rules'] as const, queryFn: () => api.getFormulaRules() })
-}
-
-export function useBatchPreviewFormulas() {
-  return useMutation({
-    mutationFn: (data: { subjectType?: string }) => api.batchPreviewFormulas(data),
-  })
-}
-
-export function useBatchApplyFormulas() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (items: { code: string; formula: string; dependsOn: string[] }[]) => api.batchApplyFormulas(items),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['data', 'metrics'] }),
   })
 }
 
@@ -617,42 +600,10 @@ export function useRejectMetric() {
   })
 }
 
-export function useCreateFormulaRule() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (data: { name: string; formulaTemplate: string; description?: string }) => api.createFormulaRule(data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['ai', 'formula-rules'] }),
-  })
-}
-
-export function useUpdateFormulaRule() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (vars: { id: string; data: { name?: string; formulaTemplate?: string; description?: string } }) => api.updateFormulaRule(vars.id, vars.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['ai', 'formula-rules'] }),
-  })
-}
-
-export function useToggleFormulaRule() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (vars: { id: string; enabled: boolean }) => api.toggleFormulaRule(vars.id, vars.enabled),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['ai', 'formula-rules'] }),
-  })
-}
-
-export function useDeleteFormulaRule() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (id: string) => api.deleteFormulaRule(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['ai', 'formula-rules'] }),
-  })
-}
-
 // ---------------- 分析报告：单项分析 ----------------
 export type { AnalysisItem, AnalysisInput, ReportDetail, ReportListItem, ReportSectionInput, ReportVersionItem, ReportExportData }
 
-export function useAnalyses(params: { companyCode?: string; subjectCode?: string; period?: string }) {
+export function useAnalyses(params: { companyCode?: string; subjectCode?: string; period?: string; keyword?: string; includeInactive?: boolean; page?: number; pageSize?: number }) {
   return useQuery({
     queryKey: ['reports', 'analyses', params] as const,
     queryFn: () => api.listAnalyses(params),
@@ -684,8 +635,16 @@ export function useDeleteAnalysis() {
   })
 }
 
+export function useRestoreAnalysis() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.restoreAnalysis(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['reports', 'analyses'] }),
+  })
+}
+
 // ---------------- 分析报告：汇总报告 ----------------
-export function useReports(params: { page?: number; pageSize?: number; status?: string } = {}) {
+export function useReports(params: { page?: number; pageSize?: number; status?: string; keyword?: string } = {}) {
   return useQuery({
     queryKey: ['reports', 'list', params] as const,
     queryFn: () => api.listReports(params),
@@ -739,7 +698,8 @@ export function useGenerateReportSections() {
 export function useSetReportSections() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (vars: { id: string; items: ReportSectionInput[] }) => api.setReportSections(vars.id, vars.items),
+    mutationFn: (vars: { id: string; items: ReportSectionInput[]; expectedUpdatedAt?: string }) =>
+      api.setReportSections(vars.id, vars.items, vars.expectedUpdatedAt),
     onSuccess: (_d, vars) => qc.invalidateQueries({ queryKey: ['reports', 'detail', vars.id] }),
   })
 }
@@ -747,7 +707,8 @@ export function useSetReportSections() {
 export function useSaveReportVersion() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (vars: { id: string; changeSummary?: string }) => api.saveReportVersion(vars.id, vars.changeSummary),
+    mutationFn: (vars: { id: string; changeSummary?: string; expectedUpdatedAt?: string }) =>
+      api.saveReportVersion(vars.id, vars.changeSummary, vars.expectedUpdatedAt),
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ['reports', 'detail', vars.id] })
       qc.invalidateQueries({ queryKey: ['reports', 'versions', vars.id] })
@@ -763,29 +724,66 @@ export function useReportVersions(id: string | null) {
   })
 }
 
-// ---------------- 往来分析 ----------------
-import type { TransactionOverviewItem, TransactionDetailItem, AgingAnalysisRow, InternalSummaryRow, InternalMirrorRow, TransactionFilterParams, PaginatedResponse } from '@/types'
-
-export function useTransactionOverview(companyCode?: string) {
+/** 版本快照内容（按需加载：versionNo 为 null 时不请求） */
+export function useReportVersionSnapshot(id: string | null, versionNo: number | null) {
   return useQuery({
-    queryKey: ['transactions', 'overview', companyCode] as const,
-    queryFn: () => api.getTransactionOverview(companyCode) as Promise<TransactionOverviewItem[]>,
+    queryKey: ['reports', 'version-snapshot', id, versionNo] as const,
+    queryFn: () => api.getReportVersion(id as string, versionNo as number),
+    enabled: !!id && !!versionNo,
   })
 }
 
-export function useTransactionDetails(params: TransactionFilterParams) {
+export function useRollbackReportVersion() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { id: string; versionNo: number }) => api.rollbackReportVersion(vars.id, vars.versionNo),
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ['reports', 'detail', vars.id] })
+      qc.invalidateQueries({ queryKey: ['reports', 'versions', vars.id] })
+    },
+  })
+}
+
+// ---------------- 往来分析 ----------------
+import type { TransactionOverviewItem, TransactionDetailItem, AgingAnalysisRow, InternalSummaryRow, InternalMirrorRow, TransactionFilterParams, PaginatedResponse } from '@/types'
+import type { TransactionImportPreview, TransactionImportUploadResult, CollectionPlanItem, CollectionLogItem } from '@/types'
+import type { TransactionTrendResult } from '@/types'
+import type { TransactionCoverageResult, BatchCoverageRow } from '@/types'
+import type { TransactionAccountOption } from '@/types'
+
+/** 往来总览：公司多选 + 单期间；period 未定（期间列表加载中）时不发请求，避免跨期重复累加的首次查询 */
+export function useTransactionOverview(params: { companyCodes?: string[]; period?: string }) {
+  return useQuery({
+    queryKey: ['transactions', 'overview', params.companyCodes ?? [], params.period] as const,
+    queryFn: () => api.getTransactionOverview(params) as Promise<TransactionOverviewItem[]>,
+    enabled: !!params.period,
+    placeholderData: keepPreviousData,
+  })
+}
+
+export function useTransactionDetails(params: TransactionFilterParams, options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ['transactions', 'details', params] as const,
     queryFn: () => api.getTransactionDetails(params as Record<string, unknown>) as Promise<PaginatedResponse<TransactionDetailItem>>,
+    enabled: options.enabled ?? true,
     placeholderData: keepPreviousData,
   })
 }
 
-export function useTransactionAging(params: { companyCode?: string; transactionType?: string; groupBy?: string }) {
+export function useTransactionAging(params: { companyCode?: string; transactionType?: string; groupBy?: string; period?: string; accountCodes?: string }, options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ['transactions', 'aging', params] as const,
     queryFn: () => api.getTransactionAging(params) as Promise<AgingAnalysisRow[]>,
+    enabled: options.enabled ?? true,
     placeholderData: keepPreviousData,
+  })
+}
+
+/** 会计科目列表（主数据全集 + 实际数据合并，hasData 标识是否有交易数据）；按往来类型联动收窄 */
+export function useTransactionAccounts(transactionType?: string) {
+  return useQuery({
+    queryKey: ['transactions', 'accounts', transactionType ?? 'all'] as const,
+    queryFn: () => api.getTransactionAccounts(transactionType) as Promise<TransactionAccountOption[]>,
   })
 }
 
@@ -814,5 +812,128 @@ export function useTransactionLatestCutoff() {
   return useQuery({
     queryKey: ['transactions', 'latest-cutoff'] as const,
     queryFn: () => api.getTransactionLatestCutoff() as Promise<{ cutoffDate: string | null }>,
+  })
+}
+
+/** 已导入数据的期间列表（倒序），供明细筛选 */
+export function useTransactionPeriods() {
+  return useQuery({
+    queryKey: ['transactions', 'periods'] as const,
+    queryFn: () => api.getTransactionPeriods() as Promise<string[]>,
+  })
+}
+
+/** 往来余额变动趋势（单类型，按 公司×月份 聚合） */
+export function useTransactionTrend(params: { transactionType: string; companyCodes?: string[]; months?: number; fiscalYear?: string }) {
+  return useQuery({
+    queryKey: ['transactions', 'trend', params.transactionType, params.companyCodes ?? [], params.months ?? 12, params.fiscalYear ?? ''] as const,
+    queryFn: () => api.getTransactionTrend(params) as Promise<TransactionTrendResult>,
+    placeholderData: keepPreviousData,
+  })
+}
+
+/** 往来数据涉及的财年列表（倒序），供趋势图财年筛选 */
+export function useTransactionFiscalYears() {
+  return useQuery({
+    queryKey: ['transactions', 'fiscal-years'] as const,
+    queryFn: () => api.getTransactionFiscalYears() as Promise<string[]>,
+  })
+}
+
+// ===== 往来导入（账龄汇总表） =====
+
+export function usePreviewTransactionImport() {
+  return useMutation({
+    mutationFn: (files: File[]) => api.previewTransactionImport(files) as Promise<TransactionImportPreview[]>,
+  })
+}
+
+export function useImportTransactions() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (files: File[]) => api.importTransactions(files) as Promise<TransactionImportUploadResult[]>,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['data', 'imports'] }),
+  })
+}
+
+/** 激活往来批次（复用通用激活接口），成功后失效往来查询 */
+export function useActivateTransactionImport() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.activateImport(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['transactions'] })
+      qc.invalidateQueries({ queryKey: ['data', 'imports'] })
+    },
+  })
+}
+
+/** 导入覆盖矩阵（公司×期间×六大类型） */
+export function useTransactionImportCoverage(months?: number) {
+  return useQuery({
+    queryKey: ['transactions', 'import-coverage', months ?? 6] as const,
+    queryFn: () => api.getTransactionImportCoverage(months) as Promise<TransactionCoverageResult>,
+    placeholderData: keepPreviousData,
+  })
+}
+
+/** 批次覆盖明细 */
+export function useTransactionBatchCoverage(batchId: string | null) {
+  return useQuery({
+    queryKey: ['transactions', 'batch-coverage', batchId] as const,
+    queryFn: () => api.getTransactionBatchCoverage(batchId as string) as Promise<BatchCoverageRow[]>,
+    enabled: !!batchId,
+  })
+}
+
+// ===== 催收管理 =====
+
+export function useCollections(params: { page?: number; pageSize?: number; companyCode?: string; status?: string; counterpartyKeyword?: string }) {
+  return useQuery({
+    queryKey: ['transactions', 'collections', params] as const,
+    queryFn: () => api.getCollections(params as Record<string, unknown>) as Promise<PaginatedResponse<CollectionPlanItem>>,
+    placeholderData: keepPreviousData,
+  })
+}
+
+export function useCreateCollection() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: Record<string, unknown>) => api.createCollection(data) as Promise<CollectionPlanItem>,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transactions', 'collections'] }),
+  })
+}
+
+export function useGenerateCollections() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { companyCode?: string; minAgingBucket?: string }) => api.generateCollections(data) as Promise<{ created: number; skipped: number }>,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transactions', 'collections'] }),
+  })
+}
+
+export function useUpdateCollection() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { id: string; data: Record<string, unknown> }) => api.updateCollection(vars.id, vars.data) as Promise<CollectionPlanItem>,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transactions', 'collections'] }),
+  })
+}
+
+export function useCollectionLogs(planId: string | null) {
+  return useQuery({
+    queryKey: ['transactions', 'collections', 'logs', planId] as const,
+    queryFn: () => api.getCollectionLogs(planId as string) as Promise<CollectionLogItem[]>,
+    enabled: !!planId,
+  })
+}
+
+export function useAddCollectionLog() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { id: string; content: string; attachmentUrl?: string }) => api.addCollectionLog(vars.id, { content: vars.content, attachmentUrl: vars.attachmentUrl }) as Promise<CollectionLogItem>,
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ['transactions', 'collections', 'logs', vars.id] })
+    },
   })
 }

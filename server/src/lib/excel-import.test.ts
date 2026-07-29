@@ -39,9 +39,9 @@ describe('excel-import 转置布局解析', () => {
     // 全部为 ACTUAL_MONTH，无 SAME_PERIOD 打标
     expect(res.operating.every((r) => r.periodDimCode === OPERATING_DIMS.ACTUAL_MONTH)).toBe(true)
     const hzCur = res.operating.find((r) => r.companyCode === 'EN330059' && r.accountCode === 'OP_010' && r.period === '2026-03')
-    expect(hzCur).toMatchObject({ fiscalYear: 'FY2026', value: 100 })
+    expect(hzCur).toMatchObject({ fiscalYear: 'FY2025', value: 100 }) // S=4: 3月<4月 → 属上一财年
     const hzPrev = res.operating.find((r) => r.companyCode === 'EN330059' && r.accountCode === 'OP_010' && r.period === '2025-03')
-    expect(hzPrev).toMatchObject({ fiscalYear: 'FY2025', value: 80 })
+    expect(hzPrev).toMatchObject({ fiscalYear: 'FY2024', value: 80 })
   })
 
   it('operating 多月序列：当年与上年各月均按自身 period 存为本月实际', () => {
@@ -56,8 +56,8 @@ describe('excel-import 转置布局解析', () => {
     expect(rows.every((r) => r.periodDimCode === OPERATING_DIMS.ACTUAL_MONTH)).toBe(true)
     const periods = rows.map((r) => r.period).sort()
     expect(periods).toEqual(['2025-02', '2025-03', '2026-02', '2026-03'])
-    expect(rows.find((r) => r.period === '2025-03')).toMatchObject({ fiscalYear: 'FY2025', value: 16 })
-    expect(rows.find((r) => r.period === '2026-02')).toMatchObject({ fiscalYear: 'FY2026', value: 10 })
+    expect(rows.find((r) => r.period === '2025-03')).toMatchObject({ fiscalYear: 'FY2024', value: 16 }) // S=4: 3月<4月
+    expect(rows.find((r) => r.period === '2026-02')).toMatchObject({ fiscalYear: 'FY2025', value: 10 }) // S=4: 2月<4月
   })
 
   it('static：每个快照列均存为原始快照（marker=CURRENT_AMOUNT，携 snapshotDate）', () => {

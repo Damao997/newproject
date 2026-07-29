@@ -3,8 +3,9 @@ import { resolveScope } from '../middleware/scope'
 import type { AuthUserContext } from '../types/express'
 import { OPERATING_DIMS, STATIC_DIMS } from '../lib/metric-values'
 import { evaluateFormula, topoSortMetrics } from '../lib/formula'
-import { extractCodes } from './FormulaRuleService'
-import { periodMinusYears, fiscalYearStartPeriod, fiscalYearLabel } from '../lib/period'
+import { extractCodes, extractOperandRefs, PSEUDO_OPERANDS } from './FormulaRuleService'
+import { periodMinusYears, fiscalYearStartPeriod, fiscalYearLabel, fiscalYtdDays } from '../lib/period'
+import { ReclassifyReversalService } from './ReclassifyReversalService'
 
 /**
  * 聚合服务：从事实表按科目树自底向上汇总（父节点 = 子节点求和，与前端一致），
@@ -39,6 +40,21 @@ interface SubjectRow {
 
 function round2(n: number): number {
   return Number(n.toFixed(2))
+}
+
+/** 去除重分类影响时的回放统计（透出给上层做前端提示） */
+export interface ReclassifyReversalMeta {
+  appliedLogs: number
+  skippedLogs: number
+}
+
+export interface BuildTreeOpts {
+  /** 为另一棵树构建外部值时置 true，跳过本树的跨树取数，防止互引递归 */
+  skipExternal?: boolean
+  /** 去除跨公司重分类影响：按日志快照回放差额叠加，还原重分类前口径（只读模拟） */
+  excludeReclassify?: boolean
+  /** 回放统计收集器（调用方传入，聚合过程中累加） */
+  reclassifyMeta?: ReclassifyReversalMeta
 }
 
 /** 将汇总主体编码经 company_aggregation_map 递归展开为其所有单体成员；单体编码原样保留 */
@@ -139,16 +155,36 @@ async function loadCalcFormulas(subjectType: 'operating' | 'static'): Promise<Ca
   }))
 }
 
+/** 公式是否含跨维度引用（@维度后缀 或 伪操作数如 DAYS_YTD） */
+export function hasCrossDimRefs(formula: string): boolean {
+  return extractOperandRefs(formula).some((r) => r.dim !== undefined || PSEUDO_OPERANDS.has(r.code))
+}
+
+/** 跨维度公式求值上下文（周转天数类指标） */
+export interface CrossDimOptions {
+  /** 求值列 →（引用维度码 → 取值来源维度码）；未配置的列不注入复合键（同期列自动平移为去年口径） */
+  dimMap: Map<string, Record<string, string>>
+  /** 求值列 → 伪操作数值（如 DAYS_YTD=财年累计天数） */
+  pseudoByDim: Map<string, Record<string, number>>
+  /** 含跨维度引用的公式在这些列置 0（时点列无周转口径） */
+  zeroDims: Set<string>
+  /** 跨树节点全维度值：code → 维度码 → 值（如静态公式引用经营 YTD 累计） */
+  externalAllDims?: Record<string, Record<string, number>>
+}
+
 /**
  * 计算层：对含公式的计算类科目按 DAG 拓扑序用公式求值，逐维度覆盖"父=子求和"的默认值。
  * 无公式的计算类科目保持求和（向后兼容）；操作数缺失记 0；有环或单式报错则跳过该节点，不破坏整棵树。
  * externalByDim：跨树操作数（如静态比率引用经营科目），按维度提供 code→值；树内同 code 优先。
+ * crossDim：跨维度公式（{CODE@维度}/{DAYS_YTD}）的复合键注入与列语义平移；
+ * 注：复合键取自树默认聚合值快照，不随计算层推进更新（跨维度公式应引用数据类/求和类科目）。
  */
 export function applyCalcLayer(
   roots: ValueNode[],
   calcFormulas: CalcFormula[],
   dims: string[],
   externalByDim?: Map<string, Record<string, number>>,
+  crossDim?: CrossDimOptions,
 ): void {
   if (calcFormulas.length === 0) return
   const flat = flattenValueTree(roots)
@@ -162,11 +198,30 @@ export function applyCalcLayer(
     return // 依赖有环：跳过计算层，保底不破坏求和结果
   }
   const formulaByCode = new Map(present.map((m) => [m.code, m.formula]))
+  // 含跨维度引用的公式集合（受 zeroDims 置 0 规则约束）
+  const crossDimCodes = new Set(present.filter((m) => hasCrossDimRefs(m.formula)).map((m) => m.code))
   // 每个维度维护 code→value 快照，先铺跨树外部值，再以树内值覆盖；随计算推进更新
   const dimValues = new Map<string, Record<string, number>>()
   for (const d of dims) {
     const rec: Record<string, number> = { ...(externalByDim?.get(d) ?? {}) }
     for (const n of flat) rec[n.code] = n.values[d] ?? 0
+    // 跨维度复合键注入（按列语义平移：同期列取去年口径）+ 伪操作数
+    const map = crossDim?.dimMap.get(d)
+    if (map && crossDimCodes.size > 0) {
+      for (const [refDim, srcDim] of Object.entries(map)) {
+        for (const n of flat) {
+          const v = n.values[srcDim]
+          if (v !== undefined) rec[`${n.code}@${refDim}`] = v
+        }
+        if (crossDim?.externalAllDims) {
+          for (const [code, vals] of Object.entries(crossDim.externalAllDims)) {
+            const v = vals[srcDim]
+            if (v !== undefined) rec[`${code}@${refDim}`] = v
+          }
+        }
+      }
+      Object.assign(rec, crossDim?.pseudoByDim.get(d) ?? {})
+    }
     dimValues.set(d, rec)
   }
   for (const code of order) {
@@ -175,6 +230,12 @@ export function applyCalcLayer(
     if (!formula || !node) continue
     for (const d of dims) {
       const rec = dimValues.get(d) as Record<string, number>
+      // 跨维度公式在时点列（年初/上年年初）无业务口径 → 置 0
+      if (crossDimCodes.has(code) && crossDim?.zeroDims.has(d)) {
+        node.values[d] = 0
+        rec[code] = 0
+        continue
+      }
       let v: number
       try {
         v = round2(evaluateFormula(formula, rec))
@@ -243,13 +304,19 @@ export const AggregationService = {
    * 经营指标聚合树：以原始 ACTUAL_MONTH 为基础，按选定期派生本月/同期/本年累计/同期累计。
    * @consumedBy buildStaticTree — 静态树跨树比率（如 ROE/ROA）依赖本方法输出的
    *   OPERATING_DIMS.ACTUAL_MONTH 与 OPERATING_DIMS.SAME_PERIOD_ACTUAL 维度值（number，万元，round2）。
+   * @param opts.skipExternal 为另一棵树构建外部值时置 true，跳过本树的跨树取数，防止互引递归。
    */
-  async buildOperatingTree(companyCodes: string[], period: string): Promise<ValueNode[]> {
+  async buildOperatingTree(companyCodes: string[], period: string, opts?: BuildTreeOpts): Promise<ValueNode[]> {
     const subjects = await loadSubjects('operating')
     const leafValues = new Map<string, Record<string, number>>()
     const setDim = (acc: string, dim: string, v: number): void => {
       const rec = leafValues.get(acc) ?? { ...EMPTY_OPERATING }
       rec[dim] = v
+      leafValues.set(acc, rec)
+    }
+    const addDim = (acc: string, dim: string, dv: number): void => {
+      const rec = leafValues.get(acc) ?? { ...EMPTY_OPERATING }
+      rec[dim] = round2((rec[dim] ?? 0) + dv)
       leafValues.set(acc, rec)
     }
     if (companyCodes.length > 0) {
@@ -296,19 +363,72 @@ export const AggregationService = {
         })
         for (const g of budgetGrouped) setDim(g.accountCode, OPERATING_DIMS.BUDGET_AMOUNT, Number(g._sum.value ?? 0))
       }
+      // 去除重分类影响：按快照回放差额叠加，与上方各维度派生口径一致
+      if (opts?.excludeReclassify) {
+        const companySet = new Set(companyCodes)
+        const prevPeriod = periodMinusYears(period, 1)
+        const fyStart = fiscalYearStartPeriod(period)
+        const prevFyStart = fiscalYearStartPeriod(prevPeriod)
+        const opRes = await ReclassifyReversalService.buildReversalDeltas('operating')
+        for (const d of opRes.deltas) {
+          if (!companySet.has(d.companyCode) || d.periodDimCode !== OPERATING_DIMS.ACTUAL_MONTH || !d.period) continue
+          if (d.period === period) addDim(d.accountCode, OPERATING_DIMS.ACTUAL_MONTH, d.delta)
+          if (d.period === prevPeriod) addDim(d.accountCode, OPERATING_DIMS.SAME_PERIOD_ACTUAL, d.delta)
+          if (d.period >= fyStart && d.period <= period) addDim(d.accountCode, OPERATING_DIMS.YTD_ACTUAL, d.delta)
+          if (d.period >= prevFyStart && d.period <= prevPeriod) addDim(d.accountCode, OPERATING_DIMS.SAME_PERIOD_YTD, d.delta)
+        }
+        const budgetRes = await ReclassifyReversalService.buildReversalDeltas('budget')
+        const fy = fiscalYearLabel(period)
+        for (const d of budgetRes.deltas) {
+          if (!companySet.has(d.companyCode) || d.fiscalYear !== fy) continue
+          addDim(d.accountCode, OPERATING_DIMS.BUDGET_AMOUNT, d.delta)
+        }
+        if (opts.reclassifyMeta) {
+          opts.reclassifyMeta.appliedLogs += opRes.appliedLogs + budgetRes.appliedLogs
+          opts.reclassifyMeta.skippedLogs += opRes.skippedLogs + budgetRes.skippedLogs
+        }
+      }
     }
     const tree = buildTree(subjects, leafValues, EMPTY_OPERATING)
-    applyCalcLayer(tree, await loadCalcFormulas('operating'), Object.keys(EMPTY_OPERATING))
+    const calc = await loadCalcFormulas('operating')
+    // 跨树依赖（对称方向）：经营计算类科目引用静态科目（ST_ 前缀）时，
+    // 构建同选定期静态树，CURRENT_AMOUNT → ACTUAL_MONTH，SAME_PERIOD_AMOUNT → SAME_PERIOD_ACTUAL；
+    // 外部树以 skipExternal 构建，避免两树互引时无限递归。
+    let externalByDim: Map<string, Record<string, number>> | undefined
+    const needsExternal = !opts?.skipExternal && calc.some((m) => m.dependsOn.some((d) => d.startsWith('ST_')))
+    if (needsExternal && companyCodes.length > 0) {
+      // 外部树透传同一去重分类口径（meta 不透传，避免重复计数）
+      const stFlat = flattenValueTree(await AggregationService.buildStaticTree(companyCodes, period, { skipExternal: true, excludeReclassify: opts?.excludeReclassify }))
+      const current: Record<string, number> = {}
+      const same: Record<string, number> = {}
+      for (const n of stFlat) {
+        current[n.code] = n.values[STATIC_DIMS.CURRENT_AMOUNT] ?? 0
+        same[n.code] = n.values[STATIC_DIMS.SAME_PERIOD_AMOUNT] ?? 0
+      }
+      externalByDim = new Map([
+        [OPERATING_DIMS.ACTUAL_MONTH, current],
+        [OPERATING_DIMS.SAME_PERIOD_ACTUAL, same],
+      ])
+    }
+    applyCalcLayer(tree, calc, Object.keys(EMPTY_OPERATING), externalByDim)
     return tree
   },
 
-  /** 静态指标聚合树：以原始快照为基础，按选定期的快照月份派生本期/年初/同期/上年年初 */
-  async buildStaticTree(companyCodes: string[], period: string): Promise<ValueNode[]> {
+  /**
+   * 静态指标聚合树：以原始快照为基础，按选定期的快照月份派生本期/年初/同期/上年年初。
+   * @param opts.skipExternal 为另一棵树构建外部值时置 true，跳过本树的跨树取数，防止互引递归。
+   */
+  async buildStaticTree(companyCodes: string[], period: string, opts?: BuildTreeOpts): Promise<ValueNode[]> {
     const subjects = await loadSubjects('static')
     const leafValues = new Map<string, Record<string, number>>()
     const setDim = (acc: string, dim: string, v: number): void => {
       const rec = leafValues.get(acc) ?? { ...EMPTY_STATIC }
       rec[dim] = v
+      leafValues.set(acc, rec)
+    }
+    const addDim = (acc: string, dim: string, dv: number): void => {
+      const rec = leafValues.get(acc) ?? { ...EMPTY_STATIC }
+      rec[dim] = round2((rec[dim] ?? 0) + dv)
       leafValues.set(acc, rec)
     }
     if (companyCodes.length > 0) {
@@ -341,6 +461,21 @@ export const AggregationService = {
             if (v !== undefined) setDim(acc, dim, v)
           }
         }
+        // 去除重分类影响：差额按快照月份匹配四个输出维度叠加
+        if (opts?.excludeReclassify) {
+          const companySet = new Set(companyCodes)
+          const stRes = await ReclassifyReversalService.buildReversalDeltas('static')
+          for (const d of stRes.deltas) {
+            if (!companySet.has(d.companyCode) || !d.snapshotMonth) continue
+            for (const [dim, tPeriod] of dimTargets) {
+              if (d.snapshotMonth === tPeriod) addDim(d.accountCode, dim, d.delta)
+            }
+          }
+          if (opts.reclassifyMeta) {
+            opts.reclassifyMeta.appliedLogs += stRes.appliedLogs
+            opts.reclassifyMeta.skippedLogs += stRes.skippedLogs
+          }
+        }
       }
     }
     const tree = buildTree(subjects, leafValues, EMPTY_STATIC)
@@ -353,21 +488,51 @@ export const AggregationService = {
      * 数值格式：number（万元），经 round2 处理；缺失时回退为 0。
      */
     let externalByDim: Map<string, Record<string, number>> | undefined
-    const needsExternal = calc.some((m) => m.dependsOn.some((d) => d.startsWith('OP_')))
+    let externalAllDims: Record<string, Record<string, number>> | undefined
+    const needsExternal = !opts?.skipExternal && calc.some((m) => m.dependsOn.some((d) => d.startsWith('OP_')))
     if (needsExternal && companyCodes.length > 0) {
-      const opFlat = flattenValueTree(await AggregationService.buildOperatingTree(companyCodes, period))
+      // 外部树透传同一去重分类口径（meta 不透传，避免重复计数）
+      const opFlat = flattenValueTree(await AggregationService.buildOperatingTree(companyCodes, period, { skipExternal: true, excludeReclassify: opts?.excludeReclassify }))
       const current: Record<string, number> = {}
       const same: Record<string, number> = {}
+      externalAllDims = {}
       for (const n of opFlat) {
         current[n.code] = n.values[OPERATING_DIMS.ACTUAL_MONTH] ?? 0
         same[n.code] = n.values[OPERATING_DIMS.SAME_PERIOD_ACTUAL] ?? 0
+        // 全 5 维快照：供跨维度公式的复合键引用（如 {OP_031@YTD_ACTUAL}）
+        externalAllDims[n.code] = { ...n.values }
       }
       externalByDim = new Map([
         [STATIC_DIMS.CURRENT_AMOUNT, current],
         [STATIC_DIMS.SAME_PERIOD_AMOUNT, same],
       ])
     }
-    applyCalcLayer(tree, calc, Object.keys(EMPTY_STATIC), externalByDim)
+    // 跨维度公式（{CODE@维度}/{DAYS_YTD}，如周转天数）的列语义上下文：
+    // 本期列按字面维度取值；同期列平移为去年口径；年初/上年年初两列置 0（时点无周转口径）。
+    let crossDim: CrossDimOptions | undefined
+    if (calc.some((m) => hasCrossDimRefs(m.formula))) {
+      const prevPeriod = periodMinusYears(period, 1)
+      const identity: Record<string, string> = {}
+      for (const dim of [...Object.values(OPERATING_DIMS), ...Object.values(STATIC_DIMS)]) identity[dim] = dim
+      crossDim = {
+        dimMap: new Map([
+          [STATIC_DIMS.CURRENT_AMOUNT, identity],
+          [STATIC_DIMS.SAME_PERIOD_AMOUNT, {
+            [STATIC_DIMS.CURRENT_AMOUNT]: STATIC_DIMS.SAME_PERIOD_AMOUNT,
+            [STATIC_DIMS.YEAR_START]: STATIC_DIMS.LAST_YEAR_START,
+            [OPERATING_DIMS.ACTUAL_MONTH]: OPERATING_DIMS.SAME_PERIOD_ACTUAL,
+            [OPERATING_DIMS.YTD_ACTUAL]: OPERATING_DIMS.SAME_PERIOD_YTD,
+          }],
+        ]),
+        pseudoByDim: new Map([
+          [STATIC_DIMS.CURRENT_AMOUNT, { DAYS_YTD: fiscalYtdDays(period) }],
+          [STATIC_DIMS.SAME_PERIOD_AMOUNT, { DAYS_YTD: fiscalYtdDays(prevPeriod) }],
+        ]),
+        zeroDims: new Set([STATIC_DIMS.YEAR_START, STATIC_DIMS.LAST_YEAR_START]),
+        externalAllDims,
+      }
+    }
+    applyCalcLayer(tree, calc, Object.keys(EMPTY_STATIC), externalByDim, crossDim)
     return tree
   },
 }

@@ -1,9 +1,11 @@
 import { createHash } from 'node:crypto'
 import * as XLSX from 'xlsx'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
 import { parseImportWorkbook, emptySummary, type ImportTemplate, type Resolvers, type SampleRows, type PreviewSummary } from '../lib/excel-import'
+import { parseTransactionWorkbook, type TransactionParseResult, type TransactionResolvers, type TransactionSheetInfo, type TransactionImportIssue, type TransactionParseSummary } from '../lib/transaction-import'
 import { fyLabelOfDate } from '../lib/period'
 
 /**
@@ -16,6 +18,7 @@ import { fyLabelOfDate } from '../lib/period'
 
 const XLSX_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04]) // PK.. (zip/xlsx)
 const XLS_MAGIC = Buffer.from([0xd0, 0xcf, 0x11, 0xe0]) // 老式 xls 复合文档
+const XML_MAGIC = Buffer.from('<?xml') // SpreadsheetML XML（ERP 导出的伪 .xls）
 
 type TemplateType = 'operating' | 'static' | 'budget' | 'transaction' | 'inventory'
 
@@ -39,9 +42,27 @@ async function buildResolvers(template: ImportTemplate, fiscalYear: string): Pro
 
 function assertExcelMagic(buf: Buffer): void {
   const head = buf.subarray(0, 4)
-  if (!head.equals(XLSX_MAGIC) && !head.equals(XLS_MAGIC)) {
-    throw errors.badRequest('文件格式非法：仅支持 .xlsx/.xls')
+  if (head.equals(XLSX_MAGIC) || head.equals(XLS_MAGIC)) return
+  // SpreadsheetML XML：跳过可能的 UTF-8 BOM 后比对 '<?xml' 前缀
+  const bomOffset = buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf ? 3 : 0
+  if (buf.subarray(bomOffset, bomOffset + XML_MAGIC.length).equals(XML_MAGIC)) return
+  throw errors.badRequest('文件格式非法：仅支持 .xlsx/.xls')
+}
+
+/** 往来导入解析辅助数据：公司编码集合 + 内部往来名称映射（name/shortName/legalEntity → code） */
+async function buildTransactionResolvers(): Promise<TransactionResolvers> {
+  const companies = await prisma.company.findMany({ select: { code: true, name: true, shortName: true, legalEntity: true } })
+  const companyCodes = new Set<string>()
+  const companyNameByCode = new Map<string, string>()
+  const internalByName = new Map<string, string>()
+  for (const c of companies) {
+    companyCodes.add(c.code)
+    companyNameByCode.set(c.code, c.name)
+    internalByName.set(c.name.trim(), c.code)
+    if (c.shortName) internalByName.set(c.shortName.trim(), c.code)
+    if (c.legalEntity) internalByName.set(c.legalEntity.trim(), c.code)
   }
+  return { companyCodes, companyNameByCode, internalByName }
 }
 
 export interface ImportErrorItem {
@@ -141,6 +162,62 @@ async function computeKpiCoverage(accountCodes: string[]): Promise<KpiCoverage> 
   }
 }
 
+/** 往来汇总表导入预览（单文件） */
+export interface TransactionActivationImpact {
+  /** 当前无生效数据的新增组合 */
+  newKeys: { companyCode: string; period: string; transactionType: string }[]
+  /** 激活后将替换的已生效组合（含现有笔数） */
+  overlappingKeys: { companyCode: string; period: string; transactionType: string; existingCount: number }[]
+}
+
+export interface TransactionPreviewDto {
+  filename: string
+  sheets: TransactionSheetInfo[]
+  dataRowCount: number
+  recordCount: number
+  errorCount: number
+  warningCount: number
+  errors: TransactionImportIssue[]
+  warnings: TransactionImportIssue[]
+  summary: TransactionParseSummary
+  activationImpact: TransactionActivationImpact
+}
+
+/** 多文件上传结果：单文件失败不影响其余 */
+export interface TransactionUploadResult {
+  filename: string
+  batch: ImportBatchDto | null
+  error: string | null
+}
+
+/** 解析错误映射为批次 errorsJson 的标准结构（column 携带 Sheet 名定位） */
+function toIssueItems(issues: TransactionImportIssue[]): ImportErrorItem[] {
+  return issues.map((e) => ({ row: e.row, column: `${e.sheet}!${e.column}`, message: e.message }))
+}
+
+/** 入库后同步客商主数据：新客商批量创建（已存在的不覆盖名称） */
+async function syncCounterparties(tx: Prisma.TransactionClient, records: TransactionParseResult['records']): Promise<number> {
+  const byCode = new Map<string, { code: string; name: string; companyCode: string; isInternal: boolean }>()
+  for (const r of records) {
+    if (!byCode.has(r.counterpartyCode)) {
+      byCode.set(r.counterpartyCode, {
+        code: r.counterpartyCode,
+        name: r.counterpartyName ?? r.counterpartyCode,
+        companyCode: r.companyCode,
+        isInternal: r.isInternal,
+      })
+    }
+  }
+  if (byCode.size === 0) return 0
+  const codes = [...byCode.keys()]
+  const existing = await tx.counterparty.findMany({ where: { code: { in: codes } }, select: { code: true } })
+  const existingSet = new Set(existing.map((e) => e.code))
+  const toCreate = codes.filter((c) => !existingSet.has(c)).map((c) => byCode.get(c)!)
+  if (toCreate.length === 0) return 0
+  const res = await tx.counterparty.createMany({ data: toCreate, skipDuplicates: true })
+  return res.count
+}
+
 export interface ImportBatchDto {
   id: string
   filename: string
@@ -190,7 +267,30 @@ export const ImportService = {
   async preview(file: { buffer: Buffer }, templateType: TemplateType, fiscalYear = fyLabelOfDate(new Date())): Promise<{ dataRowCount: number; errorCount: number; operatingCount: number; staticCount: number; budgetCount: number; errors: ImportErrorItem[]; sampleRows: SampleRows; summary: PreviewSummaryDto; activationImpact: ActivationImpact | null; kpiCoverage: KpiCoverage | null }> {
     assertExcelMagic(file.buffer)
     if (!UNPIVOT_TEMPLATES.has(templateType)) {
-      // 非 unpivot 模板（transaction/inventory）：仅统计数据行数
+      if (templateType === 'transaction') {
+        // 往来汇总表：真实解析并映射为通用预览结构（专用结构见 previewTransaction）
+        const resolvers = await buildTransactionResolvers()
+        const parsed = parseTransactionWorkbook(file.buffer, 'preview.xls', resolvers)
+        const accountCodes = new Set(parsed.records.map((r) => r.accountCode))
+        const zeroValueCount = parsed.records.filter((r) => r.closingBalance === 0).length
+        const sampleRows: SampleRows = {
+          headers: ['往来类型', '客商', '科目', '期间', '期末余额'],
+          rows: parsed.records.slice(0, 20).map((r) => [r.transactionType, r.counterpartyName ?? r.counterpartyCode, r.accountDesc ?? r.accountCode, r.period, r.closingBalance]),
+        }
+        const summary: PreviewSummary = {
+          companyCount: parsed.summary.companies.length,
+          subjectCount: accountCodes.size,
+          periodRange: { min: parsed.summary.periods[0] ?? null, max: parsed.summary.periods[parsed.summary.periods.length - 1] ?? null },
+          periods: parsed.summary.periods,
+          totalValue: parsed.summary.totalClosingBalance,
+          zeroValueCount,
+          duplicateCount: parsed.summary.duplicateCount,
+          duplicateSamples: parsed.summary.duplicateSamples,
+          accountCodes: [...accountCodes],
+        }
+        return { dataRowCount: parsed.dataRowCount, errorCount: parsed.errors.length, operatingCount: 0, staticCount: 0, budgetCount: 0, errors: toIssueItems(parsed.errors).slice(0, 200), sampleRows, summary: toSummaryDto(summary), activationImpact: null, kpiCoverage: null }
+      }
+      // inventory：仅统计数据行数
       let rowCount = 0
       try {
         const wb = XLSX.read(file.buffer, { type: 'buffer' })
@@ -226,7 +326,172 @@ export const ImportService = {
     }
   },
 
+  /**
+   * 往来汇总表导入预览（dry-run，多文件）：仅解析不建批次、不写库；
+   * 附激活影响预告：解析出的 (公司,期间,类型) 与当前生效数据对比（overlapping = 激活后被替换）。
+   */
+  async previewTransactions(files: Array<{ originalname: string; buffer: Buffer }>): Promise<TransactionPreviewDto[]> {
+    const resolvers = await buildTransactionResolvers()
+    const emptyImpact = (): TransactionActivationImpact => ({ newKeys: [], overlappingKeys: [] })
+    const parsedList = files.map((file) => {
+      let parsed: TransactionParseResult | null = null
+      let fatal: string | null = null
+      try {
+        assertExcelMagic(file.buffer)
+        parsed = parseTransactionWorkbook(file.buffer, file.originalname, resolvers)
+      } catch (e) {
+        fatal = e instanceof Error ? e.message : '文件解析失败'
+      }
+      return { file, parsed, fatal }
+    })
+
+    // 全部文件三元组并集，一次查询现有生效笔数
+    const tripleKeys = new Set<string>()
+    for (const p of parsedList) {
+      for (const r of p.parsed?.records ?? []) tripleKeys.add(`${r.companyCode}|${r.period}|${r.transactionType}`)
+    }
+    const existingCount = new Map<string, number>()
+    if (tripleKeys.size > 0) {
+      const activeBatches = await prisma.importBatch.findMany({ where: { dataType: 'transaction', lifecycleStatus: 'active' }, select: { id: true } })
+      if (activeBatches.length > 0) {
+        const triples = [...tripleKeys].map((k) => {
+          const [companyCode, period, transactionType] = k.split('|')
+          return { companyCode, period, transactionType }
+        })
+        const rows = await prisma.transactionDetail.groupBy({
+          by: ['companyCode', 'period', 'transactionType'],
+          where: { batchId: { in: activeBatches.map((b) => b.id) }, OR: triples },
+          _count: { id: true },
+        })
+        for (const r of rows) {
+          if (r.period) existingCount.set(`${r.companyCode}|${r.period}|${r.transactionType}`, r._count.id)
+        }
+      }
+    }
+
+    return parsedList.map(({ file, parsed, fatal }) => {
+      if (!parsed) {
+        return {
+          filename: file.originalname, sheets: [], dataRowCount: 0, recordCount: 0, errorCount: 1, warningCount: 0,
+          errors: [{ sheet: '-', row: 0, column: '-', message: fatal ?? '文件解析失败' }], warnings: [],
+          summary: { typeCounts: {}, companies: [], periods: [], totalClosingBalance: 0, duplicateCount: 0, duplicateSamples: [], counterpartyCount: 0, internalCount: 0 },
+          activationImpact: emptyImpact(),
+        }
+      }
+      const fileKeys = new Set<string>()
+      for (const r of parsed.records) fileKeys.add(`${r.companyCode}|${r.period}|${r.transactionType}`)
+      const impact = emptyImpact()
+      for (const k of [...fileKeys].sort()) {
+        const [companyCode, period, transactionType] = k.split('|')
+        const existing = existingCount.get(k)
+        if (existing) impact.overlappingKeys.push({ companyCode, period, transactionType, existingCount: existing })
+        else impact.newKeys.push({ companyCode, period, transactionType })
+      }
+      return {
+        filename: file.originalname,
+        sheets: parsed.sheets,
+        dataRowCount: parsed.dataRowCount,
+        recordCount: parsed.records.length,
+        errorCount: parsed.errors.length,
+        warningCount: parsed.warnings.length,
+        errors: parsed.errors.slice(0, 50),
+        warnings: parsed.warnings.slice(0, 50),
+        summary: parsed.summary,
+        activationImpact: impact,
+      }
+    })
+  },
+
+  /**
+   * 往来汇总表多文件上传：每文件独立批次，单文件失败不影响其余。
+   */
+  async uploadTransactions(files: Array<{ originalname: string; buffer: Buffer; size: number }>, userId: string, traceId?: string): Promise<TransactionUploadResult[]> {
+    const results: TransactionUploadResult[] = []
+    for (const file of files) {
+      try {
+        const batch = await this.uploadTransactionOne(file, userId, traceId)
+        results.push({ filename: file.originalname, batch, error: null })
+      } catch (e) {
+        results.push({ filename: file.originalname, batch: null, error: e instanceof Error ? e.message : '导入失败' })
+      }
+    }
+    return results
+  },
+
+  /**
+   * 往来汇总表单文件入库：解析 → transaction_detail 分块写入 + 客商同步（同事务）。
+   * 批次创建为 draft，需激活后生效（激活时按 公司×期间×往来类型 合并替换）。
+   */
+  async uploadTransactionOne(file: { originalname: string; buffer: Buffer; size: number }, userId: string, traceId?: string): Promise<ImportBatchDto> {
+    assertExcelMagic(file.buffer)
+
+    const fileHash = createHash('sha256').update(file.buffer).digest('hex')
+    const dup = await prisma.importBatch.findFirst({ where: { fileHash, lifecycleStatus: 'active' }, select: { id: true } })
+    if (dup) throw errors.conflict('该文件已导入并处于生效状态，请勿重复导入')
+
+    const batch = await prisma.importBatch.create({
+      data: {
+        fileName: file.originalname,
+        uploadedById: userId,
+        status: 'processing',
+        dataType: 'transaction',
+        lifecycleStatus: 'draft',
+        fileHash,
+        sourceType: 'upload',
+      },
+    })
+
+    let parsed: TransactionParseResult
+    try {
+      const resolvers = await buildTransactionResolvers()
+      parsed = parseTransactionWorkbook(file.buffer, file.originalname, resolvers)
+    } catch {
+      await prisma.importBatch.update({ where: { id: batch.id }, data: { status: 'failed' } })
+      throw errors.badRequest('Excel 解析失败，请检查文件内容与模板类型')
+    }
+
+    const errorList = toIssueItems(parsed.errors)
+    const errorCount = parsed.errors.length
+    // 申报覆盖范围：每个汇总 Sheet 的 (公司, 期间, 类型, 笔数)，含 0 条的空 Sheet，
+    // 供覆盖矩阵区分“已导入·该期确无往来款”与“缺失”
+    const declaredCoverage = parsed.sheets
+      .filter((s) => s.declaredCompanyCode && s.cutoffDate)
+      .map((s) => ({ companyCode: s.declaredCompanyCode!, period: s.cutoffDate!.slice(0, 7), transactionType: s.transactionType, recordCount: s.recordCount }))
+
+    const updated = await prisma.$transaction(async (tx) => {
+      let insertedCount = 0
+      const BATCH_SIZE = 500
+      for (let i = 0; i < parsed.records.length; i += BATCH_SIZE) {
+        const chunk = parsed.records.slice(i, i + BATCH_SIZE).map((r) => {
+          const { rawJson, ...rest } = r
+          return { ...rest, batchId: batch.id, rawJson: rawJson as never }
+        })
+        const res = await tx.transactionDetail.createMany({ data: chunk, skipDuplicates: true })
+        insertedCount += res.count
+      }
+      await syncCounterparties(tx, parsed.records)
+      const finalStatus = errorCount > 0 ? (insertedCount > 0 ? 'partial' : 'failed') : 'success'
+      return tx.importBatch.update({
+        where: { id: batch.id },
+        data: {
+          status: parsed.records.length === 0 && errorCount > 0 ? 'failed' : finalStatus,
+          rowCount: parsed.dataRowCount,
+          detailCount: parsed.records.length,
+          errorCount,
+          errorsJson: (errorList.slice(0, 200) as never) ?? undefined,
+          coverageJson: declaredCoverage as never,
+        },
+      })
+    })
+    await recordAudit({ userId, module: 'transactions', action: 'import', targetId: batch.id, detail: { rowCount: parsed.dataRowCount, detailCount: parsed.records.length, errorCount } }, traceId)
+    return toDto(updated)
+  },
+
   async upload(file: { originalname: string; buffer: Buffer; size: number }, templateType: TemplateType, userId: string, traceId?: string, fiscalYear = fyLabelOfDate(new Date())): Promise<ImportBatchDto> {
+    if (templateType === 'transaction') {
+      // 往来汇总表走专用解析入库链路（通用入口与 /transactions/import 行为一致）
+      return this.uploadTransactionOne(file, userId, traceId)
+    }
     assertExcelMagic(file.buffer)
 
     // 文件去重：同 hash 且 active 的批次
@@ -272,7 +537,7 @@ export const ImportService = {
         parsedStatic = parsed.static
         parsedBudget = parsed.budget
       } else {
-        // transaction/inventory 暂仅登记：统计数据行数
+        // transaction/inventory 暂仅登记：统计数据行数（transaction 已在上方分流，此处仅剩 inventory）
         const wb = XLSX.read(file.buffer, { type: 'buffer' })
         const first = wb.SheetNames[0]
         const gridRows = first ? (XLSX.utils.sheet_to_json(wb.Sheets[first], { header: 1, blankrows: false }) as unknown[][]) : []
@@ -341,8 +606,9 @@ export const ImportService = {
    * 激活批次：置 active。期间策略：
    * - operating/static 按期间合并：删除旧 active 批次中与本批次重叠期间的事实行（operating 按 period、static 按快照月），
    *   旧批次清空后自动归档，否则保持 active（多批次按期间共存）；
+   * - transaction 按 (公司, 期间, 往来类型) 合并：删除旧 active 批次中与本批次三元组重叠的明细，旧批次清空后自动归档；
    * - budget 按财年整体替换：归档同 dataType 且同 fiscalYear 的旧 active；
-   * - transaction/inventory 维持整体替换。
+   * - inventory 维持整体替换。
    */
   async activate(id: string, userId: string, traceId?: string): Promise<ImportBatchDto> {
     const b = await prisma.importBatch.findUnique({ where: { id } })
@@ -387,6 +653,34 @@ export const ImportService = {
               const remaining = await tx.factStatic.count({ where: { batchId: oldId } })
               if (remaining === 0) await tx.importBatch.update({ where: { id: oldId }, data: { lifecycleStatus: 'archived' } })
             }
+          }
+        }
+      } else if (b.dataType === 'transaction') {
+        // 按 (公司, 期间, 往来类型) 三元组合并替换
+        const oldActive = await tx.importBatch.findMany({
+          where: { dataType: 'transaction', lifecycleStatus: 'active' },
+          select: { id: true },
+        })
+        const oldIds = oldActive.map((x) => x.id)
+        if (oldIds.length > 0) {
+          const keys = await tx.transactionDetail.findMany({
+            where: { batchId: id },
+            distinct: ['companyCode', 'period', 'transactionType'],
+            select: { companyCode: true, period: true, transactionType: true },
+          })
+          if (keys.length > 0) {
+            const res = await tx.transactionDetail.deleteMany({
+              where: {
+                batchId: { in: oldIds },
+                OR: keys.map((k) => ({ companyCode: k.companyCode, period: k.period, transactionType: k.transactionType })),
+              },
+            })
+            deleted = res.count
+            replaced = keys.map((k) => `${k.companyCode}|${k.period ?? '-'}|${k.transactionType}`).sort()
+          }
+          for (const oldId of oldIds) {
+            const remaining = await tx.transactionDetail.count({ where: { batchId: oldId } })
+            if (remaining === 0) await tx.importBatch.update({ where: { id: oldId }, data: { lifecycleStatus: 'archived' } })
           }
         }
       } else {

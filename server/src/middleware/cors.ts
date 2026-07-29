@@ -1,6 +1,7 @@
 import cors from 'cors'
 import type { RequestHandler } from 'express'
 import { loadConfig } from '../config/env'
+import { errors } from '../lib/errors'
 
 /**
  * CORS：仅允许配置的前端来源，credentials:true。
@@ -21,7 +22,8 @@ export function corsMiddleware(): RequestHandler {
         callback(null, true)
         return
       }
-      callback(new Error(`CORS 拒绝来源：${origin}`))
+      // 用 AppError(403) 而非裸 Error，避免全局错误处理误报 500
+      callback(errors.forbidden(`CORS 拒绝来源：${origin}（请检查 FRONTEND_ORIGIN 配置并重启后端）`))
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],

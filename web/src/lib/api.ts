@@ -1,6 +1,6 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios'
 import { useAuthStore } from '@/stores/authStore'
-import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse, FilterParams, KpiData, TrendData, Alert, ImportBatch, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog } from '@/types'
+import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse, FilterParams, KpiData, TrendData, Alert, ImportBatch, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData } from '@/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
@@ -346,6 +346,24 @@ class ApiClient {
     })
   }
 
+  /** 恢复启用已停用指标；clearFormula=true 时公式失效可清空后恢复 */
+  async restoreMetric(id: string, data?: { clearFormula?: boolean }): Promise<Metric> {
+    return this.request({
+      method: 'POST',
+      url: `/data/metrics/${id}/restore`,
+      data,
+    })
+  }
+
+  /** 指标类型转换（高危，仅 superadmin）：data ↔ calc，data→calc 可携带初始公式 */
+  async convertMetric(id: string, data: { dataType: 'data' | 'calc'; formula?: string }): Promise<Metric> {
+    return this.request({
+      method: 'POST',
+      url: `/data/metrics/${id}/convert`,
+      data,
+    })
+  }
+
   async getCompanies(params?: { includeInactive?: string }): Promise<Company[]> {
     return this.request({
       method: 'GET',
@@ -396,15 +414,19 @@ class ApiClient {
   }
 
   async previewAdjustSubject(data: {
-    templateType: string; companyCode: string; sourceAccountCode: string; targetAccountCode?: string
-    decreaseAmount: number; increaseAmount?: number; period: string
-  }): Promise<{ affectedRows: number; sourceTotal: number; decreaseAmount: number; increaseAmount: number; netChange: number }> {
+    templateType: string; companyCode: string
+    adjustMode?: 'both' | 'decrease' | 'increase'
+    sourceAccountCode?: string; targetAccountCode?: string
+    decreaseAmount?: number; increaseAmount?: number; period: string
+  }): Promise<{ affectedRows: number; sourceTotal: number; targetTotal?: number; decreaseAmount: number; increaseAmount: number; netChange: number; valueType?: 'amount' | 'quantity' | 'ratio' }> {
     return this.request({ method: 'POST', url: '/data/reclassify/subject/preview', data })
   }
 
   async adjustSubject(data: {
-    templateType: string; companyCode: string; sourceAccountCode: string; targetAccountCode?: string
-    decreaseAmount: number; increaseAmount?: number; period: string; reason: string
+    templateType: string; companyCode: string
+    adjustMode?: 'both' | 'decrease' | 'increase'
+    sourceAccountCode?: string; targetAccountCode?: string
+    decreaseAmount?: number; increaseAmount?: number; period: string; reason: string
   }): Promise<{ affectedRows: number; decreaseAmount: number; increaseAmount: number; netChange: number; mergedRows: number; createdRows: number }> {
     return this.request({ method: 'POST', url: '/data/reclassify/subject', data })
   }
@@ -625,52 +647,6 @@ class ApiClient {
     })
   }
 
-  async checkFormulas(data: { items: { code: string; name: string; formula: string }[]; subjectType?: string }): Promise<{
-    code: string
-    riskLevel: 'low' | 'medium' | 'high' | 'unknown'
-    issues: string[]
-    suggestion: string | null
-    ruleWarnings: string[]
-  }[]> {
-    return this.request({
-      method: 'POST',
-      url: '/ai/formula/check',
-      data,
-    })
-  }
-
-  async getFormulaRules(): Promise<{ id: string; name: string; formulaTemplate: string; refCodes: string[]; description: string | null }[]> {
-    return this.request({
-      method: 'GET',
-      url: '/ai/formula-rules',
-    })
-  }
-
-  async batchPreviewFormulas(data: { subjectType?: string }): Promise<{
-    code: string
-    name: string
-    formula: string | null
-    dependsOn: string[]
-    explanation: string
-    valid: boolean
-    warnings: string[]
-    ruleName: string | null
-  }[]> {
-    return this.request({
-      method: 'POST',
-      url: '/ai/formula/batch-preview',
-      data,
-    })
-  }
-
-  async batchApplyFormulas(items: { code: string; formula: string; dependsOn: string[] }[]): Promise<{ applied: number }> {
-    return this.request({
-      method: 'POST',
-      url: '/ai/formula/batch-apply',
-      data: { items },
-    })
-  }
-
   // 指标公式版本历史 / 回滚 / 试算 / 依赖分析 / 审批
   async getMetricHistory(id: string): Promise<{ version: number; formula: string; description: string | null; changedByName: string; changedAt: string; approvedBy: string | null }[]> {
     return this.request({ method: 'GET', url: `/data/metrics/${id}/history` })
@@ -696,26 +672,9 @@ class ApiClient {
     return this.request({ method: 'POST', url: `/data/metrics/${id}/reject` })
   }
 
-  // 公式规则库管理
-  async createFormulaRule(data: { name: string; formulaTemplate: string; description?: string }): Promise<unknown> {
-    return this.request({ method: 'POST', url: '/ai/formula-rules', data })
-  }
-
-  async updateFormulaRule(id: string, data: { name?: string; formulaTemplate?: string; description?: string }): Promise<unknown> {
-    return this.request({ method: 'PUT', url: `/ai/formula-rules/${id}`, data })
-  }
-
-  async toggleFormulaRule(id: string, enabled: boolean): Promise<unknown> {
-    return this.request({ method: 'POST', url: `/ai/formula-rules/${id}/toggle`, data: { enabled } })
-  }
-
-  async deleteFormulaRule(id: string): Promise<void> {
-    return this.request({ method: 'DELETE', url: `/ai/formula-rules/${id}` })
-  }
-
   // ============ 分析报告：单项分析（公司 × 科目 × 期间） ============
-  async listAnalyses(params: { companyCode?: string; subjectCode?: string; period?: string }): Promise<{ items: AnalysisItem[]; total: number }> {
-    return this.request({ method: 'GET', url: '/reports/analyses', params })
+  async listAnalyses(params: { companyCode?: string; subjectCode?: string; period?: string; keyword?: string; includeInactive?: boolean; page?: number; pageSize?: number }): Promise<{ items: AnalysisItem[]; total: number; page: number; pageSize: number }> {
+    return this.request({ method: 'GET', url: '/reports/analyses', params: { ...params, includeInactive: params.includeInactive ? '1' : undefined } })
   }
 
   async getAnalysis(id: string): Promise<AnalysisItem> {
@@ -734,12 +693,16 @@ class ApiClient {
     return this.request({ method: 'DELETE', url: `/reports/analyses/${id}` })
   }
 
+  async restoreAnalysis(id: string): Promise<AnalysisItem> {
+    return this.request({ method: 'PUT', url: `/reports/analyses/${id}/restore` })
+  }
+
   async batchAnalyses(params: { companyCodes: string[]; period?: string }): Promise<{ items: AnalysisItem[]; resolvedCompanyCodes: string[] }> {
     return this.request({ method: 'GET', url: '/reports/analyses/batch', params: { companyCodes: params.companyCodes.join(','), period: params.period } })
   }
 
   // ============ 分析报告：汇总报告 ============
-  async listReports(params: { page?: number; pageSize?: number; status?: string }): Promise<{ items: ReportListItem[]; total: number; page: number; pageSize: number }> {
+  async listReports(params: { page?: number; pageSize?: number; status?: string; keyword?: string }): Promise<{ items: ReportListItem[]; total: number; page: number; pageSize: number }> {
     return this.request({ method: 'GET', url: '/reports', params })
   }
 
@@ -763,16 +726,24 @@ class ApiClient {
     return this.request({ method: 'POST', url: `/reports/${id}/sections/generate` })
   }
 
-  async setReportSections(id: string, items: ReportSectionInput[]): Promise<ReportDetail> {
-    return this.request({ method: 'PUT', url: `/reports/${id}/sections`, data: { items } })
+  async setReportSections(id: string, items: ReportSectionInput[], expectedUpdatedAt?: string): Promise<ReportDetail> {
+    return this.request({ method: 'PUT', url: `/reports/${id}/sections`, data: { items, expectedUpdatedAt } })
   }
 
-  async saveReportVersion(id: string, changeSummary?: string): Promise<{ versionNo: number }> {
-    return this.request({ method: 'POST', url: `/reports/${id}/versions`, data: { changeSummary } })
+  async saveReportVersion(id: string, changeSummary?: string, expectedUpdatedAt?: string): Promise<{ versionNo: number }> {
+    return this.request({ method: 'POST', url: `/reports/${id}/versions`, data: { changeSummary, expectedUpdatedAt } })
   }
 
   async listReportVersions(id: string): Promise<{ items: ReportVersionItem[] }> {
     return this.request({ method: 'GET', url: `/reports/${id}/versions` })
+  }
+
+  async getReportVersion(id: string, versionNo: number): Promise<ReportVersionSnapshot> {
+    return this.request({ method: 'GET', url: `/reports/${id}/versions/${versionNo}` })
+  }
+
+  async rollbackReportVersion(id: string, versionNo: number): Promise<ReportDetail> {
+    return this.request({ method: 'POST', url: `/reports/${id}/versions/${versionNo}/rollback` })
   }
 
   async exportReport(id: string, format: 'docx' | 'pdf'): Promise<ReportExportData> {
@@ -780,16 +751,30 @@ class ApiClient {
   }
 
   // ============ 往来分析 ============
-  async getTransactionOverview(companyCode?: string) {
-    return this.request({ method: 'GET', url: '/transactions/overview', params: { companyCode } })
+  // 总览：公司多选（逗号分隔，空=全部）+ 单期间过滤（期末余额为时点数）
+  async getTransactionOverview(params: { companyCodes?: string[]; period?: string } = {}) {
+    return this.request({
+      method: 'GET',
+      url: '/transactions/overview',
+      params: {
+        companyCodes: params.companyCodes?.length ? params.companyCodes.join(',') : undefined,
+        period: params.period,
+      },
+    })
   }
 
   async getTransactionDetails(params: Record<string, unknown>) {
     return this.request({ method: 'GET', url: '/transactions/details', params })
   }
 
-  async getTransactionAging(params: { companyCode?: string; transactionType?: string; groupBy?: string }) {
+  // 账龄分析：支持单期间与科目多选（逗号分隔）
+  async getTransactionAging(params: { companyCode?: string; transactionType?: string; groupBy?: string; period?: string; accountCodes?: string }) {
     return this.request({ method: 'GET', url: '/transactions/aging', params })
+  }
+
+  // 会计科目列表（去重，供科目多选筛选；可按往来类型过滤）
+  async getTransactionAccounts(transactionType?: string) {
+    return this.request({ method: 'GET', url: '/transactions/accounts', params: { transactionType } })
   }
 
   async getInternalSummary(companyCode?: string) {
@@ -808,6 +793,87 @@ class ApiClient {
     return this.request({ method: 'GET', url: '/transactions/latest-cutoff' })
   }
 
+  // 已导入数据的期间列表（明细筛选用）
+  async getTransactionPeriods() {
+    return this.request({ method: 'GET', url: '/transactions/periods' })
+  }
+
+  // 往来余额变动趋势（单类型，按 公司×月份 聚合；支持财年轴）
+  async getTransactionTrend(params: { transactionType: string; companyCodes?: string[]; months?: number; fiscalYear?: string }) {
+    return this.request({
+      method: 'GET',
+      url: '/transactions/trend',
+      params: {
+        transactionType: params.transactionType,
+        companyCodes: params.companyCodes?.length ? params.companyCodes.join(',') : undefined,
+        months: params.months,
+        fiscalYear: params.fiscalYear,
+      },
+    })
+  }
+
+  // 往来数据涉及的财年列表（倒序）
+  async getTransactionFiscalYears() {
+    return this.request({ method: 'GET', url: '/transactions/fiscal-years' })
+  }
+
+  // 往来导入（六大往来账龄汇总表，多文件）
+  async previewTransactionImport(files: File[]) {
+    const formData = new FormData()
+    for (const f of files) formData.append('files', f)
+    return this.request({
+      method: 'POST',
+      url: '/transactions/import/preview',
+      data: formData,
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  }
+
+  async importTransactions(files: File[]) {
+    const formData = new FormData()
+    for (const f of files) formData.append('files', f)
+    return this.request({
+      method: 'POST',
+      url: '/transactions/import',
+      data: formData,
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  }
+
+  // 导入覆盖矩阵（公司×期间×六大类型 的 已生效/草稿/缺失 状态）
+  async getTransactionImportCoverage(months?: number) {
+    return this.request({ method: 'GET', url: '/transactions/import/coverage', params: { months } })
+  }
+
+  async getTransactionBatchCoverage(id: string) {
+    return this.request({ method: 'GET', url: `/transactions/import/batches/${id}/coverage` })
+  }
+
+  // 催收管理
+  async getCollections(params: Record<string, unknown>) {
+    return this.request({ method: 'GET', url: '/transactions/collections', params })
+  }
+
+  async createCollection(data: Record<string, unknown>) {
+    return this.request({ method: 'POST', url: '/transactions/collections', data })
+  }
+
+  async generateCollections(data: { companyCode?: string; minAgingBucket?: string }) {
+    return this.request({ method: 'POST', url: '/transactions/collections/generate', data })
+  }
+
+  async updateCollection(id: string, data: Record<string, unknown>) {
+    return this.request({ method: 'PATCH', url: `/transactions/collections/${id}`, data })
+  }
+
+  async getCollectionLogs(id: string) {
+    return this.request({ method: 'GET', url: `/transactions/collections/${id}/logs` })
+  }
+
+  async addCollectionLog(id: string, data: { content: string; attachmentUrl?: string }) {
+    return this.request({ method: 'POST', url: `/transactions/collections/${id}/logs`, data })
+  }
+
   // ============ 其他工具 ============
   async toolsEnterpriseSearch(keyword: string): Promise<EnterpriseSearchResult | null> {
     return this.request({ method: 'GET', url: '/tools/enterprise/search', params: { keyword } })
@@ -818,92 +884,19 @@ class ApiClient {
   }
 }
 
-// ============ 分析报告类型 ============
-export interface AnalysisItem {
-  id: string
-  companyCode: string
-  companyName: string | null
-  subjectCode: string
-  subjectName: string | null
-  subjectType: string
-  fiscalYear: string
-  period: string
-  title: string
-  content: string
-  metricContext: Record<string, unknown> | null
-  createdBy: string | null
-  updatedBy: string | null
-  createdAt: string
-  updatedAt: string
-}
-
-export interface AnalysisInput {
-  companyCode: string
-  subjectCode: string
-  subjectType?: 'operating' | 'static'
-  fiscalYear: string
-  period: string
-  title: string
-  content: string
-  metricContext?: Record<string, unknown> | null
-}
-
-export interface CompanyScope {
-  type: 'company' | 'summary'
-  code: string
-  name?: string | null
-}
-
-export interface ReportListItem {
-  id: string
-  title: string
-  fiscalYear: string
-  period: string
-  companyScope: CompanyScope
-  status: string
-  currentVersion: number
-  createdBy: string | null
-  createdAt: string
-  updatedAt: string
-}
-
-export interface ReportSectionView {
-  id: string
-  orderNo: number
-  title: string
-  content: string
-  analysisId: string | null
-  source: { companyCode: string; companyName: string | null; subjectCode: string; subjectName: string | null; period: string } | null
-  missing: boolean
-}
-
-export interface ReportDetail extends ReportListItem {
-  sections: ReportSectionView[]
-}
-
-export interface ReportSectionInput {
-  id?: string
-  analysisId?: string | null
-  title?: string
-  content?: string
-}
-
-export interface ReportVersionItem {
-  id: string
-  versionNo: number
-  changeSummary: string | null
-  changedBy: string | null
-  changedAt: string
-}
-
-export interface ReportExportData {
-  title: string
-  fiscalYear: string
-  period: string
-  scopeName: string | null
-  generatedAt: string
-  sections: { title: string; content: string; plainText: string; missing: boolean }[]
-}
+// ============ 分析报告类型（定义已集中至 @/types，此处 re-export 保持兼容） ============
+export type {
+  AnalysisItem,
+  AnalysisInput,
+  ReportListItem,
+  ReportSectionView,
+  ReportDetail,
+  ReportSectionInput,
+  ReportVersionItem,
+  ReportVersionSnapshot,
+  ReportExportData,
+} from '@/types'
+export type { ReportCompanyScope as CompanyScope } from '@/types'
 
 // ============ 其他工具类型 ============
 export interface EnterpriseSearchResult {

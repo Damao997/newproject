@@ -1,0 +1,261 @@
+import { describe, it, expect } from 'vitest'
+import * as XLSX from 'xlsx'
+import { parseTransactionWorkbook, matchSummarySheet, type TransactionResolvers } from './transaction-import'
+
+/**
+ * 六大往来账龄汇总表解析器单测。
+ * 用 aoa 构造与真实 ERP 报表同构的工作簿（Sheet 名前缀识别、双行表头、小计/页脚行）。
+ */
+
+function makeWorkbook(sheets: Array<{ name: string; aoa: unknown[][] }>): Buffer {
+  const wb = XLSX.utils.book_new()
+  for (const s of sheets) {
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s.aoa), s.name)
+  }
+  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
+}
+
+function resolvers(): TransactionResolvers {
+  return {
+    companyCodes: new Set(['EN330058', 'EN330059']),
+    companyNameByCode: new Map([['EN330058', '测试公司'], ['EN330059', '内部公司甲']]),
+    internalByName: new Map([['内部公司甲', 'EN330059'], ['测试公司', 'EN330058']]),
+  }
+}
+
+// AR 类表头（含客户性质，账龄锚点列 16）
+const AR_HEADER = ['序号', '公司编码', '公司名称', '客户编码', '客户名称', '客户性质', '会计科目编码', '会计科目说明', '子目编码', '子目说明', '自然年年初余额', '变化率', '财年年初余额', '变化率', '期末余额', '本月收款额', '期末余额账龄分析']
+const AR_SUB = [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, '1个月', '2个月', '3个月', '4个月', '5个月', '6个月', '半年到1年', '1年到2年', '2年到3年', '3年以上', '合计']
+
+/** AR 数据行：期末余额=closing，账龄 10 段 + 合计 */
+function arRow(companyCode: string, cpCode: string, cpName: string, account: string, opening: number, closing: number, aging: number[], total?: number): unknown[] {
+  return ['1', companyCode, '测试公司', cpCode, cpName, '个体', account, `${account}(应收账款-测试)`, '0', '', 0, '', opening, '0%', closing, 0, ...aging, total ?? aging.reduce((s, v) => s + v, 0)]
+}
+
+const AR_TITLE_ROWS: unknown[][] = [
+  ['应收款账龄分析明细表'],
+  ['公司:测试公司', null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, '截止日期:2026-04-30'],
+]
+
+// AP 类表头（供应商列名、无客户性质、自然年初余额、本月收付额，账龄锚点列 15）
+const AP_HEADER = ['序号', '公司编码', '公司名称', '供应商', '供应商名称', '会计科目编码', '会计科目说明', '子目编码', '子目说明', '自然年初余额', '变化率', '财年年初余额', '变化率', '期末余额', '本月收付额', '期末余额账龄分析']
+const AP_SUB = [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, '1个月', '2个月', '3个月', '4个月', '5个月', '6个月', '半年到1年', '1年到2年', '2年到3年', '3年以上', '合计']
+
+describe('matchSummarySheet', () => {
+  it('六大前缀映射正确', () => {
+    expect(matchSummarySheet('AR-账龄汇总表')).toEqual({ transactionType: '应收账款', direction: 'AR' })
+    expect(matchSummarySheet('AROT-账龄汇总表')).toEqual({ transactionType: '其他应收款', direction: 'AR' })
+    expect(matchSummarySheet('PER_AR-账龄汇总表')).toEqual({ transactionType: '预收账款', direction: 'AR' })
+    expect(matchSummarySheet('AP-账龄汇总表')).toEqual({ transactionType: '应付账款', direction: 'AP' })
+    expect(matchSummarySheet('APOT-账龄汇总表')).toEqual({ transactionType: '其他应付款', direction: 'AP' })
+    expect(matchSummarySheet('PER_AP-账龄汇总表')).toEqual({ transactionType: '预付账款', direction: 'AP' })
+  })
+
+  it('明细表与无关 Sheet 不匹配', () => {
+    expect(matchSummarySheet('AR-账龄明细表')).toBeNull()
+    expect(matchSummarySheet('报表参数')).toBeNull()
+    expect(matchSummarySheet('XX-账龄汇总表')).toBeNull()
+  })
+})
+
+describe('parseTransactionWorkbook', () => {
+  it('AR 汇总表：字段映射、期间、账龄 10 段', () => {
+    const buf = makeWorkbook([{
+      name: 'AR-账龄汇总表',
+      aoa: [...AR_TITLE_ROWS, AR_HEADER, AR_SUB, arRow('330058', 'C001', '客户甲', '112201', 80, 100, [60, 40, 0, 0, 0, 0, 0, 0, 0, 0])],
+    }])
+    const r = parseTransactionWorkbook(buf, 'test.xls', resolvers())
+    expect(r.errors).toHaveLength(0)
+    expect(r.records).toHaveLength(1)
+    const rec = r.records[0]
+    expect(rec.companyCode).toBe('EN330058')
+    expect(rec.companyName).toBe('测试公司')
+    expect(rec.transactionType).toBe('应收账款')
+    expect(rec.direction).toBe('AR')
+    expect(rec.cutoffDate).toBe('2026-04-30')
+    expect(rec.period).toBe('2026-04')
+    expect(rec.counterpartyCode).toBe('C001')
+    expect(rec.accountCode).toBe('112201')
+    expect(rec.openingBalance).toBe(80)
+    expect(rec.closingBalance).toBe(100)
+    expect(rec.aging1m).toBe(60)
+    expect(rec.aging2m).toBe(40)
+    expect(rec.agingTotal).toBe(100)
+    expect(rec.debitAmount).toBe(0)
+    expect(rec.isInternal).toBe(false)
+    expect(rec.internalType).toBe('外部')
+    expect(rec.sourceFile).toBe('test.xls')
+    expect(r.summary.typeCounts['应收账款']).toBe(1)
+  })
+
+  it('AP 变体表头（供应商/本月收付额）与 APOT 类型识别，贷方性质符号归一', () => {
+    const buf = makeWorkbook([{
+      name: 'APOT-账龄汇总表',
+      aoa: [
+        [''],
+        ['公司:测试公司', null, null, null, null, null, null, null, null, null, null, null, null, null, '截止日期:2026-05-31'],
+        AP_HEADER,
+        AP_SUB,
+        ['1', '330058', '测试公司', 'S001', '供应商乙', '2241', '2241(其他应付款-测试)', '', '', -1.1, '0%', -1.1, '0%', -1.1, 0, 0, 0, 0, 0, 0, 0, 0, -1.1, 0, 0, -1.1],
+      ],
+    }])
+    const r = parseTransactionWorkbook(buf, 'ap.xls', resolvers())
+    expect(r.errors).toHaveLength(0)
+    expect(r.records).toHaveLength(1)
+    const rec = r.records[0]
+    expect(rec.transactionType).toBe('其他应付款')
+    expect(rec.direction).toBe('AP')
+    expect(rec.counterpartyCode).toBe('S001')
+    expect(rec.counterpartyName).toBe('供应商乙')
+    expect(rec.period).toBe('2026-05')
+    // 其他应付款为贷方性质：原始 -1.1 入库翻转为 +1.1
+    expect(rec.closingBalance).toBe(1.1)
+    expect(rec.aging1yTo2y).toBe(1.1)
+    expect(rec.agingTotal).toBe(1.1)
+    expect(rec.rawJson.rawClosingBalance).toBe(-1.1)
+  })
+
+  it('借方性质类型（应收/预付）不翻转符号；贷方性质反方向余额翻转后为负', () => {
+    const buf = makeWorkbook([{
+      name: 'PER_AR-账龄汇总表',
+      aoa: [...AR_TITLE_ROWS, AR_HEADER, AR_SUB,
+        // 预收账款（贷方性质）：原始 -200 → +200；原始 +30（反方向余额）→ -30
+        arRow('330058', 'C001', '客户甲', '2203', -100, -200, [-200, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+        arRow('330058', 'C002', '客户乙', '2203', 0, 30, [30, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+      ],
+    }])
+    const r = parseTransactionWorkbook(buf, 'per.xls', resolvers())
+    expect(r.errors).toHaveLength(0)
+    const [a, b] = r.records
+    expect(a.transactionType).toBe('预收账款')
+    expect(a.openingBalance).toBe(100)
+    expect(a.closingBalance).toBe(200)
+    expect(a.aging1m).toBe(200)
+    expect(b.closingBalance).toBe(-30)
+  })
+
+  it('小计行与页脚行静默过滤，不计错误', () => {
+    const buf = makeWorkbook([{
+      name: 'AR-账龄汇总表',
+      aoa: [
+        ...AR_TITLE_ROWS, AR_HEADER, AR_SUB,
+        arRow('330058', 'C001', '客户甲', '112201', 0, 50, [50, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+        ['', '', '测试公司', '', '明细科目小计', '', '112201', '112201(应收账款-测试)', '', '', 0, '', 0, '', 50, 0, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 50],
+        ['制单人:JINLJC', null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, '打印时间:2026-06-15'],
+      ],
+    }])
+    const r = parseTransactionWorkbook(buf, 'test.xls', resolvers())
+    expect(r.errors).toHaveLength(0)
+    expect(r.records).toHaveLength(1)
+    expect(r.dataRowCount).toBe(1)
+  })
+
+  it('公司编码未匹配记入错误并跳行', () => {
+    const buf = makeWorkbook([{
+      name: 'AR-账龄汇总表',
+      aoa: [...AR_TITLE_ROWS, AR_HEADER, AR_SUB, arRow('999999', 'C001', '客户甲', '112201', 0, 10, [10, 0, 0, 0, 0, 0, 0, 0, 0, 0])],
+    }])
+    const r = parseTransactionWorkbook(buf, 'test.xls', resolvers())
+    expect(r.records).toHaveLength(0)
+    expect(r.errors).toHaveLength(1)
+    expect(r.errors[0].message).toContain('公司编码未匹配')
+  })
+
+  it('账龄之和与期末余额不一致产生警告但仍入库', () => {
+    const buf = makeWorkbook([{
+      name: 'AR-账龄汇总表',
+      aoa: [...AR_TITLE_ROWS, AR_HEADER, AR_SUB, arRow('330058', 'C001', '客户甲', '112201', 0, 100, [60, 0, 0, 0, 0, 0, 0, 0, 0, 0], 60)],
+    }])
+    const r = parseTransactionWorkbook(buf, 'test.xls', resolvers())
+    expect(r.records).toHaveLength(1)
+    expect(r.warnings).toHaveLength(1)
+    expect(r.warnings[0].message).toContain('不一致')
+  })
+
+  it('文件内重复行按业务键求和合并', () => {
+    const buf = makeWorkbook([{
+      name: 'AR-账龄汇总表',
+      aoa: [
+        ...AR_TITLE_ROWS, AR_HEADER, AR_SUB,
+        arRow('330058', 'C001', '客户甲', '112201', 10, 100, [100, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+        arRow('330058', 'C001', '客户甲', '112201', 5, 50, [50, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+      ],
+    }])
+    const r = parseTransactionWorkbook(buf, 'test.xls', resolvers())
+    expect(r.records).toHaveLength(1)
+    expect(r.summary.duplicateCount).toBe(1)
+    expect(r.records[0].closingBalance).toBe(150)
+    expect(r.records[0].openingBalance).toBe(15)
+    expect(r.records[0].aging1m).toBe(150)
+  })
+
+  it('客商名称命中公司主数据标记为内部往来', () => {
+    const buf = makeWorkbook([{
+      name: 'AR-账龄汇总表',
+      aoa: [...AR_TITLE_ROWS, AR_HEADER, AR_SUB, arRow('330058', '100018', '内部公司甲', '112201', 0, 30, [30, 0, 0, 0, 0, 0, 0, 0, 0, 0])],
+    }])
+    const r = parseTransactionWorkbook(buf, 'test.xls', resolvers())
+    expect(r.records[0].isInternal).toBe(true)
+    expect(r.records[0].internalType).toBe('内部关联')
+    expect(r.records[0].internalPeerCode).toBe('EN330059')
+    expect(r.summary.internalCount).toBe(1)
+  })
+
+  it('一个文件多个汇总 Sheet 全部解析', () => {
+    const buf = makeWorkbook([
+      { name: '报表参数', aoa: [['报表名称：', '应收款账龄分析明细表']] },
+      { name: 'AR-账龄汇总表', aoa: [...AR_TITLE_ROWS, AR_HEADER, AR_SUB, arRow('330058', 'C001', '客户甲', '112201', 0, 10, [10, 0, 0, 0, 0, 0, 0, 0, 0, 0])] },
+      { name: 'PER_AR-账龄汇总表', aoa: [...AR_TITLE_ROWS, AR_HEADER, AR_SUB, arRow('330058', 'C002', '客户乙', '2203', 0, 20, [20, 0, 0, 0, 0, 0, 0, 0, 0, 0])] },
+    ])
+    const r = parseTransactionWorkbook(buf, 'multi.xls', resolvers())
+    expect(r.sheets).toHaveLength(2)
+    expect(r.records).toHaveLength(2)
+    expect(r.summary.typeCounts).toEqual({ 应收账款: 1, 预收账款: 1 })
+  })
+
+  it('无汇总表 Sheet 报错', () => {
+    const buf = makeWorkbook([{ name: 'Sheet1', aoa: [['a', 'b']] }])
+    const r = parseTransactionWorkbook(buf, 'bad.xls', resolvers())
+    expect(r.errors).toHaveLength(1)
+    expect(r.errors[0].message).toContain('未找到账龄汇总表')
+  })
+
+  it('缺少截止日期时整 Sheet 跳过并报错', () => {
+    const buf = makeWorkbook([{
+      name: 'AR-账龄汇总表',
+      aoa: [['应收款账龄分析明细表'], AR_HEADER, AR_SUB, arRow('330058', 'C001', '客户甲', '112201', 0, 10, [10, 0, 0, 0, 0, 0, 0, 0, 0, 0])],
+    }])
+    const r = parseTransactionWorkbook(buf, 'test.xls', resolvers())
+    expect(r.records).toHaveLength(0)
+    expect(r.errors.some((e) => e.message.includes('截止日期'))).toBe(true)
+  })
+
+  it('空明细 Sheet 仍申报覆盖范围：标题公司 + 截止日期 + recordCount=0', () => {
+    const buf = makeWorkbook([{
+      name: 'PER_AR-账龄汇总表',
+      // 仅标题/表头，无任何数据行（该期确无预收往来款）
+      aoa: [...AR_TITLE_ROWS, AR_HEADER, AR_SUB],
+    }])
+    const r = parseTransactionWorkbook(buf, 'empty.xls', resolvers())
+    expect(r.errors).toHaveLength(0)
+    expect(r.records).toHaveLength(0)
+    expect(r.sheets).toHaveLength(1)
+    expect(r.sheets[0].recordCount).toBe(0)
+    expect(r.sheets[0].cutoffDate).toBe('2026-04-30')
+    expect(r.sheets[0].declaredCompanyCode).toBe('EN330058')
+  })
+
+  it('标题公司无法解析时回退首条记录公司', () => {
+    const buf = makeWorkbook([{
+      name: 'AR-账龄汇总表',
+      aoa: [
+        ['应收款账龄分析明细表'],
+        ['公司:未知公司名', null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, '截止日期:2026-04-30'],
+        AR_HEADER, AR_SUB,
+        arRow('330058', 'C001', '客户甲', '112201', 0, 10, [10, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+      ],
+    }])
+    const r = parseTransactionWorkbook(buf, 'test.xls', resolvers())
+    expect(r.sheets[0].declaredCompanyCode).toBe('EN330058')
+  })
+})

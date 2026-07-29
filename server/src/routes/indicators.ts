@@ -24,6 +24,11 @@ function sendXlsx(res: Response, buffer: Buffer, filename: string): void {
   res.send(buffer)
 }
 
+/** 解析布尔查询参数（'1'/'true' 视为 true） */
+function boolQuery(v: unknown): boolean {
+  return v === '1' || v === 'true'
+}
+
 router.use(authenticate)
 
 // GET /indicators/tree?type=operating|static
@@ -39,6 +44,7 @@ router.get('/operating', requirePermission('indicators:view', 'view'), asyncHand
   const data = await IndicatorsService.getOperating(scopeOf(authUser), {
     companyCode: req.query.companyCode as string | undefined,
     period: req.query.period as string | undefined,
+    excludeReclassify: boolQuery(req.query.excludeReclassify),
   })
   sendOk(res, data)
 }))
@@ -48,6 +54,7 @@ router.get('/static', requirePermission('indicators:view', 'view'), asyncHandler
   const authUser = req.authUser as AuthUserContext
   const data = await IndicatorsService.getStatic(scopeOf(authUser), {
     companyCode: req.query.companyCode as string | undefined,
+    excludeReclassify: boolQuery(req.query.excludeReclassify),
   })
   sendOk(res, data)
 }))

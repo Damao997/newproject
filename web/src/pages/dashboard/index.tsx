@@ -59,7 +59,7 @@ export default function DashboardPage() {
         { header: '收入(万)', key: 'revenue', width: 14 },
         { header: '成本(万)', key: 'cost', width: 14 },
         { header: '毛利(万)', key: 'profit', width: 14 },
-        { header: '预算(万)', key: 'budget', width: 14 },
+        { header: '月均预算(万)', key: 'budget', width: 14 },
       ],
       rows: trendData.map((r) => ({
         period: r.period,

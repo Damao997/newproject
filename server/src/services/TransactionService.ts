@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
+import { getFiscalStartMonth, formatPeriod, periodsInRange, fiscalYearLabel } from '../lib/period'
 
 /**
  * 往来分析服务：六大往来总览、明细查询、账龄分析、内部往来抵消。
@@ -11,6 +12,18 @@ import { recordAudit } from '../middleware/audit'
 const AGING_BUCKETS = ['1个月', '2个月', '3个月', '4个月', '5个月', '6个月', '半年到1年', '1年到2年', '2年到3年', '3年以上'] as const
 
 const AGING_FIELDS = ['aging1m', 'aging2m', 'aging3m', 'aging4m', 'aging5m', 'aging6m', 'aging6mTo1y', 'aging1yTo2y', 'aging2yTo3y', 'aging3yPlus'] as const
+
+/** 账龄分析展示归集：10 段 → 5 段（半年以上 = 半年到1年段；1年至3年 = 1-2年 + 2-3年） */
+const AGING_GROUP_DEFS: [string, (typeof AGING_FIELDS)[number][]][] = [
+  ['1-3月', ['aging1m', 'aging2m', 'aging3m']],
+  ['4-6月', ['aging4m', 'aging5m', 'aging6m']],
+  ['半年以上', ['aging6mTo1y']],
+  ['1年至3年', ['aging1yTo2y', 'aging2yTo3y']],
+  ['3年以上', ['aging3yPlus']],
+]
+
+/** 总览固定展示顺序：应收 → 预付 → 其他应收 → 应付 → 预收 → 其他应付 */
+export const OVERVIEW_TYPE_ORDER = ['应收账款', '预付账款', '其他应收款', '应付账款', '预收账款', '其他应付款']
 
 export interface TransactionOverviewItem {
   transactionType: string
@@ -72,6 +85,67 @@ export interface InternalSummaryRow {
   recordCount: number
 }
 
+export interface TransactionTrendSeries {
+  companyCode: string
+  companyName: string | null
+  points: (number | null)[]
+}
+
+export interface TransactionTrendResult {
+  periods: string[]
+  series: TransactionTrendSeries[]
+}
+
+/** 科目筛选选项：hasData 标识该科目当前是否有交易数据 */
+export interface AccountOption {
+  accountCode: string
+  accountDesc: string | null
+  hasData: boolean
+}
+
+// ===== 导入覆盖矩阵 =====
+
+export type CoverageCellStatus = 'active' | 'empty' | 'draft' | 'missing'
+
+export interface TransactionCoverageCell {
+  companyCode: string
+  period: string
+  transactionType: string
+  status: CoverageCellStatus
+  recordCount: number
+  draftBatchIds: string[]
+}
+
+export interface TransactionCoverageResult {
+  periods: string[]
+  companies: { code: string; name: string }[]
+  types: string[]
+  cells: TransactionCoverageCell[]
+  summary: { expected: number; active: number; empty: number; draft: number; missing: number; coverageRate: number }
+  draftBatches: { id: string; filename: string; createdAt: string; detailCount: number }[]
+}
+
+export interface BatchCoverageRow {
+  companyCode: string
+  companyName: string | null
+  period: string | null
+  transactionType: string
+  recordCount: number
+}
+
+/** 批次 coverageJson 申报项结构（导入时由汇总表 Sheet 产出，含 0 条的空 Sheet） */
+interface DeclaredCoverageItem {
+  companyCode: string
+  period: string
+  transactionType: string
+  recordCount: number
+}
+
+function parseDeclaredCoverage(coverageJson: unknown): DeclaredCoverageItem[] {
+  if (!Array.isArray(coverageJson)) return []
+  return coverageJson.filter((x): x is DeclaredCoverageItem => !!x && typeof x === 'object' && typeof (x as DeclaredCoverageItem).companyCode === 'string' && typeof (x as DeclaredCoverageItem).period === 'string')
+}
+
 interface ListParams {
   page?: number
   pageSize?: number
@@ -84,6 +158,8 @@ interface ListParams {
   isSettled?: boolean
   minAmount?: number
   maxAmount?: number
+  period?: string
+  accountCodes?: string[]
 }
 
 function toNumber(v: unknown): number {
@@ -131,11 +207,15 @@ function toDetailDto(row: Record<string, unknown>): TransactionDetailDto {
 
 export const TransactionService = {
   /**
-   * 六大往来总览：按往来类型汇总期末余额、账龄分布、内部/外部笔数
+   * 六大往来总览：按往来类型汇总期末余额、账龄分布、内部/外部笔数。
+   * 期末余额为时点数，跨期间求和会重复累加，因此支持 period 单期过滤（前端默认传最新期间）；
+   * companyCodes 多选 IN 过滤，空/未传 = 全部公司。
    */
-  async getOverview(companyCode?: string): Promise<TransactionOverviewItem[]> {
+  async getOverview(params: { companyCodes?: string[]; period?: string } = {}): Promise<TransactionOverviewItem[]> {
+    const companyCodes = (params.companyCodes ?? []).filter(Boolean)
     const where: Record<string, unknown> = {}
-    if (companyCode) where.companyCode = companyCode
+    if (companyCodes.length) where.companyCode = { in: companyCodes }
+    if (params.period) where.period = params.period
 
     const rows = await prisma.transactionDetail.groupBy({
       by: ['transactionType', 'direction'],
@@ -167,7 +247,7 @@ export const TransactionService = {
       else entry.external = r._count.id
     }
 
-    return rows.map((r) => {
+    const items = rows.map((r) => {
       const s = r._sum
       const ie = internalMap.get(r.transactionType) || { internal: 0, external: 0 }
       const aging: Record<string, number> = {}
@@ -188,10 +268,17 @@ export const TransactionService = {
         aging,
       }
     })
+
+    // 按固定顺序排列，未知类型排末尾
+    const orderOf = (t: string) => {
+      const i = OVERVIEW_TYPE_ORDER.indexOf(t)
+      return i < 0 ? OVERVIEW_TYPE_ORDER.length : i
+    }
+    return items.sort((a, b) => orderOf(a.transactionType) - orderOf(b.transactionType))
   },
 
   /**
-   * 往来明细分页查询
+   * 往来明细分页查询（固定排除零余额行，提升可读性）
    */
   async listDetails(params: ListParams) {
     const page = Math.max(params.page || 1, 1)
@@ -201,6 +288,9 @@ export const TransactionService = {
     if (params.companyCode) where.companyCode = params.companyCode
     if (params.transactionType) where.transactionType = params.transactionType
     if (params.direction) where.direction = params.direction
+    if (params.period) where.period = params.period
+    const detailAccountCodes = (params.accountCodes ?? []).filter(Boolean)
+    if (detailAccountCodes.length) where.accountCode = { in: detailAccountCodes }
     if (params.isInternal !== undefined) where.isInternal = params.isInternal
     if (params.internalType) where.internalType = params.internalType
     if (params.isSettled !== undefined) where.isSettled = params.isSettled
@@ -210,18 +300,19 @@ export const TransactionService = {
         { counterpartyName: { contains: params.counterpartyKeyword, mode: 'insensitive' } },
       ]
     }
-    if (params.minAmount !== undefined || params.maxAmount !== undefined) {
-      where.closingBalance = {}
-      if (params.minAmount !== undefined) (where.closingBalance as Record<string, unknown>).gte = params.minAmount
-      if (params.maxAmount !== undefined) (where.closingBalance as Record<string, unknown>).lte = params.maxAmount
-    }
+    // 零余额行固定隐藏；与金额区间筛选用 AND 叠加，避免同字段条件互相覆盖
+    const balanceConds: Record<string, unknown>[] = [{ closingBalance: { not: 0 } }]
+    if (params.minAmount !== undefined) balanceConds.push({ closingBalance: { gte: params.minAmount } })
+    if (params.maxAmount !== undefined) balanceConds.push({ closingBalance: { lte: params.maxAmount } })
+    where.AND = balanceConds
 
     const [items, total] = await Promise.all([
       prisma.transactionDetail.findMany({
         where,
         skip: (page - 1) * pageSize,
         take: pageSize,
-        orderBy: { createdAt: 'desc' },
+        // 按期末余额倒序（从大到小），同额时按创建时间稳定排序
+        orderBy: [{ closingBalance: 'desc' }, { createdAt: 'desc' }],
       }),
       prisma.transactionDetail.count({ where }),
     ])
@@ -236,12 +327,17 @@ export const TransactionService = {
   },
 
   /**
-   * 账龄分析：按公司×往来类型×往来对象汇总账龄分布
+   * 账龄分析：按公司×往来类型×往来对象汇总账龄分布。
+   * 账龄 10 段归集为 5 段展示（1-3月 / 4-6月 / 半年以上 / 1年至3年 / 3年以上）；
+   * 支持 period 单期过滤（期末余额为时点数）与科目多选；结果按期末余额倒序。
    */
-  async getAgingAnalysis(params: { companyCode?: string; transactionType?: string; groupBy?: 'type' | 'counterparty' | 'account' }) {
+  async getAgingAnalysis(params: { companyCode?: string; transactionType?: string; groupBy?: 'type' | 'counterparty' | 'account'; period?: string; accountCodes?: string[] }) {
     const where: Record<string, unknown> = {}
     if (params.companyCode) where.companyCode = params.companyCode
     if (params.transactionType) where.transactionType = params.transactionType
+    if (params.period) where.period = params.period
+    const accountCodes = (params.accountCodes ?? []).filter(Boolean)
+    if (accountCodes.length) where.accountCode = { in: accountCodes }
     // 排除已抵消的内部往来
     where.isEliminated = false
 
@@ -265,12 +361,12 @@ export const TransactionService = {
       },
     }) as Array<{ _sum: Record<string, unknown> } & Record<string, unknown>>
 
-    return rows.map((r) => {
+    const result = rows.map((r) => {
       const s = r._sum
       const aging: Record<string, number> = {}
-      AGING_BUCKETS.forEach((bucket, i) => {
-        aging[bucket] = toNumber(s[AGING_FIELDS[i]])
-      })
+      for (const [group, fields] of AGING_GROUP_DEFS) {
+        aging[group] = Math.round(fields.reduce((sum, f) => sum + toNumber(s[f]), 0) * 100) / 100
+      }
       const row: Record<string, unknown> = {
         closingBalance: toNumber(s.closingBalance),
         aging,
@@ -279,6 +375,47 @@ export const TransactionService = {
         row[key] = r[key]
       }
       return row
+    })
+    // 按期末余额倒序（从大到小）
+    return result.sort((a, b) => (b.closingBalance as number) - (a.closingBalance as number))
+  },
+
+  /**
+   * 会计科目列表（供明细/账龄分析的科目多选筛选）：
+   * 以 transaction_account 主数据为全集，与 transaction_detail 实际出现的科目合并，
+   * 标注 hasData（是否有交易数据）；实际有数据但主数据缺失的科目也保留（防主数据滞后）。
+   * 传 transactionType 时两侧同时按该往来类型过滤。排序：有数据在前，其后按科目编码升序。
+   */
+  async listAccounts(params: { transactionType?: string } = {}): Promise<AccountOption[]> {
+    const typeWhere = params.transactionType ? { transactionType: params.transactionType } : {}
+    const [masters, details] = await Promise.all([
+      prisma.transactionAccount.findMany({
+        where: { status: 'active', ...typeWhere },
+        select: { code: true, name: true },
+        orderBy: { orderNo: 'asc' },
+      }),
+      prisma.transactionDetail.findMany({
+        where: typeWhere,
+        distinct: ['accountCode'],
+        select: { accountCode: true, accountDesc: true },
+      }),
+    ])
+
+    const dataMap = new Map(details.map((d) => [d.accountCode, d.accountDesc]))
+    const options: AccountOption[] = masters.map((m) => ({
+      accountCode: m.code,
+      accountDesc: m.name,
+      hasData: dataMap.has(m.code),
+    }))
+    // 主数据未覆盖但实际存在的科目（新科目/未维护），名称取明细中的科目说明
+    const masterCodes = new Set(masters.map((m) => m.code))
+    for (const [code, desc] of dataMap) {
+      if (!masterCodes.has(code)) options.push({ accountCode: code, accountDesc: desc, hasData: true })
+    }
+
+    return options.sort((a, b) => {
+      if (a.hasData !== b.hasData) return a.hasData ? -1 : 1
+      return a.accountCode.localeCompare(b.accountCode)
     })
   },
 
@@ -307,7 +444,7 @@ export const TransactionService = {
   },
 
   /**
-   * 内部往来镜像校验：同一对内部公司 AR侧+AP侧应≈0
+   * 内部往来镜像校验：同一对内部公司 AR侧与AP侧应相抵（余额已按科目性质归一为正号，差额 = AR - AP）
    */
   async getInternalMirrorCheck(companyCode?: string) {
     const summary = await this.getInternalSummary(companyCode)
@@ -326,7 +463,7 @@ export const TransactionService = {
 
     return Array.from(pairMap.values()).map((p) => ({
       ...p,
-      difference: p.arAmount + p.apAmount,
+      difference: p.arAmount - p.apAmount,
     }))
   },
 
@@ -406,6 +543,239 @@ export const TransactionService = {
   },
 
   /**
+   * 往来余额变动趋势：单一往来类型，按 公司×期间(月) 聚合期末余额（DB 侧 groupBy 求和）。
+   * 期间轴两种模式：
+   *  - fiscalYear（形如 FY2026）：完整财年轴（起始月~次年起始月前一月，共 12 个月），未来无数据月补 null；
+   *  - 否则按 months：以该类型最新期间为终点回溯 months 个月（默认 12，上限 36），连续补全，缺数据月补 null。
+   * companyCodes 为空时返回全部公司逐公司曲线（不再合并为「全部公司」合计线）；非空时每公司一条线。
+   */
+  async getTrend(params: { transactionType: string; companyCodes?: string[]; months?: number; fiscalYear?: string }): Promise<TransactionTrendResult> {
+    const companyCodes = (params.companyCodes ?? []).filter(Boolean)
+    const companyWhere: Record<string, unknown> = { transactionType: params.transactionType }
+    if (companyCodes.length) companyWhere.companyCode = { in: companyCodes }
+
+    let periods: string[]
+    let dataWhere: Record<string, unknown>
+
+    if (params.fiscalYear) {
+      // 完整财年轴：起始月 ~ 次年起始月前一月（共 12 个月）
+      const startYear = Number(String(params.fiscalYear).replace(/^FY/i, ''))
+      if (!Number.isInteger(startYear)) throw errors.badRequest('财年格式不合法，应形如 FY2026')
+      const startMonth = getFiscalStartMonth()
+      const start = formatPeriod(startYear, startMonth)
+      const end = formatPeriod(startYear, startMonth + 11)
+      periods = periodsInRange(start, end)
+      dataWhere = { ...companyWhere, period: { gte: start, lte: end } }
+    } else {
+      const months = Math.min(Math.max(params.months || 12, 1), 36)
+      // 以该类型（含公司筛选）数据的最新期间为终点
+      const latest = await prisma.transactionDetail.findFirst({
+        where: { ...companyWhere, period: { not: null } },
+        orderBy: { period: 'desc' },
+        select: { period: true },
+      })
+      if (!latest?.period) return { periods: [], series: [] }
+      // 期间轴：终点回溯 months-1 个月，连续补全（YYYY-MM 可字典序比较）
+      const [ey, em] = latest.period.split('-').map(Number)
+      const endIdx = ey * 12 + (em - 1)
+      const startIdx = endIdx - (months - 1)
+      const ymOf = (idx: number) => `${Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, '0')}`
+      periods = []
+      for (let i = startIdx; i <= endIdx; i++) periods.push(ymOf(i))
+      dataWhere = { ...companyWhere, period: { gte: periods[0], lte: latest.period } }
+    }
+
+    const rows = await prisma.transactionDetail.groupBy({
+      by: ['companyCode', 'companyName', 'period'],
+      where: dataWhere,
+      _sum: { closingBalance: true },
+    })
+
+    // 每公司一条线（按公司编码升序）；companyCodes 为空时即全部公司逐公司曲线
+    const byCompany = new Map<string, { companyName: string | null; byPeriod: Map<string, number> }>()
+    for (const r of rows) {
+      if (!r.period) continue
+      let entry = byCompany.get(r.companyCode)
+      if (!entry) {
+        entry = { companyName: r.companyName, byPeriod: new Map() }
+        byCompany.set(r.companyCode, entry)
+      }
+      entry.byPeriod.set(r.period, (entry.byPeriod.get(r.period) || 0) + toNumber(r._sum.closingBalance))
+    }
+    const series = [...byCompany.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([companyCode, entry]) => ({
+        companyCode,
+        companyName: entry.companyName,
+        points: periods.map((p) => (entry.byPeriod.has(p) ? Number(entry.byPeriod.get(p)!.toFixed(2)) : null)),
+      }))
+    return { periods, series }
+  },
+
+  /**
+   * 往来数据涉及的财年列表（倒序）：供趋势图财年筛选。
+   * 由明细期间经 fiscalYearLabel 归集去重。
+   */
+  async listFiscalYears(): Promise<string[]> {
+    const rows = await prisma.transactionDetail.findMany({ distinct: ['period'], select: { period: true } })
+    const fys = new Set<string>()
+    for (const r of rows) if (r.period) fys.add(fiscalYearLabel(r.period))
+    return [...fys].sort((a, b) => b.localeCompare(a))
+  },
+
+  /**
+   * 导入覆盖矩阵：期望集合 = active 单体公司 × 最近 months 个月 × 六大往来类型，
+   * 实际状态由 transaction_detail + import_batch（含 coverageJson 申报范围）实时推导：
+   * active=生效批次有明细 / empty=无明细但被生效批次申报（已导入·该期确无往来款）/
+   * draft=仅草稿批次有数据或申报（已传未激活）/ missing=无任何数据。
+   * 期间轴终点 = max(数据最新期间, 当前自然月)。历史批次无 coverageJson，其真空单元格仍为 missing。
+   */
+  async getImportCoverage(params: { months?: number } = {}): Promise<TransactionCoverageResult> {
+    const months = Math.min(Math.max(params.months || 6, 1), 24)
+
+    const [companies, activeBatches, draftBatches, latestRow] = await Promise.all([
+      prisma.company.findMany({
+        where: { entityType: 'single', status: 'active' },
+        select: { code: true, name: true },
+        orderBy: { orderNo: 'asc' },
+      }),
+      prisma.importBatch.findMany({ where: { dataType: 'transaction', lifecycleStatus: 'active' }, select: { id: true, coverageJson: true } }),
+      prisma.importBatch.findMany({
+        where: { dataType: 'transaction', lifecycleStatus: 'draft' },
+        select: { id: true, fileName: true, createdAt: true, detailCount: true, coverageJson: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.transactionDetail.findFirst({ where: { period: { not: null } }, orderBy: { period: 'desc' }, select: { period: true } }),
+    ])
+
+    // 期间轴：终点取 数据最新期间 与 当前自然月 的较大者，回溯 months 个月
+    const now = new Date()
+    const nowYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const endYm = latestRow?.period && latestRow.period > nowYm ? latestRow.period : nowYm
+    const [ey, em] = endYm.split('-').map(Number)
+    const endIdx = ey * 12 + (em - 1)
+    const periods: string[] = []
+    for (let i = endIdx - (months - 1); i <= endIdx; i++) {
+      periods.push(`${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`)
+    }
+
+    const activeIds = activeBatches.map((b) => b.id)
+    const draftIds = draftBatches.map((b) => b.id)
+    const keyOf = (c: string, p: string, t: string) => `${c}|${p}|${t}`
+
+    // 生效数据：三元组 → 笔数
+    const activeCount = new Map<string, number>()
+    if (activeIds.length > 0) {
+      const rows = await prisma.transactionDetail.groupBy({
+        by: ['companyCode', 'period', 'transactionType'],
+        where: { batchId: { in: activeIds }, period: { in: periods } },
+        _count: { id: true },
+      })
+      for (const r of rows) {
+        if (r.period) activeCount.set(keyOf(r.companyCode, r.period, r.transactionType), r._count.id)
+      }
+    }
+
+    // 草稿数据：三元组 → 批次 id 集合（明细 + 申报范围均计入）
+    const draftByKey = new Map<string, Set<string>>()
+    if (draftIds.length > 0) {
+      const rows = await prisma.transactionDetail.findMany({
+        where: { batchId: { in: draftIds }, period: { in: periods } },
+        select: { companyCode: true, period: true, transactionType: true, batchId: true },
+        distinct: ['companyCode', 'period', 'transactionType', 'batchId'],
+      })
+      for (const r of rows) {
+        if (!r.period || !r.batchId) continue
+        const key = keyOf(r.companyCode, r.period, r.transactionType)
+        if (!draftByKey.has(key)) draftByKey.set(key, new Set())
+        draftByKey.get(key)!.add(r.batchId)
+      }
+      for (const b of draftBatches) {
+        for (const item of parseDeclaredCoverage(b.coverageJson)) {
+          if (!periods.includes(item.period)) continue
+          const key = keyOf(item.companyCode, item.period, item.transactionType)
+          if (!draftByKey.has(key)) draftByKey.set(key, new Set())
+          draftByKey.get(key)!.add(b.id)
+        }
+      }
+    }
+
+    // 生效批次申报范围：无明细但被申报 → 已导入·该期确无往来款
+    const declaredActive = new Set<string>()
+    for (const b of activeBatches) {
+      for (const item of parseDeclaredCoverage(b.coverageJson)) {
+        if (periods.includes(item.period)) declaredActive.add(keyOf(item.companyCode, item.period, item.transactionType))
+      }
+    }
+
+    const cells: TransactionCoverageCell[] = []
+    let activeCells = 0
+    let emptyCells = 0
+    let draftCells = 0
+    for (const company of companies) {
+      for (const period of periods) {
+        for (const transactionType of OVERVIEW_TYPE_ORDER) {
+          const key = keyOf(company.code, period, transactionType)
+          const recordCount = activeCount.get(key) ?? 0
+          const draftSet = draftByKey.get(key)
+          let status: CoverageCellStatus = 'missing'
+          if (recordCount > 0) {
+            status = 'active'
+            activeCells++
+          } else if (declaredActive.has(key)) {
+            status = 'empty'
+            emptyCells++
+          } else if (draftSet && draftSet.size > 0) {
+            status = 'draft'
+            draftCells++
+          }
+          cells.push({ companyCode: company.code, period, transactionType, status, recordCount, draftBatchIds: draftSet ? [...draftSet] : [] })
+        }
+      }
+    }
+
+    const expected = cells.length
+    return {
+      periods,
+      companies,
+      types: [...OVERVIEW_TYPE_ORDER],
+      cells,
+      summary: {
+        expected,
+        active: activeCells,
+        empty: emptyCells,
+        draft: draftCells,
+        missing: expected - activeCells - emptyCells - draftCells,
+        // 真空数据（empty）视为已完成导入
+        coverageRate: expected > 0 ? Number((((activeCells + emptyCells) / expected) * 100).toFixed(1)) : 0,
+      },
+      draftBatches: draftBatches.map((b) => ({ id: b.id, filename: b.fileName, createdAt: b.createdAt.toISOString(), detailCount: b.detailCount })),
+    }
+  },
+
+  /**
+   * 批次覆盖明细：该批次包含的 (公司, 期间, 往来类型) 三元组及笔数
+   */
+  async getBatchCoverage(batchId: string): Promise<BatchCoverageRow[]> {
+    const batch = await prisma.importBatch.findUnique({ where: { id: batchId }, select: { id: true } })
+    if (!batch) throw errors.notFound('导入批次不存在')
+    const rows = await prisma.transactionDetail.groupBy({
+      by: ['companyCode', 'companyName', 'period', 'transactionType'],
+      where: { batchId },
+      _count: { id: true },
+    })
+    return rows
+      .map((r) => ({
+        companyCode: r.companyCode,
+        companyName: r.companyName,
+        period: r.period,
+        transactionType: r.transactionType,
+        recordCount: r._count.id,
+      }))
+      .sort((a, b) => `${a.companyCode}|${a.period}|${a.transactionType}`.localeCompare(`${b.companyCode}|${b.period}|${b.transactionType}`))
+  },
+
+  /**
    * 获取所有往来对象（去重）用于前端筛选
    */
   async listCounterparties(companyCode?: string) {
@@ -432,5 +802,18 @@ export const TransactionService = {
       select: { cutoffDate: true },
     })
     return row?.cutoffDate || null
+  },
+
+  /**
+   * 已导入数据的去重期间列表（倒序），供明细筛选期间下拉
+   */
+  async listPeriods(): Promise<string[]> {
+    const rows = await prisma.transactionDetail.findMany({
+      where: { period: { not: null } },
+      select: { period: true },
+      distinct: ['period'],
+      orderBy: { period: 'desc' },
+    })
+    return rows.map((r) => r.period!).filter(Boolean)
   },
 }

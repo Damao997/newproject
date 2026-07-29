@@ -4,7 +4,7 @@ import { persist } from 'zustand/middleware'
 /**
  * 全局财年选择状态：由顶部导航栏的财年选择器写入，
  * 看板/指标/数据浏览的期间下拉按选中财年过滤可用期间。
- * null 表示不过滤（全部财年）。
+ * null 仅为未初始化/无数据时的过渡态（header 会自动归一化为最新财年）。
  */
 interface PeriodState {
   fiscalYear: string | null
@@ -30,6 +30,7 @@ export function filterPeriodsByFiscalYear(
   fiscalYear: string | null,
   fiscalStartMonth: number,
 ): string[] {
+  // 兜底：财年尚未归一化（数据未加载/无 active 批次）时不过滤，避免过渡态下期间候选为空
   if (!fiscalYear) return periods
   const startYear = Number(fiscalYear.replace(/^FY/, ''))
   if (!Number.isFinite(startYear)) return periods

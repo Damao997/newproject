@@ -23,6 +23,14 @@ export async function exportReportToDocx(data: ReportExportData): Promise<void> 
     }),
     new Paragraph({ text: '' }),
   )
+  // 目录（章节标题清单）
+  if (data.sections.length > 0) {
+    children.push(new Paragraph({ text: '目录', heading: HeadingLevel.HEADING_1 }))
+    data.sections.forEach((s, idx) => {
+      children.push(new Paragraph({ children: [new TextRun({ text: `${idx + 1}. ${s.title}`, size: 22 })] }))
+    })
+    children.push(new Paragraph({ text: '' }))
+  }
   data.sections.forEach((s, idx) => {
     children.push(new Paragraph({ text: `${idx + 1}. ${s.title}`, heading: HeadingLevel.HEADING_2 }))
     const body = s.missing ? '（该单项分析原文已删除）' : s.plainText || '（暂无内容）'

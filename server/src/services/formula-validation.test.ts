@@ -11,6 +11,7 @@ import { DataService } from './DataService'
 let dbReady = false
 let adminId = ''
 const tempMetricCodes: string[] = []
+const tempSubjectCodes: string[] = []
 let realCodeA = 'OP_001'
 let realCodeB = 'OP_002'
 
@@ -36,9 +37,18 @@ afterAll(async () => {
   const tempIds = tempMetrics.map((m) => m.id)
   await basePrisma.metricDefinitionHistory.deleteMany({ where: { metricId: { in: tempIds } } }).catch(() => undefined)
   await basePrisma.metric.deleteMany({ where: { code: { in: tempMetricCodes } } }).catch(() => undefined)
+  await basePrisma.accountSubject.deleteMany({ where: { code: { in: tempSubjectCodes } } }).catch(() => undefined)
 })
 
 const ctx = () => ({ userId: adminId, traceId: 'test' })
+
+/** 创建临时科目（calc 指标创建的科目体系前置条件），afterAll 统一清理 */
+async function createTempSubject(code: string): Promise<void> {
+  tempSubjectCodes.push(code)
+  await basePrisma.accountSubject.create({
+    data: { code, name: `临时科目_${code}`, subjectType: 'operating', level: 1, parentCode: null, category: '自定义', direction: 'credit', isLeaf: true },
+  })
+}
 
 describe('validateFormulaChange 全图校验', () => {
   it('合法公式：dependsOn 重算且无告警', async () => {
@@ -52,6 +62,15 @@ describe('validateFormulaChange 全图校验', () => {
     if (!dbReady) return
     const res = await validateFormulaChange('CALC_TMP_BAD', '{OP_NOT_EXIST} + 1')
     expect(res.warnings.some((w) => w.includes('不存在'))).toBe(true)
+  })
+
+  it('跨期间引用：合法后缀/伪操作数通过，dependsOn 剥离后缀；非法维度码告警', async () => {
+    if (!dbReady) return
+    const ok = await validateFormulaChange('CALC_TMP_TURN', `({${realCodeA}@YEAR_START} + {${realCodeA}}) / 2 * {DAYS_YTD} / {${realCodeB}@YTD_ACTUAL}`)
+    expect(ok.warnings).toEqual([])
+    expect(ok.dependsOn.sort()).toEqual([realCodeA, realCodeB].sort())
+    const bad = await validateFormulaChange('CALC_TMP_TURN', `{${realCodeA}@BAD_DIM}`)
+    expect(bad.warnings.some((w) => w.includes('无效的期间维度码'))).toBe(true)
   })
 
   it('多节点间接环（X→Y→X）应被检测', async () => {
@@ -70,6 +89,7 @@ describe('DataService 公式变更', () => {
     if (!dbReady) return
     const code = `CALC_CR_${Date.now().toString(36)}`
     tempMetricCodes.push(code)
+    await createTempSubject(code)
     await DataService.createMetric({ code, name: '创建测试', dataType: 'calc', formula: `{${realCodeA}} - {${realCodeB}}`, category: '自定义' }, ctx())
     const metric = await basePrisma.metric.findUnique({ where: { code } })
     expect((metric?.dependsOn as string[]).sort()).toEqual([realCodeA, realCodeB].sort())
@@ -82,6 +102,7 @@ describe('DataService 公式变更', () => {
     if (!dbReady) return
     const code = `CALC_UP_${Date.now().toString(36)}`
     tempMetricCodes.push(code)
+    await createTempSubject(code)
     const created = await DataService.createMetric({ code, name: '更新测试', dataType: 'calc', formula: `{${realCodeA}}`, category: '自定义' }, ctx())
     const newFormula = `{${realCodeA}} + {${realCodeB}}`
     await DataService.updateMetric(created.id, { formula: newFormula }, ctx())
@@ -97,6 +118,7 @@ describe('DataService 公式变更', () => {
     if (!dbReady) return
     const code = `CALC_CLR_${Date.now().toString(36)}`
     tempMetricCodes.push(code)
+    await createTempSubject(code)
     const created = await DataService.createMetric({ code, name: '清空测试', dataType: 'calc', formula: `{${realCodeA}}`, category: '自定义' }, ctx())
     await DataService.updateMetric(created.id, { formula: null }, ctx())
     const metric = await basePrisma.metric.findUnique({ where: { code } })
@@ -108,6 +130,7 @@ describe('DataService 公式变更', () => {
     if (!dbReady) return
     const code = `CALC_INV_${Date.now().toString(36)}`
     tempMetricCodes.push(code)
+    await createTempSubject(code)
     const created = await DataService.createMetric({ code, name: '非法测试', dataType: 'calc', formula: `{${realCodeA}}`, category: '自定义' }, ctx())
     await expect(DataService.updateMetric(created.id, { formula: '{OP_NOT_EXIST} + 1' }, ctx())).rejects.toBeTruthy()
     const metric = await basePrisma.metric.findUnique({ where: { code } })

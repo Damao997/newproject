@@ -8,6 +8,7 @@ import {
   periodMinusYears,
   periodsInRange,
   fyLabelOfDate,
+  fiscalYtdDays,
 } from './period'
 
 /** 期数工具单测：覆盖自然年与自定义起始月（S=4）两种财年口径 */
@@ -60,5 +61,19 @@ describe('fyLabelOfDate', () => {
     expect(fyLabelOfDate(new Date(Date.UTC(2026, 3, 15)), 4)).toBe('FY2026') // 4 月
     expect(fyLabelOfDate(new Date(Date.UTC(2026, 2, 15)), 4)).toBe('FY2025') // 3 月
     expect(fyLabelOfDate(new Date(Date.UTC(2026, 3, 15)), 1)).toBe('FY2026') // 自然年
+  })
+})
+
+describe('fiscalYtdDays 财年累计天数', () => {
+  it('自然年（S=1）：1 月单月 / 上半年 / 全年（含闰年）', () => {
+    expect(fiscalYtdDays('2026-01', 1)).toBe(31)
+    expect(fiscalYtdDays('2026-06', 1)).toBe(31 + 28 + 31 + 30 + 31 + 30) // 181
+    expect(fiscalYtdDays('2026-12', 1)).toBe(365)
+    expect(fiscalYtdDays('2024-12', 1)).toBe(366) // 闰年
+    expect(fiscalYtdDays('2024-02', 1)).toBe(31 + 29) // 闰 2 月
+  })
+  it('自定义起始月（S=4）：跨自然年累计', () => {
+    expect(fiscalYtdDays('2026-04', 4)).toBe(30) // 起始月当月
+    expect(fiscalYtdDays('2027-01', 4)).toBe(30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31 + 31) // 2026-04..2027-01
   })
 })

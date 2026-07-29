@@ -20,6 +20,7 @@ import {
   usePreviewReclassifyCompany,
   useReclassifyCompany,
 } from '@/hooks/api-queries'
+import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { formatMoney, cn } from '@/lib/utils'
 import { ArrowLeftRight } from 'lucide-react'
 import { TEMPLATE_LABEL, FeedbackAlert, PreviewStats, SubjectMultiPicker, SectionTitle, type PreviewStatItem } from './shared'
@@ -66,6 +67,8 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
   const { data: periodsData } = useAvailablePeriods()
   const availablePeriods = periodsData?.periods ?? []
   const entityCompanies = useMemo(() => (companies ?? []).filter((c) => c.type === 'entity'), [companies])
+  // 下拉选项跟随「显示简称」开关；确认弹窗文案仍用全称，保证高危操作确认的严谨性
+  const { displayNameMap } = useCompanyDisplayName()
 
   // 科目候选：静态模板取静态科目，否则取经营科目
   const subjectType = templateType === 'static' ? 'static' : 'operating'
@@ -243,7 +246,7 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
                   <SelectTrigger><SelectValue placeholder="选择源公司" /></SelectTrigger>
                   <SelectContent className="max-h-[280px]">
                     {entityCompanies.map((c) => (
-                      <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
+                      <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -265,7 +268,7 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
                   <SelectTrigger><SelectValue placeholder="选择目标公司" /></SelectTrigger>
                   <SelectContent className="max-h-[280px]">
                     {entityCompanies.filter((c) => c.code !== sourceCompanyCode).map((c) => (
-                      <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
+                      <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -303,12 +306,12 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
               )}
               {transferMode === 'amount' && (
                 <div className="space-y-1">
-                  <Label>转移金额（元）</Label>
+                  <Label>转移金额（万元）</Label>
                   <Input
                     type="number"
                     min={0}
                     step="0.01"
-                    placeholder="如 100000"
+                    placeholder="如 100"
                     value={amountInput}
                     aria-invalid={!!amountError}
                     className={cn(amountError && 'border-destructive focus-visible:ring-destructive')}

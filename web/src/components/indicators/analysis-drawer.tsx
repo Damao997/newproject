@@ -179,16 +179,17 @@ export function AnalysisDrawer({ open, target, onClose }: AnalysisDrawerProps) {
           </button>
         </div>
 
-        {/* 指标上下文：按值类型格式化，仅金额类标注“(万)”；比率科目同比为百分点差 */}
+        {/* 指标上下文：按值类型格式化，仅金额类标注“(万)”；比率科目同比为百分点差；达成率 = 本年累计 / 全年预算 */}
         {m && (() => {
           const vt = target.valueType
           const unit = vt === 'ratio' || vt === 'quantity' ? '' : '(万)'
           const fmt = (v: number) => formatMetricValue(v, vt)
           const yoyText = vt === 'ratio' ? `${((m.actual - m.samePeriod) * 100).toFixed(1)}pp` : formatPercent(calcYoy(m))
           return (
-            <div className="grid grid-cols-3 gap-2 border-b px-5 py-3 sm:grid-cols-5">
-              <ContextChip label={`预算${unit}`} value={fmt(m.budget)} />
+            <div className="grid grid-cols-3 gap-2 border-b px-5 py-3 sm:grid-cols-6">
+              <ContextChip label={`全年预算${unit}`} value={fmt(m.budget)} />
               <ContextChip label={`本月实际${unit}`} value={fmt(m.actual)} />
+              <ContextChip label={`本年累计${unit}`} value={fmt(m.ytd)} />
               <ContextChip label={`同期${unit}`} value={fmt(m.samePeriod)} />
               <ContextChip label="同比" value={yoyText} />
               <ContextChip label="达成率" value={formatPercent(calcAchievement(m))} />

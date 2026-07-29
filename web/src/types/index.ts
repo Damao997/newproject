@@ -62,6 +62,8 @@ export interface AccountSubject {
   level: number
   parentId?: string
   status: 'active' | 'inactive'
+  /** 值类型：金额（万元）/ 数量（整数）/ 比率（公式计算，不可直接调整） */
+  valueType?: 'amount' | 'quantity' | 'ratio'
 }
 
 export interface Metric {
@@ -119,7 +121,7 @@ export interface FactBudget {
 export interface ImportBatch {
   id: string
   filename: string
-  templateType: 'operating' | 'static' | 'budget'
+  templateType: 'operating' | 'static' | 'budget' | 'transaction' | 'inventory'
   status: 'draft' | 'active' | 'archived' | 'purged'
   rowCount?: number
   /** 入库明细数（unpivot 后的事实记录数） */
@@ -148,7 +150,10 @@ export interface ReclassifyLogDetail {
   mergedRows?: number
   createdRows?: number
   accountCodes?: string[] | null
-  /** subject_adjust：调减/调增与原因 */
+  /** subject_adjust：调整方式与调减/调增及原因 */
+  adjustMode?: 'both' | 'decrease' | 'increase'
+  /** subject_adjust：调整口径值类型（金额/数量），历史记录缺省按金额展示 */
+  valueType?: string
   decreaseAmount?: number
   increaseAmount?: number
   netChange?: number
@@ -271,6 +276,8 @@ export interface FilterParams {
   type?: string
   /** 是否包含已停用科目（data/subjects 接口，query 串传 'true'） */
   includeInactive?: string
+  /** 去除跨公司重分类影响（indicators 接口，按日志快照回溯原始口径） */
+  excludeReclassify?: boolean
 }
 
 // ===== 往来分析模块 =====
@@ -357,4 +364,245 @@ export interface TransactionFilterParams {
   isSettled?: boolean
   minAmount?: number
   maxAmount?: number
+  period?: string
+  /** 科目多选（逗号分隔编码串） */
+  accountCodes?: string
+}
+
+// ===== 往来科目筛选 =====
+
+/** 科目筛选选项：hasData=false 表示该科目在科目体系中已定义但当前无交易数据 */
+export interface TransactionAccountOption {
+  accountCode: string
+  accountDesc: string | null
+  hasData: boolean
+}
+
+// ===== 往来变动趋势 =====
+export interface TransactionTrendSeries {
+  companyCode: string
+  companyName: string | null
+  points: (number | null)[]
+}
+
+export interface TransactionTrendResult {
+  periods: string[]
+  series: TransactionTrendSeries[]
+}
+
+// ===== 往来导入（账龄汇总表） =====
+
+export interface TransactionImportIssue {
+  sheet: string
+  row: number
+  column: string
+  message: string
+}
+
+export interface TransactionActivationImpact {
+  newKeys: { companyCode: string; period: string; transactionType: string }[]
+  overlappingKeys: { companyCode: string; period: string; transactionType: string; existingCount: number }[]
+}
+
+export interface TransactionImportPreview {
+  filename: string
+  sheets: { sheetName: string; transactionType: string; direction: string; cutoffDate: string | null; recordCount: number }[]
+  dataRowCount: number
+  recordCount: number
+  errorCount: number
+  warningCount: number
+  errors: TransactionImportIssue[]
+  warnings: TransactionImportIssue[]
+  summary: {
+    typeCounts: Record<string, number>
+    companies: string[]
+    periods: string[]
+    totalClosingBalance: number
+    duplicateCount: number
+    duplicateSamples: string[]
+    counterpartyCount: number
+    internalCount: number
+  }
+  activationImpact: TransactionActivationImpact
+}
+
+// ===== 导入覆盖矩阵 =====
+
+export type CoverageCellStatus = 'active' | 'empty' | 'draft' | 'missing'
+
+export interface TransactionCoverageCell {
+  companyCode: string
+  period: string
+  transactionType: string
+  status: CoverageCellStatus
+  recordCount: number
+  draftBatchIds: string[]
+}
+
+export interface TransactionCoverageResult {
+  periods: string[]
+  companies: { code: string; name: string }[]
+  types: string[]
+  cells: TransactionCoverageCell[]
+  summary: { expected: number; active: number; empty: number; draft: number; missing: number; coverageRate: number }
+  draftBatches: { id: string; filename: string; createdAt: string; detailCount: number }[]
+}
+
+export interface BatchCoverageRow {
+  companyCode: string
+  companyName: string | null
+  period: string | null
+  transactionType: string
+  recordCount: number
+}
+
+export interface TransactionImportUploadResult {
+  filename: string
+  batch: ImportBatch | null
+  error: string | null
+}
+
+// ===== 催收管理 =====
+
+export type CollectionStatus = 'pending' | 'collecting' | 'partial' | 'full' | 'bad_debt'
+
+export interface CollectionPlanItem {
+  id: string
+  companyCode: string
+  companyName: string | null
+  counterpartyCode: string
+  counterpartyName: string | null
+  accountCode: string
+  overdueAmount: number
+  plannedDate: string
+  collectorId: string | null
+  method: string
+  expectedAmount: number | null
+  actualAmount: number | null
+  status: CollectionStatus
+  remark: string | null
+  createdAt: string
+}
+
+export interface CollectionLogItem {
+  id: string
+  planId: string
+  actionTime: string
+  actionBy: string | null
+  content: string
+  attachmentUrl: string | null
+}
+
+// ============ 分析报告（Reports 模块） ============
+
+export interface AnalysisItem {
+  id: string
+  companyCode: string
+  companyName: string | null
+  subjectCode: string
+  subjectName: string | null
+  subjectType: string
+  fiscalYear: string
+  period: string
+  title: string
+  content: string
+  metricContext: Record<string, unknown> | null
+  /** active=正常 / inactive=已删除（软删除） */
+  status: string
+  /** 被报告章节引用的来源（仅列表接口返回） */
+  refs?: AnalysisRef[]
+  createdBy: string | null
+  updatedBy: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+/** 引用某单项分析的报告来源 */
+export interface AnalysisRef {
+  reportId: string
+  reportTitle: string
+  reportStatus: string
+}
+
+export interface AnalysisInput {
+  companyCode: string
+  subjectCode: string
+  subjectType?: 'operating' | 'static'
+  fiscalYear: string
+  period: string
+  title: string
+  content: string
+  metricContext?: Record<string, unknown> | null
+}
+
+export interface ReportCompanyScope {
+  type: 'company' | 'summary'
+  code: string
+  name?: string | null
+}
+
+export interface ReportListItem {
+  id: string
+  title: string
+  fiscalYear: string
+  period: string
+  companyScope: ReportCompanyScope
+  status: string
+  currentVersion: number
+  createdBy: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ReportSectionView {
+  id: string
+  orderNo: number
+  title: string
+  content: string
+  analysisId: string | null
+  source: { companyCode: string; companyName: string | null; subjectCode: string; subjectName: string | null; period: string } | null
+  missing: boolean
+}
+
+export interface ReportDetail extends ReportListItem {
+  sections: ReportSectionView[]
+}
+
+export interface ReportSectionInput {
+  id?: string
+  analysisId?: string | null
+  title?: string
+  content?: string
+}
+
+export interface ReportVersionItem {
+  id: string
+  versionNo: number
+  changeSummary: string | null
+  changedBy: string | null
+  changedAt: string
+}
+
+/** 版本快照详情（查看/回退用） */
+export interface ReportVersionSnapshot {
+  versionNo: number
+  changeSummary: string | null
+  changedBy: string | null
+  changedAt: string
+  snapshot: {
+    title: string
+    fiscalYear: string
+    period: string
+    companyScope: ReportCompanyScope
+    sections: { title: string; content: string; analysisId: string | null; source: ReportSectionView['source']; missing: boolean }[]
+  }
+}
+
+export interface ReportExportData {
+  title: string
+  fiscalYear: string
+  period: string
+  scopeName: string | null
+  generatedAt: string
+  sections: { title: string; content: string; plainText: string; missing: boolean }[]
 }

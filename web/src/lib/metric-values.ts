@@ -73,7 +73,8 @@ export function computeMetricMap(
       }
     } else {
       const actual = valueMin + seeded(node.code, dim, period, 'actual') * range
-      const budget = actual * (0.9 + seeded(node.code, dim, period, 'budget') * 0.25)
+      // 预算为全年值（约月度量级 ×12），与真实口径一致，保证 mock 达成率数值合理
+      const budget = actual * 12 * (0.9 + seeded(node.code, dim, period, 'budget') * 0.25)
       const samePeriod = actual * (0.8 + seeded(node.code, dim, period, 'same') * 0.35)
       const ytd = actual * (5 + seeded(node.code, dim, period, 'ytd') * 2)
       const samePeriodYtd = ytd * (0.8 + seeded(node.code, dim, period, 'sytd') * 0.35)
@@ -99,9 +100,9 @@ export function calcYoy(mv: MetricValue): number {
   return mv.samePeriod ? (mv.actual - mv.samePeriod) / mv.samePeriod : 0
 }
 
-/** 达成率 = 本月实际 / 预算金额 */
+/** 达成率 = 本年累计 / 全年预算（预算为年度值，须用 YTD 累计作分子） */
 export function calcAchievement(mv: MetricValue): number {
-  return mv.budget ? mv.actual / mv.budget : 0
+  return mv.budget ? mv.ytd / mv.budget : 0
 }
 
 /** 累计同比 = 本年累计 相对 同期累计 */

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { applyCalcLayer, type CalcFormula, type ValueNode } from './AggregationService'
+import { applyCalcLayer, type CalcFormula, type CrossDimOptions, type ValueNode } from './AggregationService'
 
 /**
  * 计算层（applyCalcLayer）纯逻辑单测：不依赖 DB。
@@ -99,5 +99,43 @@ describe('applyCalcLayer 计算层', () => {
     const external = new Map<string, Record<string, number>>([['CURRENT_AMOUNT', { OP_NET: 200 }]])
     applyCalcLayer(roots, calc, ['CURRENT_AMOUNT'], external)
     expect(roe.values.CURRENT_AMOUNT).toBe(0.2) // 200 / 1000
+  })
+
+  it('跨维度公式（周转天数）：本期按字面维度、同期列平移去年口径、年初两列置 0', () => {
+    const STATIC_DIMS_ALL = ['CURRENT_AMOUNT', 'YEAR_START', 'SAME_PERIOD_AMOUNT', 'LAST_YEAR_START']
+    const inv = node('ST_INV', { CURRENT_AMOUNT: 120, YEAR_START: 80, SAME_PERIOD_AMOUNT: 100, LAST_YEAR_START: 60 })
+    const days = node('ST_DAYS', { CURRENT_AMOUNT: 0, YEAR_START: 0, SAME_PERIOD_AMOUNT: 0, LAST_YEAR_START: 0 })
+    const roots = [inv, days]
+    const calc: CalcFormula[] = [{
+      code: 'ST_DAYS',
+      formula: '({ST_INV@YEAR_START} + {ST_INV}) / 2 * {DAYS_YTD} / {OP_COST@YTD_ACTUAL}',
+      dependsOn: ['ST_INV', 'OP_COST'],
+    }]
+    const identity: Record<string, string> = {
+      CURRENT_AMOUNT: 'CURRENT_AMOUNT', YEAR_START: 'YEAR_START', SAME_PERIOD_AMOUNT: 'SAME_PERIOD_AMOUNT',
+      LAST_YEAR_START: 'LAST_YEAR_START', YTD_ACTUAL: 'YTD_ACTUAL', SAME_PERIOD_YTD: 'SAME_PERIOD_YTD',
+    }
+    const crossDim: CrossDimOptions = {
+      dimMap: new Map([
+        ['CURRENT_AMOUNT', identity],
+        ['SAME_PERIOD_AMOUNT', { CURRENT_AMOUNT: 'SAME_PERIOD_AMOUNT', YEAR_START: 'LAST_YEAR_START', YTD_ACTUAL: 'SAME_PERIOD_YTD' }],
+      ]),
+      pseudoByDim: new Map([
+        ['CURRENT_AMOUNT', { DAYS_YTD: 100 }],
+        ['SAME_PERIOD_AMOUNT', { DAYS_YTD: 100 }],
+      ]),
+      zeroDims: new Set(['YEAR_START', 'LAST_YEAR_START']),
+      externalAllDims: { OP_COST: { YTD_ACTUAL: 500, SAME_PERIOD_YTD: 320 } },
+    }
+    applyCalcLayer(roots, calc, STATIC_DIMS_ALL, undefined, crossDim)
+    // 本期列：(80+120)/2 × 100 ÷ 500 = 20
+    expect(days.values.CURRENT_AMOUNT).toBe(20)
+    // 同期列（去年口径）：{ST_INV}→同期100、@YEAR_START→上年年初60、@YTD_ACTUAL→同期累计320：(60+100)/2 × 100 ÷ 320 = 25
+    expect(days.values.SAME_PERIOD_AMOUNT).toBe(25)
+    // 时点列置 0
+    expect(days.values.YEAR_START).toBe(0)
+    expect(days.values.LAST_YEAR_START).toBe(0)
+    // 非跨维度节点不受影响
+    expect(inv.values.YEAR_START).toBe(80)
   })
 })

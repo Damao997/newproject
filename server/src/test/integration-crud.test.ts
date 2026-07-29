@@ -3,7 +3,6 @@ import { basePrisma, prisma } from '../lib/prisma'
 import { DataService } from '../services/DataService'
 import { AdminService } from '../services/AdminService'
 import { ImportService } from '../services/ImportService'
-import { FormulaRuleService } from '../services/FormulaRuleService'
 import { ReclassificationService } from '../services/ReclassificationService'
 import { OPERATING_DIMS } from '../lib/metric-values'
 
@@ -16,6 +15,7 @@ let dbReady = false
 let adminId = ''
 let adminRoleId = ''
 const tempMetricCodes: string[] = []
+const tempSubjectCodes: string[] = []
 const tempUsernames: string[] = []
 const tempRoleCodes: string[] = []
 
@@ -39,6 +39,7 @@ afterAll(async () => {
   const tempIds = tempMetrics.map((m) => m.id)
   await basePrisma.metricDefinitionHistory.deleteMany({ where: { metricId: { in: tempIds } } }).catch(() => undefined)
   await basePrisma.metric.deleteMany({ where: { code: { in: tempMetricCodes } } }).catch(() => undefined)
+  await basePrisma.accountSubject.deleteMany({ where: { code: { in: tempSubjectCodes } } }).catch(() => undefined)
   await basePrisma.user.deleteMany({ where: { username: { in: tempUsernames } } }).catch(() => undefined)
   const tempRoles = await basePrisma.role.findMany({ where: { code: { in: tempRoleCodes } }, select: { id: true } })
   const roleIds = tempRoles.map((r) => r.id)
@@ -47,6 +48,14 @@ afterAll(async () => {
 })
 
 const ctx = () => ({ userId: adminId, traceId: 'test', actorRoleId: adminRoleId })
+
+/** 创建临时科目（calc 指标创建/转换的前置条件），afterAll 统一清理 */
+async function createTempSubject(code: string): Promise<void> {
+  tempSubjectCodes.push(code)
+  await basePrisma.accountSubject.create({
+    data: { code, name: `临时科目_${code}`, subjectType: 'operating', level: 1, parentCode: null, category: '自定义', direction: 'credit', isLeaf: true },
+  })
+}
 
 describe('科目 CRUD', () => {
   it('创建→更新→软删除（未引用科目）', async () => {
@@ -103,15 +112,26 @@ describe('指标 CRUD', () => {
     expect(after?.status).toBe('inactive')
   })
 
-  it('批量规则生成：命中项可应用落库', async () => {
+  it('创建 calc 指标但科目体系中无同编码科目 → 400', async () => {
     if (!dbReady) return
-    const results = await FormulaRuleService.batchGenerate({ subjectType: 'operating' })
-    const valid = results.filter((r) => r.valid && r.formula).slice(0, 1)
-    if (valid.length === 0) return
-    const res = await FormulaRuleService.batchApply(valid.map((r) => ({ code: r.code, formula: r.formula as string, dependsOn: r.dependsOn })), adminId, 'test')
-    expect(res.applied).toBeGreaterThanOrEqual(1)
-    const metric = await basePrisma.metric.findUnique({ where: { code: valid[0].code } })
-    expect(metric?.formula).toBe(valid[0].formula)
+    const code = `CALC_NS_${Date.now().toString(36)}`
+    await expect(
+      DataService.createMetric({ code, name: '孤儿指标', dataType: 'calc', category: '自定义' }, ctx()),
+    ).rejects.toMatchObject({ code: 400 })
+    // data 类指标不受科目前置条件约束（上一用例已覆盖）
+  })
+
+  it('listMetrics 默认不含已停用；includeInactive=true 时包含（公式维护页恢复入口依赖）', async () => {
+    if (!dbReady) return
+    const code = `CALC_LS_${Date.now().toString(36)}`
+    tempMetricCodes.push(code)
+    const created = await DataService.createMetric({ code, name: '列表可见性测试', dataType: 'data', category: '自定义' }, ctx())
+    await DataService.deleteMetric(created.id, ctx())
+    const activeOnly = await DataService.listMetrics({ page: 1, pageSize: 2000, keyword: code })
+    expect(activeOnly.items.some((m) => m.code === code)).toBe(false)
+    const withInactive = await DataService.listMetrics({ page: 1, pageSize: 2000, keyword: code, includeInactive: true })
+    const found = withInactive.items.find((m) => m.code === code)
+    expect(found?.status).toBe('inactive')
   })
 })
 
@@ -270,6 +290,91 @@ describe('物理删除（purge）', () => {
     } finally {
       await basePrisma.importBatch.delete({ where: { id: batch.id } }).catch(() => undefined)
     }
+  })
+})
+
+describe('指标恢复启用与类型转换', () => {
+  it('停用后普通更新不可激活；restore 校验通过后恢复且保留公式', async () => {
+    if (!dbReady) return
+    const subject = await basePrisma.accountSubject.findFirst({ where: { status: 'active' }, select: { code: true } })
+    if (!subject) return
+    const code = `CALC_RS_${Date.now().toString(36)}`
+    tempMetricCodes.push(code)
+    const formula = `{${subject.code}} * 2`
+    await createTempSubject(code)
+    const created = await DataService.createMetric({ code, name: '恢复测试', dataType: 'calc', category: '自定义', formula }, ctx())
+    await DataService.deleteMetric(created.id, ctx())
+    // 普通更新通道禁止绕过恢复校验
+    await expect(DataService.updateMetric(created.id, { status: 'active' }, ctx())).rejects.toMatchObject({ code: 400 })
+    const restored = await DataService.restoreMetric(created.id, {}, ctx())
+    expect(restored.status).toBe('active')
+    expect(restored.formula).toBe(formula)
+    expect(restored.dataType).toBe('calc')
+  })
+
+  it('公式依赖失效时 restore 拒绝；clearFormula 清空后恢复并写历史', async () => {
+    if (!dbReady) return
+    const code = `CALC_RC_${Date.now().toString(36)}`
+    tempMetricCodes.push(code)
+    await createTempSubject(code)
+    const created = await DataService.createMetric({ code, name: '失效恢复测试', dataType: 'calc', category: '自定义' }, ctx())
+    await DataService.deleteMetric(created.id, ctx())
+    // 模拟停用期间依赖失效：直接写入引用不存在编码的公式
+    await basePrisma.metric.update({ where: { id: created.id }, data: { formula: '{NOT_EXIST_X}', dependsOn: ['NOT_EXIST_X'] as never } })
+    await expect(DataService.restoreMetric(created.id, {}, ctx())).rejects.toMatchObject({ code: 400 })
+    const restored = await DataService.restoreMetric(created.id, { clearFormula: true }, ctx())
+    expect(restored.status).toBe('active')
+    expect(restored.formula).toBeNull()
+    const history = await basePrisma.metricDefinitionHistory.findFirst({ where: { metricId: created.id }, orderBy: { version: 'desc' } })
+    expect(history?.description).toBe('恢复启用（公式失效已清空）')
+  })
+
+  it('data → calc 携带公式转换；calc → data 清空公式并写历史', async () => {
+    if (!dbReady) return
+    const subject = await basePrisma.accountSubject.findFirst({ where: { status: 'active' }, select: { code: true } })
+    if (!subject) return
+    const code = `CALC_CV_${Date.now().toString(36)}`
+    tempMetricCodes.push(code)
+    await createTempSubject(code)
+    const created = await DataService.createMetric({ code, name: '转换测试', dataType: 'data', category: '自定义' }, ctx())
+    const toCalc = await DataService.convertMetricType(created.id, { dataType: 'calc', formula: `{${subject.code}} + 1` }, ctx())
+    expect(toCalc.dataType).toBe('calc')
+    expect(toCalc.formula).toBe(`{${subject.code}} + 1`)
+    let history = await basePrisma.metricDefinitionHistory.findFirst({ where: { metricId: created.id }, orderBy: { version: 'desc' } })
+    expect(history?.description).toBe('转换为计算类')
+    const toData = await DataService.convertMetricType(created.id, { dataType: 'data' }, ctx())
+    expect(toData.dataType).toBe('data')
+    expect(toData.formula).toBeNull()
+    history = await basePrisma.metricDefinitionHistory.findFirst({ where: { metricId: created.id }, orderBy: { version: 'desc' } })
+    expect(history?.description).toBe('转换为数据类（清空公式）')
+  })
+
+  it('data → calc 转换但科目体系中无同编码科目 → 400', async () => {
+    if (!dbReady) return
+    const code = `CALC_CN_${Date.now().toString(36)}`
+    tempMetricCodes.push(code)
+    const created = await DataService.createMetric({ code, name: '无科目转换测试', dataType: 'data', category: '自定义' }, ctx())
+    await expect(DataService.convertMetricType(created.id, { dataType: 'calc' }, ctx())).rejects.toMatchObject({ code: 400 })
+  })
+
+  it('被活跃指标引用时：停用与 calc→data 转换均拒绝', async () => {
+    if (!dbReady) return
+    const subject = await basePrisma.accountSubject.findFirst({ where: { status: 'active' }, select: { code: true } })
+    if (!subject) return
+    const codeA = `CALC_RF_A_${Date.now().toString(36)}`
+    const codeB = `CALC_RF_B_${Date.now().toString(36)}`
+    tempMetricCodes.push(codeA, codeB)
+    await createTempSubject(codeA)
+    await createTempSubject(codeB)
+    const a = await DataService.createMetric({ code: codeA, name: '被引用指标', dataType: 'calc', category: '自定义', formula: `{${subject.code}}` }, ctx())
+    const b = await DataService.createMetric({ code: codeB, name: '引用方指标', dataType: 'calc', category: '自定义', formula: `{${codeA}} * 100` }, ctx())
+    await expect(DataService.deleteMetric(a.id, ctx())).rejects.toMatchObject({ code: 409 })
+    await expect(DataService.convertMetricType(a.id, { dataType: 'data' }, ctx())).rejects.toMatchObject({ code: 409 })
+    // 先停用引用方后即可停用被引用指标
+    await DataService.deleteMetric(b.id, ctx())
+    await DataService.deleteMetric(a.id, ctx())
+    const after = await basePrisma.metric.findUnique({ where: { code: codeA }, select: { status: true } })
+    expect(after?.status).toBe('inactive')
   })
 })
 

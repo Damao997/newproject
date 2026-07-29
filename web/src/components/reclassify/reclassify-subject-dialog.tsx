@@ -21,7 +21,8 @@ import {
   usePreviewAdjustSubject,
   useAdjustSubject,
 } from '@/hooks/api-queries'
-import { formatMoney, cn } from '@/lib/utils'
+import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
+import { formatMoney, formatQuantity, cn } from '@/lib/utils'
 import { Equal, MinusCircle, PlusCircle } from 'lucide-react'
 import { TEMPLATE_LABEL, FeedbackAlert, PreviewStats, SubjectPicker, SectionTitle, type PreviewStatItem } from './shared'
 
@@ -37,19 +38,32 @@ interface ReclassifySubjectDialogProps {
 interface PreviewData {
   affectedRows: number
   sourceTotal: number
+  targetTotal?: number
   decreaseAmount: number
   increaseAmount: number
   netChange: number
+  valueType?: 'amount' | 'quantity' | 'ratio'
+}
+
+type AdjustMode = 'both' | 'decrease' | 'increase'
+
+const ADJUST_MODE_LABEL: Record<AdjustMode, string> = {
+  both: '双向调整（调减+调增）',
+  decrease: '仅调减源科目',
+  increase: '仅调增目标科目',
 }
 
 /**
- * 同公司科目间调整对话框：调减侧/调增侧对称双栏布局，输入即实时显示净变动。
- * 调增侧整体可留空表示纯调减（如修正重复计算）；调增额可与调减额不相等，公司总额随净差变化，
- * 因此调整原因必填留痕。期间按单月必选（与后端口径一致）；本年累计由查询时按财年实时聚合，自动反映调整结果。
+ * 同公司科目间调整对话框：支持三种调整方式（双向/仅调减/仅调增），
+ * 调减侧与调增侧按方式按需展示，输入即实时显示净变动。
+ * 调增与调减金额可不相等，公司总额随净差变化，因此调整原因必填留痕。
+ * 金额单位与事实数据一致（万元）。期间按单月必选（与后端口径一致）；
+ * 本年累计由查询时按财年实时聚合，自动反映调整结果。
  */
 export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = 'operating', defaultCompany }: ReclassifySubjectDialogProps) {
   const [templateType, setTemplateType] = useState<string>(defaultTemplateType)
   const [companyCode, setCompanyCode] = useState<string>(defaultCompany ?? '')
+  const [adjustMode, setAdjustMode] = useState<AdjustMode>('both')
   const [sourceAccountCode, setSourceAccountCode] = useState('')
   const [targetAccountCode, setTargetAccountCode] = useState('')
   const [decreaseInput, setDecreaseInput] = useState('')
@@ -66,11 +80,33 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
   const { data: periodsData } = useAvailablePeriods()
   const availablePeriods = periodsData?.periods ?? []
   const entityCompanies = useMemo(() => (companies ?? []).filter((c) => c.type === 'entity'), [companies])
+  // 下拉选项跟随「显示简称」开关；确认弹窗文案仍用全称，保证高危操作确认的严谨性
+  const { displayNameMap } = useCompanyDisplayName()
 
-  // 科目候选：静态模板取静态科目，否则取经营科目
+  // 科目候选：静态模板取静态科目，否则取经营科目；比率类由公式计算，不可直接调整，从候选中排除
   const subjectType = templateType === 'static' ? 'static' : 'operating'
   const { data: subjectsData } = useSubjects({ type: subjectType, pageSize: 1000 })
-  const subjectOptions = useMemo(() => subjectsData?.items ?? [], [subjectsData])
+  const subjectOptions = useMemo(
+    () => (subjectsData?.items ?? []).filter((s) => s.valueType !== 'ratio'),
+    [subjectsData],
+  )
+
+  // 已选科目的值类型：驱动单位文案/整数校验/分型格式化；both 模式源目标必须同型（候选互斥过滤）
+  const sourceVt = subjectOptions.find((s) => s.code === sourceAccountCode)?.valueType ?? null
+  const targetVt = subjectOptions.find((s) => s.code === targetAccountCode)?.valueType ?? null
+  const decSideQty = sourceVt === 'quantity'
+  const incSideQty = (adjustMode === 'both' ? (sourceVt ?? targetVt) : targetVt) === 'quantity'
+  // both 模式：已选一侧后，另一侧候选仅保留同值类型科目
+  const sourceOptions = useMemo(
+    () => (adjustMode === 'both' && targetVt ? subjectOptions.filter((s) => (s.valueType ?? 'amount') === targetVt) : subjectOptions),
+    [subjectOptions, adjustMode, targetVt],
+  )
+  const targetOptions = useMemo(
+    () => (adjustMode === 'both' && sourceVt ? subjectOptions.filter((s) => (s.valueType ?? 'amount') === sourceVt) : subjectOptions),
+    [subjectOptions, adjustMode, sourceVt],
+  )
+  /** 分型格式化：数量整数（无“万”），金额万元 */
+  const fmt = (v: number, qty: boolean) => (qty ? formatQuantity(v) : formatMoney(v))
 
   const previewMutation = usePreviewAdjustSubject()
   const adjustMutation = useAdjustSubject()
@@ -78,10 +114,11 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
   const buildPayload = () => ({
     templateType,
     companyCode,
-    sourceAccountCode,
-    targetAccountCode: targetAccountCode || undefined,
-    decreaseAmount: Number(decreaseInput),
-    increaseAmount: increaseInput !== '' ? Number(increaseInput) : undefined,
+    adjustMode,
+    sourceAccountCode: adjustMode !== 'increase' ? sourceAccountCode : undefined,
+    targetAccountCode: adjustMode !== 'decrease' ? (targetAccountCode || undefined) : undefined,
+    decreaseAmount: adjustMode !== 'increase' ? Number(decreaseInput) : undefined,
+    increaseAmount: adjustMode !== 'decrease' && increaseInput !== '' ? Number(increaseInput) : undefined,
     period,
     reason: reason.trim(),
   })
@@ -92,32 +129,54 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
     setDone(null)
   }
 
-  // ---- 字段级校验与本地实时净变动 ----
+  /** 切换调整方式：清空被隐藏侧的输入，避免残留值误提交 */
+  const handleModeChange = (v: AdjustMode) => {
+    setAdjustMode(v)
+    reset()
+    if (v === 'decrease') {
+      setTargetAccountCode('')
+      setIncreaseInput('')
+    }
+    if (v === 'increase') {
+      setSourceAccountCode('')
+      setDecreaseInput('')
+    }
+  }
+
+  // ---- 字段级校验与本地实时净变动（数量类科目要求正整数）----
   const decreaseError = (() => {
-    if (decreaseInput === '') return null
+    if (adjustMode === 'increase' || decreaseInput === '') return null
     const dec = Number(decreaseInput)
-    return !Number.isFinite(dec) || dec <= 0 ? '调减金额须大于 0' : null
+    if (!Number.isFinite(dec) || dec <= 0) return '调减金额须大于 0'
+    if (decSideQty && !Number.isInteger(dec)) return '数量类科目须为整数'
+    return null
   })()
   const increaseError = (() => {
-    if (increaseInput === '') return null
+    if (adjustMode === 'decrease' || increaseInput === '') return null
     const inc = Number(increaseInput)
-    if (!Number.isFinite(inc) || inc < 0) return '调增金额须大于等于 0'
-    if (inc > 0 && !targetAccountCode) return '调增金额大于 0 时须选择目标科目'
+    if (!Number.isFinite(inc) || inc <= 0) return '调增金额须大于 0'
+    if (incSideQty && !Number.isInteger(inc)) return '数量类科目须为整数'
     return null
   })()
   const reasonError = reasonTouched && !reason.trim() ? '请填写调整原因' : null
 
-  const decValue = decreaseError || decreaseInput === '' ? 0 : Number(decreaseInput)
-  const incValue = increaseError || increaseInput === '' ? 0 : Number(increaseInput)
+  const decValue = adjustMode === 'increase' || decreaseError || decreaseInput === '' ? 0 : Number(decreaseInput)
+  const incValue = adjustMode === 'decrease' || increaseError || increaseInput === '' ? 0 : Number(increaseInput)
   const localNet = Math.round((incValue - decValue) * 100) / 100
-  const isPureDecrease = increaseInput === '' && !targetAccountCode
+  // 当前调整口径是否为数量类（increase 模式看目标侧，其余看源侧），驱动全局分型格式化
+  const activeQty = adjustMode === 'increase' ? incSideQty : decSideQty
 
   const validateBeforePreview = (): string | null => {
     if (!companyCode) return '请选择公司'
-    if (!sourceAccountCode) return '请选择源科目'
-    if (decreaseInput === '' || decreaseError) return decreaseError ?? '请输入调减金额'
-    if (increaseError) return increaseError
-    if (targetAccountCode && targetAccountCode === sourceAccountCode) return '源科目与目标科目不能相同'
+    if (adjustMode !== 'increase') {
+      if (!sourceAccountCode) return '请选择源科目'
+      if (decreaseInput === '' || decreaseError) return decreaseError ?? '请输入调减金额'
+    }
+    if (adjustMode !== 'decrease') {
+      if (!targetAccountCode) return '请选择目标科目'
+      if (increaseInput === '' || increaseError) return increaseError ?? '请输入调增金额'
+    }
+    if (adjustMode === 'both' && targetAccountCode === sourceAccountCode) return '源科目与目标科目不能相同'
     if (!period) return '请选择调整期间（单月）'
     return null
   }
@@ -147,10 +206,13 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
     const companyName = entityCompanies.find((c) => c.code === companyCode)?.name ?? companyCode
     const sourceName = subjectOptions.find((s) => s.code === sourceAccountCode)?.name ?? sourceAccountCode
     const targetName = targetAccountCode ? (subjectOptions.find((s) => s.code === targetAccountCode)?.name ?? targetAccountCode) : ''
-    const netText = preview.netChange !== 0 ? `，公司总额将净变动 ${formatMoney(preview.netChange)}` : '，公司总额不变'
+    const netText = preview.netChange !== 0 ? `，公司总额将净变动 ${fmt(preview.netChange, activeQty)}` : '，公司总额不变'
+    const actionText = adjustMode === 'increase'
+      ? `「${targetName}」调增 ${fmt(preview.increaseAmount, activeQty)}`
+      : `「${sourceName}」调减 ${fmt(preview.decreaseAmount, activeQty)}${adjustMode === 'both' && targetName ? `，「${targetName}」调增 ${fmt(preview.increaseAmount, activeQty)}` : ''}`
     const ok = await confirm({
       title: '确认科目间调整',
-      description: `将把「${companyName}」的${TEMPLATE_LABEL[templateType]}中「${sourceName}」调减 ${formatMoney(preview.decreaseAmount)}${targetName && preview.increaseAmount > 0 ? `，「${targetName}」调增 ${formatMoney(preview.increaseAmount)}` : ''}${netText}。此操作将影响看板与指标且不可撤销，确认继续？`,
+      description: `将把「${companyName}」的${TEMPLATE_LABEL[templateType]}中${actionText}${netText}。此操作将影响看板与指标且不可撤销，确认继续？`,
       danger: true,
       confirmText: '确认调整',
     })
@@ -158,21 +220,35 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
     setError(null)
     try {
       const res = await adjustMutation.mutateAsync(buildPayload())
-      setDone(`调整完成：调减 ${formatMoney(res.decreaseAmount)}${res.increaseAmount > 0 ? `，调增 ${formatMoney(res.increaseAmount)}` : ''}，涉及 ${res.affectedRows} 条明细${res.createdRows > 0 ? `，新建 ${res.createdRows} 条` : ''}。`)
+      const doneParts = [
+        res.decreaseAmount > 0 ? `调减 ${fmt(res.decreaseAmount, activeQty)}` : '',
+        res.increaseAmount > 0 ? `调增 ${fmt(res.increaseAmount, activeQty)}` : '',
+      ].filter(Boolean).join('，')
+      setDone(`调整完成：${doneParts}，涉及 ${res.affectedRows} 条明细${res.createdRows > 0 ? `，新建 ${res.createdRows} 条` : ''}。`)
       setPreview(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : '调整失败')
     }
   }
 
+  const previewQty = preview?.valueType ? preview.valueType === 'quantity' : activeQty
+  // 统计卡标签按口径分型（金额/数量）
+  const amtLabel = previewQty ? '数量' : '金额'
   const previewItems: PreviewStatItem[] = preview
-    ? [
-        { label: '源科目匹配', value: `${preview.affectedRows} 条` },
-        { label: '源科目合计', value: formatMoney(preview.sourceTotal) },
-        { label: '调减金额', value: `-${formatMoney(preview.decreaseAmount)}`, tone: 'primary' },
-        ...(preview.increaseAmount > 0 ? [{ label: '调增金额', value: `+${formatMoney(preview.increaseAmount)}`, tone: 'primary' as const }] : []),
-        { label: '净变动', value: formatMoney(preview.netChange), tone: preview.netChange !== 0 ? 'warning' : 'default' },
-      ]
+    ? adjustMode === 'increase'
+      ? [
+          { label: '目标科目匹配', value: `${preview.affectedRows} 条` },
+          { label: '目标科目现有合计', value: fmt(preview.targetTotal ?? 0, previewQty) },
+          { label: `调增${amtLabel}`, value: `+${fmt(preview.increaseAmount, previewQty)}`, tone: 'primary' },
+          { label: '净变动', value: fmt(preview.netChange, previewQty), tone: preview.netChange !== 0 ? 'warning' : 'default' },
+        ]
+      : [
+          { label: '源科目匹配', value: `${preview.affectedRows} 条` },
+          { label: '源科目合计', value: fmt(preview.sourceTotal, previewQty) },
+          { label: `调减${amtLabel}`, value: `-${fmt(preview.decreaseAmount, previewQty)}`, tone: 'primary' },
+          ...(preview.increaseAmount > 0 ? [{ label: `调增${amtLabel}`, value: `+${fmt(preview.increaseAmount, previewQty)}`, tone: 'primary' as const }] : []),
+          { label: '净变动', value: fmt(preview.netChange, previewQty), tone: preview.netChange !== 0 ? 'warning' : 'default' },
+        ]
     : []
 
   const submitDisabledReason = !preview
@@ -188,7 +264,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>科目间金额调整</DialogTitle>
-          <DialogDescription>同一公司内源科目调减、目标科目调增，两者金额可不相等（如修正重复计算时只减不增）。</DialogDescription>
+          <DialogDescription>同一公司内按选定方式调整科目金额：可双向调整（调减+调增）、仅调减（如修正重复计算）或仅调增（如补录遗漏）；金额类科目单位为万元，数量类按整数调整。</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -213,7 +289,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                   <SelectTrigger><SelectValue placeholder="选择公司" /></SelectTrigger>
                   <SelectContent className="max-h-[280px]">
                     {entityCompanies.map((c) => (
-                      <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
+                      <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -226,11 +302,23 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
             </div>
           </section>
 
-          {/* ===== 调整设置：调减侧 / 调增侧 对称双栏 ===== */}
+          {/* ===== 调整设置：调整方式 + 按方式展示调减侧/调增侧 ===== */}
           <section className="space-y-2">
             <SectionTitle>调整设置</SectionTitle>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {/* 调减侧 */}
+            <div className="space-y-1">
+              <Label>调整方式</Label>
+              <Select value={adjustMode} onValueChange={(v) => handleModeChange(v as AdjustMode)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(ADJUST_MODE_LABEL) as AdjustMode[]).map((m) => (
+                    <SelectItem key={m} value={m}>{ADJUST_MODE_LABEL[m]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className={cn('grid grid-cols-1 gap-3', adjustMode === 'both' && 'sm:grid-cols-2')}>
+              {/* 调减侧（decrease/both） */}
+              {adjustMode !== 'increase' && (
               <div className="space-y-2 rounded-lg border border-red-200 bg-red-50/40 p-3">
                 <p className="flex items-center gap-1.5 text-sm font-medium text-red-700">
                   <MinusCircle className="h-4 w-4" />
@@ -239,19 +327,20 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                 <div className="space-y-1">
                   <Label>源科目 <span className="text-destructive">*</span></Label>
                   <SubjectPicker
-                    options={subjectOptions}
+                    options={sourceOptions}
                     value={sourceAccountCode}
                     onChange={(code) => { setSourceAccountCode(code); reset() }}
+                    excludeCode={targetAccountCode}
                     placeholder="选择要调减的科目"
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>调减金额（元） <span className="text-destructive">*</span></Label>
+                  <Label>{decSideQty ? '调减数量（整数）' : '调减金额（万元）'} <span className="text-destructive">*</span></Label>
                   <Input
                     type="number"
                     min={0}
-                    step="0.01"
-                    placeholder="如 50000"
+                    step={decSideQty ? 1 : '0.01'}
+                    placeholder={decSideQty ? '如 10' : '如 50'}
                     value={decreaseInput}
                     aria-invalid={!!decreaseError}
                     className={cn('bg-background', decreaseError && 'border-destructive focus-visible:ring-destructive')}
@@ -260,42 +349,46 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                   {decreaseError && <p className="text-xs text-destructive">{decreaseError}</p>}
                 </div>
               </div>
+              )}
 
-              {/* 调增侧（可整体留空 = 纯调减） */}
-              <div className={cn('space-y-2 rounded-lg border border-green-200 bg-green-50/40 p-3 transition-opacity', isPureDecrease && 'opacity-70')}>
+              {/* 调增侧（increase/both） */}
+              {adjustMode !== 'decrease' && (
+              <div className="space-y-2 rounded-lg border border-green-200 bg-green-50/40 p-3">
                 <div className="flex items-center justify-between">
                   <p className="flex items-center gap-1.5 text-sm font-medium text-green-700">
                     <PlusCircle className="h-4 w-4" />
-                    调增侧（可选）
+                    调增侧（目标科目）
                   </p>
-                  <button
-                    type="button"
-                    className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-primary transition-colors hover:bg-primary/10 disabled:pointer-events-none disabled:opacity-40"
-                    title="将调增金额设为与调减金额相等"
-                    disabled={decreaseInput === '' || !!decreaseError}
-                    onClick={() => { setIncreaseInput(decreaseInput); reset() }}
-                  >
-                    <Equal className="h-3 w-3" />
-                    等额调整
-                  </button>
+                  {adjustMode === 'both' && (
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-primary transition-colors hover:bg-primary/10 disabled:pointer-events-none disabled:opacity-40"
+                      title="将调增金额设为与调减金额相等"
+                      disabled={decreaseInput === '' || !!decreaseError}
+                      onClick={() => { setIncreaseInput(decreaseInput); reset() }}
+                    >
+                      <Equal className="h-3 w-3" />
+                      等额调整
+                    </button>
+                  )}
                 </div>
                 <div className="space-y-1">
-                  <Label>目标科目</Label>
+                  <Label>目标科目 <span className="text-destructive">*</span></Label>
                   <SubjectPicker
-                    options={subjectOptions}
+                    options={targetOptions}
                     value={targetAccountCode}
                     onChange={(code) => { setTargetAccountCode(code); reset() }}
                     excludeCode={sourceAccountCode}
-                    placeholder="留空即仅调减"
+                    placeholder="选择要调增的科目"
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>调增金额（元）</Label>
+                  <Label>{incSideQty ? '调增数量（整数）' : '调增金额（万元）'} <span className="text-destructive">*</span></Label>
                   <Input
                     type="number"
                     min={0}
-                    step="0.01"
-                    placeholder="留空即仅调减"
+                    step={incSideQty ? 1 : '0.01'}
+                    placeholder={incSideQty ? '如 10' : '如 50'}
                     value={increaseInput}
                     aria-invalid={!!increaseError}
                     className={cn('bg-background', increaseError && 'border-destructive focus-visible:ring-destructive')}
@@ -304,10 +397,11 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                   {increaseError && <p className="text-xs text-destructive">{increaseError}</p>}
                 </div>
               </div>
+              )}
             </div>
 
             {/* 实时净变动提示（无需等预览） */}
-            {decValue > 0 && (
+            {(decValue > 0 || incValue > 0) && (
               <div
                 className={cn(
                   'rounded-md border p-2.5 text-sm',
@@ -315,7 +409,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                 )}
               >
                 {localNet !== 0
-                  ? <>本次调整将使公司总额净变动 <span className="font-num font-semibold">{formatMoney(localNet)}</span>{isPureDecrease && '（仅调减）'}。</>
+                  ? <>本次调整将使公司总额净变动 <span className="font-num font-semibold">{fmt(localNet, activeQty)}</span>{adjustMode === 'decrease' && '（仅调减）'}{adjustMode === 'increase' && '（仅调增）'}。</>
                   : <>调减与调增等额，公司总额不变。</>}
               </div>
             )}
@@ -346,7 +440,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
               ? <PreviewStats items={[]} empty />
               : <PreviewStats
                   items={previewItems}
-                  warning={preview.netChange !== 0 ? <>本次调整将使公司总额净变动 <span className="font-num font-semibold">{formatMoney(preview.netChange)}</span>，请确认业务依据。</> : undefined}
+                  warning={preview.netChange !== 0 ? <>本次调整将使公司总额净变动 <span className="font-num font-semibold">{fmt(preview.netChange, previewQty)}</span>，请确认业务依据。</> : undefined}
                 />)}
             {done && <FeedbackAlert kind="success">{done}</FeedbackAlert>}
             {error && <FeedbackAlert kind="error">{error}</FeedbackAlert>}
@@ -358,7 +452,15 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
             {submitDisabledReason && <span className="text-xs text-muted-foreground">{submitDisabledReason}</span>}
           </div>
           <Button variant="outline" onClick={onClose}>关闭</Button>
-          <Button variant="outline" onClick={handlePreview} disabled={previewMutation.isPending || !companyCode || !sourceAccountCode || !decreaseInput || !period}>
+          <Button
+            variant="outline"
+            onClick={handlePreview}
+            disabled={
+              previewMutation.isPending || !companyCode || !period
+              || (adjustMode !== 'increase' && (!sourceAccountCode || !decreaseInput))
+              || (adjustMode !== 'decrease' && (!targetAccountCode || !increaseInput))
+            }
+          >
             {previewMutation.isPending ? '预览中...' : '预览影响'}
           </Button>
           <Button variant="destructive" onClick={handleSubmit} disabled={!preview || preview.affectedRows === 0 || !reason.trim() || adjustMutation.isPending}>

@@ -1,12 +1,12 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { Pagination } from '@/components/data-table/pagination'
 import { useConfirm } from '@/components/ui/confirm-dialog'
-import { useReclassifyLogs, useRevertReclassifyLog } from '@/hooks/api-queries'
-import { formatMoney, cn } from '@/lib/utils'
+import { useCompanies, useSubjects, useReclassifyLogs, useRevertReclassifyLog } from '@/hooks/api-queries'
+import { formatMoney, formatQuantity, cn } from '@/lib/utils'
 import { ArrowRight, Undo2 } from 'lucide-react'
 import { TYPE_LABEL, TEMPLATE_LABEL_SHORT } from './shared'
 import type { ReclassifyLog } from '@/types'
@@ -30,21 +30,33 @@ const TRANSFER_MODE_LABEL: Record<string, string> = {
   amount: '按金额',
 }
 
-/** 「源 → 目标」结构化展示 */
-function SourceTarget({ log }: { log: ReclassifyLog }) {
+const ADJUST_MODE_LABEL: Record<string, string> = {
+  both: '双向',
+  decrease: '仅调减',
+  increase: '仅调增',
+}
+
+/** 分型金额展示：数量类整数（无“万”），其余按金额（万元）；历史记录无 valueType 回退金额 */
+const formatByType = (v: number, valueType?: string): string => (valueType === 'quantity' ? formatQuantity(v) : formatMoney(v))
+
+/** 「源 → 目标」结构化展示：优先中文名称（title 提示编码），无匹配回退编码 */
+function SourceTarget({ log, nameOf }: { log: ReclassifyLog; nameOf: (code: string | null) => string | null }) {
   const [source, target] =
     log.type === 'company'
       ? [log.sourceCompany, log.targetCompany]
       : [log.sourceSubject, log.targetSubject]
+  const renderSide = (code: string | null, emptyText: string) => {
+    if (!code) return <span className="text-xs text-muted-foreground">{emptyText}</span>
+    const name = nameOf(code)
+    return name
+      ? <span className="text-xs" title={code}>{name}</span>
+      : <span className="font-mono text-xs">{code}</span>
+  }
   return (
     <span className="inline-flex items-center gap-1.5">
-      <span className="font-mono text-xs">{source ?? '-'}</span>
+      {renderSide(source, log.type === 'subject_adjust' ? '仅调增' : '-')}
       <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
-      {target ? (
-        <span className="font-mono text-xs">{target}</span>
-      ) : (
-        <span className="text-xs text-muted-foreground">{log.type === 'subject_adjust' ? '仅调减' : '-'}</span>
-      )}
+      {renderSide(target, log.type === 'subject_adjust' ? '仅调减' : '-')}
       {log.templateType && (
         <span className="text-xs text-muted-foreground">（{TEMPLATE_LABEL_SHORT[log.templateType] ?? log.templateType}）</span>
       )}
@@ -66,11 +78,13 @@ function AmountDetail({ log }: { log: ReclassifyLog }) {
   }
   if (log.type === 'subject_adjust' && d) {
     const net = d.netChange ?? 0
+    const modeLabel = d.adjustMode ? ADJUST_MODE_LABEL[d.adjustMode] : null
     return (
       <span className="inline-flex items-center gap-1.5 font-num text-xs">
-        <span className="text-red-600">-{formatMoney(d.decreaseAmount ?? 0)}</span>
-        {(d.increaseAmount ?? 0) > 0 && <span className="text-green-700">+{formatMoney(d.increaseAmount ?? 0)}</span>}
-        <span className={cn(net !== 0 ? 'text-amber-700' : 'text-muted-foreground')}>（净 {formatMoney(net)}）</span>
+        {modeLabel && <span className="text-muted-foreground">{modeLabel}</span>}
+        {(d.decreaseAmount ?? 0) > 0 && <span className="text-red-600">-{formatByType(d.decreaseAmount ?? 0, d.valueType)}</span>}
+        {(d.increaseAmount ?? 0) > 0 && <span className="text-green-700">+{formatByType(d.increaseAmount ?? 0, d.valueType)}</span>}
+        <span className={cn(net !== 0 ? 'text-amber-700' : 'text-muted-foreground')}>（净 {formatByType(net, d.valueType)}）</span>
       </span>
     )
   }
@@ -117,6 +131,19 @@ export function ReclassifyLogsPanel({ canRevert }: ReclassifyLogsPanelProps) {
   const { data, isFetching } = useReclassifyLogs({ page, pageSize: PAGE_SIZE, type: type === 'all' ? undefined : type })
   const revertMutation = useRevertReclassifyLog()
 
+  // 源/目标中文名称映射：公司 + 经营/静态科目（无匹配时回退编码展示）
+  const { data: companies } = useCompanies()
+  const { data: operatingSubjects } = useSubjects({ type: 'operating', pageSize: 1000 })
+  const { data: staticSubjects } = useSubjects({ type: 'static', pageSize: 1000 })
+  const nameMap = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const c of companies ?? []) m.set(c.code, c.name)
+    for (const s of operatingSubjects?.items ?? []) m.set(s.code, s.name)
+    for (const s of staticSubjects?.items ?? []) m.set(s.code, s.name)
+    return m
+  }, [companies, operatingSubjects, staticSubjects])
+  const nameOf = (code: string | null) => (code ? (nameMap.get(code) ?? null) : null)
+
   const items = (data?.items ?? []) as ReclassifyLog[]
   const total = data?.total ?? 0
 
@@ -152,7 +179,7 @@ export function ReclassifyLogsPanel({ canRevert }: ReclassifyLogsPanelProps) {
       key: 'type', header: '类型',
       render: (r) => <Badge variant="outline" className={TYPE_BADGE_CLASS[r.type]}>{TYPE_LABEL[r.type] ?? r.type}</Badge>,
     },
-    { key: 'target', header: '源 → 目标', render: (r) => <SourceTarget log={r} /> },
+    { key: 'target', header: '源 → 目标', render: (r) => <SourceTarget log={r} nameOf={nameOf} /> },
     { key: 'period', header: '期间', cellClassName: 'font-num text-xs', render: (r) => r.period ?? (r.periodFrom ? `${r.periodFrom}~${r.periodTo ?? ''}` : '全部') },
     { key: 'amount', header: '金额明细', render: (r) => <AmountDetail log={r} /> },
     {

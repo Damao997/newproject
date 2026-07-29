@@ -184,7 +184,7 @@ router.post('/subjects/:id/reclassify', requirePermission('data:reclassify:subje
 // ===== 指标 =====
 router.get('/metrics', requirePermission('data:browse:view', 'view'), asyncHandler(async (req, res) => {
   const { page, pageSize } = pageParams(req.query)
-  const data = await DataService.listMetrics({ page, pageSize, keyword: req.query.keyword as string | undefined, dataType: req.query.dataType as string | undefined })
+  const data = await DataService.listMetrics({ page, pageSize, keyword: req.query.keyword as string | undefined, dataType: req.query.dataType as string | undefined, includeInactive: req.query.includeInactive === 'true' })
   sendOk(res, data)
 }))
 
@@ -207,6 +207,18 @@ router.delete('/metrics/:id', requirePermission('data:metric:delete', 'delete'),
 router.delete('/metrics/:id/purge', requirePermission('data:metric:purge', 'delete'), asyncHandler(async (req, res) => {
   await DataService.purgeMetric(req.params.id as string, ctxOf(req))
   sendOk(res, null)
+}))
+
+// 恢复启用已停用指标：重新校验公式有效性；clearFormula=true 时公式失效可清空后恢复
+router.post('/metrics/:id/restore', requirePermission('data:metric:update', 'update'), asyncHandler(async (req, res) => {
+  sendOk(res, await DataService.restoreMetric(req.params.id as string, { clearFormula: req.body?.clearFormula === true }, ctxOf(req)))
+}))
+
+// 指标类型转换（高危，仅 superadmin）：data ↔ calc，data→calc 可携带初始公式
+router.post('/metrics/:id/convert', requirePermission('data:metric:convert', 'update'), asyncHandler(async (req, res) => {
+  const dataType = String(req.body?.dataType ?? '')
+  if (!dataType) throw errors.badRequest('目标类型必填')
+  sendOk(res, await DataService.convertMetricType(req.params.id as string, { dataType, formula: req.body?.formula }, ctxOf(req)))
 }))
 
 router.get('/metrics/:id/history', requirePermission('data:metric:update', 'update'), asyncHandler(async (req, res) => {
@@ -296,17 +308,29 @@ router.post('/reclassify/company', requirePermission('data:reclassify:company', 
 }))
 
 // ===== 同公司科目间调整 =====
+const ADJUST_MODES = ['both', 'decrease', 'increase']
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function adjustSubjectBody(b: any) {
-  if (!b.templateType || !b.companyCode || !b.sourceAccountCode) throw errors.badRequest('模板类型、公司、源科目必填')
-  if (b.decreaseAmount === undefined || b.decreaseAmount === null || b.decreaseAmount === '') throw errors.badRequest('调减金额必填')
+  if (!b.templateType || !b.companyCode) throw errors.badRequest('模板类型、公司必填')
+  if (b.adjustMode !== undefined && !ADJUST_MODES.includes(b.adjustMode)) throw errors.badRequest('调整方式不合法')
+  // 未传 adjustMode 按旧参数口径（调减侧必填）；具体模式推断与金额校验在 Service 层
+  const mode = b.adjustMode as string | undefined
+  if (mode !== 'increase') {
+    if (!b.sourceAccountCode) throw errors.badRequest('源科目必填')
+    if (b.decreaseAmount === undefined || b.decreaseAmount === null || b.decreaseAmount === '') throw errors.badRequest('调减金额必填')
+  } else {
+    if (!b.targetAccountCode) throw errors.badRequest('仅调增模式下目标科目必填')
+    if (b.increaseAmount === undefined || b.increaseAmount === null || b.increaseAmount === '') throw errors.badRequest('仅调增模式下调增金额必填')
+  }
   if (typeof b.period !== 'string' || !PERIOD_RE.test(b.period)) throw errors.badRequest('请选择调整期间（单月 YYYY-MM）')
   return {
     templateType: b.templateType,
     companyCode: b.companyCode,
-    sourceAccountCode: b.sourceAccountCode,
+    adjustMode: mode as 'both' | 'decrease' | 'increase' | undefined,
+    sourceAccountCode: b.sourceAccountCode || undefined,
     targetAccountCode: b.targetAccountCode || undefined,
-    decreaseAmount: Number(b.decreaseAmount),
+    decreaseAmount: b.decreaseAmount !== undefined && b.decreaseAmount !== null && b.decreaseAmount !== '' ? Number(b.decreaseAmount) : undefined,
     increaseAmount: b.increaseAmount !== undefined && b.increaseAmount !== null && b.increaseAmount !== '' ? Number(b.increaseAmount) : undefined,
     period: b.period,
     reason: typeof b.reason === 'string' ? b.reason : '',

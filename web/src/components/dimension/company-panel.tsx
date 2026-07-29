@@ -16,6 +16,8 @@ import {
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useCompanies, useCreateCompany, useUpdateCompany, useDeleteCompany } from '@/hooks/api-queries'
+import { getCompanyDisplayName } from '@/hooks/useCompanyDisplay'
+import { useCompanyDisplayStore } from '@/stores/companyDisplayStore'
 import { Plus, Pencil, Trash2, Search, RotateCcw } from 'lucide-react'
 import type { Company } from '@/types'
 
@@ -33,12 +35,6 @@ interface CompanyForm {
 }
 
 const emptyForm: CompanyForm = { code: '', name: '', shortName: '', entityType: 'single' }
-
-/** 获取公司显示名称：启用简称且有简称时显示简称，否则显示完整名称 */
-export function getCompanyDisplayName(company: Company, useShortName: boolean): string {
-  if (useShortName && company.shortName) return company.shortName
-  return company.name
-}
 
 /**
  * 公司主体管理：列表 + 搜索 + 新增/编辑（编码不可变）+ 停用（软删除，引用保护）+ 重新启用。
@@ -58,7 +54,8 @@ export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete =
   const [form, setForm] = useState<CompanyForm>(emptyForm)
   const [error, setError] = useState<string | null>(null)
   const [listError, setListError] = useState<string | null>(null)
-  const [showShortName, setShowShortName] = useState(false)
+  const showShortName = useCompanyDisplayStore((s) => s.showShortName)
+  const setShowShortName = useCompanyDisplayStore((s) => s.setShowShortName)
 
   const companies = useMemo(() => (data ?? []) as Company[], [data])
   const filtered = useMemo(() => {

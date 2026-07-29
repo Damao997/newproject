@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { basePrisma, prisma } from '../lib/prisma'
 import { SubjectAnalysisService } from './SubjectAnalysisService'
+import { ReportService } from './ReportService'
 
 /**
  * 单项分析服务集成测试（真实 DB）。
@@ -14,6 +15,7 @@ let subjectCode = ''
 const suffix = Date.now().toString(36)
 const period = `2099-${suffix.slice(0, 2).padStart(2, '0')}`.slice(0, 7) // 唯一期间，避免与种子冲突
 const createdIds: string[] = []
+const createdReportIds: string[] = []
 
 // 全量 scope 上下文（scopeValue='*'）
 const adminScope = { companyCode: null, scopeValue: '*' }
@@ -38,6 +40,11 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (!dbReady) return
+  for (const rid of createdReportIds) {
+    await basePrisma.reportSection.deleteMany({ where: { reportId: rid } }).catch(() => undefined)
+    await basePrisma.reportVersion.deleteMany({ where: { reportId: rid } }).catch(() => undefined)
+  }
+  await basePrisma.report.deleteMany({ where: { id: { in: createdReportIds } } }).catch(() => undefined)
   await basePrisma.subjectAnalysis.deleteMany({ where: { id: { in: createdIds } } }).catch(() => undefined)
 })
 
@@ -124,5 +131,59 @@ describe('SubjectAnalysisService（真实 DB）', () => {
     const { items, resolvedCompanyCodes } = await SubjectAnalysisService.batchForCompanies(adminScope, { companyCodes: [companyCode], period })
     expect(resolvedCompanyCodes).toContain(companyCode)
     expect(items.some((i) => i.id === dto.id)).toBe(true)
+  })
+
+  it('list 管理视图：关键词命中标题/正文，分页 total 真实', async () => {
+    if (!dbReady) return
+    // 标题关键词
+    const byTitle = await SubjectAnalysisService.list(adminScope, { period, keyword: '批量' })
+    expect(byTitle.items.some((i) => i.id === createdIds[0])).toBe(true)
+    // 正文关键词
+    const byContent = await SubjectAnalysisService.list(adminScope, { period, keyword: '批量取数' })
+    expect(byContent.items.some((i) => i.id === createdIds[0])).toBe(true)
+    // 未命中
+    const miss = await SubjectAnalysisService.list(adminScope, { period, keyword: '不存在的关键词_xyz' })
+    expect(miss.total).toBe(0)
+    // 分页：pageSize=1 时 items 长度受限但 total 为全量
+    const paged = await SubjectAnalysisService.list(adminScope, { period, pageSize: 1, page: 1 })
+    expect(paged.items.length).toBeLessThanOrEqual(1)
+    expect(paged.total).toBeGreaterThanOrEqual(1)
+    expect(paged.pageSize).toBe(1)
+  })
+
+  it('refs：被报告章节引用后列表附带引用来源', async () => {
+    if (!dbReady) return
+    const report = await ReportService.create(adminScope, {
+      title: '引用来源测试报告', fiscalYear: '2099', period, companyScope: { type: 'company', code: companyCode },
+    }, adminId)
+    createdReportIds.push(report.id)
+    await ReportService.setSections(adminScope, report.id, [{ analysisId: createdIds[0] }], adminId)
+
+    const list = await SubjectAnalysisService.list(adminScope, { period })
+    const item = list.items.find((i) => i.id === createdIds[0])
+    expect(item).toBeTruthy()
+    expect(item!.refs.some((r) => r.reportId === report.id && r.reportTitle === '引用来源测试报告')).toBe(true)
+    expect(item!.status).toBe('active')
+  })
+
+  it('includeInactive + restore：软删除后可见性与恢复闭环，越权恢复 403', async () => {
+    if (!dbReady) return
+    await SubjectAnalysisService.remove(adminScope, createdIds[0], adminId)
+    // 默认列表不含
+    const normal = await SubjectAnalysisService.list(adminScope, { period })
+    expect(normal.items.some((i) => i.id === createdIds[0])).toBe(false)
+    // includeInactive 包含且标记 inactive
+    const withDeleted = await SubjectAnalysisService.list(adminScope, { period, includeInactive: true })
+    const deleted = withDeleted.items.find((i) => i.id === createdIds[0])
+    expect(deleted).toBeTruthy()
+    expect(deleted!.status).toBe('inactive')
+    // 越权恢复 → 403
+    const restricted = { companyCode: 'NON_EXISTENT_EN', scopeValue: '' }
+    await expect(SubjectAnalysisService.restore(restricted, createdIds[0], adminId)).rejects.toMatchObject({ code: 403 })
+    // 恢复后回到默认列表
+    const restored = await SubjectAnalysisService.restore(adminScope, createdIds[0], adminId)
+    expect(restored.status).toBe('active')
+    const after = await SubjectAnalysisService.list(adminScope, { period })
+    expect(after.items.some((i) => i.id === createdIds[0])).toBe(true)
   })
 })

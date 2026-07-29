@@ -86,7 +86,7 @@ export function HistoryDialog({ metric, formatFormula, onClose, canApprove = fal
 
   return (
     <Dialog open={!!metric} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="max-h-[85vh] w-[calc(100vw-2rem)] overflow-y-auto rounded-lg sm:w-full sm:max-w-2xl lg:max-w-4xl">
         <DialogHeader>
           <DialogTitle>公式版本历史</DialogTitle>
           <DialogDescription>{metric ? `${metric.name}（${metric.code}）` : ''}</DialogDescription>
@@ -101,13 +101,13 @@ export function HistoryDialog({ metric, formatFormula, onClose, canApprove = fal
               <thead>
                 <tr className="border-b bg-muted/50">
                   <th className="p-2 w-8"></th>
-                  <th className="p-2 text-left font-medium">版本</th>
+                  <th className="p-2 text-left font-medium whitespace-nowrap">版本</th>
                   <th className="p-2 text-left font-medium">公式</th>
-                  <th className="p-2 text-left font-medium">说明</th>
-                  <th className="p-2 text-left font-medium">变更人</th>
-                  <th className="p-2 text-left font-medium">时间</th>
-                  <th className="p-2 text-left font-medium">审批</th>
-                  <th className="p-2 text-left font-medium">操作</th>
+                  <th className="hidden p-2 text-left font-medium md:table-cell">说明</th>
+                  <th className="hidden p-2 text-left font-medium whitespace-nowrap sm:table-cell">变更人</th>
+                  <th className="hidden p-2 text-left font-medium whitespace-nowrap md:table-cell">时间</th>
+                  <th className="p-2 text-left font-medium whitespace-nowrap">审批</th>
+                  <th className="p-2 text-left font-medium whitespace-nowrap">操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -121,11 +121,11 @@ export function HistoryDialog({ metric, formatFormula, onClose, canApprove = fal
                         onChange={() => toggleCompare(h.version)}
                       />
                     </td>
-                    <td className="p-2 font-mono">v{h.version}</td>
-                    <td className="p-2 font-mono">{h.formula ? <FormulaText text={formatFormula(h.formula)} className="max-w-[260px]" /> : '（空）'}</td>
-                    <td className="p-2 text-muted-foreground">{h.description ?? '—'}</td>
-                    <td className="p-2">{h.changedByName}</td>
-                    <td className="p-2 text-muted-foreground whitespace-nowrap">{new Date(h.changedAt).toLocaleString('zh-CN')}</td>
+                    <td className="p-2 font-mono whitespace-nowrap">v{h.version}</td>
+                    <td className="p-2 font-mono">{h.formula ? <FormulaText text={formatFormula(h.formula)} className="max-w-[180px] md:max-w-[260px]" /> : '（空）'}</td>
+                    <td className="hidden max-w-[160px] truncate p-2 text-muted-foreground md:table-cell" title={h.description ?? undefined}>{h.description ?? '—'}</td>
+                    <td className="hidden p-2 whitespace-nowrap sm:table-cell">{h.changedByName}</td>
+                    <td className="hidden p-2 text-muted-foreground whitespace-nowrap md:table-cell">{new Date(h.changedAt).toLocaleString('zh-CN')}</td>
                     <td className="p-2">
                       {h.approvedBy ? <Badge variant="success">已审</Badge> : <Badge variant="secondary">待审</Badge>}
                     </td>
@@ -151,7 +151,7 @@ export function HistoryDialog({ metric, formatFormula, onClose, canApprove = fal
           return (
             <div className="mt-3 space-y-2 rounded-lg border p-3">
               <p className="text-sm font-medium">版本对比：v{vA.version} vs v{vB.version}</p>
-              <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2">
                 <div className="rounded-md bg-muted/30 p-2">
                   <p className="font-medium">v{vA.version}</p>
                   <p className="mt-1 break-all font-mono">{vA.formula ? formatFormula(vA.formula) : '（空）'}</p>
@@ -172,7 +172,7 @@ export function HistoryDialog({ metric, formatFormula, onClose, canApprove = fal
           )
         })()}
         {canApprove && data && data.length > 0 && (
-          <div className="flex justify-end space-x-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <Button variant="outline" size="sm" onClick={handleReject} disabled={reject.isPending}>
               驳回最新
             </Button>

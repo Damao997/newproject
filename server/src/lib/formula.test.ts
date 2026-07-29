@@ -34,6 +34,16 @@ describe('公式引擎 substituteOperands / evaluateFormula', () => {
   it('端到端求值', () => {
     expect(evaluateFormula('({A} - {B}) / {A}', { A: 200, B: 50 })).toBe(0.75)
   })
+  it('维度后缀：优先取复合键，不回退裸键', () => {
+    expect(substituteOperands('{ST_007@YEAR_START} + {ST_007}', { 'ST_007@YEAR_START': 80, ST_007: 120 })).toBe('80 + 120')
+    // 带后缀但复合键缺失 → 0（不取裸键，避免跨维度取错列值）
+    expect(substituteOperands('{ST_007@YEAR_START}', { ST_007: 120 })).toBe('0')
+  })
+  it('伪操作数 DAYS_YTD 按裸键替换；跨期间公式端到端求值', () => {
+    const values = { 'ST_007@YEAR_START': 80, ST_007: 120, DAYS_YTD: 181, 'OP_031@YTD_ACTUAL': 500 }
+    // (80+120)/2 * 181 / 500 = 36.2
+    expect(evaluateFormula('({ST_007@YEAR_START} + {ST_007}) / 2 * {DAYS_YTD} / {OP_031@YTD_ACTUAL}', values)).toBeCloseTo(36.2)
+  })
 })
 
 describe('公式引擎 topoSortMetrics', () => {

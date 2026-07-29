@@ -25,11 +25,23 @@ function aliasOf(index: number): string {
   return `公司${s}`
 }
 
+// 公司映射短缓存：company 表低频变更，高频 AI 调用下避免每次全量扫表
+let companyMapCache: { at: number; map: CompanyMap } | null = null
+const COMPANY_MAP_TTL_MS = 60_000
+
+/** 公司表变更后（或测试中）手动失效映射缓存 */
+export function clearCompanyMapCache(): void {
+  companyMapCache = null
+}
+
 /**
- * 从 company 表构建动态公司名映射（active，按 code 排序保证稳定）。
+ * 从 company 表构建动态公司名映射（active，按 code 排序保证稳定；60s 内存缓存）。
  * forward 同时登记「名称→别名」与「编码→别名」；reverse 仅登记「别名→名称」。
  */
 export async function buildCompanyMap(): Promise<CompanyMap> {
+  if (companyMapCache && Date.now() - companyMapCache.at < COMPANY_MAP_TTL_MS) {
+    return companyMapCache.map
+  }
   const companies = await prisma.company.findMany({
     where: { status: 'active' },
     select: { code: true, name: true },
@@ -43,7 +55,8 @@ export async function buildCompanyMap(): Promise<CompanyMap> {
     forward.set(c.code, alias)
     reverse.set(alias, c.name)
   })
-  return { forward, reverse }
+  companyMapCache = { at: Date.now(), map: { forward, reverse } }
+  return companyMapCache.map
 }
 
 /** 转义正则元字符，避免公司名/编码中的特殊字符被当作正则语法解析 */

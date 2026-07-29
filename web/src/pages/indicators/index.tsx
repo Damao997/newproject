@@ -14,13 +14,15 @@ import {
 import { PageContainer } from '@/components/layout/page-container'
 import { MetricTree } from '@/components/subject-tree/metric-tree'
 import { AnalysisDrawer, type AnalysisTarget } from '@/components/indicators/analysis-drawer'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
 import { usePermission } from '@/hooks/usePermission'
 import { useCompanies, useOperatingIndicators, useStaticIndicators, useAvailablePeriods, type OperatingRow, type StaticRow } from '@/hooks/api-queries'
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { exportToExcel } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import type { MetricValue } from '@/lib/metric-values'
-import { Download, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
+import { Download, ChevronsDownUp, ChevronsUpDown, History } from 'lucide-react'
 import type { SubjectNode } from '@/types'
 
 /** 收集含子节点的科目编码（用于全部展开） */
@@ -75,6 +77,7 @@ export default function IndicatorsPage() {
   const [activeTab, setActiveTab] = useState<'operating' | 'static'>('operating')
   const [dimFilter, setDimFilter] = useState('all')
   const [periodFilter, setPeriodFilter] = useState('')
+  const [excludeReclassify, setExcludeReclassify] = useState(false)
   const [expandedCodes, setExpandedCodes] = useState<Set<string>>(new Set())
   const [analysisTarget, setAnalysisTarget] = useState<AnalysisTarget | null>(null)
 
@@ -105,8 +108,8 @@ export default function IndicatorsPage() {
   const period = periodFilter === 'all' ? undefined : periodFilter
 
   const { data: companies } = useCompanies()
-  const operatingQuery = useOperatingIndicators({ companyCode, period })
-  const staticQuery = useStaticIndicators({ companyCode })
+  const operatingQuery = useOperatingIndicators({ companyCode, period, excludeReclassify: excludeReclassify || undefined })
+  const staticQuery = useStaticIndicators({ companyCode, excludeReclassify: excludeReclassify || undefined })
 
   const entityCompanies = useMemo(() => (companies ?? []).filter((c) => c.type === 'entity'), [companies])
   const summaryEntities = useMemo(() => (companies ?? []).filter((c) => c.type === 'summary'), [companies])
@@ -115,6 +118,8 @@ export default function IndicatorsPage() {
   const isLoading = isOperating ? operatingQuery.isLoading : staticQuery.isLoading
   // isFetching：筛选刷新中（已保留旧数据），用于轻量视觉反馈而非整块替换
   const isFetching = isOperating ? operatingQuery.isFetching : staticQuery.isFetching
+  // 去重分类口径下无法回溯的记录数（批次已替换/缺快照）
+  const skippedReclassifyLogs = (isOperating ? operatingQuery.data?.skippedReclassifyLogs : staticQuery.data?.skippedReclassifyLogs) ?? 0
 
   const { nodes: activeTree, map: activeValueMap } = useMemo(
     () => adapt(activeItems as Row[], isOperating),
@@ -143,12 +148,17 @@ export default function IndicatorsPage() {
     })
   }
 
-  const expandActive = () => setExpandedCodes((prev) => new Set([...prev, ...activeExpandable]))
-  const collapseActive = () =>
+  // 是否已全部展开：用于展开/折叠切换按钮的状态判断
+  const isAllExpanded = activeExpandable.length > 0 && activeExpandable.every((code) => expandedCodes.has(code))
+
+  const toggleExpandAll = () =>
     setExpandedCodes((prev) => {
-      const next = new Set(prev)
-      for (const code of activeExpandable) next.delete(code)
-      return next
+      if (isAllExpanded) {
+        const next = new Set(prev)
+        for (const code of activeExpandable) next.delete(code)
+        return next
+      }
+      return new Set([...prev, ...activeExpandable])
     })
 
   /** 打开单项分析抽屉：需先选中单一公司主体 */
@@ -178,6 +188,8 @@ export default function IndicatorsPage() {
     const fmtVal = (v: number, vt: string) => (vt === 'ratio' ? `${(v * 100).toFixed(1)}%` : vt === 'quantity' ? Math.round(v) : v)
     const fmtYoy = (v: number, vt: string) => (vt === 'ratio' ? `${v.toFixed(1)}pp` : pct(v))
     const flat = flattenForExport(activeItems as Row[])
+    // 去重分类口径导出时文件名标识区分，避免与正式口径混淆
+    const scopeSuffix = excludeReclassify ? '_原始口径' : ''
     if (isOperating) {
       const rows = flat.map(({ row, depth }) => {
         const o = row as OperatingRow
@@ -189,7 +201,7 @@ export default function IndicatorsPage() {
         }
       })
       await exportToExcel({
-        filename: `财务指标_经营指标_${new Date().toISOString().slice(0, 10)}.xlsx`,
+        filename: `财务指标_经营指标${scopeSuffix}_${new Date().toISOString().slice(0, 10)}.xlsx`,
         sheetName: '经营指标',
         columns: [
           { header: '科目', key: 'account', width: 40 },
@@ -213,7 +225,7 @@ export default function IndicatorsPage() {
         }
       })
       await exportToExcel({
-        filename: `财务指标_静态指标_${new Date().toISOString().slice(0, 10)}.xlsx`,
+        filename: `财务指标_静态指标${scopeSuffix}_${new Date().toISOString().slice(0, 10)}.xlsx`,
         sheetName: '静态指标',
         columns: [
           { header: '科目', key: 'account', width: 40 },
@@ -287,20 +299,39 @@ export default function IndicatorsPage() {
                 </SelectContent>
               </Select>
 
+              <div
+                className="flex items-center space-x-2"
+                title="按重分类日志快照回溯展示调整前口径，仅供对比查看，不修改数据"
+              >
+                <Switch id="exclude-reclassify" checked={excludeReclassify} onCheckedChange={setExcludeReclassify} />
+                <Label htmlFor="exclude-reclassify" className="cursor-pointer whitespace-nowrap text-sm">去除重分类影响</Label>
+              </div>
+
               <div className="flex items-center space-x-2">
-                <Button variant="outline" size="sm" onClick={expandActive}>
-                  <ChevronsUpDown className="mr-2 h-4 w-4" />
-                  全部展开
-                </Button>
-                <Button variant="outline" size="sm" onClick={collapseActive}>
-                  <ChevronsDownUp className="mr-2 h-4 w-4" />
-                  全部折叠
+                <Button variant="outline" size="sm" onClick={toggleExpandAll}>
+                  {isAllExpanded ? (
+                    <ChevronsDownUp className="mr-2 h-4 w-4" />
+                  ) : (
+                    <ChevronsUpDown className="mr-2 h-4 w-4" />
+                  )}
+                  {isAllExpanded ? '全部折叠' : '全部展开'}
                 </Button>
               </div>
             </div>
           </div>
         </CardContent>
       </Card>
+
+      {/* 去重分类模拟口径提示条 */}
+      {excludeReclassify && (
+        <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+          <History className="h-4 w-4 shrink-0" />
+          <span>
+            当前展示的是去除跨公司重分类影响后的模拟口径，不修改任何数据。
+            {skippedReclassifyLogs > 0 && `另有 ${skippedReclassifyLogs} 条记录因数据批次已替换无法回溯。`}
+          </span>
+        </div>
+      )}
 
       {/* 指标科目树 */}
       <Card className="animate-fade-in">

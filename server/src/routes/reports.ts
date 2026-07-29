@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/auth'
 import { requirePermission } from '../middleware/permission'
 import { asyncHandler } from '../lib/async-handler'
 import { sendOk } from '../lib/response'
+import { errors } from '../lib/errors'
 import { recordAudit, clientIp } from '../middleware/audit'
 import { SubjectAnalysisService } from '../services/SubjectAnalysisService'
 import { ReportService } from '../services/ReportService'
@@ -32,13 +33,17 @@ router.get('/analyses/batch', requirePermission('reports:view', 'view'), asyncHa
   sendOk(res, data)
 }))
 
-// 列表
+// 列表（管理视图：关键词/分页/含已删除，附引用情况）
 router.get('/analyses', requirePermission('reports:view', 'view'), asyncHandler(async (req, res) => {
   const authUser = req.authUser as AuthUserContext
   const data = await SubjectAnalysisService.list(scopeOf(authUser), {
     companyCode: req.query.companyCode as string | undefined,
     subjectCode: req.query.subjectCode as string | undefined,
     period: req.query.period as string | undefined,
+    keyword: req.query.keyword as string | undefined,
+    includeInactive: req.query.includeInactive === '1' || req.query.includeInactive === 'true',
+    page: req.query.page ? Number(req.query.page) : undefined,
+    pageSize: req.query.pageSize ? Number(req.query.pageSize) : undefined,
   })
   sendOk(res, data)
 }))
@@ -68,6 +73,14 @@ router.post('/analyses', requirePermission('reports:create', 'create'), asyncHan
   sendOk(res, data, 'success', 201)
 }))
 
+// 恢复软删除（status → active）—— 须置于 PUT /analyses/:id 之前，避免被其吞并
+router.put('/analyses/:id/restore', requirePermission('reports:update', 'update'), asyncHandler(async (req, res) => {
+  const authUser = req.authUser as AuthUserContext
+  const data = await SubjectAnalysisService.restore(scopeOf(authUser), req.params.id as string, authUser.userId)
+  await recordAudit({ userId: authUser.userId, module: 'reports', action: 'analysis_restore', targetId: data.id, ip: clientIp(req) }, req.traceId)
+  sendOk(res, data)
+}))
+
 // 编辑
 router.put('/analyses/:id', requirePermission('reports:update', 'update'), asyncHandler(async (req, res) => {
   const authUser = req.authUser as AuthUserContext
@@ -91,12 +104,14 @@ router.delete('/analyses/:id', requirePermission('reports:delete', 'delete'), as
 
 // ============ 汇总分析报告 ============
 
-// 列表
+// 列表（scope 收敛；status 未指定默认排除归档，'all' 返回全部；keyword 按标题搜索）
 router.get('/', requirePermission('reports:view', 'view'), asyncHandler(async (req, res) => {
-  const data = await ReportService.list({
+  const authUser = req.authUser as AuthUserContext
+  const data = await ReportService.list(scopeOf(authUser), {
     page: req.query.page ? Number(req.query.page) : undefined,
     pageSize: req.query.pageSize ? Number(req.query.pageSize) : undefined,
     status: req.query.status as string | undefined,
+    keyword: req.query.keyword as string | undefined,
   })
   sendOk(res, data)
 }))
@@ -105,7 +120,7 @@ router.get('/', requirePermission('reports:view', 'view'), asyncHandler(async (r
 router.post('/', requirePermission('reports:create', 'create'), asyncHandler(async (req, res) => {
   const authUser = req.authUser as AuthUserContext
   const b = req.body ?? {}
-  const data = await ReportService.create({
+  const data = await ReportService.create(scopeOf(authUser), {
     title: String(b.title ?? ''),
     fiscalYear: String(b.fiscalYear ?? ''),
     period: String(b.period ?? ''),
@@ -117,15 +132,16 @@ router.post('/', requirePermission('reports:create', 'create'), asyncHandler(asy
 
 // 详情
 router.get('/:id', requirePermission('reports:view', 'view'), asyncHandler(async (req, res) => {
-  const data = await ReportService.getById(req.params.id as string)
+  const authUser = req.authUser as AuthUserContext
+  const data = await ReportService.getById(scopeOf(authUser), req.params.id as string)
   sendOk(res, data)
 }))
 
-// 更新（标题/状态）
+// 更新（标题/状态，状态机校验）
 router.put('/:id', requirePermission('reports:update', 'update'), asyncHandler(async (req, res) => {
   const authUser = req.authUser as AuthUserContext
   const b = req.body ?? {}
-  const data = await ReportService.update(req.params.id as string, {
+  const data = await ReportService.update(scopeOf(authUser), req.params.id as string, {
     title: typeof b.title === 'string' ? b.title : undefined,
     status: typeof b.status === 'string' ? b.status : undefined,
   }, authUser.userId)
@@ -136,7 +152,7 @@ router.put('/:id', requirePermission('reports:update', 'update'), asyncHandler(a
 // 归档（软删除）
 router.delete('/:id', requirePermission('reports:delete', 'delete'), asyncHandler(async (req, res) => {
   const authUser = req.authUser as AuthUserContext
-  await ReportService.archive(req.params.id as string, authUser.userId)
+  await ReportService.archive(scopeOf(authUser), req.params.id as string, authUser.userId)
   await recordAudit({ userId: authUser.userId, module: 'reports', action: 'report_archive', targetId: req.params.id, ip: clientIp(req) }, req.traceId)
   sendOk(res, null)
 }))
@@ -149,33 +165,55 @@ router.post('/:id/sections/generate', requirePermission('reports:update', 'updat
   sendOk(res, data)
 }))
 
-// 重排/增删章节
+// 重排/增删章节（仅草稿；乐观锁：expectedUpdatedAt 不匹配返回 409）
 router.put('/:id/sections', requirePermission('reports:update', 'update'), asyncHandler(async (req, res) => {
   const authUser = req.authUser as AuthUserContext
   const items = Array.isArray(req.body?.items) ? req.body.items : []
-  const data = await ReportService.setSections(req.params.id as string, items, authUser.userId)
+  const expectedUpdatedAt = typeof req.body?.expectedUpdatedAt === 'string' ? req.body.expectedUpdatedAt : undefined
+  const data = await ReportService.setSections(scopeOf(authUser), req.params.id as string, items, authUser.userId, expectedUpdatedAt)
   await recordAudit({ userId: authUser.userId, module: 'reports', action: 'report_set_sections', targetId: req.params.id, ip: clientIp(req) }, req.traceId)
   sendOk(res, data)
 }))
 
-// 保存版本快照
+// 保存版本快照（仅草稿；乐观锁）
 router.post('/:id/versions', requirePermission('reports:update', 'update'), asyncHandler(async (req, res) => {
   const authUser = req.authUser as AuthUserContext
-  const data = await ReportService.saveVersion(req.params.id as string, req.body?.changeSummary as string | undefined, authUser.userId)
+  const expectedUpdatedAt = typeof req.body?.expectedUpdatedAt === 'string' ? req.body.expectedUpdatedAt : undefined
+  const data = await ReportService.saveVersion(scopeOf(authUser), req.params.id as string, req.body?.changeSummary as string | undefined, authUser.userId, expectedUpdatedAt)
   await recordAudit({ userId: authUser.userId, module: 'reports', action: 'report_save_version', targetId: req.params.id, detail: data, ip: clientIp(req) }, req.traceId)
   sendOk(res, data)
 }))
 
 // 版本历史
 router.get('/:id/versions', requirePermission('reports:view', 'view'), asyncHandler(async (req, res) => {
-  const data = await ReportService.listVersions(req.params.id as string)
+  const authUser = req.authUser as AuthUserContext
+  const data = await ReportService.listVersions(scopeOf(authUser), req.params.id as string)
+  sendOk(res, data)
+}))
+
+// 版本快照内容（查看）
+router.get('/:id/versions/:versionNo', requirePermission('reports:view', 'view'), asyncHandler(async (req, res) => {
+  const authUser = req.authUser as AuthUserContext
+  const versionNo = Number(req.params.versionNo)
+  if (!Number.isInteger(versionNo) || versionNo < 1) throw errors.badRequest('非法版本号')
+  const data = await ReportService.getVersion(scopeOf(authUser), req.params.id as string, versionNo)
+  sendOk(res, data)
+}))
+
+// 回退到指定版本（仅草稿）
+router.post('/:id/versions/:versionNo/rollback', requirePermission('reports:update', 'update'), asyncHandler(async (req, res) => {
+  const authUser = req.authUser as AuthUserContext
+  const versionNo = Number(req.params.versionNo)
+  if (!Number.isInteger(versionNo) || versionNo < 1) throw errors.badRequest('非法版本号')
+  const data = await ReportService.rollbackVersion(scopeOf(authUser), req.params.id as string, versionNo, authUser.userId)
+  await recordAudit({ userId: authUser.userId, module: 'reports', action: 'report_rollback_version', targetId: req.params.id, detail: { versionNo }, ip: clientIp(req) }, req.traceId)
   sendOk(res, data)
 }))
 
 // 导出结构化数据（前端生成 Word/PDF）
 router.get('/:id/export', requirePermission('reports:export', 'export'), asyncHandler(async (req, res) => {
   const authUser = req.authUser as AuthUserContext
-  const data = await ReportService.exportStructured(req.params.id as string)
+  const data = await ReportService.exportStructured(scopeOf(authUser), req.params.id as string)
   await recordAudit({ userId: authUser.userId, module: 'reports', action: 'report_export', targetId: req.params.id, detail: { format: req.query.format ?? 'docx' }, ip: clientIp(req) }, req.traceId)
   sendOk(res, data)
 }))

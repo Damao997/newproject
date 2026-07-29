@@ -16,12 +16,15 @@ import { PageContainer } from '@/components/layout/page-container'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { usePermission } from '@/hooks/usePermission'
 import { useCompanies, useCrossTable, useAvailablePeriods } from '@/hooks/api-queries'
+import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { exportToExcel } from '@/lib/export'
 import { formatMetricValue, cn } from '@/lib/utils'
 import {
   Download,
   ChevronDown,
   ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
   ArrowLeftRight,
 } from 'lucide-react'
 import { SubjectTreePanel } from '@/components/subject-tree/subject-tree-panel'
@@ -40,6 +43,7 @@ export default function DataPage() {
   // 高危操作（仅 superadmin 持有对应权限码）
   const canPurgeMetric = can('data:metric', 'purge')
   const canApproveMetric = can('data:metric', 'approve')
+  const canConvertMetric = can('data:metric', 'convert')
   const canReclassifyCompany = can('data:reclassify', 'company')
   const canReclassifySubject = can('data:reclassify', 'subject')
 
@@ -70,7 +74,9 @@ export default function DataPage() {
   const { data: crossTable, isLoading: crossLoading, isFetching: crossFetching } = useCrossTable(crossParams)
 
   const entityCompanies = useMemo(() => (companies ?? []).filter((c) => c.type === 'entity'), [companies])
+  // 全称映射仅用于 Excel 导出（正式文件用全称）；屏幕展示统一走 displayNameMap（跟随「显示简称」开关）
   const companyNameMap = useMemo(() => new Map((companies ?? []).map((c) => [c.code, c.name])), [companies])
+  const { displayNameMap } = useCompanyDisplayName()
 
   // 交叉表列：未勾选时展示全部公司，否则按交叉表返回顺序过滤已选公司
   const visibleCompanyCodes = useMemo(() => {
@@ -81,9 +87,9 @@ export default function DataPage() {
   // 公司多选触发按钮文案：全部 / 单选名称 / 首选名称 等 N 家
   const companyTriggerLabel = useMemo(() => {
     if (browseCompanies.length === 0) return '全部公司'
-    const firstName = companyNameMap.get(browseCompanies[0]) ?? browseCompanies[0]
+    const firstName = displayNameMap.get(browseCompanies[0]) ?? browseCompanies[0]
     return browseCompanies.length === 1 ? firstName : `${firstName} 等 ${browseCompanies.length} 家`
-  }, [browseCompanies, companyNameMap])
+  }, [browseCompanies, displayNameMap])
 
   // 编辑对话框预填：公司多选恰好只选 1 家时预填该公司
   const singleBrowseCompany = browseCompanies.length === 1 ? browseCompanies[0] : undefined
@@ -123,6 +129,12 @@ export default function DataPage() {
     })
   }, [])
 
+  // 是否已全部展开：用于展开/折叠切换按钮的状态判断
+  const isAllRowsExpanded = hasChildrenSet.size > 0 && [...hasChildrenSet].every((code) => expandedRows.has(code))
+
+  const toggleExpandAllRows = () =>
+    setExpandedRows(isAllRowsExpanded ? new Set() : new Set(hasChildrenSet))
+
   const browseColumns: DataTableColumn<CrossRow>[] = useMemo(() => {
     const cols: DataTableColumn<CrossRow>[] = [
       {
@@ -149,7 +161,7 @@ export default function DataPage() {
     for (const code of visibleCompanyCodes) {
       cols.push({
         key: code,
-        header: companyNameMap.get(code) ?? code,
+        header: displayNameMap.get(code) ?? code,
         align: 'right',
         cellClassName: 'font-num',
         // 按科目值类型渲染：金额千分位 / 数量整数 / 比率百分比
@@ -157,7 +169,7 @@ export default function DataPage() {
       })
     }
     return cols
-  }, [visibleCompanyCodes, companyNameMap, hasChildrenSet, expandedRows, toggleRowExpand])
+  }, [visibleCompanyCodes, displayNameMap, hasChildrenSet, expandedRows, toggleRowExpand])
 
   const handleBrowseExport = async () => {
     const rows = (crossTable?.rows ?? []).map((r) => {
@@ -235,7 +247,7 @@ export default function DataPage() {
                           onCheckedChange={(checked) => toggleBrowseCompany(company.code, checked === true)}
                           onSelect={(e) => e.preventDefault()}
                         >
-                          {company.name}
+                          {displayNameMap.get(company.code) ?? company.name}
                         </DropdownMenuCheckboxItem>
                       ))}
                     </DropdownMenuContent>
@@ -246,6 +258,14 @@ export default function DataPage() {
                   </div>
                 </div>
                 <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={toggleExpandAllRows}>
+                    {isAllRowsExpanded ? (
+                      <ChevronsDownUp className="mr-2 h-4 w-4" />
+                    ) : (
+                      <ChevronsUpDown className="mr-2 h-4 w-4" />
+                    )}
+                    {isAllRowsExpanded ? '全部折叠' : '全部展开'}
+                  </Button>
                   {canReclassifySubject && (
                     <Button variant="outline" size="sm" onClick={() => setAdjustSubjectOpen(true)}>
                       <ArrowLeftRight className="mr-2 h-4 w-4" />
@@ -373,9 +393,9 @@ export default function DataPage() {
                 canCreate={can('data:metric', 'create')}
                 canUpdate={can('data:metric', 'update')}
                 canDelete={can('data:metric', 'delete')}
-                canManageRule={can('data:formula-rule', 'manage')}
                 canApprove={canApproveMetric}
                 canPurge={canPurgeMetric}
+                canConvert={canConvertMetric}
               />
             </CardContent>
           </Card>

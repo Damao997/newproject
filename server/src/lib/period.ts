@@ -72,3 +72,17 @@ export function fyLabelOfDate(date: Date, startMonth = getFiscalStartMonth()): s
   const month = date.getUTCMonth() + 1
   return `FY${month >= startMonth ? year : year - 1}`
 }
+
+/**
+ * 财年累计天数：财年起始月首日 → 指定期间月末日的天数（含两端，UTC 计算，自动处理闰年）。
+ * 供公式伪操作数 {DAYS_YTD} 使用（周转天数类指标）。
+ */
+export function fiscalYtdDays(period: string, startMonth = getFiscalStartMonth()): number {
+  const start = fiscalYearStartPeriod(period, startMonth)
+  const s = parsePeriod(start)
+  const e = parsePeriod(period)
+  const startDate = Date.UTC(s.year, s.month - 1, 1)
+  // 月末日：下月首日减一天
+  const endDate = Date.UTC(e.year, e.month, 1) - 24 * 3600 * 1000
+  return Math.round((endDate - startDate) / (24 * 3600 * 1000)) + 1
+}

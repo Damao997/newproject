@@ -38,12 +38,12 @@ const ADMIN_PERMISSIONS: string[] = [
  */
 export const HIGH_RISK_PERMISSIONS: string[] = [
   'data:metric:approve',
-  'data:formula-rule:manage',
   'data:import:archive',
   'data:import:purge',
   'data:company:purge',
   'data:subject:purge',
   'data:metric:purge',
+  'data:metric:convert',
   'admin:users:purge',
   // 权限配置的增删改仅 superadmin 可操作（与 server/prisma/seed.ts 同步）
   'admin:permissions:update',

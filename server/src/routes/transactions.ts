@@ -7,12 +7,13 @@ import { sendOk } from '../lib/response'
 import { errors } from '../lib/errors'
 import { TransactionService } from '../services/TransactionService'
 import { ImportService } from '../services/ImportService'
+import { CollectionService } from '../services/CollectionService'
 import { fixUploadFilename } from '../lib/sanitize'
 import type { AuthUserContext } from '../types/express'
 
 /**
  * 往来分析路由（/api/v1/transactions）。
- * 权限：查看 transactions:view；导入 transactions:import。
+ * 权限：查看 transactions:view；导入 transactions:import；催收 transactions:create/update。
  */
 const router = Router()
 
@@ -21,14 +22,17 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 
 router.use(authenticate)
 
 // ===== 总览 =====
-router.get('/overview', requirePermission('transactions', 'view'), asyncHandler(async (req, res) => {
-  const companyCode = req.query.companyCode as string | undefined
-  const data = await TransactionService.getOverview(companyCode)
+router.get('/overview', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
+  const companyCodes = req.query.companyCodes
+    ? String(req.query.companyCodes).split(',').map((s) => s.trim()).filter(Boolean)
+    : undefined
+  const period = req.query.period as string | undefined
+  const data = await TransactionService.getOverview({ companyCodes, period })
   sendOk(res, data)
 }))
 
 // ===== 明细列表 =====
-router.get('/details', requirePermission('transactions', 'view'), asyncHandler(async (req, res) => {
+router.get('/details', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
   const q = req.query
   const data = await TransactionService.listDetails({
     page: Number(q.page) || 1,
@@ -42,63 +46,168 @@ router.get('/details', requirePermission('transactions', 'view'), asyncHandler(a
     isSettled: q.isSettled !== undefined ? q.isSettled === 'true' : undefined,
     minAmount: q.minAmount ? Number(q.minAmount) : undefined,
     maxAmount: q.maxAmount ? Number(q.maxAmount) : undefined,
+    period: q.period as string | undefined,
+    accountCodes: q.accountCodes ? String(q.accountCodes).split(',').map((s) => s.trim()).filter(Boolean) : undefined,
   })
   sendOk(res, data)
 }))
 
+// ===== 已导入期间列表（明细筛选用） =====
+router.get('/periods', requirePermission('transactions:view', 'view'), asyncHandler(async (_req, res) => {
+  const data = await TransactionService.listPeriods()
+  sendOk(res, data)
+}))
+
 // ===== 账龄分析 =====
-router.get('/aging', requirePermission('transactions', 'view'), asyncHandler(async (req, res) => {
+router.get('/aging', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
   const q = req.query
   const data = await TransactionService.getAgingAnalysis({
     companyCode: q.companyCode as string | undefined,
     transactionType: q.transactionType as string | undefined,
     groupBy: (q.groupBy as 'type' | 'counterparty' | 'account') || 'type',
+    period: q.period as string | undefined,
+    accountCodes: q.accountCodes ? String(q.accountCodes).split(',').map((s) => s.trim()).filter(Boolean) : undefined,
   })
   sendOk(res, data)
 }))
 
+// ===== 会计科目列表（去重，供科目多选筛选；可按往来类型过滤） =====
+router.get('/accounts', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
+  const data = await TransactionService.listAccounts({ transactionType: req.query.transactionType as string | undefined })
+  sendOk(res, data)
+}))
+
 // ===== 内部往来汇总 =====
-router.get('/internal/summary', requirePermission('transactions', 'view'), asyncHandler(async (req, res) => {
+router.get('/internal/summary', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
   const companyCode = req.query.companyCode as string | undefined
   const data = await TransactionService.getInternalSummary(companyCode)
   sendOk(res, data)
 }))
 
 // ===== 内部往来镜像校验 =====
-router.get('/internal/mirror-check', requirePermission('transactions', 'view'), asyncHandler(async (req, res) => {
+router.get('/internal/mirror-check', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
   const companyCode = req.query.companyCode as string | undefined
   const data = await TransactionService.getInternalMirrorCheck(companyCode)
   sendOk(res, data)
 }))
 
 // ===== 往来对象列表（筛选用） =====
-router.get('/counterparties', requirePermission('transactions', 'view'), asyncHandler(async (req, res) => {
+router.get('/counterparties', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
   const companyCode = req.query.companyCode as string | undefined
   const data = await TransactionService.listCounterparties(companyCode)
   sendOk(res, data)
 }))
 
 // ===== 最新截止日期 =====
-router.get('/latest-cutoff', requirePermission('transactions', 'view'), asyncHandler(async (_req, res) => {
+router.get('/latest-cutoff', requirePermission('transactions:view', 'view'), asyncHandler(async (_req, res) => {
   const data = await TransactionService.getLatestCutoff()
   sendOk(res, { cutoffDate: data })
 }))
 
-// ===== 导入往来数据 =====
-router.post('/import', requirePermission('transactions', 'import'), upload.single('file'), asyncHandler(async (req, res) => {
-  if (!req.file) throw errors.badRequest('缺少上传文件')
-  const originalname = fixUploadFilename(req.file.originalname)
-  if (!/\.(xlsx|xls)$/i.test(originalname)) throw errors.badRequest('仅支持 .xlsx/.xls 文件')
+// ===== 往来余额变动趋势（单类型，按 公司×月份 聚合） =====
+const TREND_TYPES = new Set(['应收账款', '其他应收款', '预收账款', '应付账款', '其他应付款', '预付账款'])
 
+router.get('/trend', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
+  const transactionType = String(req.query.transactionType || '')
+  if (!TREND_TYPES.has(transactionType)) throw errors.badRequest('往来类型不合法，需为六大往来类型之一')
+  const companyCodes = req.query.companyCodes
+    ? String(req.query.companyCodes).split(',').map((s) => s.trim()).filter(Boolean)
+    : undefined
+  const months = req.query.months ? Number(req.query.months) : undefined
+  const fiscalYear = req.query.fiscalYear ? String(req.query.fiscalYear) : undefined
+  if (fiscalYear && !/^FY\d{4}$/i.test(fiscalYear)) throw errors.badRequest('财年格式不合法，应形如 FY2026')
+  const data = await TransactionService.getTrend({ transactionType, companyCodes, months, fiscalYear })
+  sendOk(res, data)
+}))
+
+// ===== 往来数据涉及的财年列表（趋势图财年筛选） =====
+router.get('/fiscal-years', requirePermission('transactions:view', 'view'), asyncHandler(async (_req, res) => {
+  const data = await TransactionService.listFiscalYears()
+  sendOk(res, data)
+}))
+
+// ===== 导入往来数据（六大往来账龄汇总表，多文件） =====
+function pickUploadFiles(req: { files?: unknown }): Array<{ originalname: string; buffer: Buffer; size: number }> {
+  const files = (req.files ?? []) as Express.Multer.File[]
+  if (!files.length) throw errors.badRequest('缺少上传文件')
+  return files.map((f) => {
+    const originalname = fixUploadFilename(f.originalname)
+    if (!/\.(xlsx|xls)$/i.test(originalname)) throw errors.badRequest(`仅支持 .xlsx/.xls 文件：${originalname}`)
+    return { originalname, buffer: f.buffer, size: f.size }
+  })
+}
+
+// 导入预览（dry-run，不建批次不写库）
+router.post('/import/preview', requirePermission('transactions:import', 'import'), upload.array('files', 12), asyncHandler(async (req, res) => {
+  const files = pickUploadFiles(req)
+  const data = await ImportService.previewTransactions(files)
+  sendOk(res, data)
+}))
+
+// 导入覆盖矩阵：公司×期间×六大类型 的 已生效/草稿/缺失 状态
+router.get('/import/coverage', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
+  const months = req.query.months ? Number(req.query.months) : undefined
+  const data = await TransactionService.getImportCoverage({ months })
+  sendOk(res, data)
+}))
+
+// 批次覆盖明细：该批次包含的三元组及笔数
+router.get('/import/batches/:id/coverage', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
+  const data = await TransactionService.getBatchCoverage(req.params.id as string)
+  sendOk(res, data)
+}))
+
+router.post('/import', requirePermission('transactions:import', 'import'), upload.array('files', 12), asyncHandler(async (req, res) => {
+  const files = pickUploadFiles(req)
   const authUser = req.authUser as AuthUserContext
-  const dto = await ImportService.upload(
-    { originalname, buffer: req.file.buffer, size: req.file.size },
-    'transaction',
-    authUser.userId,
-    req.traceId,
-    req.body?.fiscalYear ? String(req.body.fiscalYear) : undefined,
-  )
-  sendOk(res, dto)
+  const data = await ImportService.uploadTransactions(files, authUser.userId, req.traceId)
+  sendOk(res, data)
+}))
+
+// ===== 催收管理 =====
+router.get('/collections', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
+  const q = req.query
+  const data = await CollectionService.list({
+    page: Number(q.page) || 1,
+    pageSize: Number(q.pageSize) || 20,
+    companyCode: q.companyCode as string | undefined,
+    status: q.status as string | undefined,
+    counterpartyKeyword: q.counterpartyKeyword as string | undefined,
+  })
+  sendOk(res, data)
+}))
+
+router.post('/collections', requirePermission('transactions:create', 'create'), asyncHandler(async (req, res) => {
+  const authUser = req.authUser as AuthUserContext
+  const data = await CollectionService.create(req.body ?? {}, { userId: authUser.userId, traceId: req.traceId })
+  sendOk(res, data)
+}))
+
+// 从账龄数据批量生成催收建议
+router.post('/collections/generate', requirePermission('transactions:create', 'create'), asyncHandler(async (req, res) => {
+  const authUser = req.authUser as AuthUserContext
+  const data = await CollectionService.generateSuggestions({
+    companyCode: req.body?.companyCode ? String(req.body.companyCode) : undefined,
+    minAgingBucket: req.body?.minAgingBucket ? String(req.body.minAgingBucket) : undefined,
+  }, { userId: authUser.userId, traceId: req.traceId })
+  sendOk(res, data)
+}))
+
+router.patch('/collections/:id', requirePermission('transactions:update', 'update'), asyncHandler(async (req, res) => {
+  const authUser = req.authUser as AuthUserContext
+  const data = await CollectionService.update(req.params.id as string, req.body ?? {}, { userId: authUser.userId, traceId: req.traceId })
+  sendOk(res, data)
+}))
+
+router.get('/collections/:id/logs', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
+  const data = await CollectionService.listLogs(req.params.id as string)
+  sendOk(res, data)
+}))
+
+router.post('/collections/:id/logs', requirePermission('transactions:update', 'update'), asyncHandler(async (req, res) => {
+  const authUser = req.authUser as AuthUserContext
+  const data = await CollectionService.addLog(req.params.id as string, req.body ?? {}, { userId: authUser.userId, traceId: req.traceId })
+  sendOk(res, data)
 }))
 
 export default router

@@ -1,3 +1,4 @@
+import { useEffect, useMemo } from 'react'
 import { useAuthStore } from '@/stores/authStore'
 import { usePeriodStore } from '@/stores/periodStore'
 import { useAvailablePeriods } from '@/hooks/api-queries'
@@ -19,11 +20,20 @@ interface HeaderProps {
 
 export function Header({ onMenuClick }: HeaderProps) {
   const { user, logout } = useAuthStore()
-  // 全局财年选择：看板/指标/数据浏览的期间候选按此过滤；'all' 表示全部财年
+  // 全局财年选择：看板/指标/数据浏览的期间候选按此过滤；未选/失效时自动归一化为最新财年
   const fiscalYear = usePeriodStore((s) => s.fiscalYear)
   const setFiscalYear = usePeriodStore((s) => s.setFiscalYear)
   const { data: periodsData } = useAvailablePeriods()
-  const fiscalYears = periodsData?.fiscalYears ?? []
+  const fiscalYears = useMemo(() => periodsData?.fiscalYears ?? [], [periodsData])
+
+  // 归一化：未选（localStorage 遗留 null）或已选财年不在候选内（批次替换后失效）时，
+  // 自动切到最新财年（fiscalYears 后端按降序返回，[0] 即最新）
+  useEffect(() => {
+    if (fiscalYears.length === 0) return
+    if (!fiscalYear || !fiscalYears.includes(fiscalYear)) {
+      setFiscalYear(fiscalYears[0])
+    }
+  }, [fiscalYears, fiscalYear, setFiscalYear])
 
   const getInitials = (name: string) => {
     return name.slice(0, 1)
@@ -62,14 +72,13 @@ export function Header({ onMenuClick }: HeaderProps) {
             <div className="flex items-center gap-1.5">
               <CalendarRange className="hidden h-4 w-4 text-muted-foreground sm:block" />
               <Select
-                value={fiscalYear && fiscalYears.includes(fiscalYear) ? fiscalYear : 'all'}
-                onValueChange={(v) => setFiscalYear(v === 'all' ? null : v)}
+                value={fiscalYear && fiscalYears.includes(fiscalYear) ? fiscalYear : ''}
+                onValueChange={(v) => setFiscalYear(v)}
               >
                 <SelectTrigger className="h-8 w-[120px] text-xs" title="财年选择（影响看板/指标/数据浏览的期间候选）">
-                  <SelectValue placeholder="全部财年" />
+                  <SelectValue placeholder="选择财年" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">全部财年</SelectItem>
                   {fiscalYears.map((fy) => (
                     <SelectItem key={fy} value={fy}>{fy}</SelectItem>
                   ))}

@@ -16,12 +16,20 @@
 - [skeleton.tsx](file://web/src/components/ui/skeleton.tsx)
 - [separator.tsx](file://web/src/components/ui/separator.tsx)
 - [avatar.tsx](file://web/src/components/ui/avatar.tsx)
+- [collapsible.tsx](file://web/src/components/ui/collapsible.tsx)
 - [utils.ts](file://web/src/lib/utils.ts)
 - [constants.ts](file://web/src/lib/constants.ts)
 - [globals.css](file://web/src/styles/globals.css)
 - [index.css](file://web/src/index.css)
 - [tailwind.config.js](file://web/tailwind.config.js)
 </cite>
+
+## 更新摘要
+**所做更改**   
+- 新增 Collapsible 可折叠组件章节，详细介绍零依赖折叠展开功能与 localStorage 持久化
+- 更新核心组件概览，包含新的 Collapsible 组件
+- 更新架构总览图，添加 Collapsible 组件关系
+- 补充 Collapsible 组件的详细分析和使用示例
 
 ## 目录
 1. [简介](#简介)
@@ -43,8 +51,10 @@
 - 使用示例与最佳实践（样式定制、主题适配）
 - 组件组合与复用策略
 
+**最新更新**：新增了 Collapsible 可折叠组件，提供零依赖的折叠展开功能和用户偏好持久化存储。
+
 ## 项目结构
-UI 基础组件位于 web/src/components/ui 目录下，采用“按功能拆分”的组织方式，每个组件独立文件，便于维护与测试。通用工具与常量位于 lib 目录，全局样式与 Tailwind 配置位于 styles 与根目录。
+UI 基础组件位于 web/src/components/ui 目录下，采用"按功能拆分"的组织方式，每个组件独立文件，便于维护与测试。通用工具与常量位于 lib 目录，全局样式与 Tailwind 配置位于 styles 与根目录。
 
 ```mermaid
 graph TB
@@ -63,6 +73,7 @@ Sw["switch.tsx"]
 Sk["skeleton.tsx"]
 Sep["separator.tsx"]
 Av["avatar.tsx"]
+Co["collapsible.tsx"]
 end
 subgraph "公共库"
 U["utils.ts"]
@@ -87,6 +98,7 @@ Sw --> U
 Sk --> U
 Sep --> U
 Av --> U
+Co --> U
 U --> Const
 B --> TW
 I --> TW
@@ -102,11 +114,12 @@ Sw --> TW
 Sk --> TW
 Sep --> TW
 Av --> TW
+Co --> TW
 TW --> G
 TW --> IC
 ```
 
-图表来源
+**图表来源**
 - [button.tsx](file://web/src/components/ui/button.tsx)
 - [input.tsx](file://web/src/components/ui/input.tsx)
 - [dialog.tsx](file://web/src/components/ui/dialog.tsx)
@@ -121,27 +134,7 @@ TW --> IC
 - [skeleton.tsx](file://web/src/components/ui/skeleton.tsx)
 - [separator.tsx](file://web/src/components/ui/separator.tsx)
 - [avatar.tsx](file://web/src/components/ui/avatar.tsx)
-- [utils.ts](file://web/src/lib/utils.ts)
-- [constants.ts](file://web/src/lib/constants.ts)
-- [globals.css](file://web/src/styles/globals.css)
-- [index.css](file://web/src/index.css)
-- [tailwind.config.js](file://web/tailwind.config.js)
-
-章节来源
-- [button.tsx](file://web/src/components/ui/button.tsx)
-- [input.tsx](file://web/src/components/ui/input.tsx)
-- [dialog.tsx](file://web/src/components/ui/dialog.tsx)
-- [card.tsx](file://web/src/components/ui/card.tsx)
-- [badge.tsx](file://web/src/components/ui/badge.tsx)
-- [select.tsx](file://web/src/components/ui/select.tsx)
-- [label.tsx](file://web/src/components/ui/label.tsx)
-- [dropdown-menu.tsx](file://web/src/components/ui/dropdown-menu.tsx)
-- [tabs.tsx](file://web/src/components/ui/tabs.tsx)
-- [tooltip.tsx](file://web/src/components/ui/tooltip.tsx)
-- [switch.tsx](file://web/src/components/ui/switch.tsx)
-- [skeleton.tsx](file://web/src/components/ui/skeleton.tsx)
-- [separator.tsx](file://web/src/components/ui/separator.tsx)
-- [avatar.tsx](file://web/src/components/ui/avatar.tsx)
+- [collapsible.tsx](file://web/src/components/ui/collapsible.tsx)
 - [utils.ts](file://web/src/lib/utils.ts)
 - [constants.ts](file://web/src/lib/constants.ts)
 - [globals.css](file://web/src/styles/globals.css)
@@ -156,31 +149,12 @@ TW --> IC
 - 对输入类组件提供受控与非受控两种模式
 - 对外暴露稳定事件回调，避免直接操作 DOM
 
-章节来源
-- [button.tsx](file://web/src/components/ui/button.tsx)
-- [input.tsx](file://web/src/components/ui/input.tsx)
-- [dialog.tsx](file://web/src/components/ui/dialog.tsx)
-- [card.tsx](file://web/src/components/ui/card.tsx)
-- [badge.tsx](file://web/src/components/ui/badge.tsx)
-- [select.tsx](file://web/src/components/ui/select.tsx)
-- [label.tsx](file://web/src/components/ui/label.tsx)
-- [dropdown-menu.tsx](file://web/src/components/ui/dropdown-menu.tsx)
-- [tabs.tsx](file://web/src/components/ui/tabs.tsx)
-- [tooltip.tsx](file://web/src/components/ui/tooltip.tsx)
-- [switch.tsx](file://web/src/components/ui/switch.tsx)
-- [skeleton.tsx](file://web/src/components/ui/skeleton.tsx)
-- [separator.tsx](file://web/src/components/ui/separator.tsx)
-- [avatar.tsx](file://web/src/components/ui/avatar.tsx)
-- [utils.ts](file://web/src/lib/utils.ts)
-- [constants.ts](file://web/src/lib/constants.ts)
-- [globals.css](file://web/src/styles/globals.css)
-- [index.css](file://web/src/index.css)
-- [tailwind.config.js](file://web/tailwind.config.js)
+**新增**：Collapsible 组件提供可折叠内容区域，支持动画过渡和状态持久化。
 
 ## 架构总览
-UI 组件整体采用“原子化 + 组合式”的架构：
+UI 组件整体采用"原子化 + 组合式"的架构：
 - 原子组件：button、input、badge、label、separator、skeleton、avatar 等
-- 复合组件：dialog、select、tabs、dropdown-menu、tooltip 等
+- 复合组件：dialog、select、tabs、dropdown-menu、tooltip、collapsible 等
 - 公共能力：utils.ts 提供工具函数；constants.ts 提供常量；Tailwind 配置集中管理主题与变体
 
 ```mermaid
@@ -252,6 +226,13 @@ class Avatar {
 +src : string
 +alt : string
 }
+class Collapsible {
++defaultOpen : boolean
++onOpenChange(open)
++trigger : any
++content : any
++persistKey : string
+}
 Button --> utils : "使用工具函数"
 Input --> utils : "使用工具函数"
 Dialog --> utils : "使用工具函数"
@@ -259,11 +240,12 @@ Select --> utils : "使用工具函数"
 Tabs --> utils : "使用工具函数"
 Tooltip --> utils : "使用工具函数"
 Switch --> utils : "使用工具函数"
+Collapsible --> utils : "使用工具函数"
 Badge --> constants : "使用常量"
 Card --> constants : "使用常量"
 ```
 
-图表来源
+**图表来源**
 - [button.tsx](file://web/src/components/ui/button.tsx)
 - [input.tsx](file://web/src/components/ui/input.tsx)
 - [dialog.tsx](file://web/src/components/ui/dialog.tsx)
@@ -278,6 +260,7 @@ Card --> constants : "使用常量"
 - [skeleton.tsx](file://web/src/components/ui/skeleton.tsx)
 - [separator.tsx](file://web/src/components/ui/separator.tsx)
 - [avatar.tsx](file://web/src/components/ui/avatar.tsx)
+- [collapsible.tsx](file://web/src/components/ui/collapsible.tsx)
 - [utils.ts](file://web/src/lib/utils.ts)
 - [constants.ts](file://web/src/lib/constants.ts)
 
@@ -319,10 +302,10 @@ Btn-->>U : "无响应"
 end
 ```
 
-图表来源
+**图表来源**
 - [button.tsx](file://web/src/components/ui/button.tsx)
 
-章节来源
+**章节来源**
 - [button.tsx](file://web/src/components/ui/button.tsx)
 - [utils.ts](file://web/src/lib/utils.ts)
 - [tailwind.config.js](file://web/tailwind.config.js)
@@ -363,12 +346,12 @@ ShowError --> Render
 Render --> End(["完成"])
 ```
 
-图表来源
+**图表来源**
 - [input.tsx](file://web/src/components/ui/input.tsx)
 - [label.tsx](file://web/src/components/ui/label.tsx)
 - [tooltip.tsx](file://web/src/components/ui/tooltip.tsx)
 
-章节来源
+**章节来源**
 - [input.tsx](file://web/src/components/ui/input.tsx)
 - [label.tsx](file://web/src/components/ui/label.tsx)
 - [tooltip.tsx](file://web/src/components/ui/tooltip.tsx)
@@ -412,11 +395,11 @@ Parent-->>Dlg : "传入 open=false"
 Dlg-->>U : "关闭对话框"
 ```
 
-图表来源
+**图表来源**
 - [dialog.tsx](file://web/src/components/ui/dialog.tsx)
 - [button.tsx](file://web/src/components/ui/button.tsx)
 
-章节来源
+**章节来源**
 - [dialog.tsx](file://web/src/components/ui/dialog.tsx)
 - [button.tsx](file://web/src/components/ui/button.tsx)
 - [utils.ts](file://web/src/lib/utils.ts)
@@ -460,12 +443,12 @@ Card --> Badge : "包含"
 Card --> Button : "包含"
 ```
 
-图表来源
+**图表来源**
 - [card.tsx](file://web/src/components/ui/card.tsx)
 - [badge.tsx](file://web/src/components/ui/badge.tsx)
 - [button.tsx](file://web/src/components/ui/button.tsx)
 
-章节来源
+**章节来源**
 - [card.tsx](file://web/src/components/ui/card.tsx)
 - [badge.tsx](file://web/src/components/ui/badge.tsx)
 - [button.tsx](file://web/src/components/ui/button.tsx)
@@ -496,11 +479,11 @@ SetVariant --> Render["渲染徽章"]
 Render --> End["完成"]
 ```
 
-图表来源
+**图表来源**
 - [badge.tsx](file://web/src/components/ui/badge.tsx)
 - [constants.ts](file://web/src/lib/constants.ts)
 
-章节来源
+**章节来源**
 - [badge.tsx](file://web/src/components/ui/badge.tsx)
 - [constants.ts](file://web/src/lib/constants.ts)
 - [tailwind.config.js](file://web/tailwind.config.js)
@@ -539,13 +522,76 @@ Parent-->>Sel : "传入新的 value"
 Sel-->>U : "更新显示"
 ```
 
-图表来源
+**图表来源**
 - [select.tsx](file://web/src/components/ui/select.tsx)
 - [label.tsx](file://web/src/components/ui/label.tsx)
 
-章节来源
+**章节来源**
 - [select.tsx](file://web/src/components/ui/select.tsx)
 - [label.tsx](file://web/src/components/ui/label.tsx)
+- [utils.ts](file://web/src/lib/utils.ts)
+- [tailwind.config.js](file://web/tailwind.config.js)
+
+### Collapsible 可折叠组件
+- 职责：提供可折叠的内容区域，支持平滑动画和用户偏好持久化
+- Props 要点
+  - defaultOpen：默认展开状态（非受控模式）
+  - open：受控展开状态
+  - onOpenChange：展开状态变更回调
+  - trigger：触发折叠的元素
+  - content：可折叠的内容区域
+  - persistKey：localStorage 持久化键名
+  - animationDuration：动画持续时间（毫秒）
+- 事件处理
+  - 点击触发器时切换展开/折叠状态
+  - 支持键盘 Space/Enter 触发
+  - 状态变更时调用 onOpenChange 回调
+- 状态管理
+  - 支持受控和非受控两种模式
+  - 使用 localStorage 持久化用户偏好
+  - 自动检测浏览器环境，避免 SSR 问题
+- 可访问性
+  - 设置 role="region"、aria-expanded、aria-controls
+  - 与触发器建立正确的关联关系
+  - 支持键盘导航和焦点管理
+- 动画效果
+  - 使用 CSS transitions 实现平滑过渡
+  - 支持自定义动画时长和缓动函数
+  - 跨浏览器兼容性处理
+- 响应式设计
+  - 在不同屏幕尺寸下保持良好体验
+  - 移动端触摸优化
+- 样式定制与主题
+  - 通过 Tailwind 类名控制样式
+  - 支持自定义动画和过渡效果
+- 组合与复用
+  - 与任何可点击元素组合使用
+  - 适合 FAQ、设置面板、内容区块等场景
+
+```mermaid
+sequenceDiagram
+participant U as "用户"
+participant Trg as "触发器"
+participant Col as "Collapsible 组件"
+participant LS as "localStorage"
+participant Parent as "父组件"
+U->>Trg : "点击触发器"
+Trg->>Col : "切换展开状态"
+Col->>Col : "更新内部状态"
+Col->>LS : "保存展开状态"
+Col->>Parent : "调用 onOpenChange(newState)"
+Parent-->>Col : "传入新的 open 状态受控模式"
+Col-->>U : "显示/隐藏内容区域"
+Note over Col : "初始化时从 localStorage 读取偏好"
+Col->>LS : "读取 persistKey 对应的状态"
+LS-->>Col : "返回保存的展开状态"
+```
+
+**图表来源**
+- [collapsible.tsx](file://web/src/components/ui/collapsible.tsx)
+
+**章节来源**
+- [collapsible.tsx](file://web/src/components/ui/collapsible.tsx)
 - [utils.ts](file://web/src/lib/utils.ts)
 - [tailwind.config.js](file://web/tailwind.config.js)
 
@@ -559,7 +605,7 @@ Sel-->>U : "更新显示"
 - Separator 分割线：视觉分隔内容区块
 - Avatar 头像：展示用户图像或首字母占位
 
-章节来源
+**章节来源**
 - [label.tsx](file://web/src/components/ui/label.tsx)
 - [dropdown-menu.tsx](file://web/src/components/ui/dropdown-menu.tsx)
 - [tabs.tsx](file://web/src/components/ui/tabs.tsx)
@@ -577,6 +623,8 @@ Sel-->>U : "更新显示"
 - constants.ts 提供主题色、尺寸等常量，保证一致性
 - Tailwind 配置集中管理主题与变体，确保全局样式一致
 
+**更新**：Collapsible 组件依赖 localStorage API 进行用户偏好持久化，同时使用 CSS transitions 实现动画效果。
+
 ```mermaid
 graph LR
 Utils["utils.ts"] --> CompA["button.tsx"]
@@ -586,14 +634,17 @@ Utils --> CompD["select.tsx"]
 Utils --> CompE["tabs.tsx"]
 Utils --> CompF["tooltip.tsx"]
 Utils --> CompG["switch.tsx"]
+Utils --> CompH["collapsible.tsx"]
 Const["constants.ts"] --> Badge["badge.tsx"]
 Const --> Card["card.tsx"]
 TW["tailwind.config.js"] --> All["所有 UI 组件"]
 TW --> G["globals.css"]
 TW --> IC["index.css"]
+LS["localStorage"] --> CompH
+CSS["CSS Transitions"] --> CompH
 ```
 
-图表来源
+**图表来源**
 - [utils.ts](file://web/src/lib/utils.ts)
 - [constants.ts](file://web/src/lib/constants.ts)
 - [tailwind.config.js](file://web/tailwind.config.js)
@@ -606,10 +657,11 @@ TW --> IC["index.css"]
 - [tabs.tsx](file://web/src/components/ui/tabs.tsx)
 - [tooltip.tsx](file://web/src/components/ui/tooltip.tsx)
 - [switch.tsx](file://web/src/components/ui/switch.tsx)
+- [collapsible.tsx](file://web/src/components/ui/collapsible.tsx)
 - [badge.tsx](file://web/src/components/ui/badge.tsx)
 - [card.tsx](file://web/src/components/ui/card.tsx)
 
-章节来源
+**章节来源**
 - [utils.ts](file://web/src/lib/utils.ts)
 - [constants.ts](file://web/src/lib/constants.ts)
 - [tailwind.config.js](file://web/tailwind.config.js)
@@ -622,8 +674,7 @@ TW --> IC["index.css"]
 - 事件节流与防抖：高频输入（Input）建议对 onChange 做防抖
 - 样式计算优化：合并类名与条件类名，减少运行时字符串拼接开销
 - 资源加载：Avatar 图片使用懒加载与占位图，Skeleton 提升感知性能
-
-[本节为通用指导，不涉及具体文件分析]
+- **Collapsible 优化**：使用 CSS transitions 而非 JavaScript 动画，避免重排重绘；localStorage 读写操作异步化，不影响主线程
 
 ## 故障排查指南
 - 无法触发事件
@@ -638,31 +689,34 @@ TW --> IC["index.css"]
 - 主题不一致
   - 核对 constants.ts 中的主题常量
   - 确认组件是否使用了正确的 variant 映射
+- **Collapsible 问题**
+  - 检查 localStorage 权限和可用性
+  - 验证 persistKey 的唯一性和命名规范
+  - 确认动画时长配置合理，避免过长影响用户体验
 
-章节来源
+**章节来源**
 - [button.tsx](file://web/src/components/ui/button.tsx)
 - [input.tsx](file://web/src/components/ui/input.tsx)
 - [dialog.tsx](file://web/src/components/ui/dialog.tsx)
 - [select.tsx](file://web/src/components/ui/select.tsx)
+- [collapsible.tsx](file://web/src/components/ui/collapsible.tsx)
 - [utils.ts](file://web/src/lib/utils.ts)
 - [constants.ts](file://web/src/lib/constants.ts)
 - [tailwind.config.js](file://web/tailwind.config.js)
 
 ## 结论
-pj3 的 UI 基础组件以原子化与组合式为核心，借助 Tailwind 构建一致的视觉语言，并通过 ARIA 与键盘交互保障可访问性。通过统一的 Props 约定与事件模型，组件具备良好的可组合性与可扩展性。建议在业务中优先复用这些基础组件，并结合主题常量与工具函数保持风格一致与性能最优。
-
-[本节为总结，不涉及具体文件分析]
+pj3 的 UI 基础组件以原子化与组合式为核心，借助 Tailwind 构建一致的视觉语言，并通过 ARIA 与键盘交互保障可访问性。通过统一的 Props 约定与事件模型，组件具备良好的可组合性与可扩展性。新增的 Collapsible 组件为零依赖的可折叠解决方案，提供了完整的用户偏好持久化功能。建议在业务中优先复用这些基础组件，并结合主题常量与工具函数保持风格一致与性能最优。
 
 ## 附录
 - 使用示例与最佳实践
   - 表单场景：Label + Input + Tooltip + Button 组合，提供清晰的标签、提示与提交入口
   - 数据展示：Card + Badge + Button 组合，呈现信息块与关键状态
   - 交互引导：Dialog + Button 组合，完成确认/编辑流程
+  - **内容组织：Collapsible + Content 组合，实现可折叠的信息区块和设置面板**
 - 主题适配
   - 通过 Tailwind 配置扩展新变体与尺寸
   - 使用 constants.ts 中的主题常量，避免硬编码颜色
 - 组合与复用策略
   - 将常用组合封装为高阶组件或页面级模板
   - 通过 props 透传与插槽模式增强灵活性
-
-[本节为概念性内容，不涉及具体文件分析]
+  - **Collapsible 使用建议：为不同的折叠区域设置唯一的 persistKey，避免状态冲突**

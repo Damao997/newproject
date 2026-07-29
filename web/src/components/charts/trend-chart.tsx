@@ -51,7 +51,7 @@ export function TrendChart({ data, showBudget = true }: TrendChartProps) {
       },
     },
     legend: {
-      data: ['收入', '成本', '毛利', '预算'],
+      data: ['收入', '成本', '毛利', '月均预算'],
       bottom: 0,
       itemWidth: 12,
       itemHeight: 8,
@@ -150,7 +150,7 @@ export function TrendChart({ data, showBudget = true }: TrendChartProps) {
       ...(showBudget
         ? [
             {
-              name: '预算',
+              name: '月均预算',
               type: 'line',
               data: data.map(d => d.budget),
               smooth: 0.4,

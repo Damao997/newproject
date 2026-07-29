@@ -26,6 +26,9 @@ function actual(node?: ValueNode): number {
 function budget(node?: ValueNode): number {
   return node?.values[OPERATING_DIMS.BUDGET_AMOUNT] ?? 0
 }
+function ytd(node?: ValueNode): number {
+  return node?.values[OPERATING_DIMS.YTD_ACTUAL] ?? 0
+}
 function samePeriod(node?: ValueNode): number {
   return node?.values[OPERATING_DIMS.SAME_PERIOD_ACTUAL] ?? 0
 }
@@ -56,7 +59,8 @@ async function monthlyTrend(companyCodes: string[], periods: string[]): Promise<
     const revenue = actual(tree.find((n) => n.category === '收入'))
     const cost = actual(tree.find((n) => n.category === '成本'))
     const profit = actual(tree.find((n) => n.category === '毛利'))
-    const budgetVal = budget(tree.find((n) => n.category === '收入'))
+    // 预算为全年值，月度趋势用月均预算（/12）作参考线，与月度收入同量级可比
+    const budgetVal = budget(tree.find((n) => n.category === '收入')) / 12
     out.push({ period, revenue: round2(revenue), cost: round2(cost), profit: round2(profit), budget: round2(budgetVal) })
   }
   return out
@@ -80,7 +84,8 @@ export const DashboardService = {
       name === '收入' ? t.revenue : name === '成本' ? t.cost : name === '毛利' ? t.profit : 0,
     )
 
-    const achievement = budget(revenue) ? round2((actual(revenue) / budget(revenue)) * 100) : 0
+    // 预算执行率 = 本年累计收入 / 全年预算（预算为年度值）
+    const achievement = budget(revenue) ? round2((ytd(revenue) / budget(revenue)) * 100) : 0
     const kpiData: Kpi[] = [
       { title: '总收入', value: round2(actual(revenue)), unit: '万', change: changeRate(actual(revenue), samePeriod(revenue)), trend: trendOf('收入'), icon: 'TrendingUp' },
       { title: '总成本', value: round2(actual(cost)), unit: '万', change: changeRate(actual(cost), samePeriod(cost)), trend: trendOf('成本'), icon: 'DollarSign' },

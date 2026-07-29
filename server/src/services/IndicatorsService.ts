@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma'
-import { AggregationService, resolveCompanyCodes, flattenValueTree, type ValueNode } from './AggregationService'
+import { AggregationService, resolveCompanyCodes, flattenValueTree, type ValueNode, type ReclassifyReversalMeta } from './AggregationService'
 import { OPERATING_DIMS, STATIC_DIMS, calcYoy, calcAchievement } from '../lib/metric-values'
 import { buildExcel } from '../lib/excel'
 import { errors } from '../lib/errors'
@@ -62,7 +62,8 @@ function serializeOperating(node: ValueNode): OperatingRow {
     dataType: node.dataType, valueType: node.valueType, isLeaf: node.isLeaf,
     budget, actual, samePeriod, ytd, samePeriodYtd,
     yoy: isRatio ? round2pp((actual - samePeriod) * 100) : calcYoy(actual, samePeriod),
-    achievement: calcAchievement(actual, budget),
+    // 预算为全年值，达成率用本年累计作分子（避免月实际/年预算的口径错配）
+    achievement: calcAchievement(ytd, budget),
     ytdYoy: isRatio ? round2pp((ytd - samePeriodYtd) * 100) : calcYoy(ytd, samePeriodYtd),
     children: node.children.map(serializeOperating),
   }
@@ -142,22 +143,24 @@ export const IndicatorsService = {
     return structuralTree(subjectType)
   },
 
-  async getOperating(scope: Scope, params: { companyCode?: string; period?: string }): Promise<{ items: OperatingRow[]; total: number; period: string; companyCount: number }> {
+  async getOperating(scope: Scope, params: { companyCode?: string; period?: string; excludeReclassify?: boolean }): Promise<{ items: OperatingRow[]; total: number; period: string; companyCount: number; reclassifyExcluded: boolean; skippedReclassifyLogs: number }> {
     const companyCodes = await resolveCompanyCodes(scope, params.companyCode)
     const period = params.period || (await latestOperatingPeriod())
-    const tree = await AggregationService.buildOperatingTree(companyCodes, period)
+    const meta: ReclassifyReversalMeta = { appliedLogs: 0, skippedLogs: 0 }
+    const tree = await AggregationService.buildOperatingTree(companyCodes, period, params.excludeReclassify ? { excludeReclassify: true, reclassifyMeta: meta } : undefined)
     const items = tree.map(serializeOperating)
     const total = flattenValueTree(tree).length
-    return { items, total, period, companyCount: companyCodes.length }
+    return { items, total, period, companyCount: companyCodes.length, reclassifyExcluded: !!params.excludeReclassify, skippedReclassifyLogs: meta.skippedLogs }
   },
 
-  async getStatic(scope: Scope, params: { companyCode?: string; period?: string }): Promise<{ items: StaticRow[]; total: number; period: string; companyCount: number }> {
+  async getStatic(scope: Scope, params: { companyCode?: string; period?: string; excludeReclassify?: boolean }): Promise<{ items: StaticRow[]; total: number; period: string; companyCount: number; reclassifyExcluded: boolean; skippedReclassifyLogs: number }> {
     const companyCodes = await resolveCompanyCodes(scope, params.companyCode)
     const period = params.period || (await latestStaticPeriod())
-    const tree = await AggregationService.buildStaticTree(companyCodes, period)
+    const meta: ReclassifyReversalMeta = { appliedLogs: 0, skippedLogs: 0 }
+    const tree = await AggregationService.buildStaticTree(companyCodes, period, params.excludeReclassify ? { excludeReclassify: true, reclassifyMeta: meta } : undefined)
     const items = tree.map(serializeStatic)
     const total = flattenValueTree(tree).length
-    return { items, total, period, companyCount: companyCodes.length }
+    return { items, total, period, companyCount: companyCodes.length, reclassifyExcluded: !!params.excludeReclassify, skippedReclassifyLogs: meta.skippedLogs }
   },
 
   async getByCode(scope: Scope, code: string, params: { companyCode?: string; period?: string }): Promise<OperatingRow | StaticRow> {

@@ -89,7 +89,7 @@ export function PreviewStats({ items, warning, empty }: { items: PreviewStatItem
   )
 }
 
-export interface SubjectOption { code: string; name: string }
+export interface SubjectOption { code: string; name: string; valueType?: string }
 
 /** 弹层触发按钮（外观对齐 MonthPicker：图标 + 值 + X 清除）；转发 ref/props 以兼容 Radix asChild */
 interface PickerTriggerProps extends ButtonHTMLAttributes<HTMLButtonElement> {
