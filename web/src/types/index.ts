@@ -251,6 +251,8 @@ export interface PaginatedResponse<T> {
   page: number
   pageSize: number
   totalPages: number
+  /** 明细查询合计（跨全部筛选数据，忽略分页） */
+  totals?: { closingBalance: number }
 }
 
 export interface LoginRequest {
@@ -318,6 +320,7 @@ export interface TransactionDetailItem {
   isInternal: boolean
   internalType: string | null
   internalPeerCode: string | null
+  partyType: string
   isEliminated: boolean
   isSettled: boolean
   sourceFile: string | null
@@ -331,6 +334,7 @@ export interface AgingAnalysisRow {
   counterpartyName?: string | null
   accountCode?: string
   accountDesc?: string | null
+  partyType?: string
   closingBalance: number
   aging: Record<string, number>
 }
@@ -367,9 +371,21 @@ export interface TransactionFilterParams {
   period?: string
   /** 科目多选（逗号分隔编码串） */
   accountCodes?: string
+  /** 关联方过滤：internal=内部公司 / related=关联方 / external=外部，不传=全部 */
+  partyType?: 'internal' | 'related' | 'external'
 }
 
 // ===== 往来科目筛选 =====
+
+/** 科目过滤管理项（含纳入/排除状态） */
+export interface ManageAccountItem {
+  code: string
+  name: string
+  transactionType: string
+  direction: string
+  status: string
+  hasData: boolean
+}
 
 /** 科目筛选选项：hasData=false 表示该科目在科目体系中已定义但当前无交易数据 */
 export interface TransactionAccountOption {

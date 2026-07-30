@@ -197,7 +197,7 @@ function toIssueItems(issues: TransactionImportIssue[]): ImportErrorItem[] {
 
 /** 入库后同步客商主数据：新客商批量创建（已存在的不覆盖名称） */
 async function syncCounterparties(tx: Prisma.TransactionClient, records: TransactionParseResult['records']): Promise<number> {
-  const byCode = new Map<string, { code: string; name: string; companyCode: string; isInternal: boolean }>()
+  const byCode = new Map<string, { code: string; name: string; companyCode: string; isInternal: boolean; partyType: string }>()
   for (const r of records) {
     if (!byCode.has(r.counterpartyCode)) {
       byCode.set(r.counterpartyCode, {
@@ -205,6 +205,7 @@ async function syncCounterparties(tx: Prisma.TransactionClient, records: Transac
         name: r.counterpartyName ?? r.counterpartyCode,
         companyCode: r.companyCode,
         isInternal: r.isInternal,
+        partyType: r.partyType,
       })
     }
   }

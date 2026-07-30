@@ -1,4 +1,4 @@
-import express, { type Application, type Request, type Response } from 'express'
+import express, { type Application, type NextFunction, type Request, type Response } from 'express'
 import { traceId } from './middleware/trace-id'
 import { securityHeaders } from './middleware/helmet'
 import { corsMiddleware } from './middleware/cors'
@@ -6,6 +6,7 @@ import { generalRateLimiter } from './middleware/rate-limit'
 import { errorHandler, notFoundHandler } from './middleware/error-handler'
 import { sendOk } from './lib/response'
 import { basePrisma } from './lib/prisma'
+import { logger } from './lib/logger'
 import authRouter from './routes/auth'
 import dashboardRouter from './routes/dashboard'
 import indicatorsRouter from './routes/indicators'
@@ -29,6 +30,19 @@ export function createApp(): Application {
 
   // 链路追踪最先执行，保证后续中间件/错误处理均可用 traceId
   app.use(traceId)
+
+  // 请求访问日志：记录谁在什么时间访问了哪个接口
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const start = Date.now()
+    res.on('finish', () => {
+      const user = req.authUser?.username ?? 'anonymous'
+      const ip = req.header('X-Forwarded-For')?.split(',')[0]?.trim() ?? req.ip ?? '-'
+      const ms = Date.now() - start
+      logger.info(req.traceId, `${req.method} ${req.originalUrl} → ${res.statusCode} [user=${user}] [ip=${ip}] ${ms}ms`)
+    })
+    next()
+  })
+
   app.use(securityHeaders())
   app.use(corsMiddleware())
   app.use(express.json({ limit: '1mb' }))

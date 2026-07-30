@@ -749,7 +749,7 @@ import type { TransactionOverviewItem, TransactionDetailItem, AgingAnalysisRow, 
 import type { TransactionImportPreview, TransactionImportUploadResult, CollectionPlanItem, CollectionLogItem } from '@/types'
 import type { TransactionTrendResult } from '@/types'
 import type { TransactionCoverageResult, BatchCoverageRow } from '@/types'
-import type { TransactionAccountOption } from '@/types'
+import type { TransactionAccountOption, ManageAccountItem } from '@/types'
 
 /** 往来总览：公司多选 + 单期间；period 未定（期间列表加载中）时不发请求，避免跨期重复累加的首次查询 */
 export function useTransactionOverview(params: { companyCodes?: string[]; period?: string }) {
@@ -770,7 +770,7 @@ export function useTransactionDetails(params: TransactionFilterParams, options: 
   })
 }
 
-export function useTransactionAging(params: { companyCode?: string; transactionType?: string; groupBy?: string; period?: string; accountCodes?: string }, options: { enabled?: boolean } = {}) {
+export function useTransactionAging(params: { companyCode?: string; transactionType?: string; groupBy?: string; period?: string; accountCodes?: string; partyType?: string }, options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ['transactions', 'aging', params] as const,
     queryFn: () => api.getTransactionAging(params) as Promise<AgingAnalysisRow[]>,
@@ -784,6 +784,28 @@ export function useTransactionAccounts(transactionType?: string) {
   return useQuery({
     queryKey: ['transactions', 'accounts', transactionType ?? 'all'] as const,
     queryFn: () => api.getTransactionAccounts(transactionType) as Promise<TransactionAccountOption[]>,
+  })
+}
+
+/** 科目过滤管理：全部科目（含排除项） */
+export function useManageAccounts() {
+  return useQuery({
+    queryKey: ['transactions', 'accounts-manage'] as const,
+    queryFn: () => api.getManageAccounts() as Promise<ManageAccountItem[]>,
+  })
+}
+
+/** 科目过滤管理：切换纳入/排除分析状态 */
+export function useUpdateAccountStatus() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ code, status }: { code: string; status: 'active' | 'inactive' }) => api.updateAccountStatus(code, status),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['transactions', 'accounts-manage'] })
+      qc.invalidateQueries({ queryKey: ['transactions', 'accounts'] })
+      qc.invalidateQueries({ queryKey: ['transactions', 'details'] })
+      qc.invalidateQueries({ queryKey: ['transactions', 'aging'] })
+    },
   })
 }
 

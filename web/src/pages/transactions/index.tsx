@@ -31,11 +31,17 @@ import { TransactionImportDialog } from './import-dialog'
 import { CollectionsTab } from './collections-tab'
 import { TransactionTrendCard } from './trend-card'
 import { CoverageTab } from './coverage-tab'
+import { AccountFilterTab } from './account-filter-tab'
 import type { TransactionDetailItem, AgingAnalysisRow, InternalSummaryRow, InternalMirrorRow } from '@/types'
 
 const TRANSACTION_TYPES = ['应收账款', '其他应收款', '预收账款', '应付账款', '其他应付款', '预付账款']
 // 账龄分析展示分段（后端已由 10 段归集为 5 段）
 const AGING_GROUPS = ['1-3月', '4-6月', '半年以上', '1年至3年', '3年以上']
+
+/** 账龄表渲染行：数据行 / 公司小计行 / 总合计行 */
+type AgingRenderRow =
+  | { kind: 'data'; row: AgingAnalysisRow }
+  | { kind: 'subtotal' | 'total'; label: string; closingBalance: number; aging: Record<string, number> }
 // 贷方性质类型（债务）：余额已在导入时按科目性质归一为正号，净额 = 债权 - 债务
 const CREDIT_NATURE_TYPES = ['预收账款', '应付账款', '其他应付款']
 
@@ -63,6 +69,34 @@ function CompanySelect({ value, onChange }: { value: string; onChange: (v: strin
         {(companies || []).map((c) => (
           <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
         ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
+// 关联方三分类标签样式（内部公司/关联方/外部）
+const PARTY_TYPE_META: Record<string, { label: string; className: string }> = {
+  internal: { label: '内部公司', className: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' },
+  related: { label: '关联方', className: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' },
+  external: { label: '外部', className: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400' },
+}
+
+function PartyTypeTag({ partyType }: { partyType?: string }) {
+  const meta = PARTY_TYPE_META[partyType ?? 'external'] ?? PARTY_TYPE_META.external
+  return <span className={cn('rounded px-1.5 py-0.5 text-xs', meta.className)}>{meta.label}</span>
+}
+
+// 关联方过滤下拉（全部 / 内部公司 / 关联方）
+function PartyTypeSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger className="w-[130px]">
+        <SelectValue placeholder="关联方" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">全部对象</SelectItem>
+        <SelectItem value="internal">内部公司</SelectItem>
+        <SelectItem value="related">关联方</SelectItem>
       </SelectContent>
     </Select>
   )
@@ -292,6 +326,7 @@ function DetailsTab() {
   const [periodFilter, setPeriodFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('')
   const [accountFilter, setAccountFilter] = useState<string[]>([])
+  const [partyFilter, setPartyFilter] = useState('all')
   const [keyword, setKeyword] = useState('')
   const { data: periods } = useTransactionPeriods()
   const { getDisplayName } = useCompanyDisplayName()
@@ -304,11 +339,13 @@ function DetailsTab() {
     period: periodFilter === 'all' ? undefined : effectivePeriod || undefined,
     transactionType: typeFilter || undefined,
     accountCodes: accountFilter.length ? accountFilter.join(',') : undefined,
+    partyType: partyFilter === 'all' ? undefined : (partyFilter as 'internal' | 'related' | 'external'),
     counterpartyKeyword: keyword || undefined,
   }, { enabled: periods !== undefined }) // 等期间列表加载后再查，避免首次跨期查询闪现
 
   const items = (data?.items || []) as TransactionDetailItem[]
   const total = data?.total || 0
+  const totalsClosing = data?.totals?.closingBalance ?? 0
 
   return (
     <div className="space-y-4">
@@ -334,6 +371,7 @@ function DetailsTab() {
           </SelectContent>
         </Select>
         <AccountMultiSelect value={accountFilter} onChange={(v) => { setAccountFilter(v); setPage(1) }} transactionType={typeFilter || undefined} />
+        <PartyTypeSelect value={partyFilter} onChange={(v) => { setPartyFilter(v); setPage(1) }} />
         <Input
           placeholder="搜索往来对象..."
           className="w-[200px]"
@@ -360,7 +398,7 @@ function DetailsTab() {
                     <th className="px-2 py-2 font-medium">往来对象</th>
                     <th className="px-2 py-2 font-medium">科目</th>
                     <th className="px-2 py-2 font-medium">期末余额</th>
-                    <th className="px-2 py-2 font-medium">内部标记</th>
+                    <th className="px-2 py-2 font-medium">关联标记</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -375,18 +413,17 @@ function DetailsTab() {
                       </td>
                       <td className="px-2 py-2 text-xs">{row.accountDesc || row.accountCode}</td>
                       <td className="px-2 py-2 text-right font-mono">{row.closingBalance.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
-                      <td className="px-2 py-2 text-center">
-                        {row.isInternal ? (
-                          <span className={cn('rounded px-1.5 py-0.5 text-xs', row.internalType === '内部抵消' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300')}>
-                            {row.internalType}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">外部</span>
-                        )}
-                      </td>
+                      <td className="px-2 py-2 text-center"><PartyTypeTag partyType={row.partyType} /></td>
                     </tr>
                   ))}
                 </tbody>
+                <tfoot>
+                  <tr className="border-t-2 bg-muted/40 font-medium">
+                    <td className="px-2 py-2 text-xs" colSpan={5}>合计（全部筛选数据，跨页）</td>
+                    <td className="px-2 py-2 text-right font-mono">{totalsClosing.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
+                    <td className="px-2 py-2" />
+                  </tr>
+                </tfoot>
               </table>
             </div>
           )}
@@ -415,6 +452,7 @@ function AgingTab() {
   const [periodFilter, setPeriodFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('')
   const [accountFilter, setAccountFilter] = useState<string[]>([])
+  const [partyFilter, setPartyFilter] = useState('all')
   const [groupBy, setGroupBy] = useState<string>('type')
   const { data: periods } = useTransactionPeriods()
   const { getDisplayName } = useCompanyDisplayName()
@@ -429,9 +467,41 @@ function AgingTab() {
     groupBy: effectiveGroupBy,
     period,
     accountCodes: accountFilter.length ? accountFilter.join(',') : undefined,
+    partyType: partyFilter === 'all' ? undefined : partyFilter,
   }, { enabled: !!period }) // 等期间确定后再查，避免跨期重复累加的首次查询
 
   const rows = (agingData || []) as AgingAnalysisRow[]
+
+  // 按公司分组（公司升序、组内余额降序），逐组插小计行，表尾插合计行
+  const renderRows = useMemo<AgingRenderRow[]>(() => {
+    const addAging = (acc: Record<string, number>, r: AgingAnalysisRow) => {
+      for (const b of AGING_GROUPS) acc[b] = (acc[b] || 0) + (r.aging[b] || 0)
+    }
+    const byCompany = new Map<string, AgingAnalysisRow[]>()
+    for (const r of rows) {
+      if (!byCompany.has(r.companyCode)) byCompany.set(r.companyCode, [])
+      byCompany.get(r.companyCode)!.push(r)
+    }
+    const out: AgingRenderRow[] = []
+    const grand: { closingBalance: number; aging: Record<string, number> } = { closingBalance: 0, aging: {} }
+    for (const key of [...byCompany.keys()].sort()) {
+      const group = byCompany.get(key)!.slice().sort((a, b) => b.closingBalance - a.closingBalance)
+      const sub: { closingBalance: number; aging: Record<string, number> } = { closingBalance: 0, aging: {} }
+      for (const r of group) {
+        out.push({ kind: 'data', row: r })
+        sub.closingBalance += r.closingBalance
+        addAging(sub.aging, r)
+      }
+      out.push({ kind: 'subtotal', label: `${getDisplayName(group[0].companyCode, group[0].companyName)} 小计`, closingBalance: sub.closingBalance, aging: sub.aging })
+      grand.closingBalance += sub.closingBalance
+      for (const b of AGING_GROUPS) grand.aging[b] = (grand.aging[b] || 0) + (sub.aging[b] || 0)
+    }
+    if (out.length > 0) out.push({ kind: 'total', label: '合计', closingBalance: grand.closingBalance, aging: grand.aging })
+    return out
+  }, [rows, getDisplayName])
+
+  // 小计/合计行标签列合并数：公司+往来类型(+往来对象/科目列)
+  const labelColSpan = 2 + (effectiveGroupBy === 'counterparty' || effectiveGroupBy === 'account' ? 1 : 0)
 
   return (
     <div className="space-y-4">
@@ -455,6 +525,7 @@ function AgingTab() {
           </SelectContent>
         </Select>
         <AccountMultiSelect value={accountFilter} onChange={setAccountFilter} transactionType={typeFilter || undefined} />
+        <PartyTypeSelect value={partyFilter} onChange={setPartyFilter} />
         <Select value={groupBy} onValueChange={setGroupBy}>
           <SelectTrigger className="w-[160px]">
             <SelectValue placeholder="分组方式" />
@@ -488,20 +559,43 @@ function AgingTab() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row, idx) => (
-                    <tr key={idx} className="border-b last:border-0 hover:bg-muted/50">
-                      <td className="max-w-[150px] truncate px-2 py-2 text-xs" title={row.companyName || row.companyCode}>{getDisplayName(row.companyCode, row.companyName)}</td>
-                      <td className="px-2 py-2 text-xs whitespace-nowrap">{row.transactionType}</td>
-                      {effectiveGroupBy === 'counterparty' && <td className="max-w-[200px] truncate px-2 py-2 text-xs" title={row.counterpartyName || row.counterpartyCode || '-'}>{row.counterpartyName || row.counterpartyCode || '-'}</td>}
-                      {effectiveGroupBy === 'account' && <td className="max-w-[200px] truncate px-2 py-2 text-xs" title={row.accountDesc || row.accountCode || '-'}>{row.accountDesc || row.accountCode || '-'}</td>}
-                      <td className="px-2 py-2 text-right font-mono font-medium whitespace-nowrap">{row.closingBalance.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
-                      {AGING_GROUPS.map((b) => (
-                        <td key={b} className={cn('px-2 py-2 text-right font-mono text-xs whitespace-nowrap', (row.aging[b] || 0) !== 0 && 'text-foreground')}>
-                          {(row.aging[b] || 0) !== 0 ? row.aging[b].toLocaleString('zh-CN', { minimumFractionDigits: 2 }) : '-'}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
+                  {renderRows.map((rr, idx) => {
+                    if (rr.kind === 'data') {
+                      const row = rr.row
+                      return (
+                        <tr key={idx} className="border-b last:border-0 hover:bg-muted/50">
+                          <td className="max-w-[150px] truncate px-2 py-2 text-xs" title={row.companyName || row.companyCode}>{getDisplayName(row.companyCode, row.companyName)}</td>
+                          <td className="px-2 py-2 text-xs whitespace-nowrap">{row.transactionType}</td>
+                          {effectiveGroupBy === 'counterparty' && (
+                            <td className="max-w-[200px] px-2 py-2 text-xs">
+                              <div className="truncate" title={row.counterpartyName || row.counterpartyCode || '-'}>{row.counterpartyName || row.counterpartyCode || '-'}</div>
+                              <PartyTypeTag partyType={row.partyType} />
+                            </td>
+                          )}
+                          {effectiveGroupBy === 'account' && <td className="max-w-[200px] truncate px-2 py-2 text-xs" title={row.accountDesc || row.accountCode || '-'}>{row.accountDesc || row.accountCode || '-'}</td>}
+                          <td className="px-2 py-2 text-right font-mono font-medium whitespace-nowrap">{row.closingBalance.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
+                          {AGING_GROUPS.map((b) => (
+                            <td key={b} className={cn('px-2 py-2 text-right font-mono text-xs whitespace-nowrap', (row.aging[b] || 0) !== 0 && 'text-foreground')}>
+                              {(row.aging[b] || 0) !== 0 ? row.aging[b].toLocaleString('zh-CN', { minimumFractionDigits: 2 }) : '-'}
+                            </td>
+                          ))}
+                        </tr>
+                      )
+                    }
+                    // 小计 / 合计行
+                    const isTotal = rr.kind === 'total'
+                    return (
+                      <tr key={idx} className={cn('border-t font-semibold', isTotal ? 'border-t-2 bg-blue-50/70 dark:bg-blue-950/30' : 'bg-muted/50')}>
+                        <td className="px-2 py-2 text-xs" colSpan={labelColSpan}>{rr.label}</td>
+                        <td className="px-2 py-2 text-right font-mono whitespace-nowrap">{rr.closingBalance.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
+                        {AGING_GROUPS.map((b) => (
+                          <td key={b} className="px-2 py-2 text-right font-mono text-xs whitespace-nowrap">
+                            {(rr.aging[b] || 0) !== 0 ? rr.aging[b].toLocaleString('zh-CN', { minimumFractionDigits: 2 }) : '-'}
+                          </td>
+                        ))}
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -653,6 +747,7 @@ export default function TransactionsPage() {
             <TabsTrigger value="aging">账龄分析</TabsTrigger>
             <TabsTrigger value="internal">内部往来</TabsTrigger>
             <TabsTrigger value="coverage">导入覆盖</TabsTrigger>
+            <TabsTrigger value="account-filter">科目过滤</TabsTrigger>
             <TabsTrigger value="collections">催收管理</TabsTrigger>
           </TabsList>
 
@@ -670,6 +765,9 @@ export default function TransactionsPage() {
           </TabsContent>
           <TabsContent value="coverage">
             <CoverageTab />
+          </TabsContent>
+          <TabsContent value="account-filter">
+            <AccountFilterTab />
           </TabsContent>
           <TabsContent value="collections">
             <CollectionsTab />

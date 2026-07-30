@@ -64,7 +64,7 @@ export function Header({ onMenuClick }: HeaderProps) {
             <Menu className="h-5 w-5" />
           </Button>
           <img src="/logo.png" alt="壹品慧" className="h-7 w-7 object-contain" />
-          <span className="text-sm font-bold">壹品慧财务分析平台</span>
+          <span className="text-sm font-bold">浙江壹品慧经营分析平台</span>
         </div>
 
         <div className="flex flex-1 shrink-0 items-center justify-end space-x-2">

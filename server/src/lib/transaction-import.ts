@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx'
+import { derivePartyType, type PartyType } from './party'
 
 /**
  * 六大往来账龄汇总表解析器（数据源：CUX_AR/AP 账龄报表的《{前缀}-账龄汇总表》Sheet）。
@@ -56,6 +57,7 @@ export interface TransactionImportRecord {
   isInternal: boolean
   internalType: string
   internalPeerCode: string | null
+  partyType: PartyType
   sourceFile: string
   rawJson: Record<string, unknown>
 }
@@ -359,6 +361,7 @@ function parseSummarySheet(
       isInternal,
       internalType: isInternal ? '内部关联' : '外部',
       internalPeerCode,
+      partyType: derivePartyType(isInternal, counterpartyCode),
       sourceFile,
       rawJson: {
         sheet: sheetName,

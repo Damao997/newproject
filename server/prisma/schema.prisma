@@ -228,6 +228,7 @@ model Counterparty {
   name          String
   companyCode   String       @map("company_code")
   isInternal    Boolean      @default(false) @map("is_internal")
+  partyType     String       @default("external") @map("party_type") // internal/related/external
   contactPerson String?      @map("contact_person")
   contactPhone  String?      @map("contact_phone")
   status        RecordStatus @default(active)
@@ -395,6 +396,7 @@ model TransactionDetail {
   isInternal       Boolean  @default(false) @map("is_internal")
   internalType     String?  @map("internal_type") // 内部抵消 / 内部关联(标记) / 外部
   internalPeerCode String?  @map("internal_peer_code")
+  partyType        String   @default("external") @map("party_type") // internal/related/external
   isEliminated     Boolean  @default(false) @map("is_eliminated")
   isSettled        Boolean  @default(false) @map("is_settled")
   sourceFile       String?  @map("source_file")
@@ -406,6 +408,7 @@ model TransactionDetail {
   @@index([counterpartyCode])
   @@index([batchId])
   @@index([isInternal, internalType])
+  @@index([partyType])
   @@map("transaction_detail")
 }
 

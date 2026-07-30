@@ -768,13 +768,23 @@ class ApiClient {
   }
 
   // 账龄分析：支持单期间与科目多选（逗号分隔）
-  async getTransactionAging(params: { companyCode?: string; transactionType?: string; groupBy?: string; period?: string; accountCodes?: string }) {
+  async getTransactionAging(params: { companyCode?: string; transactionType?: string; groupBy?: string; period?: string; accountCodes?: string; partyType?: string }) {
     return this.request({ method: 'GET', url: '/transactions/aging', params })
   }
 
   // 会计科目列表（去重，供科目多选筛选；可按往来类型过滤）
   async getTransactionAccounts(transactionType?: string) {
     return this.request({ method: 'GET', url: '/transactions/accounts', params: { transactionType } })
+  }
+
+  // 科目过滤管理：全部科目（含排除项）
+  async getManageAccounts() {
+    return this.request({ method: 'GET', url: '/transactions/accounts/manage' })
+  }
+
+  // 科目过滤管理：切换纳入/排除分析状态
+  async updateAccountStatus(code: string, status: 'active' | 'inactive') {
+    return this.request({ method: 'PATCH', url: `/transactions/accounts/${code}/status`, data: { status } })
   }
 
   async getInternalSummary(companyCode?: string) {

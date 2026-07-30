@@ -19,6 +19,12 @@ const router = Router()
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } })
 
+/** 关联方过滤参数校验：仅接受 internal/related/external，其余视为不过滤 */
+function parsePartyType(v: unknown): 'internal' | 'related' | 'external' | undefined {
+  const s = String(v ?? '')
+  return s === 'internal' || s === 'related' || s === 'external' ? s : undefined
+}
+
 router.use(authenticate)
 
 // ===== 总览 =====
@@ -48,6 +54,7 @@ router.get('/details', requirePermission('transactions:view', 'view'), asyncHand
     maxAmount: q.maxAmount ? Number(q.maxAmount) : undefined,
     period: q.period as string | undefined,
     accountCodes: q.accountCodes ? String(q.accountCodes).split(',').map((s) => s.trim()).filter(Boolean) : undefined,
+    partyType: parsePartyType(q.partyType),
   })
   sendOk(res, data)
 }))
@@ -67,6 +74,7 @@ router.get('/aging', requirePermission('transactions:view', 'view'), asyncHandle
     groupBy: (q.groupBy as 'type' | 'counterparty' | 'account') || 'type',
     period: q.period as string | undefined,
     accountCodes: q.accountCodes ? String(q.accountCodes).split(',').map((s) => s.trim()).filter(Boolean) : undefined,
+    partyType: parsePartyType(q.partyType),
   })
   sendOk(res, data)
 }))
@@ -74,6 +82,20 @@ router.get('/aging', requirePermission('transactions:view', 'view'), asyncHandle
 // ===== 会计科目列表（去重，供科目多选筛选；可按往来类型过滤） =====
 router.get('/accounts', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
   const data = await TransactionService.listAccounts({ transactionType: req.query.transactionType as string | undefined })
+  sendOk(res, data)
+}))
+
+// ===== 科目过滤管理：全部科目（含排除项）=====
+router.get('/accounts/manage', requirePermission('transactions:view', 'view'), asyncHandler(async (_req, res) => {
+  const data = await TransactionService.listAccountsForManage()
+  sendOk(res, data)
+}))
+
+// ===== 科目过滤管理：切换纳入/排除分析状态 =====
+router.patch('/accounts/:code/status', requirePermission('transactions:update', 'update'), asyncHandler(async (req, res) => {
+  const authUser = req.authUser as AuthUserContext
+  const status = req.body?.status === 'active' ? 'active' : 'inactive'
+  const data = await TransactionService.updateAccountStatus(req.params.code as string, status, authUser.userId, req.traceId)
   sendOk(res, data)
 }))
 

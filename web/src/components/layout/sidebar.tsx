@@ -79,7 +79,7 @@ function SidebarBrand({ collapsed, className }: { collapsed: boolean; className?
     >
       <img src="/logo.png" alt="壹品慧" className="h-7 w-7 object-contain" />
       {!collapsed && (
-        <span className="truncate text-sm font-bold">壹品慧财务分析平台</span>
+        <span className="truncate text-sm font-bold">浙江壹品慧经营分析平台</span>
       )}
     </Link>
   )

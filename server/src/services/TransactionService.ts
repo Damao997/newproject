@@ -61,6 +61,7 @@ export interface TransactionDetailDto {
   isInternal: boolean
   internalType: string | null
   internalPeerCode: string | null
+  partyType: string
   isEliminated: boolean
   isSettled: boolean
   sourceFile: string | null
@@ -160,11 +161,18 @@ interface ListParams {
   maxAmount?: number
   period?: string
   accountCodes?: string[]
+  partyType?: string
 }
 
 function toNumber(v: unknown): number {
   if (v === null || v === undefined) return 0
   return Number(v) || 0
+}
+
+/** 被排除分析的科目编码（transaction_account.status='inactive'），明细/账龄查询强制剔除 */
+async function getInactiveAccountCodes(): Promise<string[]> {
+  const rows = await prisma.transactionAccount.findMany({ where: { status: 'inactive' }, select: { code: true } })
+  return rows.map((r) => r.code)
 }
 
 function extractAging(row: Record<string, unknown>): Record<string, number> {
@@ -199,6 +207,7 @@ function toDetailDto(row: Record<string, unknown>): TransactionDetailDto {
     isInternal: row.isInternal as boolean,
     internalType: row.internalType as string | null,
     internalPeerCode: row.internalPeerCode as string | null,
+    partyType: (row.partyType as string | null) ?? 'external',
     isEliminated: row.isEliminated as boolean,
     isSettled: row.isSettled as boolean,
     sourceFile: row.sourceFile as string | null,
@@ -290,9 +299,12 @@ export const TransactionService = {
     if (params.direction) where.direction = params.direction
     if (params.period) where.period = params.period
     const detailAccountCodes = (params.accountCodes ?? []).filter(Boolean)
-    if (detailAccountCodes.length) where.accountCode = { in: detailAccountCodes }
+    const inactiveCodes = await getInactiveAccountCodes()
+    if (detailAccountCodes.length) where.accountCode = { in: detailAccountCodes, notIn: inactiveCodes }
+    else if (inactiveCodes.length) where.accountCode = { notIn: inactiveCodes }
     if (params.isInternal !== undefined) where.isInternal = params.isInternal
     if (params.internalType) where.internalType = params.internalType
+    if (params.partyType) where.partyType = params.partyType
     if (params.isSettled !== undefined) where.isSettled = params.isSettled
     if (params.counterpartyKeyword) {
       where.OR = [
@@ -306,7 +318,7 @@ export const TransactionService = {
     if (params.maxAmount !== undefined) balanceConds.push({ closingBalance: { lte: params.maxAmount } })
     where.AND = balanceConds
 
-    const [items, total] = await Promise.all([
+    const [items, total, agg] = await Promise.all([
       prisma.transactionDetail.findMany({
         where,
         skip: (page - 1) * pageSize,
@@ -315,6 +327,8 @@ export const TransactionService = {
         orderBy: [{ closingBalance: 'desc' }, { createdAt: 'desc' }],
       }),
       prisma.transactionDetail.count({ where }),
+      // 合计：与列表同一 where（含零余额隐藏/科目排除/关联方过滤），跨全部页聚合
+      prisma.transactionDetail.aggregate({ where, _sum: { closingBalance: true } }),
     ])
 
     return {
@@ -323,6 +337,7 @@ export const TransactionService = {
       page,
       pageSize,
       totalPages: Math.ceil(total / pageSize),
+      totals: { closingBalance: toNumber(agg._sum.closingBalance) },
     }
   },
 
@@ -331,20 +346,24 @@ export const TransactionService = {
    * 账龄 10 段归集为 5 段展示（1-3月 / 4-6月 / 半年以上 / 1年至3年 / 3年以上）；
    * 支持 period 单期过滤（期末余额为时点数）与科目多选；结果按期末余额倒序。
    */
-  async getAgingAnalysis(params: { companyCode?: string; transactionType?: string; groupBy?: 'type' | 'counterparty' | 'account'; period?: string; accountCodes?: string[] }) {
+  async getAgingAnalysis(params: { companyCode?: string; transactionType?: string; groupBy?: 'type' | 'counterparty' | 'account'; period?: string; accountCodes?: string[]; partyType?: string }) {
     const where: Record<string, unknown> = {}
     if (params.companyCode) where.companyCode = params.companyCode
     if (params.transactionType) where.transactionType = params.transactionType
     if (params.period) where.period = params.period
+    if (params.partyType) where.partyType = params.partyType
     const accountCodes = (params.accountCodes ?? []).filter(Boolean)
-    if (accountCodes.length) where.accountCode = { in: accountCodes }
+    const agingInactiveCodes = await getInactiveAccountCodes()
+    if (accountCodes.length) where.accountCode = { in: accountCodes, notIn: agingInactiveCodes }
+    else if (agingInactiveCodes.length) where.accountCode = { notIn: agingInactiveCodes }
     // 排除已抵消的内部往来
     where.isEliminated = false
 
     const groupBy = params.groupBy || 'type'
     let by: string[]
     if (groupBy === 'counterparty') {
-      by = ['companyCode', 'companyName', 'transactionType', 'counterpartyCode', 'counterpartyName']
+      // partyType 由 counterpartyCode 唯一决定，加入分组键以便结果携带关联方标记（不改变分组粒度）
+      by = ['companyCode', 'companyName', 'transactionType', 'counterpartyCode', 'counterpartyName', 'partyType']
     } else if (groupBy === 'account') {
       by = ['companyCode', 'companyName', 'transactionType', 'accountCode', 'accountDesc']
     } else {
@@ -388,11 +407,16 @@ export const TransactionService = {
    */
   async listAccounts(params: { transactionType?: string } = {}): Promise<AccountOption[]> {
     const typeWhere = params.transactionType ? { transactionType: params.transactionType } : {}
-    const [masters, details] = await Promise.all([
+    const [masters, allMasters, details] = await Promise.all([
       prisma.transactionAccount.findMany({
         where: { status: 'active', ...typeWhere },
         select: { code: true, name: true },
         orderBy: { orderNo: 'asc' },
+      }),
+      // 全部主数据编码（含 inactive）：用于排除"已排除科目"，使其即便有数据也不进入筛选选项
+      prisma.transactionAccount.findMany({
+        where: typeWhere,
+        select: { code: true },
       }),
       prisma.transactionDetail.findMany({
         where: typeWhere,
@@ -407,8 +431,8 @@ export const TransactionService = {
       accountDesc: m.name,
       hasData: dataMap.has(m.code),
     }))
-    // 主数据未覆盖但实际存在的科目（新科目/未维护），名称取明细中的科目说明
-    const masterCodes = new Set(masters.map((m) => m.code))
+    // 主数据未覆盖但实际存在的科目（新科目/未维护），名称取明细中的科目说明；已排除科目不纳入
+    const masterCodes = new Set(allMasters.map((m) => m.code))
     for (const [code, desc] of dataMap) {
       if (!masterCodes.has(code)) options.push({ accountCode: code, accountDesc: desc, hasData: true })
     }
@@ -420,7 +444,33 @@ export const TransactionService = {
   },
 
   /**
-   * 内部往来汇总：按(本方公司, 内部对方公司, 方向, 往来类型)汇总
+   * 科目过滤管理列表：返回全部科目主数据（含 inactive），附 hasData。
+   * 供「科目过滤」Tab 配置哪些科目纳入/排除分析。
+   */
+  async listAccountsForManage(): Promise<{ code: string; name: string; transactionType: string; direction: string; status: string; hasData: boolean }[]> {
+    const [masters, details] = await Promise.all([
+      prisma.transactionAccount.findMany({
+        select: { code: true, name: true, transactionType: true, direction: true, status: true },
+        orderBy: [{ transactionType: 'asc' }, { orderNo: 'asc' }],
+      }),
+      prisma.transactionDetail.findMany({ distinct: ['accountCode'], select: { accountCode: true } }),
+    ])
+    const dataSet = new Set(details.map((d) => d.accountCode))
+    return masters.map((m) => ({ code: m.code, name: m.name, transactionType: m.transactionType, direction: m.direction, status: m.status, hasData: dataSet.has(m.code) }))
+  },
+
+  /**
+   * 切换科目纳入/排除分析状态（active/inactive）。排除后该科目在明细/账龄查询中被自动剔除。
+   */
+  async updateAccountStatus(code: string, status: 'active' | 'inactive', userId: string, traceId?: string): Promise<{ code: string; status: string }> {
+    const existing = await prisma.transactionAccount.findUnique({ where: { code }, select: { code: true } })
+    if (!existing) throw errors.notFound('科目不存在')
+    const updated = await prisma.transactionAccount.update({ where: { code }, data: { status } })
+    await recordAudit({ userId, module: 'transactions', action: 'update', targetId: code, detail: { action: 'account_status', status } }, traceId)
+    return { code: updated.code, status: updated.status }
+  },
+
+  /** 内部往来汇总：按(本方公司, 内部对方公司, 方向, 往来类型)汇总
    */
   async getInternalSummary(companyCode?: string): Promise<InternalSummaryRow[]> {
     const where: Record<string, unknown> = { isInternal: true }
