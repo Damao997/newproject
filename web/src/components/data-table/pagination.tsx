@@ -102,7 +102,7 @@ export function Pagination({
 
   return (
     <div className={cn('flex flex-wrap items-center justify-between gap-2', className)}>
-      <p className="text-sm text-muted-foreground tabular-nums">
+      <p className="text-sm text-muted-foreground font-num">
         {summary ?? `共 ${total} 条，第 ${rangeStart}-${rangeEnd} 条`}
       </p>
       <div className="flex flex-wrap items-center gap-2">
@@ -153,7 +153,7 @@ export function Pagination({
                 key={slot.page}
                 variant={slot.page === current ? 'default' : 'outline'}
                 size="sm"
-                className="min-w-9 tabular-nums"
+                className="min-w-9 font-num"
                 onClick={() => onPageChange(slot.page)}
               >
                 {slot.page}
@@ -178,7 +178,7 @@ export function Pagination({
               onKeyDown={(e) => { if (e.key === 'Enter') submitJump() }}
               placeholder={String(current)}
               aria-label="跳转页码"
-              className="h-9 w-14 text-center tabular-nums"
+              className="h-9 w-14 text-center font-num"
             />
             <span className="whitespace-nowrap">/ {totalPages} 页</span>
             <Button variant="outline" size="sm" onClick={submitJump}>跳转</Button>

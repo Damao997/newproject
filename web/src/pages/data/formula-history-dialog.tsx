@@ -101,13 +101,13 @@ export function HistoryDialog({ metric, formatFormula, onClose, canApprove = fal
               <thead>
                 <tr className="border-b bg-muted/50">
                   <th className="p-2 w-8"></th>
-                  <th className="p-2 text-left font-medium whitespace-nowrap">版本</th>
-                  <th className="p-2 text-left font-medium">公式</th>
-                  <th className="hidden p-2 text-left font-medium md:table-cell">说明</th>
-                  <th className="hidden p-2 text-left font-medium whitespace-nowrap sm:table-cell">变更人</th>
-                  <th className="hidden p-2 text-left font-medium whitespace-nowrap md:table-cell">时间</th>
-                  <th className="p-2 text-left font-medium whitespace-nowrap">审批</th>
-                  <th className="p-2 text-left font-medium whitespace-nowrap">操作</th>
+                  <th className="p-2 text-center font-medium whitespace-nowrap">版本</th>
+                  <th className="p-2 text-center font-medium">公式</th>
+                  <th className="hidden p-2 text-center font-medium md:table-cell">说明</th>
+                  <th className="hidden p-2 text-center font-medium whitespace-nowrap sm:table-cell">变更人</th>
+                  <th className="hidden p-2 text-center font-medium whitespace-nowrap md:table-cell">时间</th>
+                  <th className="p-2 text-center font-medium whitespace-nowrap">审批</th>
+                  <th className="p-2 text-center font-medium whitespace-nowrap">操作</th>
                 </tr>
               </thead>
               <tbody>

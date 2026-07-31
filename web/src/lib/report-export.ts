@@ -1,5 +1,7 @@
+import type { jsPDF } from 'jspdf'
 import type { Paragraph as DocxParagraph } from 'docx'
 import type { ReportExportData } from '@/lib/api'
+import notoSansScUrl from '@expo-google-fonts/noto-sans-sc/400Regular/NotoSansSC_400Regular.ttf?url'
 
 /**
  * 汇总分析报告导出：依据后端返回的结构化章节数据，前端生成 Word(docx) / PDF。
@@ -53,10 +55,32 @@ export async function exportReportToDocx(data: ReportExportData): Promise<void> 
   saveAs(blob, `${safeFilename(data.title)}.docx`)
 }
 
-/** 导出 PDF（jspdf 内置字体不含中文，正文以英文/数字为主时可读；中文环境建议优先 Word） */
+/** 中文字体 base64 模块级缓存，避免重复 fetch/转码（TTF 本体仅在首次导出 PDF 时按需下载） */
+let fontBase64: string | null = null
+
+async function loadChineseFont(doc: jsPDF): Promise<void> {
+  if (!fontBase64) {
+    const buf = await (await fetch(notoSansScUrl)).arrayBuffer()
+    const bytes = new Uint8Array(buf)
+    const chunks: string[] = []
+    const CHUNK = 0x8000
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      chunks.push(String.fromCharCode(...bytes.subarray(i, i + CHUNK)))
+    }
+    fontBase64 = btoa(chunks.join(''))
+  }
+  doc.addFileToVFS('NotoSansSC-Regular.ttf', fontBase64)
+  doc.addFont('NotoSansSC-Regular.ttf', 'NotoSansSC', 'normal')
+  // 同一文件兼作 bold 样式，避免后续 setFont(..., 'bold') 报缺字体
+  doc.addFont('NotoSansSC-Regular.ttf', 'NotoSansSC', 'bold')
+}
+
+/** 导出 PDF（嵌入 Noto Sans SC 中文字体，字体文件在导出时按需加载并缓存） */
 export async function exportReportToPdf(data: ReportExportData): Promise<void> {
   const { jsPDF } = await import('jspdf')
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
+  await loadChineseFont(doc)
+  doc.setFont('NotoSansSC')
   const margin = 48
   const pageWidth = doc.internal.pageSize.getWidth()
   const pageHeight = doc.internal.pageSize.getHeight()
@@ -70,10 +94,10 @@ export async function exportReportToPdf(data: ReportExportData): Promise<void> {
   }
 
   doc.setFontSize(18)
-  doc.text(encodeURIComponent(data.title).length > 0 ? data.title : 'Report', margin, y)
+  doc.text(data.title || '分析报告', margin, y)
   y += 24
   doc.setFontSize(10)
-  doc.text(`${data.scopeName ?? ''} | FY ${data.fiscalYear} | ${data.period}`, margin, y)
+  doc.text(`${data.scopeName ?? ''}｜财年 ${data.fiscalYear}｜期间 ${data.period}`, margin, y)
   y += 24
 
   data.sections.forEach((s, idx) => {
@@ -82,7 +106,7 @@ export async function exportReportToPdf(data: ReportExportData): Promise<void> {
     doc.text(`${idx + 1}. ${s.title}`, margin, y)
     y += 18
     doc.setFontSize(10)
-    const body = s.missing ? '(source analysis deleted)' : s.plainText || '(no content)'
+    const body = s.missing ? '（该单项分析原文已删除）' : s.plainText || '（暂无内容）'
     const lines = doc.splitTextToSize(body, pageWidth - margin * 2) as string[]
     for (const line of lines) {
       ensureSpace(14)
@@ -91,6 +115,10 @@ export async function exportReportToPdf(data: ReportExportData): Promise<void> {
     }
     y += 8
   })
+
+  ensureSpace(14)
+  doc.setFontSize(9)
+  doc.text(`生成时间：${new Date(data.generatedAt).toLocaleString('zh-CN')}`, margin, y)
 
   doc.save(`${safeFilename(data.title)}.pdf`)
 }

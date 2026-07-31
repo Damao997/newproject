@@ -394,7 +394,7 @@ function DetailsTab() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b text-center text-muted-foreground">
+                  <tr className="border-b text-center text-black">
                     <th className="px-2 py-2 font-medium">公司</th>
                     <th className="px-2 py-2 font-medium">期间</th>
                     <th className="px-2 py-2 font-medium">往来类型</th>
@@ -415,7 +415,7 @@ function DetailsTab() {
                         <div className="text-xs text-muted-foreground">{row.counterpartyCode}</div>
                       </td>
                       <td className="px-2 py-2 text-xs">{row.accountDesc || row.accountCode}</td>
-                      <td className="px-2 py-2 text-right font-mono">{row.closingBalance.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
+                      <td className="px-2 py-2 text-right font-num">{row.closingBalance.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
                       <td className="px-2 py-2 text-center"><PartyTypeTag partyType={row.partyType} /></td>
                     </tr>
                   ))}
@@ -423,7 +423,7 @@ function DetailsTab() {
                 <tfoot>
                   <tr className="border-t-2 bg-muted/40 font-medium">
                     <td className="px-2 py-2 text-xs" colSpan={5}>合计（全部筛选数据，跨页）</td>
-                    <td className="px-2 py-2 text-right font-mono">{totalsClosing.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
+                    <td className="px-2 py-2 text-right font-num">{totalsClosing.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
                     <td className="px-2 py-2" />
                   </tr>
                 </tfoot>
@@ -578,7 +578,7 @@ function AgingTab() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm" style={{ minWidth: 960 }}>
                 <thead>
-                  <tr className="border-b text-center text-muted-foreground">
+                  <tr className="border-b text-center text-black">
                     <th className="w-[150px] px-2 py-2 font-medium">公司</th>
                     <th className="w-[90px] px-2 py-2 font-medium">往来类型</th>
                     {effectiveGroupBy === 'counterparty' && <th className="min-w-[140px] px-2 py-2 font-medium">往来对象</th>}
@@ -604,9 +604,9 @@ function AgingTab() {
                             </td>
                           )}
                           {effectiveGroupBy === 'account' && <td className="max-w-[200px] truncate px-2 py-2 text-xs" title={row.accountDesc || row.accountCode || '-'}>{row.accountDesc || row.accountCode || '-'}</td>}
-                          <td className="px-2 py-2 text-right font-mono font-medium whitespace-nowrap">{row.closingBalance.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
+                          <td className="px-2 py-2 text-right font-num font-medium whitespace-nowrap">{row.closingBalance.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
                           {AGING_GROUPS.map((b) => (
-                            <td key={b} className={cn('px-2 py-2 text-right font-mono text-xs whitespace-nowrap', (row.aging[b] || 0) !== 0 && 'text-foreground')}>
+                            <td key={b} className={cn('px-2 py-2 text-right font-num text-xs whitespace-nowrap', (row.aging[b] || 0) !== 0 && 'text-foreground')}>
                               {(row.aging[b] || 0) !== 0 ? row.aging[b].toLocaleString('zh-CN', { minimumFractionDigits: 2 }) : '-'}
                             </td>
                           ))}
@@ -618,9 +618,9 @@ function AgingTab() {
                     return (
                       <tr key={idx} className={cn('border-t font-semibold', isTotal ? 'border-t-2 bg-blue-50/70 dark:bg-blue-950/30' : 'bg-muted/50')}>
                         <td className="px-2 py-2 text-xs" colSpan={labelColSpan}>{rr.label}</td>
-                        <td className="px-2 py-2 text-right font-mono whitespace-nowrap">{rr.closingBalance.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
+                        <td className="px-2 py-2 text-right font-num whitespace-nowrap">{rr.closingBalance.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
                         {AGING_GROUPS.map((b) => (
-                          <td key={b} className="px-2 py-2 text-right font-mono text-xs whitespace-nowrap">
+                          <td key={b} className="px-2 py-2 text-right font-num text-xs whitespace-nowrap">
                             {(rr.aging[b] || 0) !== 0 ? rr.aging[b].toLocaleString('zh-CN', { minimumFractionDigits: 2 }) : '-'}
                           </td>
                         ))}
@@ -673,13 +673,13 @@ function InternalTab() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b text-left text-muted-foreground">
+                  <tr className="border-b text-center text-black">
                     <th className="px-2 py-2 font-medium">本方公司</th>
                     <th className="px-2 py-2 font-medium">内部对方公司</th>
                     <th className="px-2 py-2 font-medium">方向</th>
                     <th className="px-2 py-2 font-medium">往来类型</th>
-                    <th className="px-2 py-2 text-right font-medium">期末余额</th>
-                    <th className="px-2 py-2 text-right font-medium">笔数</th>
+                    <th className="px-2 py-2 font-medium">期末余额</th>
+                    <th className="px-2 py-2 font-medium">笔数</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -693,7 +693,7 @@ function InternalTab() {
                         </span>
                       </td>
                       <td className="px-2 py-2">{row.transactionType}</td>
-                      <td className="px-2 py-2 text-right font-mono">{row.closingBalance.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
+                      <td className="px-2 py-2 text-right font-num">{row.closingBalance.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
                       <td className="px-2 py-2 text-right">{row.recordCount}</td>
                     </tr>
                   ))}
@@ -721,12 +721,12 @@ function InternalTab() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b text-left text-muted-foreground">
+                  <tr className="border-b text-center text-black">
                     <th className="px-2 py-2 font-medium">公司A</th>
                     <th className="px-2 py-2 font-medium">公司B</th>
-                    <th className="px-2 py-2 text-right font-medium">AR侧合计</th>
-                    <th className="px-2 py-2 text-right font-medium">AP侧合计</th>
-                    <th className="px-2 py-2 text-right font-medium">差额(未抵平)</th>
+                    <th className="px-2 py-2 font-medium">AR侧合计</th>
+                    <th className="px-2 py-2 font-medium">AP侧合计</th>
+                    <th className="px-2 py-2 font-medium">差额(未抵平)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -734,9 +734,9 @@ function InternalTab() {
                     <tr key={idx} className={cn('border-b last:border-0', Math.abs(row.difference) > 0.01 && 'bg-orange-50 dark:bg-orange-950/20')}>
                       <td className="px-2 py-2">{row.companyA}</td>
                       <td className="px-2 py-2">{row.companyB}</td>
-                      <td className="px-2 py-2 text-right font-mono">{row.arAmount.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
-                      <td className="px-2 py-2 text-right font-mono">{row.apAmount.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
-                      <td className={cn('px-2 py-2 text-right font-mono font-medium', Math.abs(row.difference) > 0.01 ? 'text-orange-600' : 'text-green-600')}>
+                      <td className="px-2 py-2 text-right font-num">{row.arAmount.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
+                      <td className="px-2 py-2 text-right font-num">{row.apAmount.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
+                      <td className={cn('px-2 py-2 text-right font-num font-medium', Math.abs(row.difference) > 0.01 ? 'text-orange-600' : 'text-green-600')}>
                         {row.difference.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
                       </td>
                     </tr>

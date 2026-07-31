@@ -32,7 +32,7 @@ export function MainLayout() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#F8FAFC]">
+    <div className="flex h-screen overflow-hidden bg-slate-50">
       <Sidebar
         collapsed={collapsed}
         onToggleCollapse={toggleCollapse}

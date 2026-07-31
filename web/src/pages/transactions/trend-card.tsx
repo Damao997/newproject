@@ -195,7 +195,7 @@ export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] 
           <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">加载中...</div>
         ) : isError ? (
           <div className="flex h-[320px] flex-col items-center justify-center gap-3">
-            <p className="text-sm text-red-500">{error instanceof Error ? error.message : '数据加载失败'}</p>
+            <p className="text-sm text-destructive">{error instanceof Error ? error.message : '数据加载失败'}</p>
             <Button variant="outline" size="sm" disabled={isFetching} onClick={() => refetch()}>
               <RefreshCw className="mr-1 h-3.5 w-3.5" />
               重试

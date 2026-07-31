@@ -72,7 +72,7 @@ describe('getChangeColor', () => {
   })
 
   it('零值为灰', () => {
-    expect(getChangeColor(0)).toBe('text-gray-500')
+    expect(getChangeColor(0)).toBe('text-muted-foreground')
   })
 })
 

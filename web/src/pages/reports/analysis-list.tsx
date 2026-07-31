@@ -196,7 +196,7 @@ export function AnalysisManager() {
                 <th className="h-11 px-4 text-center font-medium">公司</th>
                 <th className="h-11 px-4 text-center font-medium">科目</th>
                 <th className="h-11 px-4 text-center font-medium">期间</th>
-                <th className="h-11 px-4 text-left font-medium">标题</th>
+                <th className="h-11 px-4 text-center font-medium">标题</th>
                 <th className="h-11 px-4 text-center font-medium">引用</th>
                 <th className="h-11 px-4 text-center font-medium">状态</th>
                 <th className="h-11 px-4 text-center font-medium">创建时间</th>

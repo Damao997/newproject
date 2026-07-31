@@ -137,7 +137,7 @@ function UpdateStatusDialog({ plan, onClose }: { plan: CollectionPlanItem | null
             <label className="text-sm font-medium">实际回收金额</label>
             <Input type="number" placeholder="选填" value={actualAmount} onChange={(e) => setActualAmount(e.target.value)} />
           </div>
-          {errorMsg && <p className="text-sm text-red-500">{errorMsg}</p>}
+          {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleClose}>取消</Button>
@@ -198,7 +198,7 @@ function LogsDialog({ plan, canUpdate, onClose }: { plan: CollectionPlanItem | n
           {canUpdate && (
             <div className="space-y-2">
               <Textarea placeholder="记录本次催收情况..." value={content} onChange={(e) => setContent(e.target.value)} rows={3} />
-              {errorMsg && <p className="text-sm text-red-500">{errorMsg}</p>}
+              {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
               <div className="flex justify-end">
                 <Button size="sm" disabled={addMutation.isPending} onClick={handleAdd}>
                   {addMutation.isPending ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
@@ -264,7 +264,7 @@ function GenerateDialog({ open, companyCode, onClose }: { open: boolean; company
               已生成 {result.created} 条催收计划，跳过 {result.skipped} 条（已有进行中计划）
             </p>
           )}
-          {errorMsg && <p className="text-sm text-red-500">{errorMsg}</p>}
+          {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleClose}>{result ? '完成' : '取消'}</Button>
@@ -360,14 +360,14 @@ export function CollectionsTab() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b text-left text-muted-foreground">
+                  <tr className="border-b text-center text-black">
                     <th className="px-2 py-2 font-medium">公司</th>
                     <th className="px-2 py-2 font-medium">客商</th>
                     <th className="px-2 py-2 font-medium">科目</th>
-                    <th className="px-2 py-2 text-right font-medium">逾期金额</th>
+                    <th className="px-2 py-2 font-medium">逾期金额</th>
                     <th className="px-2 py-2 font-medium">计划日期</th>
                     <th className="px-2 py-2 font-medium">方式</th>
-                    <th className="px-2 py-2 text-right font-medium">实际回收</th>
+                    <th className="px-2 py-2 font-medium">实际回收</th>
                     <th className="px-2 py-2 font-medium">状态</th>
                     <th className="px-2 py-2 font-medium">操作</th>
                   </tr>
@@ -381,10 +381,10 @@ export function CollectionsTab() {
                         <div className="text-xs text-muted-foreground">{row.counterpartyCode}</div>
                       </td>
                       <td className="px-2 py-2 text-xs">{row.accountCode}</td>
-                      <td className="px-2 py-2 text-right font-mono">{fmtAmount(row.overdueAmount)}</td>
+                      <td className="px-2 py-2 text-right font-num">{fmtAmount(row.overdueAmount)}</td>
                       <td className="px-2 py-2 text-xs">{row.plannedDate}</td>
                       <td className="px-2 py-2 text-xs">{METHOD_LABELS[row.method] || row.method}</td>
-                      <td className="px-2 py-2 text-right font-mono">{fmtAmount(row.actualAmount)}</td>
+                      <td className="px-2 py-2 text-right font-num">{fmtAmount(row.actualAmount)}</td>
                       <td className="px-2 py-2">
                         <span className={cn('rounded px-1.5 py-0.5 text-xs', STATUS_STYLES[row.status])}>
                           {STATUS_LABELS[row.status]}

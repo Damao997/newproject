@@ -43,7 +43,7 @@ export function formatMetricValue(value: number, valueType?: MetricValueType | s
 export function getChangeColor(value: number): string {
   if (value > 0) return 'text-finance-red'
   if (value < 0) return 'text-finance-green'
-  return 'text-gray-500'
+  return 'text-muted-foreground'
 }
 
 export function getChangePrefix(value: number): string {

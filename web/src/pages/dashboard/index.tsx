@@ -131,12 +131,12 @@ export default function DashboardPage() {
                 <CardTitle className="text-lg font-semibold text-foreground">
                   收入趋势分析
                 </CardTitle>
-                <p className="mt-1 text-xs text-[#64748B]">近12个月收入、成本、毛利对比</p>
+                <p className="mt-1 text-xs text-muted-foreground">近12个月收入、成本、毛利对比</p>
               </div>
               <Tabs value={compareType} onValueChange={(v) => setCompareType(v as 'yoy' | 'mom')}>
-                <TabsList className="bg-[#F1F5F9] p-1">
-                  <TabsTrigger value="yoy" className="rounded-lg px-3 py-1.5 text-xs data-[state=active]:bg-white data-[state=active]:text-[#0F172A] data-[state=active]:shadow-sm">同比</TabsTrigger>
-                  <TabsTrigger value="mom" className="rounded-lg px-3 py-1.5 text-xs data-[state=active]:bg-white data-[state=active]:text-[#0F172A] data-[state=active]:shadow-sm">环比</TabsTrigger>
+                <TabsList className="bg-muted p-1">
+                  <TabsTrigger value="yoy" className="rounded-lg px-3 py-1.5 text-xs data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-sm">同比</TabsTrigger>
+                  <TabsTrigger value="mom" className="rounded-lg px-3 py-1.5 text-xs data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-sm">环比</TabsTrigger>
                 </TabsList>
               </Tabs>
             </CardHeader>
@@ -150,8 +150,8 @@ export default function DashboardPage() {
             <Card className="animate-fade-in border border-border bg-white shadow-sm transition-shadow duration-200 hover:shadow-md" style={{ animationDelay: '280ms' }}>
               <CardHeader className="px-6 pb-3 pt-5">
                 <CardTitle className="flex items-center gap-2 text-lg font-semibold">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FFFBEB]">
-                    <AlertTriangle className="h-4 w-4 text-[#D97706]" />
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50">
+                    <AlertTriangle className="h-4 w-4 text-amber-600" />
                   </div>
                   预警提醒
                 </CardTitle>
@@ -163,25 +163,25 @@ export default function DashboardPage() {
                       key={alert.id}
                       className={`animate-fade-in rounded-xl border p-4 ${
                         alert.severity === 'error'
-                          ? 'border-[#FECACA] border-l-[3px] border-l-[#EF4444] bg-[#FEF2F2]'
-                          : 'border-[#FDE68A] border-l-[3px] border-l-[#F59E0B] bg-[#FFFBEB]'
+                          ? 'border-red-200 border-l-[3px] border-l-red-500 bg-red-50'
+                          : 'border-amber-200 border-l-[3px] border-l-amber-500 bg-amber-50'
                       }`}
                       style={{ animationDelay: `${320 + i * 80}ms` }}
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex items-start gap-3">
                           <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
-                            alert.severity === 'error' ? 'bg-[#FEE2E2]' : 'bg-[#FEF3C7]'
+                            alert.severity === 'error' ? 'bg-red-100' : 'bg-amber-100'
                           }`}>
                             <AlertTriangle
                               className={`h-4 w-4 ${
-                                alert.severity === 'error' ? 'text-[#EF4444]' : 'text-[#D97706]'
+                                alert.severity === 'error' ? 'text-red-500' : 'text-amber-600'
                               }`}
                             />
                           </div>
                           <div>
                             <h4 className="text-sm font-semibold text-foreground">{alert.title}</h4>
-                            <p className="mt-1 text-sm leading-relaxed text-[#64748B]">
+                            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
                               {alert.message}
                             </p>
                           </div>
@@ -189,14 +189,14 @@ export default function DashboardPage() {
                         <span
                           className={`ml-2 inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
                             alert.severity === 'error'
-                              ? 'bg-[#FEE2E2] text-[#EF4444]'
-                              : 'bg-[#FEF3C7] text-[#D97706]'
+                              ? 'bg-red-100 text-red-500'
+                              : 'bg-amber-100 text-amber-600'
                           }`}
                         >
                           {alert.severity === 'error' ? '严重' : '警告'}
                         </span>
                       </div>
-                      <div className="mt-3 flex items-center gap-1 text-xs text-[#64748B]">
+                      <div className="mt-3 flex items-center gap-1 text-xs text-muted-foreground">
                         <Clock className="h-3 w-3" />
                         {new Date(alert.createdAt).toLocaleString('zh-CN')}
                       </div>

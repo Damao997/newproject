@@ -195,11 +195,11 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
           <div className="space-y-2">
             {results.map((r) => (
               <div key={r.filename} className="flex items-center gap-2 rounded-lg border p-3 text-sm">
-                {r.error ? <XCircle className="h-4 w-4 shrink-0 text-red-500" /> : <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />}
+                {r.error ? <XCircle className="h-4 w-4 shrink-0 text-destructive" /> : <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />}
                 <div className="min-w-0 flex-1">
                   <p className="truncate">{r.filename}</p>
                   {r.error ? (
-                    <p className="text-xs text-red-500">{r.error}</p>
+                    <p className="text-xs text-destructive">{r.error}</p>
                   ) : (
                     <p className="text-xs text-muted-foreground">入库 {r.batch?.detailCount ?? 0} 条{(r.batch?.errorCount ?? 0) > 0 ? `，错误 ${r.batch?.errorCount} 条` : ''}</p>
                   )}
@@ -219,7 +219,7 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
           </div>
         )}
 
-        {errorMsg && <p className="text-sm text-red-500">{errorMsg}</p>}
+        {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
 
         <DialogFooter>
           {step === 'select' && (

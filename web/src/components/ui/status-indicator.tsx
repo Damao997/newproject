@@ -11,7 +11,7 @@ const dotColor: Record<StatusVariant, string> = {
 
 const labelColor: Record<StatusVariant, string> = {
   active: 'text-emerald-600',
-  idle: 'text-gray-500',
+  idle: 'text-muted-foreground',
   error: 'text-red-600',
   warning: 'text-amber-600',
 }

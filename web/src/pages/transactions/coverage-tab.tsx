@@ -67,7 +67,7 @@ export function CoverageTab() {
   if (isError) {
     return (
       <div className="flex flex-col items-center gap-3 py-12">
-        <p className="text-sm text-red-500">{error instanceof Error ? error.message : '数据加载失败'}</p>
+        <p className="text-sm text-destructive">{error instanceof Error ? error.message : '数据加载失败'}</p>
         <Button variant="outline" size="sm" disabled={isFetching} onClick={() => refetch()}>
           <RefreshCw className="mr-1 h-3.5 w-3.5" />
           重试
@@ -109,7 +109,7 @@ export function CoverageTab() {
               </li>
             ))}
           </ul>
-          {activateError && <p className="mt-1 text-xs text-red-500">{activateError}</p>}
+          {activateError && <p className="mt-1 text-xs text-destructive">{activateError}</p>}
         </div>
       )}
 
@@ -149,7 +149,7 @@ export function CoverageTab() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b text-muted-foreground">
+                <tr className="border-b text-black">
                   <th className="px-2 py-2 text-center font-medium">公司</th>
                   <th className="px-2 py-2 text-center font-medium">期间</th>
                   {data.types.map((t) => (

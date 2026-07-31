@@ -485,7 +485,7 @@ export function ImportPanel() {
                       <thead className="sticky top-0">
                         <tr className="border-b bg-muted/50">
                           {previewResult.sampleRows.headers.map((h, i) => (
-                            <th key={i} className="whitespace-nowrap p-2 text-left font-medium">{h}</th>
+                            <th key={i} className="whitespace-nowrap p-2 text-center font-medium">{h}</th>
                           ))}
                         </tr>
                       </thead>
@@ -509,9 +509,9 @@ export function ImportPanel() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b bg-muted/50">
-                        <th className="p-2 text-left font-medium">行号</th>
-                        <th className="p-2 text-left font-medium">列</th>
-                        <th className="p-2 text-left font-medium">错误信息</th>
+                        <th className="p-2 text-center font-medium">行号</th>
+                        <th className="p-2 text-center font-medium">列</th>
+                        <th className="p-2 text-center font-medium">错误信息</th>
                       </tr>
                     </thead>
                     <tbody>

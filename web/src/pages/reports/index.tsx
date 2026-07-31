@@ -136,7 +136,7 @@ function ReportList({ onOpen, canDelete }: { onOpen: (id: string) => void; canDe
           <table className="w-full text-[13px]">
             <thead>
               <tr className="border-b bg-muted/50 text-black">
-                <th className="h-11 px-4 text-left font-medium">报告标题</th>
+                <th className="h-11 px-4 text-center font-medium">报告标题</th>
                 <th className="h-11 px-4 text-center font-medium">主体</th>
                 <th className="h-11 px-4 text-center font-medium">期间</th>
                 <th className="h-11 px-4 text-center font-medium">状态</th>

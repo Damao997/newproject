@@ -1,7 +1,7 @@
 # 浙江壹品慧财年经营数据分析平台 — 前端设计方案
 
-> **版本**: v3.1  
-> **日期**: 2026-07-21  
+> **版本**: v3.2  
+> **日期**: 2026-07-31  
 > **风格定位**: 简洁专业 / 效率驱动  
 > **技术选型**: Radix UI + Shadcn + Tailwind CSS + CSS Animation
 
@@ -125,8 +125,8 @@ React 18 + TypeScript 5.5
 | 层级 | 字体族 | 大小 | 字重 | 用途 |
 |------|--------|------|------|------|
 | Display | `font-sans`（Microsoft YaHei / 微软雅黑 / system-ui） | 24px | 700 | 页面标题 |
-| Heading | `font-sans` | 18px | 600 | 卡片标题 |
-| Body | `font-sans` | 14px | 400 | 正文、表格内容 |
+| Heading | `font-sans` | 18px | 600 | 卡片标题（`CardTitle` 组件默认 `text-2xl`，业务卡片标题按本层级以 `text-lg` 覆盖） |
+| Body | `font-sans` | 14px | 400 | 正文（表格正文/表头实际为 13px，即 `text-[13px]`，见 §4.4） |
 | Caption | `font-sans` | 12px | 400 | 辅助文字、时间戳 |
 | **Number** | `font-num`（微软雅黑 + `font-feature-settings: "tnum"`） | 13-14px | 400/500 | **金额/数量/比率等一切数字**，等宽数字保证表格纵向对齐 |
 
@@ -151,7 +151,7 @@ React 18 + TypeScript 5.5
 
 ```
 基础样式：
-- 高度：40px（默认）/ 32px（sm）/ 44px（lg）
+- 高度：40px（默认）/ 36px（sm，`h-9`）/ 44px（lg）
 - 圆角：calc(var(--radius) - 2px) = 10px
 - 字体：14px / 500
 - 过渡：all 0.15s ease
@@ -178,7 +178,7 @@ React 18 + TypeScript 5.5
 - 边框：1px solid hsl(var(--border)) = #E2E8F0
 - 圆角：var(--radius) = 12px
 - 阴影：shadow-sm（默认），hover 时 shadow-md
-- 内边距：card-header 20px 24px 12px, card-content 20px 24px
+- 内边距：card-header / card-content 统一 `p-6`（24px，content 顶部由 `pt-0` 衔接）
 - 过渡：box-shadow 0.2s ease
 ```
 
@@ -203,25 +203,28 @@ React 18 + TypeScript 5.5
 - overflow: hidden
 
 表头：
-- 背景：#F1F5F9
-- 字体：12px / 500
-- 颜色：#64748B
-- 内边距：12px 16px
+- 背景：bg-muted/50（#F1F5F9 半透明）
+- 字体：13px / 500
+- 颜色：text-black
+- 内边距：h-11 + px-4（紧凑表 h-8）
 - **对齐：所有标题行单元格一律居中**（含金额列表头）
 
 行：
-- 字体：14px
-- 内边距：14px 16px
+- 字体：13px（`text-[13px]`）
+- 内边距：p-4（紧凑表 px-4 py-1.5）
 - 边框：顶部 1px solid #E2E8F0
 - hover：背景 #F8FAFC
 - 过渡：background 0.15s ease
 
-关键列（按 `account_subject.value_type` 分型渲染，见 `lib/utils.ts` 的 `formatMetricValue`）：
-- **amount（金额）**：`font-num` + 右对齐 + 千分位 2 位小数（`formatMoneyWan`），单位"万"以小字后缀独立渲染，数值内不含"万"字
-- **quantity（数量）**：`font-num` + 右对齐 + 千分位整数（`formatQuantity`），无小数
-- **ratio（比率）**：`font-num` + 右对齐 + 百分比 1 位小数（`formatPercent`）
+关键列（按 `account_subject.value_type` 分型渲染，见 `lib/utils.ts` 的 `formatMetricValue`；对齐分场景）：
+- **对比型表格**（指标树、覆盖率矩阵等多期间/多维对比）：数值列**居中** + `font-num`
+- **明细/交叉宽表**（数据浏览交叉表、往来明细、账龄表等）：数值列**右对齐** + `font-num`
+- **amount（金额）**：千分位 2 位小数（`formatMoneyWan`），单位"万"以小字后缀独立渲染，数值内不含"万"字
+- **quantity（数量）**：千分位整数（`formatQuantity`），无小数
+- **ratio（比率）**：百分比 1 位小数（`formatPercent`）
 - 达成率列：Badge 组件（rounded-full，success/warning 语义色）
 - 同比列：红涨绿跌（`finance.red`/`finance.green`），font-weight: 500
+- 微型状态胶囊（AR/AP 标签、覆盖率格子等）允许使用**成对** Tailwind 调色板类（如 `bg-green-100 text-green-700` + dark 变体）；除此之外**禁止硬编码 hex 色值**，一律走 Design Token 或调色板类
 ```
 
 ### 4.5 Badge
@@ -229,7 +232,7 @@ React 18 + TypeScript 5.5
 ```
 - 圆角：9999px（胶囊形）
 - 内边距：2px 10px
-- 字体：12px / 500
+- 字体：12px / 600（`font-semibold`）
 
 语义变体（实现见 `components/ui/badge.tsx`）：
 ┌──────────────┬──────────────────────────────────────────┐
@@ -306,6 +309,7 @@ React 18 + TypeScript 5.5
 **顶栏规则**：
 - 桌面端仅承载全局财年选择器与用户菜单（品牌标识在侧边栏顶部）；移动端额外显示汉堡按钮 + 品牌标识。
 - 全局财年选择影响看板/指标/数据浏览的期间候选，状态存于 `periodStore`。
+- 内容区背景为 `bg-slate-50`（#F8FAFC，浅蓝灰），卡片保持纯白形成层次。
 
 ### 5.2 登录页
 
@@ -329,7 +333,7 @@ React 18 + TypeScript 5.5
 - **筛选栏**：Tab 切换（经营指标 / 静态指标）+ 公司/月份/科目下拉
 - **数据表格**：ProTable（虚拟滚动、固定列、可排序）
   - 列：公司 | 科目 | 月份 | 本月实际 | 预算 | 达成率 | 同比
-  - 金额右对齐，字体 JetBrains Mono
+  - 金额右对齐，`font-num` 数字字体
   - 达成率用 Badge 显示（success/warning）
   - 同比红涨绿跌
 - **操作栏**：导出 Excel + 导入数据按钮
@@ -478,7 +482,7 @@ React 18 + TypeScript 5.5
 | `≥1280px` | 桌面 | 完整布局，5 列 KPI 卡片 |
 | `1024-1279px` | 小桌面 | 4 列 KPI，侧边栏收起 |
 | `768-1023px` | 平板 | 2 列 KPI，表格横向滚动 |
-| `<768px` | 手机 | 1 列 KPI，卡片垂直堆叠，底部固定导航 |
+| `<768px` | 手机 | 1 列 KPI，卡片垂直堆叠，侧边栏改为汉堡按钮唤起的抽屉（同 §5.1） |
 
 ### 8.1 表格移动端处理
 
@@ -596,6 +600,21 @@ export function cn(...inputs: ClassValue[]) {
 
 ## 变更记录
 
+### v3.2（2026-07-31）
+
+**设计规范一致性修复（代码 + 文档双向同步）**：
+
+代码侧修复：
+- 数字字体统一：`transactions/index.tsx` 内部往来/镜像校验/账龄等表格金额列 `font-mono` 全部改 `font-num`（10 处）；`pagination.tsx` 的 `tabular-nums` 统一为 `font-num`（3 处）；`getChangeColor` 零值由 `text-gray-500` 改 `text-muted-foreground`。
+- 表头规范统一：修复 7 个文件中自写 `<table>` 的表头左对齐（collections-tab、reports/index、reports/analysis-list、formula-history-dialog、import-panel×2、transactions 内部往来/镜像表），并移除表头单元格级 `text-right`；表头文字色由 `text-muted-foreground` 统一为 `text-black`（transactions、coverage-tab、collections-tab）。
+- 颜色 Token 化：dashboard 预警卡片等 14 处硬编码 hex 改为等价 Token/调色板类（`text-muted-foreground`/`bg-muted`/`text-foreground`/red-amber 系）；`main-layout` 背景 `bg-[#F8FAFC]` 改 `bg-slate-50`；错误提示 `text-red-500` 统一为 `text-destructive`（coverage-tab、collections-tab、import-dialog）；`index.html` theme-color 由 `#FF8C00` 更正为品牌橙 `#F97316`。
+
+文档侧同步（以实现为准）：
+- §3.3：Heading 补记 `CardTitle` 默认 `text-2xl` 需按层级覆盖；Body 补记表格实际 13px。
+- §4.1 Button sm 高度 32px 更正为 36px；§4.2 Card 内边距更正为统一 `p-6`；§4.5 Badge 字重更正为 600。
+- §4.4 表头更正为 13px/500/text-black/bg-muted-50，行字体更正为 13px；数值列对齐改写为分场景规则（对比型表格居中、明细/交叉宽表右对齐）；新增微型状态胶囊调色板条款与禁止硬编码 hex 约束。
+- §5.1 补记内容区背景 `slate-50`；§5.4 清除 JetBrains Mono 残留表述；§8 手机端「底部固定导航」更正为抽屉侧边栏。
+
 ### v3.1（2026-07-30）
 
 **主色决策落定（以实现为准）**：
@@ -628,4 +647,4 @@ export function cn(...inputs: ClassValue[]) {
 
 ---
 
-*文档版本：v3.1 | 初版 2026-07-21 / 更新 2026-07-30 | 设计负责人：蟹蟹 🦀*
+*文档版本：v3.2 | 初版 2026-07-21 / 更新 2026-07-31 | 设计负责人：蟹蟹 🦀*
