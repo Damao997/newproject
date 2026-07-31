@@ -1,0 +1,170 @@
+# docker-compose.yml
+# 浙江壹品慧财年经营数据分析平台 — Docker 单机内网部署
+#
+# 用法（详见 docs/plans/部署运维规范.md 附录 D）：
+#   1. 在本文件同级创建 .env（参照 .env.example 生成密钥）
+#   2. docker compose up -d --build
+#   3. docker compose exec backend npm run migrate:deploy   # 超级用户执行迁移
+#   4. docker compose exec backend npm run prisma:seed      # 首次部署导入种子
+#   5. docker compose exec -T postgres psql -U postgres -d yipinhui \
+#        -f /opt/init/post-migration-fix-permissions.sql    # 修复新表权限
+#
+# 说明：未声明 `version:` —— Compose V2 已废弃该字段，声明会产生告警。
+
+services:
+  # ═══════════════════════════════════════════════════════
+  # PostgreSQL 数据库
+  # ═══════════════════════════════════════════════════════
+  postgres:
+    image: postgres:15-alpine
+    container_name: yipinhui-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_SUPER_PASSWORD:?DB_SUPER_PASSWORD 未设置}
+      POSTGRES_DB: yipinhui
+      # 供 initdb 脚本创建业务账号使用（仅初始化阶段读取）
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD:?DB_APP_PASSWORD 未设置}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      # 初始化脚本：.sh 包装器负责把 DB_APP_PASSWORD 以 psql 变量传入 .sql
+      # （SQL 文件本身不放在 initdb.d，避免被 entrypoint 无参重复执行）
+      - ./server/prisma/init-roles.sh:/docker-entrypoint-initdb.d/01-init-roles.sh:ro
+      - ./server/prisma/init-roles.sql:/opt/init/init-roles.sql:ro
+      - ./server/prisma/init-audit.sql:/opt/init/init-audit.sql:ro
+      - ./server/prisma/post-migration-fix-permissions.sql:/opt/init/post-migration-fix-permissions.sql:ro
+      # WAL 归档目标：archive_command 写入此卷，必须与 db-backup 共享
+      - backup_data:/backup_data
+    ports:
+      - "127.0.0.1:5432:5432"     # 仅绑定回环，不暴露到内网其他主机
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d yipinhui"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - app-network
+    # 归档模式（PITR 基础）。archive_command 依赖 /backup_data/wal 目录存在，
+    # 该目录由 01-init-roles.sh 在初始化时创建；test ! -f 保证幂等不覆盖。
+    command:
+      - postgres
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=test ! -f /backup_data/wal/%f && cp %p /backup_data/wal/%f
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=3
+
+  # ═══════════════════════════════════════════════════════
+  # 后端 API 服务
+  # ═══════════════════════════════════════════════════════
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: yipinhui-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      # 业务账号连接（仅 DML）；迁移需超级用户，见文件头步骤 3 的说明
+      DATABASE_URL: postgresql://yipinhui_app:${DB_APP_PASSWORD}@postgres:5432/yipinhui
+      # 迁移专用连接串（migrate:deploy 使用超级用户，业务账号无 DDL 权限）
+      MIGRATE_DATABASE_URL: postgresql://postgres:${DB_SUPER_PASSWORD}@postgres:5432/yipinhui
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET 未设置}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET 未设置}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_API_BASE: ${DEEPSEEK_API_BASE:-https://api.deepseek.com/v1}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-v4-flash}
+      # CORS 白名单，支持逗号分隔多值；严禁通配符
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost}
+      FISCAL_START_MONTH: ${FISCAL_START_MONTH:-1}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      ENTERPRISE_INFO_PROVIDER: ${ENTERPRISE_INFO_PROVIDER:-mock}
+      BCRYPT_COST: ${BCRYPT_COST:-12}
+    expose:
+      - "3001"
+    # 不发布到宿主端口：仅 frontend 容器经内网访问。
+    # 如需宿主调试，取消下面两行注释（仅绑回环）。
+    # ports:
+    #   - "127.0.0.1:3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app-network
+    healthcheck:
+      # 健康检查端点为顶层 /health（不带 /api/v1，避开通用限流与鉴权）
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ═══════════════════════════════════════════════════════
+  # 前端 Web 服务（Nginx 静态文件 + API 反向代理）
+  # ═══════════════════════════════════════════════════════
+  frontend:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: yipinhui-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ═══════════════════════════════════════════════════════
+  # 数据库备份服务（cron：每日全量 + 每小时 WAL 轮转）
+  # ═══════════════════════════════════════════════════════
+  db-backup:
+    image: postgres:15-alpine
+    container_name: yipinhui-backup
+    restart: unless-stopped
+    environment:
+      PGHOST: postgres
+      PGUSER: postgres
+      PGPASSWORD: ${DB_SUPER_PASSWORD}
+      PGDATABASE: yipinhui
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:?BACKUP_ENCRYPTION_KEY 未设置}
+      FULL_RETENTION_DAYS: ${FULL_RETENTION_DAYS:-30}
+      WAL_RETENTION_DAYS: ${WAL_RETENTION_DAYS:-7}
+    volumes:
+      - backup_data:/backup_data
+      - ./server/scripts/backup.sh:/usr/local/bin/backup.sh:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "
+      mkdir -p /backup_data/full /backup_data/wal /backup_data/logs;
+      echo '0 2 * * * /usr/local/bin/backup.sh full >> /backup_data/logs/backup.log 2>&1' > /etc/crontabs/root;
+      echo '0 * * * * /usr/local/bin/backup.sh rotate >> /backup_data/logs/backup.log 2>&1' >> /etc/crontabs/root;
+      echo '30 3 * * * /usr/local/bin/backup.sh cleanup-blacklist >> /backup_data/logs/backup.log 2>&1' >> /etc/crontabs/root;
+      exec crond -f -l 2
+      "
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app-network
+
+volumes:
+  pg_data:
+    driver: local
+  backup_data:
+    driver: local
+
+networks:
+  app-network:
+    driver: bridge

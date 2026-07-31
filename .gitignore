@@ -33,6 +33,8 @@ Thumbs.db
 *.local
 .env
 .env.*
+# 模板文件必须入库（不含真实密钥）
+!.env.example
 
 # Coverage
 coverage

@@ -1,0 +1,28 @@
+# server/.dockerignore
+# 排除不参与镜像构建的内容，缩小构建上下文并避免泄密
+
+node_modules
+dist
+coverage
+
+# 本地嵌入式 PostgreSQL 数据目录（体积大且含本地数据）
+.pgdata
+
+# 密钥与本地环境（生产配置由 docker-compose 环境变量注入）
+.env
+.env.*
+!.env.example
+
+# 测试与本地脚本产物
+*.test.ts
+*.log
+npm-debug.log*
+
+# 编辑器/系统
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+Dockerfile
+.dockerignore

@@ -1,0 +1,5 @@
+# 行尾策略：shell 脚本必须以 LF 检出 —— Windows 上若被 autocrlf 转成 CRLF，
+# COPY 进镜像后容器内 sh 将报 "bad interpreter"/语法错误，部署链路直接失败。
+*.sh text eol=lf
+*.sql text eol=lf
+Dockerfile text eol=lf
