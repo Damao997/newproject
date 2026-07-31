@@ -331,7 +331,7 @@ export default function IndicatorsPage() {
 
       {/* 去重分类模拟口径提示条 */}
       {excludeReclassify && (
-        <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+        <div className="flex items-center gap-2 rounded-md border border-warning/30 bg-warning/[0.08] px-4 py-2 text-sm text-warning-strong">
           <History className="h-4 w-4 shrink-0" />
           <span>
             当前展示的是去除跨公司重分类影响后的模拟口径，不修改任何数据。

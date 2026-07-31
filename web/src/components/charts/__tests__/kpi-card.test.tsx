@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { KpiCard } from '../kpi-card'
 import type { KpiData } from '@/types'
 
@@ -45,26 +45,43 @@ describe('KpiCard', () => {
     expect(screen.getByText('58.3%')).toBeInTheDocument()
   })
 
-  it('无预算（rate=null）时达成率显示 "–"', () => {
-    render(<KpiCard data={noBudgetKpi} />)
-    expect(screen.getAllByText('–')).toHaveLength(2)
+  it('达成率三级语义色：≥95 绿 / 85-95 琥珀 / <85 红', () => {
+    render(<KpiCard data={{ ...revenueKpi, monthRate: 96.5, ytdRate: 58.3 }} />)
+    expect(screen.getByText('96.5%').className).toContain('text-success-strong')
+    expect(screen.getByText('58.3%').className).toContain('text-destructive')
+    render(<KpiCard data={{ ...revenueKpi, title: '毛利', monthRate: 90 }} />)
+    expect(screen.getByText('90.0%').className).toContain('text-warning-strong')
   })
 
-  it('同比上涨：红涨徽标带 + 前缀', () => {
+  it('无预算（rate=null）时达成率显示灰色 "–"', () => {
+    render(<KpiCard data={noBudgetKpi} />)
+    const dashes = screen.getAllByText('–')
+    expect(dashes).toHaveLength(2)
+    for (const d of dashes) expect(d.className).toContain('text-muted-foreground')
+  })
+
+  it('同比上涨：红涨徽标（finance.red token）带 + 前缀', () => {
     render(<KpiCard data={revenueKpi} />)
     const badge = screen.getByText('+12.3%')
-    expect(badge.parentElement?.className).toContain('text-[#FF3B30]')
+    expect(badge.parentElement?.className).toContain('text-finance-red')
   })
 
-  it('同比下跌：绿跌徽标（无 + 前缀）', () => {
+  it('同比下跌：绿跌徽标（finance.green token，无 + 前缀）', () => {
     render(<KpiCard data={{ ...revenueKpi, yoy: -0.056 }} />)
     const badge = screen.getByText('5.6%')
-    expect(badge.parentElement?.className).toContain('text-[#34C759]')
+    expect(badge.parentElement?.className).toContain('text-finance-green')
   })
 
-  it('同比持平：灰色徽标显示 0.0%', () => {
+  it('同比持平：muted 徽标显示 0.0%', () => {
     render(<KpiCard data={noBudgetKpi} />)
     const badge = screen.getByText('0.0%')
-    expect(badge.parentElement?.className).toContain('text-[#64748B]')
+    expect(badge.parentElement?.className).toContain('text-muted-foreground')
+  })
+
+  it('传入 onClick 时卡片可点击并触发钻取回调', () => {
+    const onClick = vi.fn()
+    render(<KpiCard data={revenueKpi} onClick={onClick} />)
+    fireEvent.click(screen.getByText('1,234,567.89'))
+    expect(onClick).toHaveBeenCalledTimes(1)
   })
 })

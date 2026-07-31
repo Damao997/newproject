@@ -1,5 +1,7 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  // 本平台按规范维持纯亮色：显式声明 class 策略，避免 dark: 变体被系统偏好误触发
+  darkMode: 'class',
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -12,6 +14,7 @@ export default {
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
+        page: "hsl(var(--page))",
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
@@ -40,12 +43,46 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        success: "hsl(var(--success))",
-        warning: "hsl(var(--warning))",
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          strong: "hsl(var(--success-strong))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          strong: "hsl(var(--warning-strong))",
+        },
+        info: "hsl(var(--info))",
         finance: {
           red: "#FF3B30",
           green: "#34C759",
         },
+        // 图表序列色：与 src/lib/chart-theme.ts 的 CHART_SERIES 一一对应
+        chart: {
+          1: "hsl(var(--chart-1))",
+          2: "hsl(var(--chart-2))",
+          3: "hsl(var(--chart-3))",
+          4: "hsl(var(--chart-4))",
+          5: "hsl(var(--chart-5))",
+          6: "hsl(var(--chart-6))",
+          7: "hsl(var(--chart-7))",
+          8: "hsl(var(--chart-8))",
+          9: "hsl(var(--chart-9))",
+          10: "hsl(var(--chart-10))",
+          11: "hsl(var(--chart-11))",
+          12: "hsl(var(--chart-12))",
+          13: "hsl(var(--chart-13))",
+        },
+      },
+      boxShadow: {
+        // 暖调阴影：以褐黑替代纯黑，与品牌橙更协调
+        sm: "0 1px 3px 0 rgb(28 20 12 / 0.05)",
+        DEFAULT: "0 1px 3px 0 rgb(28 20 12 / 0.06), 0 1px 2px -1px rgb(28 20 12 / 0.06)",
+        md: "0 4px 6px -1px rgb(28 20 12 / 0.08), 0 2px 4px -2px rgb(28 20 12 / 0.06)",
+        lg: "0 12px 24px -8px rgb(28 20 12 / 0.12)",
+        xl: "0 25px 50px -12px rgb(28 20 12 / 0.18)",
+      },
+      transitionTimingFunction: {
+        brand: "cubic-bezier(0.22, 1, 0.36, 1)",
       },
       borderRadius: {
         lg: "var(--radius)",

@@ -1,6 +1,7 @@
 import ProTable from '@ant-design/pro-table'
 import type { ProColumns } from '@ant-design/pro-table'
 import { ConfigProvider } from 'antd'
+import { THEME_HEX } from '@/lib/chart-theme'
 import type { DataTableColumn } from './data-table'
 
 interface ProTableInnerProps<T> {
@@ -30,7 +31,35 @@ export default function ProTableInner<T extends Record<string, unknown>>({
   }))
 
   return (
-    <ConfigProvider theme={{ token: { fontFamily: "'Microsoft YaHei', '微软雅黑', system-ui, sans-serif" } }}>
+    <ConfigProvider
+      theme={{
+        // 对齐品牌橙与暖中性令牌：默认 antd 主色为蓝，会让排序/勾选/分页脱离品牌视觉
+        token: {
+          colorPrimary: THEME_HEX.primary,
+          colorInfo: THEME_HEX.primary,
+          colorLink: THEME_HEX.primary,
+          colorLinkHover: THEME_HEX.primaryHover,
+          colorSuccess: THEME_HEX.success,
+          colorWarning: THEME_HEX.warning,
+          colorError: THEME_HEX.destructive,
+          colorText: THEME_HEX.foreground,
+          colorTextSecondary: THEME_HEX.mutedForeground,
+          colorBorder: THEME_HEX.border,
+          colorBorderSecondary: THEME_HEX.borderSubtle,
+          borderRadius: 8,
+          fontSize: 13,
+          fontFamily: "'Microsoft YaHei', '微软雅黑', system-ui, sans-serif",
+        },
+        components: {
+          Table: {
+            headerBg: THEME_HEX.muted,
+            headerColor: THEME_HEX.foreground,
+            rowHoverBg: THEME_HEX.accent,
+            borderColor: THEME_HEX.border,
+          },
+        },
+      }}
+    >
       <ProTable<T>
         columns={proColumns}
         dataSource={data}

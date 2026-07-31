@@ -60,7 +60,7 @@ export function AccountFilterTab() {
               科目过滤
             </CardTitle>
             <span className="text-xs text-muted-foreground">
-              已纳入 <span className="font-medium text-green-600">{activeCount}</span> 个 · 已排除 <span className="font-medium text-orange-600">{excludedCount}</span> 个
+              已纳入 <span className="font-medium text-success-strong">{activeCount}</span> 个 · 已排除 <span className="font-medium text-warning-strong">{excludedCount}</span> 个
             </span>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -101,8 +101,8 @@ export function AccountFilterTab() {
                           )}
                         >
                           {included
-                            ? a.hasData && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-green-500" />
-                            : <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-orange-500" />}
+                            ? a.hasData && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
+                            : <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-warning" />}
                           {displayName(a)}
                         </button>
                       )

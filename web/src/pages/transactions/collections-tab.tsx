@@ -34,11 +34,11 @@ const STATUS_LABELS: Record<CollectionStatus, string> = {
 }
 
 const STATUS_STYLES: Record<CollectionStatus, string> = {
-  pending: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
-  collecting: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
-  partial: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
-  full: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
-  bad_debt: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+  pending: 'bg-muted text-muted-foreground',
+  collecting: 'bg-info/10 text-info',
+  partial: 'bg-warning/15 text-warning-strong',
+  full: 'bg-success/10 text-success-strong',
+  bad_debt: 'bg-destructive/10 text-destructive',
 }
 
 /** 合法状态流转表（与后端 CollectionService 状态机一致） */
@@ -260,7 +260,7 @@ function GenerateDialog({ open, companyCode, onClose }: { open: boolean; company
             </Select>
           </div>
           {result && (
-            <p className="rounded bg-green-50 p-2 text-sm text-green-700 dark:bg-green-950/20 dark:text-green-300">
+            <p className="rounded bg-success/10 p-2 text-sm text-success-strong">
               已生成 {result.created} 条催收计划，跳过 {result.skipped} 条（已有进行中计划）
             </p>
           )}

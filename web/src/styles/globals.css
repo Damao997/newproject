@@ -5,27 +5,48 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 222 84% 5%;
+    --foreground: 24 10% 10%;
     --card: 0 0% 100%;
-    --card-foreground: 222 84% 5%;
+    --card-foreground: 24 10% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 84% 5%;
+    --popover-foreground: 24 10% 10%;
+    /* 页面底色：内容区与卡片白底形成层次 */
+    --page: 30 30% 98%;
     --primary: 25 95% 53%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222 47% 11%;
+    --secondary: 30 25% 96%;
+    --secondary-foreground: 25 20% 18%;
+    --muted: 30 25% 96%;
+    --muted-foreground: 25 8% 45%;
+    --accent: 30 40% 95%;
+    --accent-foreground: 25 25% 18%;
     --destructive: 0 84% 60%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive-foreground: 0 0% 100%;
     --success: 160 84% 39%;
     --warning: 38 92% 50%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
+    /* strong 变体：用于白底上的小字号文本，保证 AA 对比度（base 值仅用于图标/填充） */
+    --success-strong: 160 84% 26%;
+    --warning-strong: 32 90% 36%;
+    /* 信息态：替代蓝色调色板，承担中性提示/进行中状态 */
+    --info: 205 80% 38%;
+    --border: 30 18% 89%;
+    --input: 30 18% 89%;
     --ring: 25 95% 53%;
     --radius: 0.75rem;
+    /* 图表序列色：橙主导 + 和谐化多色（13 色，覆盖分类色板全部槽位） */
+    --chart-1: 25 95% 53%;
+    --chart-2: 200 78% 45%;
+    --chart-3: 160 84% 39%;
+    --chart-4: 38 92% 50%;
+    --chart-5: 262 58% 60%;
+    --chart-6: 25 12% 55%;
+    --chart-7: 340 68% 55%;
+    --chart-8: 190 58% 42%;
+    --chart-9: 95 42% 42%;
+    --chart-10: 12 68% 48%;
+    --chart-11: 280 42% 55%;
+    --chart-12: 45 72% 44%;
+    --chart-13: 210 20% 52%;
   }
 
   * {
@@ -47,7 +68,12 @@
 
 @layer utilities {
   .skeleton {
-    background: linear-gradient(90deg, #F1F5F9 25%, #E2E8F0 50%, #F1F5F9 75%);
+    background: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 25%,
+      hsl(var(--border)) 50%,
+      hsl(var(--muted)) 75%
+    );
     background-size: 200% 100%;
     animation: shimmer 1.5s ease-in-out infinite;
   }

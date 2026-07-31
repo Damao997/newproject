@@ -35,7 +35,7 @@ export function FeedbackAlert({ kind, children }: { kind: 'success' | 'error'; c
     <div
       className={cn(
         'flex items-start gap-2 rounded-lg border p-3 text-sm',
-        kind === 'success' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-700',
+        kind === 'success' ? 'border-success/25 bg-success/10 text-success-strong' : 'border-destructive/25 bg-destructive/[0.06] text-destructive',
       )}
     >
       <Icon className="mt-0.5 h-4 w-4 shrink-0" />
@@ -69,8 +69,8 @@ export function PreviewStats({ items, warning, empty }: { items: PreviewStatItem
             <p
               className={cn(
                 'mt-0.5 truncate font-num text-sm font-semibold',
-                it.tone === 'primary' && 'text-blue-700',
-                it.tone === 'warning' && 'text-amber-700',
+                it.tone === 'primary' && 'text-primary',
+                it.tone === 'warning' && 'text-warning-strong',
               )}
               title={typeof it.value === 'string' ? it.value : undefined}
             >
@@ -80,7 +80,7 @@ export function PreviewStats({ items, warning, empty }: { items: PreviewStatItem
         ))}
       </div>
       {warning && (
-        <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2.5 text-sm text-amber-700">
+        <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/[0.08] p-2.5 text-sm text-warning-strong">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>{warning}</div>
         </div>

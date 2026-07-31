@@ -15,10 +15,10 @@ interface QuickAction {
 
 // 四个入口互不重复：导入数据 / 新建报告 / 财务指标 / 往来分析
 const ACTIONS: QuickAction[] = [
-  { label: '导入数据', to: '/data', icon: Upload, iconBg: 'bg-orange-500/10', iconColor: 'text-orange-500', permission: { resource: 'data:import', action: 'upload' } },
-  { label: '新建报告', to: '/reports', icon: FileText, iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-500' },
-  { label: '财务指标', to: '/indicators', icon: TrendingUp, iconBg: 'bg-blue-500/10', iconColor: 'text-blue-500' },
-  { label: '往来分析', to: '/transactions', icon: ArrowLeftRight, iconBg: 'bg-violet-500/10', iconColor: 'text-violet-500' },
+  { label: '导入数据', to: '/data', icon: Upload, iconBg: 'bg-primary/10', iconColor: 'text-primary', permission: { resource: 'data:import', action: 'upload' } },
+  { label: '新建报告', to: '/reports', icon: FileText, iconBg: 'bg-chart-3/10', iconColor: 'text-chart-3' },
+  { label: '财务指标', to: '/indicators', icon: TrendingUp, iconBg: 'bg-chart-2/10', iconColor: 'text-chart-2' },
+  { label: '往来分析', to: '/transactions', icon: ArrowLeftRight, iconBg: 'bg-chart-5/10', iconColor: 'text-chart-5' },
 ]
 
 /** 快捷入口卡：常用功能直达按钮 */
@@ -28,7 +28,7 @@ export function QuickActions() {
   const actions = ACTIONS.filter((a) => !a.permission || can(a.permission.resource, a.permission.action))
 
   return (
-    <Card className="animate-fade-in border border-border bg-white shadow-sm transition-shadow duration-200 hover:shadow-md" style={{ animationDelay: '360ms' }}>
+    <Card className="animate-fade-in border border-border shadow-sm" style={{ animationDelay: '360ms' }}>
       <CardHeader className="px-6 pb-3 pt-5">
         <CardTitle className="text-lg font-semibold">快捷入口</CardTitle>
       </CardHeader>
@@ -38,7 +38,7 @@ export function QuickActions() {
             <button
               key={label}
               type="button"
-              className="group flex h-24 flex-col items-center justify-center gap-3 rounded-xl border border-border bg-white transition-all duration-150 hover:border-orange-400/50 hover:shadow-md active:scale-[0.97]"
+              className="group flex h-24 flex-col items-center justify-center gap-3 rounded-xl border border-border bg-card transition-all duration-150 hover:border-primary/50 hover:bg-accent/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 active:scale-[0.97]"
               onClick={() => navigate(to)}
             >
               <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${iconBg}`}>

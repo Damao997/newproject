@@ -50,7 +50,8 @@ export const BATCH_STATUS_NAMES: Record<string, string> = {
 export const FINANCIAL_COLORS = {
   RED_UP: '#FF3B30',
   GREEN_DOWN: '#34C759',
-  BUDGET_ACHIEVED: '#16A34A',
+  // 与 globals.css 的 --success / --warning / --destructive 保持一致
+  BUDGET_ACHIEVED: '#10B981',
   BUDGET_WARNING: '#F59E0B',
   BUDGET_DEVIATION: '#EF4444',
 } as const

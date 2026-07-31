@@ -40,12 +40,12 @@ import { InventoryTrendCard } from './trend-card'
  * 周转指标直接复用静态树「存货周转天数」，与指标页口径一致。金额单位：万元。
  */
 
-/** KPI 图标底色：与看板四色体系一致，按序轮换 */
+/** KPI 图标底色：与看板四色体系一致（图表序列色），按序轮换 */
 const KPI_ACCENTS = [
-  'bg-orange-500/10 text-orange-500',
-  'bg-blue-500/10 text-blue-500',
-  'bg-emerald-500/10 text-emerald-500',
-  'bg-violet-500/10 text-violet-500',
+  'bg-chart-1/10 text-chart-1',
+  'bg-chart-2/10 text-chart-2',
+  'bg-chart-3/10 text-chart-3',
+  'bg-chart-5/10 text-chart-5',
 ]
 
 function StatCard({ title, icon: Icon, value, sub, index }: {
@@ -57,11 +57,11 @@ function StatCard({ title, icon: Icon, value, sub, index }: {
 }) {
   return (
     <Card
-      className="animate-fade-in border border-border bg-white shadow-sm transition-shadow duration-200 hover:shadow-md"
+      className="animate-fade-in border border-border shadow-sm"
       style={{ animationDelay: `${index * 80}ms` }}
     >
       <CardHeader className="flex flex-row items-center justify-between space-y-0 px-5 pb-1 pt-5">
-        <CardTitle className="text-xs font-medium tracking-wide text-[#64748B]">{title}</CardTitle>
+        <CardTitle className="text-xs font-medium tracking-wide text-muted-foreground">{title}</CardTitle>
         <div className={cn('flex h-8 w-8 items-center justify-center rounded-lg', KPI_ACCENTS[index % KPI_ACCENTS.length])}>
           <Icon className="h-4 w-4" />
         </div>
@@ -270,7 +270,7 @@ export default function InventoryPage() {
             ) : (
               <div className={cn('max-h-[520px] overflow-auto transition-opacity duration-200', detailsQuery.isFetching && 'opacity-60')}>
                 <table className="w-full text-sm">
-                  <thead className="sticky top-0 bg-white">
+                  <thead className="sticky top-0 bg-card">
                     <tr className="border-b text-center text-black">
                       <th className="px-2 py-2 font-medium">公司</th>
                       <th className="px-2 py-2 font-medium">品类</th>

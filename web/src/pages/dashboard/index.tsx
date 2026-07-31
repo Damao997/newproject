@@ -97,7 +97,7 @@ export default function DashboardPage() {
             className="mr-1 hidden sm:inline-flex"
           />
           <Select value={dimFilter} onValueChange={setDimFilter}>
-            <SelectTrigger className="h-9 w-[180px]" title="选择主体维度（汇总主体自动展开为成员合并口径）">
+            <SelectTrigger className="h-9 w-[150px] sm:w-[180px]" title="选择主体维度（汇总主体自动展开为成员合并口径）">
               <SelectValue placeholder="选择主体" />
             </SelectTrigger>
             <SelectContent>
@@ -158,10 +158,10 @@ export default function DashboardPage() {
         </>
       ) : isError ? (
         // 错误态：占位卡 + 重试（越权 403 / 网络失败统一提示）
-        <Card className="animate-fade-in border border-border bg-white shadow-sm">
+        <Card className="animate-fade-in border border-border shadow-sm">
           <CardContent className="flex flex-col items-center gap-3 py-16 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-red-50">
-              <AlertTriangle className="h-6 w-6 text-red-500" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-destructive/10">
+              <AlertTriangle className="h-6 w-6 text-destructive" />
             </div>
             <p className="text-sm font-medium text-foreground">看板数据加载失败</p>
             <p className="text-xs text-muted-foreground">可能是所选主体超出数据权限范围，或网络异常；请调整筛选后重试</p>
@@ -173,7 +173,7 @@ export default function DashboardPage() {
         </Card>
       ) : isEmpty ? (
         // 空态：暂无经营数据，引导导入
-        <Card className="animate-fade-in border border-border bg-white shadow-sm">
+        <Card className="animate-fade-in border border-border shadow-sm">
           <CardContent className="flex flex-col items-center gap-3 py-16 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted">
               <Inbox className="h-6 w-6 text-muted-foreground" />
@@ -190,10 +190,10 @@ export default function DashboardPage() {
         </Card>
       ) : (
         <>
-          {/* 核心 KPI 卡片区（收入/毛利/净利润/回款）—— 交错淡入 */}
+          {/* 核心 KPI 卡片区（收入/毛利/净利润/回款）—— 交错淡入，点击钻取指标分析 */}
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
             {kpiData.map((kpi, i) => (
-              <KpiCard key={kpi.title} data={kpi} index={i} />
+              <KpiCard key={kpi.title} data={kpi} index={i} onClick={() => navigate('/indicators')} />
             ))}
           </div>
 

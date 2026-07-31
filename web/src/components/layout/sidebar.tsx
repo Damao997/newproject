@@ -41,10 +41,10 @@ function NavList({ collapsed, onNavigate }: NavListProps) {
             to={item.path}
             onClick={onNavigate}
             className={cn(
-              'relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+              'relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150',
               isActive
-                ? 'bg-primary/10 text-primary'
-                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                ? 'bg-gradient-to-r from-primary/[0.12] to-primary/[0.04] font-semibold text-primary'
+                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
               collapsed && 'justify-center px-2'
             )}
           >
@@ -79,7 +79,7 @@ function SidebarBrand({ collapsed, className }: { collapsed: boolean; className?
     >
       <img src="/logo.png" alt="壹品慧" className="h-7 w-7 object-contain" />
       {!collapsed && (
-        <span className="truncate text-sm font-bold">浙江壹品慧经营分析平台</span>
+        <span className="truncate text-sm font-bold tracking-tight text-foreground">浙江壹品慧经营分析平台</span>
       )}
     </Link>
   )
@@ -91,28 +91,40 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onMobileClose
       {/* 桌面端侧边栏 */}
       <aside
         className={cn(
-          'hidden shrink-0 flex-col border-r bg-background transition-[width] duration-200 md:flex',
+          'hidden shrink-0 flex-col border-r bg-background transition-[width] duration-200 ease-brand md:flex',
           collapsed ? 'w-16' : 'w-60'
         )}
       >
         <SidebarBrand collapsed={collapsed} className="border-b" />
         <NavList collapsed={collapsed} />
         <div className={cn('shrink-0 border-t p-2', collapsed && 'flex justify-center')}>
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn('text-muted-foreground', collapsed ? 'w-auto px-2' : 'w-full justify-start')}
-            onClick={onToggleCollapse}
-          >
-            {collapsed ? (
-              <ChevronsRight className="h-4 w-4" />
-            ) : (
-              <>
-                <ChevronsLeft className="mr-2 h-4 w-4" />
-                <span>收起侧边栏</span>
-              </>
-            )}
-          </Button>
+          {collapsed ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-auto px-2 text-muted-foreground"
+                  aria-label="展开侧边栏"
+                  onClick={onToggleCollapse}
+                >
+                  <ChevronsRight className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">展开侧边栏</TooltipContent>
+            </Tooltip>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-start text-muted-foreground"
+              aria-label="收起侧边栏"
+              onClick={onToggleCollapse}
+            >
+              <ChevronsLeft className="mr-2 h-4 w-4" />
+              <span>收起侧边栏</span>
+            </Button>
+          )}
         </div>
       </aside>
 

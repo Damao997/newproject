@@ -6,6 +6,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useDashboardReceivables } from '@/hooks/api-queries'
 import { formatMoneyWan } from '@/lib/utils'
 import { CATEGORY_COLORS } from '@/lib/chart-colors'
+import { CHART_FONT, CHART_INK, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
 import { BarChart3 } from 'lucide-react'
 
 /**
@@ -22,17 +23,14 @@ export function ReceivablesCard({ period }: { period?: string }) {
     const byName = new Map(rows.map((r) => [r.name, r]))
     const total = rows.reduce((s, r) => s + r.balance, 0)
     return {
+      animation: false,
       textStyle: {
-        fontFamily: "'Microsoft YaHei', '微软雅黑', sans-serif",
+        fontFamily: CHART_FONT,
       },
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'shadow', shadowStyle: { color: 'rgba(0, 0, 0, 0.04)' } },
-        backgroundColor: '#fff',
-        borderColor: '#E2E8F0',
-        borderWidth: 1,
-        padding: [12, 16],
-        textStyle: { color: '#1E293B', fontSize: 13 },
+        ...tooltipShell,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         formatter: (params: any) => {
           const item = Array.isArray(params) ? params[0] : params
@@ -41,10 +39,10 @@ export function ReceivablesCard({ period }: { period?: string }) {
           const pct = total ? ((row.balance / total) * 100).toFixed(1) : '0.0'
           const line = (label: string, value: string) =>
             `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin:2px 0">
-              <span style="color:#64748B;font-size:12px">${label}</span>
-              <span style="font-weight:500;font-family:'Microsoft YaHei','微软雅黑',sans-serif;font-variant-numeric:tabular-nums;font-size:13px">${value}</span>
+              ${labelSpan(label)}
+              ${numSpan(value)}
             </div>`
-          return `<div style="font-weight:600;margin-bottom:6px;color:#0F172A;font-size:14px">${row.name}</div>`
+          return titleSpan(row.name)
             + line('应收余额', formatMoneyWan(row.balance))
             + line('占比', `${pct}%`)
         },
@@ -54,16 +52,16 @@ export function ReceivablesCard({ period }: { period?: string }) {
         type: 'value',
         axisLine: { show: false },
         axisTick: { show: false },
-        splitLine: { lineStyle: { color: '#E2E8F0', type: 'dashed' } },
-        axisLabel: { color: '#94A3B8', fontSize: 11 },
+        splitLine: { lineStyle: { color: CHART_INK.grid, type: 'dashed' } },
+        axisLabel: { color: CHART_INK.axis, fontSize: 11 },
       },
       yAxis: {
         type: 'category',
         inverse: true,
         data: rows.map((r) => r.name),
-        axisLine: { lineStyle: { color: '#E2E8F0' } },
+        axisLine: { lineStyle: { color: CHART_INK.grid } },
         axisTick: { show: false },
-        axisLabel: { color: '#64748B', fontSize: 11 },
+        axisLabel: { color: CHART_INK.sub, fontSize: 11 },
       },
       series: [
         {
@@ -77,8 +75,8 @@ export function ReceivablesCard({ period }: { period?: string }) {
             show: true,
             position: 'right',
             fontSize: 10,
-            color: '#94A3B8',
-            fontFamily: "'Microsoft YaHei', '微软雅黑', sans-serif",
+            color: CHART_INK.axis,
+            fontFamily: CHART_FONT,
             formatter: (p: { value?: number | unknown }) => formatMoneyWan(Number(p.value ?? 0)),
           },
         },
@@ -87,12 +85,12 @@ export function ReceivablesCard({ period }: { period?: string }) {
   }, [rows])
 
   return (
-    <Card className="animate-fade-in border border-border bg-white shadow-sm transition-shadow duration-200 hover:shadow-md" style={{ animationDelay: '200ms' }}>
+    <Card className="animate-fade-in border border-border shadow-sm" style={{ animationDelay: '200ms' }}>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 px-6 pb-3 pt-5">
         <div>
           <CardTitle className="flex items-center gap-2 text-lg font-semibold">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50">
-              <BarChart3 className="h-4 w-4 text-blue-600" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-chart-2/10">
+              <BarChart3 className="h-4 w-4 text-chart-2" />
             </div>
             应收账款分布
           </CardTitle>
@@ -102,26 +100,28 @@ export function ReceivablesCard({ period }: { period?: string }) {
         </div>
         <Tabs value={mode} onValueChange={(v) => setMode(v as 'single' | 'summary')}>
           <TabsList className="bg-muted p-1">
-            <TabsTrigger value="single" className="rounded-lg px-3 py-1.5 text-xs data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-sm">单体</TabsTrigger>
-            <TabsTrigger value="summary" className="rounded-lg px-3 py-1.5 text-xs data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-sm">汇总</TabsTrigger>
+            <TabsTrigger value="single" className="rounded-lg px-3 py-1.5 text-xs data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">单体</TabsTrigger>
+            <TabsTrigger value="summary" className="rounded-lg px-3 py-1.5 text-xs data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">汇总</TabsTrigger>
           </TabsList>
         </Tabs>
       </CardHeader>
       <CardContent className="px-6 pb-6">
         {isLoading ? (
-          <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">加载中...</div>
+          <div className="skeleton h-[260px] w-full rounded-lg lg:h-[320px]" />
         ) : rows.length === 0 ? (
-          <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">
+          <div className="flex h-[260px] items-center justify-center text-sm text-muted-foreground lg:h-[320px]">
             当前期间暂无应收账款数据
           </div>
         ) : (
-          <ReactECharts
-            echarts={echarts}
-            option={option}
-            notMerge
-            style={{ height: 320, width: '100%' }}
-            opts={{ renderer: 'svg' }}
-          />
+          <div className="h-[260px] w-full lg:h-[320px]">
+            <ReactECharts
+              echarts={echarts}
+              option={option}
+              notMerge
+              style={{ height: '100%', width: '100%' }}
+              opts={{ renderer: 'svg' }}
+            />
+          </div>
         )}
       </CardContent>
     </Card>

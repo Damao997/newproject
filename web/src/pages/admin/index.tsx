@@ -298,9 +298,9 @@ export default function AdminPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">已启用</p>
-                <p className="text-2xl font-bold text-green-600">{stats.active}</p>
+                <p className="text-2xl font-bold text-success-strong">{stats.active}</p>
               </div>
-              <UserCheck className="h-8 w-8 text-green-600" />
+              <UserCheck className="h-8 w-8 text-success-strong" />
             </div>
           </CardContent>
         </Card>
@@ -309,9 +309,9 @@ export default function AdminPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">已停用</p>
-                <p className="text-2xl font-bold text-red-600">{stats.inactive}</p>
+                <p className="text-2xl font-bold text-destructive">{stats.inactive}</p>
               </div>
-              <UserX className="h-8 w-8 text-red-600" />
+              <UserX className="h-8 w-8 text-destructive" />
             </div>
           </CardContent>
         </Card>
@@ -387,7 +387,7 @@ export default function AdminPage() {
 
           <div className="min-h-[360px]">
             {usersTruncated && (
-              <p className="mb-2 text-sm text-amber-600">
+              <p className="mb-2 text-sm text-warning-strong">
                 用户总数超过 {USER_FETCH_LIMIT}，当前仅展示前 {USER_FETCH_LIMIT} 条，请用搜索缩小范围
               </p>
             )}

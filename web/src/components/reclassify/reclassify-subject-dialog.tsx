@@ -319,8 +319,8 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
             <div className={cn('grid grid-cols-1 gap-3', adjustMode === 'both' && 'sm:grid-cols-2')}>
               {/* 调减侧（decrease/both） */}
               {adjustMode !== 'increase' && (
-              <div className="space-y-2 rounded-lg border border-red-200 bg-red-50/40 p-3">
-                <p className="flex items-center gap-1.5 text-sm font-medium text-red-700">
+              <div className="space-y-2 rounded-lg border border-destructive/25 bg-destructive/[0.06] p-3">
+                <p className="flex items-center gap-1.5 text-sm font-medium text-destructive">
                   <MinusCircle className="h-4 w-4" />
                   调减侧（源科目）
                 </p>
@@ -353,9 +353,9 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
 
               {/* 调增侧（increase/both） */}
               {adjustMode !== 'decrease' && (
-              <div className="space-y-2 rounded-lg border border-green-200 bg-green-50/40 p-3">
+              <div className="space-y-2 rounded-lg border border-success/25 bg-success/10 p-3">
                 <div className="flex items-center justify-between">
-                  <p className="flex items-center gap-1.5 text-sm font-medium text-green-700">
+                  <p className="flex items-center gap-1.5 text-sm font-medium text-success-strong">
                     <PlusCircle className="h-4 w-4" />
                     调增侧（目标科目）
                   </p>
@@ -405,7 +405,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
               <div
                 className={cn(
                   'rounded-md border p-2.5 text-sm',
-                  localNet !== 0 ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-muted bg-muted/30 text-muted-foreground',
+                  localNet !== 0 ? 'border-warning/30 bg-warning/[0.08] text-warning-strong' : 'border-muted bg-muted/30 text-muted-foreground',
                 )}
               >
                 {localNet !== 0

@@ -83,23 +83,23 @@ export function CoverageTab() {
     <div className="space-y-4">
       {/* 待激活批次提醒 */}
       {draftBatches.length > 0 && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-950/20">
-          <div className="flex items-center gap-2 text-sm font-medium text-amber-800 dark:text-amber-300">
+        <div className="rounded-lg border border-warning/40 bg-warning/[0.08] p-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-warning-strong">
             <AlertTriangle className="h-4 w-4" />
             有 {draftBatches.length} 个往来批次已上传未激活，未激活数据不参与分析
           </div>
           <ul className="mt-2 space-y-1.5">
             {draftBatches.map((b) => (
-              <li key={b.id} className="flex items-center gap-3 text-sm text-amber-900 dark:text-amber-200">
+              <li key={b.id} className="flex items-center gap-3 text-sm text-warning-strong">
                 <span className="truncate">{b.filename}</span>
-                <span className="shrink-0 text-xs text-amber-700/70 dark:text-amber-300/70">
+                <span className="shrink-0 text-xs text-warning-strong/70">
                   {b.detailCount} 条 · {new Date(b.createdAt).toLocaleDateString('zh-CN')}
                 </span>
                 {canImport && (
                   <Button
                     variant="outline"
                     size="sm"
-                    className="ml-auto h-6 shrink-0 border-amber-400 px-2 text-xs"
+                    className="ml-auto h-6 shrink-0 border-warning/50 px-2 text-xs"
                     disabled={activatingId !== null}
                     onClick={() => handleActivate(b.id)}
                   >
@@ -116,14 +116,14 @@ export function CoverageTab() {
       {/* 统计条 + 期间范围 */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 text-sm">
-          <CheckCircle2 className="h-4 w-4 text-green-600" />
+          <CheckCircle2 className="h-4 w-4 text-success" />
           <span>覆盖率 <span className="font-num font-semibold">{summary.coverageRate}%</span></span>
         </div>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-sm bg-green-500" />已生效 {summary.active}</span>
-          <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-sm bg-cyan-500" />无数据 {summary.empty}</span>
-          <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-sm bg-amber-400" />草稿 {summary.draft}</span>
-          <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-sm bg-slate-200 dark:bg-slate-700" />缺失 {summary.missing}</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-sm bg-success" />已生效 {summary.active}</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-sm bg-info" />无数据 {summary.empty}</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-sm bg-warning" />草稿 {summary.draft}</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-sm bg-border" />缺失 {summary.missing}</span>
         </div>
         <Select value={String(months)} onValueChange={(v) => setMonths(Number(v))}>
           <SelectTrigger className="ml-auto h-8 w-[140px] text-sm">
@@ -175,28 +175,28 @@ export function CoverageTab() {
                             {status === 'active' ? (
                               <span
                                 title={`已生效 ${cell!.recordCount} 条`}
-                                className="inline-block min-w-[52px] rounded bg-green-100 px-1.5 py-0.5 font-num text-xs text-green-700 dark:bg-green-900/30 dark:text-green-300"
+                                className="inline-block min-w-[52px] rounded bg-success/10 px-1.5 py-0.5 font-num text-xs text-success-strong"
                               >
                                 {cell!.recordCount}
                               </span>
                             ) : status === 'empty' ? (
                               <span
                                 title="已导入：该公司该期确无此类往来款（文件已申报，明细为 0 条）"
-                                className="inline-block min-w-[52px] rounded bg-cyan-100 px-1.5 py-0.5 font-num text-xs text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300"
+                                className="inline-block min-w-[52px] rounded bg-info/10 px-1.5 py-0.5 font-num text-xs text-info"
                               >
                                 0
                               </span>
                             ) : status === 'draft' ? (
                               <span
                                 title="已上传未激活，请在上方提醒条中激活批次"
-                                className="inline-block min-w-[52px] rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                                className="inline-block min-w-[52px] rounded bg-warning/15 px-1.5 py-0.5 text-xs text-warning-strong"
                               >
                                 草稿
                               </span>
                             ) : (
                               <span
                                 title={`未导入：请上传 ${company.name} ${period} 的${type}账龄报表（早期导入的批次未记录申报范围，真空数据重新上传后可识别为“无数据”）`}
-                                className="inline-block min-w-[52px] rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-400 dark:bg-slate-800 dark:text-slate-500"
+                                className="inline-block min-w-[52px] rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground/70"
                               >
                                 —
                               </span>

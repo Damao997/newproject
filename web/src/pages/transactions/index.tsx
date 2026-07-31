@@ -78,9 +78,9 @@ function CompanySelect({ value, onChange }: { value: string; onChange: (v: strin
 
 // 关联方三分类标签样式（内部公司/关联方/外部）
 const PARTY_TYPE_META: Record<string, { label: string; className: string }> = {
-  internal: { label: '内部公司', className: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' },
-  related: { label: '关联方', className: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' },
-  external: { label: '外部', className: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400' },
+  internal: { label: '内部公司', className: 'bg-chart-1/10 text-chart-1' },
+  related: { label: '关联方', className: 'bg-chart-5/10 text-chart-5' },
+  external: { label: '外部', className: 'bg-muted text-muted-foreground' },
 }
 
 function PartyTypeTag({ partyType }: { partyType?: string }) {
@@ -259,8 +259,8 @@ function OverviewTab() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <Card>
               <CardContent className="flex items-center gap-4 pt-6">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/30">
-                  <TrendingUp className="h-6 w-6 text-blue-600" />
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-info/10">
+                  <TrendingUp className="h-6 w-6 text-info" />
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">债权合计（应收+其他应收+预付）</p>
@@ -270,8 +270,8 @@ function OverviewTab() {
             </Card>
             <Card>
               <CardContent className="flex items-center gap-4 pt-6">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/30">
-                  <TrendingDown className="h-6 w-6 text-red-600" />
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-destructive/10">
+                  <TrendingDown className="h-6 w-6 text-destructive" />
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">债务合计（应付+其他应付+预收）</p>
@@ -281,8 +281,8 @@ function OverviewTab() {
             </Card>
             <Card>
               <CardContent className="flex items-center gap-4 pt-6">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900/30">
-                  <ArrowLeftRight className="h-6 w-6 text-green-600" />
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-success/10">
+                  <ArrowLeftRight className="h-6 w-6 text-success" />
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">净往来余额</p>
@@ -302,7 +302,7 @@ function OverviewTab() {
                   <CardHeader className="pb-2">
                     <CardTitle className="flex items-center justify-between text-sm">
                       <span>{item.transactionType}</span>
-                      <span className={cn('rounded px-1.5 py-0.5 text-xs', isCredit ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300')}>
+                      <span className={cn('rounded px-1.5 py-0.5 text-xs', isCredit ? 'bg-destructive/10 text-destructive' : 'bg-info/10 text-info')}>
                         {isCredit ? 'AP' : 'AR'}
                       </span>
                     </CardTitle>
@@ -616,7 +616,7 @@ function AgingTab() {
                     // 小计 / 合计行
                     const isTotal = rr.kind === 'total'
                     return (
-                      <tr key={idx} className={cn('border-t font-semibold', isTotal ? 'border-t-2 bg-blue-50/70 dark:bg-blue-950/30' : 'bg-muted/50')}>
+                      <tr key={idx} className={cn('border-t font-semibold', isTotal ? 'border-t-2 bg-primary/5' : 'bg-muted/50')}>
                         <td className="px-2 py-2 text-xs" colSpan={labelColSpan}>{rr.label}</td>
                         <td className="px-2 py-2 text-right font-num whitespace-nowrap">{rr.closingBalance.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
                         {AGING_GROUPS.map((b) => (
@@ -688,7 +688,7 @@ function InternalTab() {
                       <td className="px-2 py-2">{row.companyCode}</td>
                       <td className="px-2 py-2">{row.internalPeerCode}</td>
                       <td className="px-2 py-2">
-                        <span className={cn('rounded px-1.5 py-0.5 text-xs', row.direction === 'AR' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300')}>
+                        <span className={cn('rounded px-1.5 py-0.5 text-xs', row.direction === 'AR' ? 'bg-info/10 text-info' : 'bg-destructive/10 text-destructive')}>
                           {row.direction}
                         </span>
                       </td>
@@ -731,12 +731,12 @@ function InternalTab() {
                 </thead>
                 <tbody>
                   {mirror.map((row, idx) => (
-                    <tr key={idx} className={cn('border-b last:border-0', Math.abs(row.difference) > 0.01 && 'bg-orange-50 dark:bg-orange-950/20')}>
+                    <tr key={idx} className={cn('border-b last:border-0', Math.abs(row.difference) > 0.01 && 'bg-warning/[0.08]')}>
                       <td className="px-2 py-2">{row.companyA}</td>
                       <td className="px-2 py-2">{row.companyB}</td>
                       <td className="px-2 py-2 text-right font-num">{row.arAmount.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
                       <td className="px-2 py-2 text-right font-num">{row.apAmount.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
-                      <td className={cn('px-2 py-2 text-right font-num font-medium', Math.abs(row.difference) > 0.01 ? 'text-orange-600' : 'text-green-600')}>
+                      <td className={cn('px-2 py-2 text-right font-num font-medium', Math.abs(row.difference) > 0.01 ? 'text-warning-strong' : 'text-success-strong')}>
                         {row.difference.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
                       </td>
                     </tr>

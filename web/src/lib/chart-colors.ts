@@ -1,5 +1,2 @@
-/** 分类色板：看板/存货/趋势图共用，按序轮转（13 色） */
-export const CATEGORY_COLORS = [
-  '#3B82F6', '#F97316', '#10B981', '#8B5CF6', '#EF4444', '#06B6D4', '#EAB308',
-  '#EC4899', '#84CC16', '#64748B', '#F43F5E', '#14B8A6', '#A855F7',
-]
+/** 分类色板：看板/存货/趋势图共用，按序轮转（13 色，统一取自图表主题 CHART_SERIES） */
+export { CHART_SERIES as CATEGORY_COLORS } from './chart-theme'

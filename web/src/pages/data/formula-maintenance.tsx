@@ -564,7 +564,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
             )}
             {draftFormula.trim() && (
               formulaValidation.valid ? (
-                <p className="text-xs text-green-600">语法校验通过</p>
+                <p className="text-xs text-success-strong">语法校验通过</p>
               ) : (
                 <div className="space-y-0.5">
                   {formulaValidation.messages.map((m, i) => (

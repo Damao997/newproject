@@ -32,7 +32,7 @@ export function MainLayout() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
+    <div className="flex h-screen overflow-hidden bg-page">
       <Sidebar
         collapsed={collapsed}
         onToggleCollapse={toggleCollapse}
@@ -42,7 +42,7 @@ export function MainLayout() {
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header onMenuClick={() => setMobileOpen(true)} />
         <main className="flex-1 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}>
-          <div className="container mx-auto max-w-7xl px-6 py-8">
+          <div className="container mx-auto max-w-screen-2xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
             <Outlet />
           </div>
         </main>

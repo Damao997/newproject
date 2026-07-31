@@ -267,9 +267,9 @@ export function ImportPanel() {
         key: 'quality', header: '成功/异常', align: 'right', cellClassName: 'font-num',
         render: (b) => (
           <span>
-            <span className="text-green-700">{b.successCount}</span>
+            <span className="text-success-strong">{b.successCount}</span>
             {' / '}
-            <span className={b.errorCount > 0 ? 'text-red-700' : 'text-muted-foreground'}>{b.errorCount}</span>
+            <span className={b.errorCount > 0 ? 'text-destructive' : 'text-muted-foreground'}>{b.errorCount}</span>
           </span>
         ),
       },
@@ -356,16 +356,16 @@ export function ImportPanel() {
           </p>
 
           {fileError && (
-            <div className="flex items-center space-x-2 rounded-lg border border-red-200 bg-red-50 p-3">
-              <XCircle className="h-4 w-4 text-red-500" />
-              <span className="text-sm font-medium text-red-700">{fileError}</span>
+            <div className="flex items-center space-x-2 rounded-lg border border-destructive/25 bg-destructive/[0.06] p-3">
+              <XCircle className="h-4 w-4 text-destructive" />
+              <span className="text-sm font-medium text-destructive">{fileError}</span>
             </div>
           )}
 
           {selectedFile && (
             <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/50 p-3">
               <div className="flex min-w-0 flex-1 items-center space-x-3">
-                <FileSpreadsheet className="h-6 w-6 shrink-0 text-green-500" />
+                <FileSpreadsheet className="h-6 w-6 shrink-0 text-success" />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{selectedFile.name}</p>
                   <p className="text-xs text-muted-foreground">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
@@ -397,9 +397,9 @@ export function ImportPanel() {
                   <p className="text-xs text-muted-foreground">将入库明细{(previewResult.summary?.duplicateCount ?? 0) > 0 ? '（重复已求和合并）' : ''}</p>
                   <p className="mt-1 text-xl font-semibold">{previewResult.operatingCount + previewResult.staticCount + previewResult.budgetCount}</p>
                 </div>
-                <div className={cn('rounded-lg border p-2', previewResult.errorCount > 0 ? 'border-red-200 bg-red-50' : 'bg-background')}>
-                  <p className={cn('text-xs', previewResult.errorCount > 0 ? 'text-red-700' : 'text-muted-foreground')}>异常条数</p>
-                  <p className={cn('mt-1 text-xl font-semibold', previewResult.errorCount > 0 && 'text-red-700')}>{previewResult.errorCount}</p>
+                <div className={cn('rounded-lg border p-2', previewResult.errorCount > 0 ? 'border-destructive/25 bg-destructive/[0.06]' : 'bg-background')}>
+                  <p className={cn('text-xs', previewResult.errorCount > 0 ? 'text-destructive' : 'text-muted-foreground')}>异常条数</p>
+                  <p className={cn('mt-1 text-xl font-semibold', previewResult.errorCount > 0 && 'text-destructive')}>{previewResult.errorCount}</p>
                 </div>
                 <div className="rounded-lg border bg-background p-2">
                   <p className="text-xs text-muted-foreground">模板类型</p>
@@ -432,15 +432,15 @@ export function ImportPanel() {
               )}
               {/* 风险/影响提示区（按严重度排序：重复 > KPI 缺类 > 期间替换 > 期间保留 > 零值） */}
               {previewResult.summary && previewResult.summary.duplicateCount > 0 && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <div className="rounded-lg border border-warning/30 bg-warning/[0.08] p-3">
                   <div className="flex items-start space-x-2">
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
                     <div className="space-y-1">
-                      <p className="text-sm font-medium text-amber-800">
+                      <p className="text-sm font-medium text-warning-strong">
                         文件内存在 {previewResult.summary.duplicateCount} 条重复记录（同公司+科目+期间），导入时将按科目求和合并入库。
                       </p>
                       {previewResult.summary.duplicateSamples.length > 0 && (
-                        <ul className="list-inside list-disc text-xs text-amber-700">
+                        <ul className="list-inside list-disc text-xs text-warning-strong">
                           {previewResult.summary.duplicateSamples.map((s, i) => <li key={i}>{s}</li>)}
                         </ul>
                       )}
@@ -449,17 +449,17 @@ export function ImportPanel() {
                 </div>
               )}
               {previewResult.kpiCoverage && previewResult.kpiCoverage.missing.length > 0 && (
-                <div className="flex items-start space-x-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-                  <p className="text-sm font-medium text-amber-800">
+                <div className="flex items-start space-x-2 rounded-lg border border-warning/30 bg-warning/[0.08] p-3">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+                  <p className="text-sm font-medium text-warning-strong">
                     以下看板 KPI 类别无科目数据：{previewResult.kpiCoverage.missing.join('、')}，激活后对应卡片将显示 0。
                   </p>
                 </div>
               )}
               {previewResult.activationImpact?.activeBatch && previewResult.activationImpact.overlappingPeriods.length > 0 && (
-                <div className="flex items-start space-x-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
-                  <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" />
-                  <p className="text-sm text-blue-800">
+                <div className="flex items-start space-x-2 rounded-lg border border-info/25 bg-info/10 p-3">
+                  <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-info" />
+                  <p className="text-sm text-info">
                     {templateType === 'budget'
                       ? `激活后将替换《${previewResult.activationImpact.activeBatch.filename}》的 ${fmtPeriods(previewResult.activationImpact.overlappingPeriods)} 财年预算。`
                       : `激活后将替换期间 ${fmtPeriods(previewResult.activationImpact.overlappingPeriods)} 的现有数据。`}
@@ -467,9 +467,9 @@ export function ImportPanel() {
                 </div>
               )}
               {previewResult.activationImpact?.activeBatch && previewResult.activationImpact.retainedPeriods.length > 0 && templateType !== 'budget' && (
-                <div className="flex items-start space-x-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
-                  <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" />
-                  <p className="text-sm text-blue-800">
+                <div className="flex items-start space-x-2 rounded-lg border border-info/25 bg-info/10 p-3">
+                  <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-info" />
+                  <p className="text-sm text-info">
                     当前生效数据中的期间 {fmtPeriods(previewResult.activationImpact.retainedPeriods)} 本文件未包含，激活后将继续保留生效（按期间合并）。
                   </p>
                 </div>
@@ -531,14 +531,14 @@ export function ImportPanel() {
           )}
 
           {uploadedInfo && (
-            <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+            <div className="rounded-lg border border-success/25 bg-success/10 p-4">
               <div className="flex items-start space-x-2">
-                <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
+                <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-success" />
                 <div className="space-y-2">
-                  <span className="text-sm font-medium text-green-800">
+                  <span className="text-sm font-medium text-success-strong">
                     导入成功：《{uploadedInfo.filename}》，入库 {uploadedInfo.detailCount} 条明细（解析 {uploadedInfo.rowCount} 行）。
                   </span>
-                  <p className="text-xs text-green-700">
+                  <p className="text-xs text-success-strong">
                     批次已创建为草稿状态。请在下方「批次管理」中选择该批次并点击「激活」，数据将按期间合并生效于看板与指标。
                   </p>
                 </div>
@@ -564,7 +564,7 @@ export function ImportPanel() {
                 {!open && (
                   <span className="font-num text-sm">
                     {qualityStats.batchCount} 批次 · {qualityStats.totalRows} 条 ·{' '}
-                    <span className={cn(qualityStats.errorRows > 0 && 'font-medium text-red-700')}>
+                    <span className={cn(qualityStats.errorRows > 0 && 'font-medium text-destructive')}>
                       异常 {qualityStats.errorRows}
                     </span>
                   </span>
@@ -587,13 +587,13 @@ export function ImportPanel() {
                 <p className="text-xs text-muted-foreground">总记录数</p>
                 <p className="mt-1 text-xl font-semibold">{qualityStats.totalRows}</p>
               </div>
-              <div className="rounded-lg border border-green-200 bg-green-50 p-2">
-                <p className="text-xs text-green-700">入库记录</p>
-                <p className="mt-1 text-xl font-semibold text-green-700">{qualityStats.successRows}</p>
+              <div className="rounded-lg border border-success/25 bg-success/10 p-2">
+                <p className="text-xs text-success-strong">入库记录</p>
+                <p className="mt-1 text-xl font-semibold text-success-strong">{qualityStats.successRows}</p>
               </div>
-              <div className={cn('rounded-lg border p-2', qualityStats.errorRows > 0 ? 'border-red-200 bg-red-50' : 'bg-muted/30')}>
-                <p className={cn('text-xs', qualityStats.errorRows > 0 ? 'text-red-700' : 'text-muted-foreground')}>异常记录</p>
-                <p className={cn('mt-1 text-xl font-semibold', qualityStats.errorRows > 0 && 'text-red-700')}>{qualityStats.errorRows}</p>
+              <div className={cn('rounded-lg border p-2', qualityStats.errorRows > 0 ? 'border-destructive/25 bg-destructive/[0.06]' : 'bg-muted/30')}>
+                <p className={cn('text-xs', qualityStats.errorRows > 0 ? 'text-destructive' : 'text-muted-foreground')}>异常记录</p>
+                <p className={cn('mt-1 text-xl font-semibold', qualityStats.errorRows > 0 && 'text-destructive')}>{qualityStats.errorRows}</p>
               </div>
             </div>
 
@@ -618,7 +618,7 @@ export function ImportPanel() {
                 </Button>
               )}
               {canImport && selectedBatch && selectedBatch.status === 'active' && (
-                <span className="text-xs text-green-700">当前批次已生效</span>
+                <span className="text-xs text-success-strong">当前批次已生效</span>
               )}
             </div>
             {activateMsg && <p className="text-xs text-muted-foreground">{activateMsg}</p>}
@@ -637,23 +637,23 @@ export function ImportPanel() {
 
             {selectedBatch && (
               selectedBatch.errorCount === 0 ? (
-                <div className="flex items-center space-x-2 rounded-lg border border-green-200 bg-green-50 p-4">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span className="text-sm font-medium text-green-800">
+                <div className="flex items-center space-x-2 rounded-lg border border-success/25 bg-success/10 p-4">
+                  <CheckCircle className="h-4 w-4 text-success" />
+                  <span className="text-sm font-medium text-success-strong">
                     完整性校验通过：共 {selectedBatch.detailCount ?? selectedBatch.rowCount ?? selectedBatch.successCount} 条明细均解析成功。
                   </span>
                 </div>
               ) : selectedBatch.successCount > 0 ? (
-                <div className="flex items-center space-x-2 rounded-lg border border-amber-200 bg-amber-50 p-4">
-                  <AlertTriangle className="h-4 w-4 text-amber-500" />
-                  <span className="text-sm font-medium text-amber-800">
+                <div className="flex items-center space-x-2 rounded-lg border border-warning/30 bg-warning/[0.08] p-4">
+                  <AlertTriangle className="h-4 w-4 text-warning" />
+                  <span className="text-sm font-medium text-warning-strong">
                     共 {selectedBatch.rowCount ?? selectedBatch.successCount + selectedBatch.errorCount} 行，成功 {selectedBatch.successCount} 行，异常 {selectedBatch.errorCount} 条，请核对下方异常明细。
                   </span>
                 </div>
               ) : (
-                <div className="flex items-center space-x-2 rounded-lg border border-red-200 bg-red-50 p-4">
-                  <XCircle className="h-4 w-4 text-red-500" />
-                  <span className="text-sm font-medium text-red-700">
+                <div className="flex items-center space-x-2 rounded-lg border border-destructive/25 bg-destructive/[0.06] p-4">
+                  <XCircle className="h-4 w-4 text-destructive" />
+                  <span className="text-sm font-medium text-destructive">
                     全部 {selectedBatch.errorCount} 条解析失败，请检查文件内容与模板类型。
                   </span>
                 </div>

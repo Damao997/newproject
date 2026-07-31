@@ -3,17 +3,17 @@ import { cn } from '@/lib/utils'
 export type StatusVariant = 'active' | 'idle' | 'error' | 'warning'
 
 const dotColor: Record<StatusVariant, string> = {
-  active: 'bg-emerald-500',
-  idle: 'bg-gray-400',
-  error: 'bg-red-500',
-  warning: 'bg-amber-500',
+  active: 'bg-success',
+  idle: 'bg-muted-foreground',
+  error: 'bg-destructive',
+  warning: 'bg-warning',
 }
 
 const labelColor: Record<StatusVariant, string> = {
-  active: 'text-emerald-600',
+  active: 'text-success-strong',
   idle: 'text-muted-foreground',
-  error: 'text-red-600',
-  warning: 'text-amber-600',
+  error: 'text-destructive',
+  warning: 'text-warning-strong',
 }
 
 interface StatusIndicatorProps {

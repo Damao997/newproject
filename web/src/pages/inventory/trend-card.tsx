@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useInventoryTrend } from '@/hooks/api-queries'
 import { formatMoneyWan } from '@/lib/utils'
+import { CHART_FONT, CHART_INK, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
 import { LineChart, RefreshCw } from 'lucide-react'
 import { CATEGORY_COLORS } from './category-colors'
 
@@ -14,7 +15,7 @@ import { CATEGORY_COLORS } from './category-colors'
  * 财年跟随顶部导航全局财年选择，公司多选由页面筛选区传入。
  */
 
-const TOTAL_COLOR = '#0F172A'
+const TOTAL_COLOR = CHART_INK.text
 
 export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes: string[]; fiscalYear: string | null }) {
   const { data, isLoading, isError, error, refetch, isFetching } = useInventoryTrend({ fiscalYear, companyCodes })
@@ -27,28 +28,24 @@ export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes:
     const total = data?.total ?? []
     return {
       textStyle: {
-        fontFamily: "'Microsoft YaHei', '微软雅黑', sans-serif",
+        fontFamily: CHART_FONT,
       },
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'shadow', shadowStyle: { color: 'rgba(0, 0, 0, 0.04)' } },
-        backgroundColor: '#fff',
-        borderColor: '#E2E8F0',
-        borderWidth: 1,
-        padding: [12, 16],
-        textStyle: { color: '#1E293B', fontSize: 13 },
+        ...tooltipShell,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         formatter: (params: any) => {
           if (!Array.isArray(params) || params.length === 0) return ''
-          let result = `<div style="font-weight:600;margin-bottom:8px;color:#0F172A;font-size:14px">${params[0].axisValue}</div>`
+          let result = titleSpan(params[0].axisValue)
           for (const item of params) {
             if (item.value === null || item.value === undefined || item.value === 0) continue
             result += `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin:4px 0">
               <div style="display:flex;align-items:center;gap:8px">
                 <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${item.color}"></span>
-                <span style="color:#64748B;font-size:12px">${item.seriesName}</span>
+                ${labelSpan(item.seriesName)}
               </div>
-              <span style="font-weight:500;font-family:'Microsoft YaHei','微软雅黑',sans-serif;font-variant-numeric:tabular-nums;font-size:13px">${formatMoneyWan(item.value)}</span>
+              ${numSpan(formatMoneyWan(item.value))}
             </div>`
           }
           return result
@@ -61,16 +58,16 @@ export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes:
         itemWidth: 12,
         itemHeight: 8,
         itemGap: 16,
-        textStyle: { color: '#64748B', fontSize: 12 },
+        textStyle: { color: CHART_INK.sub, fontSize: 12 },
       },
       grid: { top: 24, right: 24, bottom: 48, left: 72 },
       xAxis: {
         type: 'category',
         data: months,
-        axisLine: { lineStyle: { color: '#E2E8F0' } },
+        axisLine: { lineStyle: { color: CHART_INK.grid } },
         axisTick: { show: false },
         axisLabel: {
-          color: '#94A3B8',
+          color: CHART_INK.axis,
           fontSize: 11,
           formatter: (value: string) => {
             const parts = value.split('-')
@@ -82,8 +79,8 @@ export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes:
         type: 'value',
         axisLine: { show: false },
         axisTick: { show: false },
-        splitLine: { lineStyle: { color: '#E2E8F0', type: 'dashed' } },
-        axisLabel: { color: '#94A3B8', fontSize: 11 },
+        splitLine: { lineStyle: { color: CHART_INK.grid, type: 'dashed' } },
+        axisLabel: { color: CHART_INK.axis, fontSize: 11 },
       },
       series: [
         ...byCategory.map((c, i) => ({
@@ -102,7 +99,7 @@ export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes:
           lineStyle: { color: TOTAL_COLOR, width: 2.5, cap: 'round' as const },
           symbol: 'circle',
           symbolSize: 6,
-          itemStyle: { color: TOTAL_COLOR, borderWidth: 2, borderColor: '#fff' },
+          itemStyle: { color: TOTAL_COLOR, borderWidth: 2, borderColor: CHART_INK.surface },
           z: 10,
         },
       ] as SeriesOption[],

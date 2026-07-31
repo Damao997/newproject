@@ -17,7 +17,7 @@ const METRICS: TrendMetric[] = ['revenue', 'profit', 'netProfit']
 /** 财年趋势卡：可切换指标（收入/毛利/净利润），本月合计+上年同期柱状、月度预算曲线 */
 export function TrendSection({ data, metric, onMetricChange, fiscalYearLabel }: TrendSectionProps) {
   return (
-    <Card className="animate-fade-in border border-border bg-white shadow-sm transition-shadow duration-200 hover:shadow-md" style={{ animationDelay: '120ms' }}>
+    <Card className="animate-fade-in border border-border shadow-sm" style={{ animationDelay: '120ms' }}>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 px-6 pb-3 pt-5">
         <div>
           <CardTitle className="text-lg font-semibold text-foreground">
@@ -33,7 +33,7 @@ export function TrendSection({ data, metric, onMetricChange, fiscalYearLabel }: 
               <TabsTrigger
                 key={m}
                 value={m}
-                className="rounded-lg px-3 py-1.5 text-xs data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+                className="rounded-lg px-3 py-1.5 text-xs data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
               >
                 {TREND_METRIC_LABELS[m]}
               </TabsTrigger>
