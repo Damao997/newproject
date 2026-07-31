@@ -1,7 +1,8 @@
-import { prisma } from '../lib/prisma'
+﻿import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { sanitizeRichText, richTextToPlainText } from '../lib/sanitize'
 import { resolveScope } from '../middleware/scope'
+import { currentScope } from '../middleware/scope-context'
 import { SubjectAnalysisService, resolveScopeCompanyCodes, type AnalysisDTO } from './SubjectAnalysisService'
 import type { AuthUserContext } from '../types/express'
 
@@ -108,26 +109,19 @@ function assertNotStale(report: { updatedAt: Date }, expectedUpdatedAt?: string)
   }
 }
 
-/** 解析报告主体的成员单体公司编码（summary 展开为旗下单体） */
-async function resolveMemberCodes(companyScope: CompanyScope): Promise<string[]> {
-  if (companyScope.type === 'summary') {
-    const maps = await prisma.companyAggregationMap.findMany({
-      where: { summaryCompanyCode: companyScope.code },
-      select: { singleCompanyCode: true },
-    })
-    return maps.map((m) => m.singleCompanyCode)
-  }
-  return [companyScope.code]
-}
-
 /** 校验报告主体范围完全落在用户 scope 内（默认拒绝，防水平越权） */
 async function assertReportInScope(scope: Scope, companyScope: CompanyScope): Promise<void> {
-  const s = await resolveScope(prisma, scope)
+  const s = currentScope() ?? (await resolveScope(prisma, scope))
   if (s.type === 'all') return
   if (s.type === 'none') throw errors.forbidden('无权访问该报告')
-  const allowed = new Set(s.companyCodes)
-  const members = await resolveMemberCodes(companyScope)
-  if (members.length === 0 || !members.every((c) => allowed.has(c))) {
+  // 汇总主体：由 resolveScope 按「全有或全无」预判定
+  if (companyScope.type === 'summary') {
+    if (!s.summaryCodes.includes(companyScope.code)) {
+      throw errors.forbidden('无权访问该报告（主体范围超出数据权限）')
+    }
+    return
+  }
+  if (!s.companyCodes.includes(companyScope.code)) {
     throw errors.forbidden('无权访问该报告（主体范围超出数据权限）')
   }
 }
@@ -183,7 +177,7 @@ export const ReportService = {
       ...(keyword ? { title: { contains: keyword } } : {}),
     }
 
-    const s = await resolveScope(prisma, scope)
+    const s = currentScope() ?? (await resolveScope(prisma, scope))
     if (s.type === 'none') return { items: [], total: 0, page, pageSize }
 
     if (s.type === 'all') {
@@ -194,24 +188,15 @@ export const ReportService = {
       return { items: rows.map(toListItem), total, page, pageSize }
     }
 
-    // 受限 scope：报告量级小，取回后在内存按主体成员过滤（汇总主体成员一次性批量查询）
+    // 受限 scope：报告量级小，取回后在内存按主体授权过滤
+    // 汇总主体的「全有或全无」判定已由 resolveScope 收敛进 summaryCodes，与详情校验口径一致
     const rows = await prisma.report.findMany({ where, orderBy: { updatedAt: 'desc' } })
-    const allowed = new Set(s.companyCodes)
+    const allowedSingles = new Set(s.companyCodes)
+    const allowedSummaries = new Set(s.summaryCodes)
     const parsed = rows.map((r) => ({ row: r, cs: parseScope(r.companyScope) }))
-    const summaryCodes = [...new Set(parsed.filter((p) => p.cs.type === 'summary').map((p) => p.cs.code))]
-    const maps = summaryCodes.length > 0
-      ? await prisma.companyAggregationMap.findMany({ where: { summaryCompanyCode: { in: summaryCodes } }, select: { summaryCompanyCode: true, singleCompanyCode: true } })
-      : []
-    const memberMap = new Map<string, string[]>()
-    for (const m of maps) {
-      const list = memberMap.get(m.summaryCompanyCode) ?? []
-      list.push(m.singleCompanyCode)
-      memberMap.set(m.summaryCompanyCode, list)
-    }
-    const visible = parsed.filter(({ cs }) => {
-      const members = cs.type === 'summary' ? memberMap.get(cs.code) ?? [] : [cs.code]
-      return members.length > 0 && members.every((c) => allowed.has(c))
-    })
+    const visible = parsed.filter(({ cs }) =>
+      cs.type === 'summary' ? allowedSummaries.has(cs.code) : allowedSingles.has(cs.code),
+    )
     const total = visible.length
     const items = visible.slice((page - 1) * pageSize, page * pageSize).map(({ row }) => toListItem(row))
     return { items, total, page, pageSize }

@@ -1,5 +1,6 @@
-import { Router, type Response } from 'express'
+﻿import { Router, type Response } from 'express'
 import { authenticate } from '../middleware/auth'
+import { attachScope } from '../middleware/attach-scope'
 import { requirePermission } from '../middleware/permission'
 import { asyncHandler } from '../lib/async-handler'
 import { sendOk } from '../lib/response'
@@ -29,7 +30,7 @@ function boolQuery(v: unknown): boolean {
   return v === '1' || v === 'true'
 }
 
-router.use(authenticate)
+router.use(authenticate, attachScope())
 
 // GET /indicators/tree?type=operating|static
 router.get('/tree', requirePermission('indicators:view', 'view'), asyncHandler(async (req, res) => {

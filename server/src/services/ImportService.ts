@@ -7,6 +7,7 @@ import { recordAudit } from '../middleware/audit'
 import { parseImportWorkbook, emptySummary, type ImportTemplate, type Resolvers, type SampleRows, type PreviewSummary } from '../lib/excel-import'
 import { parseTransactionWorkbook, type TransactionParseResult, type TransactionResolvers, type TransactionSheetInfo, type TransactionImportIssue, type TransactionParseSummary } from '../lib/transaction-import'
 import { fyLabelOfDate } from '../lib/period'
+import { assertCompaniesInScope, effectiveScope } from '../lib/scope-guard'
 
 /**
  * 数据导入服务：文件校验（MIME magic + 大小由 multer 保证）、解析计数、
@@ -23,6 +24,17 @@ const XML_MAGIC = Buffer.from('<?xml') // SpreadsheetML XML（ERP 导出的伪 .
 type TemplateType = 'operating' | 'static' | 'budget' | 'transaction' | 'inventory'
 
 const UNPIVOT_TEMPLATES = new Set<TemplateType>(['operating', 'static', 'budget'])
+
+/** 从批次 coverageJson 提取申报覆盖的公司编码（无申报信息返回空数组） */
+function declaredCoverageCompanies(coverageJson: unknown): string[] {
+  if (!Array.isArray(coverageJson)) return []
+  const codes = new Set<string>()
+  for (const item of coverageJson) {
+    const code = (item as { companyCode?: unknown })?.companyCode
+    if (typeof code === 'string' && code) codes.add(code)
+  }
+  return [...codes]
+}
 
 async function buildResolvers(template: ImportTemplate, fiscalYear: string): Promise<Resolvers> {
   const companies = await prisma.company.findMany({ select: { code: true, name: true, shortName: true } })
@@ -272,6 +284,8 @@ export const ImportService = {
         // 往来汇总表：真实解析并映射为通用预览结构（专用结构见 previewTransaction）
         const resolvers = await buildTransactionResolvers()
         const parsed = parseTransactionWorkbook(file.buffer, 'preview.xls', resolvers)
+        // 数据范围守卫：预览会回显公司/期间/余额，越权文件不得回显
+        await assertCompaniesInScope(parsed.records.map((r) => r.companyCode), undefined, '预览导入')
         const accountCodes = new Set(parsed.records.map((r) => r.accountCode))
         const zeroValueCount = parsed.records.filter((r) => r.closingBalance === 0).length
         const sampleRows: SampleRows = {
@@ -311,6 +325,16 @@ export const ImportService = {
     } catch {
       throw errors.badRequest('Excel 解析失败，请检查文件内容与模板类型')
     }
+    // 数据范围守卫：预览会回显解析结果，越权文件不得回显
+    await assertCompaniesInScope(
+      [
+        ...parsed.operating.map((r) => r.companyCode),
+        ...parsed.static.map((r) => r.companyCode),
+        ...parsed.budget.map((r) => r.companyCode),
+      ],
+      undefined,
+      '预览导入',
+    )
     const activationImpact = await computeActivationImpact(template, parsed.summary.periods, fiscalYear)
     const kpiCoverage = template === 'operating' ? await computeKpiCoverage(parsed.summary.accountCodes) : null
     return {
@@ -345,6 +369,13 @@ export const ImportService = {
       }
       return { file, parsed, fatal }
     })
+
+    // 数据范围守卫：预览会回显解析出的公司/期间/余额，越权文件不得回显
+    await assertCompaniesInScope(
+      parsedList.flatMap((p) => (p.parsed?.records ?? []).map((r) => r.companyCode)),
+      undefined,
+      '预览导入',
+    )
 
     // 全部文件三元组并集，一次查询现有生效笔数
     const tripleKeys = new Set<string>()
@@ -459,6 +490,18 @@ export const ImportService = {
       .filter((s) => s.declaredCompanyCode && s.cutoffDate)
       .map((s) => ({ companyCode: s.declaredCompanyCode!, period: s.cutoffDate!.slice(0, 7), transactionType: s.transactionType, recordCount: s.recordCount }))
 
+    // 数据范围守卫：createMany 无 where 可注入，须在写入前校验目标公司均在操作者范围内
+    const targetCompanies = [
+      ...parsed.records.map((r) => r.companyCode),
+      ...declaredCoverage.map((d) => d.companyCode),
+    ]
+    try {
+      await assertCompaniesInScope(targetCompanies, undefined, '导入')
+    } catch (e) {
+      await prisma.importBatch.update({ where: { id: batch.id }, data: { status: 'failed' } })
+      throw e
+    }
+
     const updated = await prisma.$transaction(async (tx) => {
       let insertedCount = 0
       const BATCH_SIZE = 500
@@ -550,6 +593,22 @@ export const ImportService = {
       throw errors.badRequest('Excel 解析失败，请检查文件内容与模板类型')
     }
 
+    // 数据范围守卫：createMany 无 where 可注入，须在写入前校验目标公司均在操作者范围内
+    try {
+      await assertCompaniesInScope(
+        [
+          ...parsedOperating.map((r) => r.companyCode),
+          ...parsedStatic.map((r) => r.companyCode),
+          ...parsedBudget.map((r) => r.companyCode),
+        ],
+        undefined,
+        '导入',
+      )
+    } catch (e) {
+      await prisma.importBatch.update({ where: { id: batch.id }, data: { status: 'failed' } })
+      throw e
+    }
+
     // 写入阶段：事务保证数据插入与批次状态更新的原子性
     const updated = await prisma.$transaction(async (tx) => {
       let insertedCount = 0
@@ -582,8 +641,26 @@ export const ImportService = {
     return toDto(updated)
   },
 
-  async list(params: { page: number; pageSize: number; templateType?: string }): Promise<{ items: ImportBatchDto[]; total: number; page: number; pageSize: number; totalPages: number }> {
-    const where = params.templateType ? { dataType: params.templateType as TemplateType } : {}
+  async list(params: { page: number; pageSize: number; templateType?: string; userId?: string }): Promise<{ items: ImportBatchDto[]; total: number; page: number; pageSize: number; totalPages: number }> {
+    const where: Record<string, unknown> = params.templateType ? { dataType: params.templateType as TemplateType } : {}
+    // 元数据（文件名/行数）按数据范围收敛：仅保留申报覆盖与范围有交集的批次；
+    // 无申报覆盖信息的历史批次仅上传者本人可见。
+    const scope = await effectiveScope()
+    if (scope && scope.type !== 'all') {
+      const allowed = new Set(scope.type === 'companies' ? scope.companyCodes : [])
+      const candidates = await prisma.importBatch.findMany({
+        where,
+        select: { id: true, coverageJson: true, uploadedById: true },
+      })
+      const visibleIds = candidates
+        .filter((b) => {
+          const declared = declaredCoverageCompanies(b.coverageJson)
+          if (declared.length === 0) return !!params.userId && b.uploadedById === params.userId
+          return declared.some((c) => allowed.has(c))
+        })
+        .map((b) => b.id)
+      where.id = { in: visibleIds }
+    }
     const [rows, total] = await Promise.all([
       prisma.importBatch.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (params.page - 1) * params.pageSize, take: params.pageSize }),
       prisma.importBatch.count({ where }),

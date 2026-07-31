@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
-import { resolveCompanyCodes } from './AggregationService'
+import { assertCompaniesInScope as assertScopeGuard } from '../lib/scope-guard'
 import { fiscalYearLabel } from '../lib/period'
 import type { AuthUserContext } from '../types/express'
 
@@ -103,12 +103,9 @@ async function activeBatchIds(templateType: TemplateType): Promise<string[]> {
   return batches.map((b) => b.id)
 }
 
-/** scope 守卫：涉及公司均须在操作者数据范围内 */
+/** scope 守卫：涉及公司均须在操作者数据范围内（复用统一守卫，口径与导入等写入路径一致） */
 async function assertCompaniesInScope(scope: Scope, codes: string[]): Promise<void> {
-  const allowed = new Set(await resolveCompanyCodes(scope))
-  for (const c of codes) {
-    if (!allowed.has(c)) throw errors.forbidden(`公司 ${c} 不在您的数据范围内，无法重分类`)
-  }
+  await assertScopeGuard(codes, scope, '重分类')
 }
 
 async function validateCompanies(source: string, target: string): Promise<void> {

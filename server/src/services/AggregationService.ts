@@ -1,5 +1,7 @@
 import { prisma } from '../lib/prisma'
+import { errors } from '../lib/errors'
 import { resolveScope } from '../middleware/scope'
+import { currentScope } from '../middleware/scope-context'
 import type { AuthUserContext } from '../types/express'
 import { OPERATING_DIMS, STATIC_DIMS } from '../lib/metric-values'
 import { evaluateFormula, topoSortMetrics } from '../lib/formula'
@@ -83,12 +85,19 @@ async function expandSummaries(codes: string[]): Promise<string[]> {
   return Array.from(singleCodes)
 }
 
-/** 解析当前用户的有效公司编码集合（叠加可选的公司过滤；汇总主体自动展开为单体成员） */
+/**
+ * 解析当前用户的有效公司编码集合（叠加可选的公司过滤）。
+ * 返回值恒为单体编码：汇总主体经映射展开为成员，其自身编码不参与事实表过滤（否则重复计算）。
+ * 越权访问显式抛 403（默认拒绝），不再静默返回部分数据 —— 汇总主体按「全有或全无」授权，
+ * 避免把「部分成员之和」当作汇总总额呈现。
+ */
 export async function resolveCompanyCodes(
   authUser: Pick<AuthUserContext, 'companyCode' | 'scopeValue'> & { dataScopeCodes?: string[] | null },
   requestedCompany?: string,
 ): Promise<string[]> {
-  const scope = await resolveScope(prisma, authUser)
+  // 请求链路已由 attachScope 解析并缓存范围，直接复用；无上下文（脚本/单测）时按传入用户解析。
+  // getCross 会逐个公司调用本函数，避免重复解析带来的 N 倍查询开销。
+  const scope = currentScope() ?? (await resolveScope(prisma, authUser))
   let base: string[]
   if (scope.type === 'all') {
     const all = await prisma.company.findMany({ where: { entityType: 'single', status: 'active' }, select: { code: true } })
@@ -99,15 +108,19 @@ export async function resolveCompanyCodes(
     base = []
   }
   if (requestedCompany) {
-    // 请求为汇总主体：展开其单体成员；请求为单体：需在权限范围内
     const requested = await prisma.company.findUnique({ where: { code: requestedCompany }, select: { code: true, entityType: true } })
-    if (!requested) return []
+    if (!requested) throw errors.notFound('公司不存在')
     if (requested.entityType === 'summary') {
-      const members = await expandSummaries([requestedCompany])
-      const baseSet = new Set(base)
-      return members.filter((c) => baseSet.has(c))
+      // 汇总主体：成员须被完整授权，否则拒绝（口径不得失真）
+      if (scope.type !== 'all' && !(scope.type === 'companies' && scope.summaryCodes.includes(requestedCompany))) {
+        throw errors.forbidden('无权访问该汇总主体（成员范围超出数据权限）')
+      }
+      return expandSummaries([requestedCompany])
     }
-    return base.includes(requestedCompany) ? [requestedCompany] : []
+    if (scope.type !== 'all' && !base.includes(requestedCompany)) {
+      throw errors.forbidden('无权访问该公司数据')
+    }
+    return [requestedCompany]
   }
   return base
 }

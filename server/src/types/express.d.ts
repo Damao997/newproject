@@ -1,4 +1,5 @@
 import 'express'
+import type { DataScope } from '../middleware/scope'
 
 // 扩展 Express Request，注入 traceId 与鉴权上下文
 declare global {
@@ -8,6 +9,8 @@ declare global {
       traceId: string
       /** 鉴权中间件注入的当前用户上下文（未登录时为 undefined） */
       authUser?: AuthUserContext
+      /** attachScope 解析出的数据范围（未鉴权或未挂载 attachScope 时为 undefined） */
+      dataScope?: DataScope
     }
   }
 }

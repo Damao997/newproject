@@ -1,5 +1,6 @@
-import { Router } from 'express'
+﻿import { Router } from 'express'
 import { authenticate } from '../middleware/auth'
+import { attachScope } from '../middleware/attach-scope'
 import { requirePermission } from '../middleware/permission'
 import { asyncHandler } from '../lib/async-handler'
 import { sendOk } from '../lib/response'
@@ -13,7 +14,7 @@ import type { AuthUserContext } from '../types/express'
  */
 const router = Router()
 
-router.use(authenticate)
+router.use(authenticate, attachScope())
 
 // ===== 企业工商查询 =====
 router.get('/enterprise/search', requirePermission('tools:view', 'view'), asyncHandler(async (req, res) => {

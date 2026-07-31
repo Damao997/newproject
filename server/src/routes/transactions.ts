@@ -1,6 +1,7 @@
-import { Router } from 'express'
+﻿import { Router } from 'express'
 import multer from 'multer'
 import { authenticate } from '../middleware/auth'
+import { attachScope } from '../middleware/attach-scope'
 import { requirePermission } from '../middleware/permission'
 import { asyncHandler } from '../lib/async-handler'
 import { sendOk } from '../lib/response'
@@ -8,6 +9,7 @@ import { errors } from '../lib/errors'
 import { TransactionService } from '../services/TransactionService'
 import { ImportService } from '../services/ImportService'
 import { CollectionService } from '../services/CollectionService'
+import { resolveCompanyCodes } from '../services/AggregationService'
 import { fixUploadFilename } from '../lib/sanitize'
 import type { AuthUserContext } from '../types/express'
 
@@ -25,13 +27,31 @@ function parsePartyType(v: unknown): 'internal' | 'related' | 'external' | undef
   return s === 'internal' || s === 'related' || s === 'external' ? s : undefined
 }
 
-router.use(authenticate)
+function scopeOf(authUser: AuthUserContext) {
+  return { companyCode: authUser.companyCode, scopeValue: authUser.scopeValue, dataScopeCodes: authUser.dataScopeCodes }
+}
+
+/**
+ * 公司筛选参数归一化（单值或逗号分隔多值）。
+ * - 未传 → undefined：不加显式过滤，由 scopeContext 扩展按数据范围兜底
+ * - 汇总主体 → 展开为成员单体；未被完整授权则 403
+ * - 单体 → 校验在数据范围内，越权 403
+ */
+async function normalizeCompanies(authUser: AuthUserContext, raw: unknown): Promise<string[] | undefined> {
+  const codes = raw ? String(raw).split(',').map((s) => s.trim()).filter(Boolean) : []
+  if (codes.length === 0) return undefined
+  const out = new Set<string>()
+  for (const c of codes) {
+    for (const r of await resolveCompanyCodes(scopeOf(authUser), c)) out.add(r)
+  }
+  return [...out]
+}
+
+router.use(authenticate, attachScope())
 
 // ===== 总览 =====
 router.get('/overview', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
-  const companyCodes = req.query.companyCodes
-    ? String(req.query.companyCodes).split(',').map((s) => s.trim()).filter(Boolean)
-    : undefined
+  const companyCodes = await normalizeCompanies(req.authUser as AuthUserContext, req.query.companyCodes)
   const period = req.query.period as string | undefined
   const data = await TransactionService.getOverview({ companyCodes, period })
   sendOk(res, data)
@@ -43,7 +63,7 @@ router.get('/details', requirePermission('transactions:view', 'view'), asyncHand
   const data = await TransactionService.listDetails({
     page: Number(q.page) || 1,
     pageSize: Number(q.pageSize) || 20,
-    companyCode: q.companyCode as string | undefined,
+    companyCodes: await normalizeCompanies(req.authUser as AuthUserContext, q.companyCode),
     transactionType: q.transactionType as string | undefined,
     direction: q.direction as string | undefined,
     counterpartyKeyword: q.counterpartyKeyword as string | undefined,
@@ -69,7 +89,7 @@ router.get('/periods', requirePermission('transactions:view', 'view'), asyncHand
 router.get('/aging', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
   const q = req.query
   const data = await TransactionService.getAgingAnalysis({
-    companyCode: q.companyCode as string | undefined,
+    companyCodes: await normalizeCompanies(req.authUser as AuthUserContext, q.companyCode),
     transactionType: q.transactionType as string | undefined,
     groupBy: (q.groupBy as 'type' | 'counterparty' | 'account') || 'type',
     period: q.period as string | undefined,
@@ -101,22 +121,22 @@ router.patch('/accounts/:code/status', requirePermission('transactions:update', 
 
 // ===== 内部往来汇总 =====
 router.get('/internal/summary', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
-  const companyCode = req.query.companyCode as string | undefined
-  const data = await TransactionService.getInternalSummary(companyCode)
+  const companyCodes = await normalizeCompanies(req.authUser as AuthUserContext, req.query.companyCode)
+  const data = await TransactionService.getInternalSummary(companyCodes)
   sendOk(res, data)
 }))
 
 // ===== 内部往来镜像校验 =====
 router.get('/internal/mirror-check', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
-  const companyCode = req.query.companyCode as string | undefined
-  const data = await TransactionService.getInternalMirrorCheck(companyCode)
+  const companyCodes = await normalizeCompanies(req.authUser as AuthUserContext, req.query.companyCode)
+  const data = await TransactionService.getInternalMirrorCheck(companyCodes)
   sendOk(res, data)
 }))
 
 // ===== 往来对象列表（筛选用） =====
 router.get('/counterparties', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
-  const companyCode = req.query.companyCode as string | undefined
-  const data = await TransactionService.listCounterparties(companyCode)
+  const companyCodes = await normalizeCompanies(req.authUser as AuthUserContext, req.query.companyCode)
+  const data = await TransactionService.listCounterparties(companyCodes)
   sendOk(res, data)
 }))
 
@@ -132,9 +152,7 @@ const TREND_TYPES = new Set(['应收账款', '其他应收款', '预收账款', 
 router.get('/trend', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
   const transactionType = String(req.query.transactionType || '')
   if (!TREND_TYPES.has(transactionType)) throw errors.badRequest('往来类型不合法，需为六大往来类型之一')
-  const companyCodes = req.query.companyCodes
-    ? String(req.query.companyCodes).split(',').map((s) => s.trim()).filter(Boolean)
-    : undefined
+  const companyCodes = await normalizeCompanies(req.authUser as AuthUserContext, req.query.companyCodes)
   const months = req.query.months ? Number(req.query.months) : undefined
   const fiscalYear = req.query.fiscalYear ? String(req.query.fiscalYear) : undefined
   if (fiscalYear && !/^FY\d{4}$/i.test(fiscalYear)) throw errors.badRequest('财年格式不合法，应形如 FY2026')
@@ -169,7 +187,9 @@ router.post('/import/preview', requirePermission('transactions:import', 'import'
 // 导入覆盖矩阵：公司×期间×六大类型 的 已生效/草稿/缺失 状态
 router.get('/import/coverage', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
   const months = req.query.months ? Number(req.query.months) : undefined
-  const data = await TransactionService.getImportCoverage({ months })
+  // 矩阵行集合按数据范围收敛，避免暴露范围外公司及其申报覆盖
+  const companyCodes = await resolveCompanyCodes(scopeOf(req.authUser as AuthUserContext))
+  const data = await TransactionService.getImportCoverage({ months, companyCodes })
   sendOk(res, data)
 }))
 
@@ -192,7 +212,7 @@ router.get('/collections', requirePermission('transactions:view', 'view'), async
   const data = await CollectionService.list({
     page: Number(q.page) || 1,
     pageSize: Number(q.pageSize) || 20,
-    companyCode: q.companyCode as string | undefined,
+    companyCodes: await normalizeCompanies(req.authUser as AuthUserContext, q.companyCode),
     status: q.status as string | undefined,
     counterpartyKeyword: q.counterpartyKeyword as string | undefined,
   })
@@ -209,7 +229,7 @@ router.post('/collections', requirePermission('transactions:create', 'create'), 
 router.post('/collections/generate', requirePermission('transactions:create', 'create'), asyncHandler(async (req, res) => {
   const authUser = req.authUser as AuthUserContext
   const data = await CollectionService.generateSuggestions({
-    companyCode: req.body?.companyCode ? String(req.body.companyCode) : undefined,
+    companyCodes: await normalizeCompanies(authUser, req.body?.companyCode),
     minAgingBucket: req.body?.minAgingBucket ? String(req.body.minAgingBucket) : undefined,
   }, { userId: authUser.userId, traceId: req.traceId })
   sendOk(res, data)

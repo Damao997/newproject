@@ -1,4 +1,4 @@
-import { prisma } from '../lib/prisma'
+﻿import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
 
@@ -68,7 +68,8 @@ export interface CollectionLogDto {
 interface ListParams {
   page?: number
   pageSize?: number
-  companyCode?: string
+  /** 已按数据范围归一化的公司编码集合（汇总主体在路由层展开为成员） */
+  companyCodes?: string[]
   status?: string
   counterpartyKeyword?: string
 }
@@ -120,7 +121,7 @@ export const CollectionService = {
    * 外部客商、期末余额>0 且指定账龄段及以上有逾期金额，
    * 按 (公司, 客商, 科目) 聚合逾期金额幂等创建（同键存在非终态计划则跳过）。
    */
-  async generateSuggestions(params: { companyCode?: string; minAgingBucket?: string }, ctx: Ctx) {
+  async generateSuggestions(params: { companyCodes?: string[]; minAgingBucket?: string }, ctx: Ctx) {
     const bucketKey = params.minAgingBucket || '6m'
     const startIdx = OVERDUE_BUCKET_START[bucketKey]
     if (startIdx === undefined) throw errors.badRequest('逾期起算账龄段不合法（可选 1m/3m/6m/1y/2y）')
@@ -134,7 +135,7 @@ export const CollectionService = {
       isEliminated: false,
       closingBalance: { gt: 0 },
     }
-    if (params.companyCode) where.companyCode = params.companyCode
+    if (params.companyCodes) where.companyCode = { in: params.companyCodes }
 
     const rows = await prisma.transactionDetail.findMany({
       where,
@@ -203,7 +204,7 @@ export const CollectionService = {
     const page = Math.max(params.page || 1, 1)
     const pageSize = Math.min(Math.max(params.pageSize || 20, 1), 200)
     const where: Record<string, unknown> = {}
-    if (params.companyCode) where.companyCode = params.companyCode
+    if (params.companyCodes) where.companyCode = { in: params.companyCodes }
     if (params.status) {
       if (!COLLECTION_STATUSES.includes(params.status as CollectionStatusValue)) throw errors.badRequest('催收状态不合法')
       where.status = params.status

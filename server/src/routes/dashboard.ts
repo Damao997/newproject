@@ -1,5 +1,6 @@
-import { Router } from 'express'
+﻿import { Router } from 'express'
 import { authenticate } from '../middleware/auth'
+import { attachScope } from '../middleware/attach-scope'
 import { requirePermission } from '../middleware/permission'
 import { asyncHandler } from '../lib/async-handler'
 import { sendOk } from '../lib/response'
@@ -15,7 +16,7 @@ function scopeOf(authUser: AuthUserContext) {
   return { companyCode: authUser.companyCode, scopeValue: authUser.scopeValue, dataScopeCodes: authUser.dataScopeCodes }
 }
 
-router.use(authenticate)
+router.use(authenticate, attachScope())
 
 router.get('/overview', requirePermission('dashboard:view', 'view'), asyncHandler(async (req, res) => {
   const data = await DashboardService.getOverview(scopeOf(req.authUser as AuthUserContext), {

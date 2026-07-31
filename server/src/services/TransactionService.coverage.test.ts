@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+﻿import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import * as XLSX from 'xlsx'
 import { basePrisma } from '../lib/prisma'
 import { TransactionService } from './TransactionService'
@@ -138,12 +138,12 @@ describe('TransactionService.getBatchCoverage（真实 DB）', () => {
 describe('TransactionService.listDetails 筛选（真实 DB）', () => {
   it('零余额行固定隐藏；支持期间等值过滤', async () => {
     if (!dbReady) return
-    const page = await TransactionService.listDetails({ companyCode: CO, period: P2 })
+    const page = await TransactionService.listDetails({ companyCodes: [CO], period: P2 })
     // 种子了 2 条 P2 应收（100 与 0）+ 1 条草稿应付；零余额行被隐藏
     expect(page.items.every((i) => i.closingBalance !== 0)).toBe(true)
     expect(page.items.some((i) => i.counterpartyCode === '__COV_CP_ZERO__')).toBe(false)
     // 期间过滤：换个无数据期间应为空
-    const empty = await TransactionService.listDetails({ companyCode: CO, period: P1 })
+    const empty = await TransactionService.listDetails({ companyCodes: [CO], period: P1 })
     expect(empty.total).toBe(0)
   })
 })

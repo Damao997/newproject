@@ -1,5 +1,6 @@
-import { Router } from 'express'
+﻿import { Router } from 'express'
 import { authenticate } from '../middleware/auth'
+import { attachScope } from '../middleware/attach-scope'
 import { requirePermission } from '../middleware/permission'
 import { aiRateLimiter } from '../middleware/ai-rate-limit'
 import { asyncHandler } from '../lib/async-handler'
@@ -21,7 +22,7 @@ function scopeOf(authUser: AuthUserContext) {
   return { companyCode: authUser.companyCode, scopeValue: authUser.scopeValue, dataScopeCodes: authUser.dataScopeCodes }
 }
 
-router.use(authenticate)
+router.use(authenticate, attachScope())
 
 /** 初始化 SSE 响应头 */
 function initSSE(res: Response): void {

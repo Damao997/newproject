@@ -1,6 +1,7 @@
 ﻿import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { resolveScope } from '../middleware/scope'
+import { currentScope } from '../middleware/scope-context'
 import { sanitizeRichText } from '../lib/sanitize'
 import type { AuthUserContext } from '../types/express'
 
@@ -55,7 +56,7 @@ export type AnalysisListItem = AnalysisDTO & { refs: AnalysisRef[] }
 
 /** 解析用户可见的单体公司编码集合（scope 收敛） */
 export async function resolveScopeCompanyCodes(scope: Scope): Promise<string[]> {
-  const s = await resolveScope(prisma, scope)
+  const s = currentScope() ?? (await resolveScope(prisma, scope))
   if (s.type === 'all') {
     const all = await prisma.company.findMany({ where: { entityType: 'single', status: 'active' }, select: { code: true } })
     return all.map((c) => c.code)

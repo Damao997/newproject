@@ -6,6 +6,8 @@ import { evaluateFormula, topoSortMetrics } from '../lib/formula'
 import { OPERATING_DIMS } from '../lib/metric-values'
 import { fiscalYearStartPeriod, periodMinusYears, fiscalYtdDays } from '../lib/period'
 import { buildExcel } from '../lib/excel'
+import { effectiveScope } from '../lib/scope-guard'
+import { withoutScope } from '../middleware/scope-context'
 
 /**
  * 数据管理服务：公司主体、科目体系 CRUD、指标 CRUD（含公式与 DAG 校验）、导出。
@@ -63,6 +65,12 @@ export const DataService = {
     const where: Record<string, unknown> = {}
     // 显式声明 status 以绕过 soft-delete 中间件自动注入
     if (includeInactive) where.status = { in: ['active', 'inactive'] }
+    // 数据范围收敛：受限用户只见授权单体 + 完整授权的汇总主体（前端各下拉据此自动对齐）
+    const scope = await effectiveScope()
+    if (scope && scope.type !== 'all') {
+      const visible = scope.type === 'companies' ? [...scope.companyCodes, ...scope.summaryCodes] : []
+      where.code = { in: visible }
+    }
     const rows = await prisma.company.findMany({ where, orderBy: { orderNo: 'asc' } })
     return rows.map(companyDto)
   },
@@ -124,13 +132,14 @@ export const DataService = {
 
   /** 引用完整性保护：公司被事实数据、用户或汇总映射引用时禁止停用/删除 */
   async assertCompanyNotReferenced(code: string): Promise<void> {
-    const [opCount, stCount, bgCount, userCount, mapCount] = await Promise.all([
+    // 必须取跨数据范围的真值：范围外仍有事实数据时不得放行停用，故显式退出 scope 上下文
+    const [opCount, stCount, bgCount, userCount, mapCount] = await withoutScope(() => Promise.all([
       prisma.factOperating.count({ where: { companyCode: code } }),
       prisma.factStatic.count({ where: { companyCode: code } }),
       prisma.factBudget.count({ where: { companyCode: code } }),
       prisma.user.count({ where: { companyCode: code } }),
       prisma.companyAggregationMap.count({ where: { OR: [{ summaryCompanyCode: code }, { singleCompanyCode: code }] } }),
-    ])
+    ]))
     if (opCount + stCount + bgCount > 0 || userCount > 0 || mapCount > 0) {
       throw errors.conflict('公司已被事实数据、用户或汇总映射引用，无法停用/删除')
     }
@@ -138,7 +147,15 @@ export const DataService = {
 
   // ===== 汇总映射（单体 → 汇总主体成员） =====
   async listAggregationMap(summaryCode?: string): Promise<AggregationMapDto[]> {
-    const where = summaryCode ? { summaryCompanyCode: summaryCode } : {}
+    const where: Record<string, unknown> = summaryCode ? { summaryCompanyCode: summaryCode } : {}
+    // 数据范围收敛：避免泄露范围外汇总主体的成员构成
+    const scope = await effectiveScope()
+    if (scope && scope.type !== 'all') {
+      const allowedSummaries = scope.type === 'companies' ? scope.summaryCodes : []
+      where.summaryCompanyCode = summaryCode
+        ? { in: allowedSummaries.includes(summaryCode) ? [summaryCode] : [] }
+        : { in: allowedSummaries }
+    }
     const rows = await prisma.companyAggregationMap.findMany({ where, orderBy: { createdAt: 'asc' } })
     const codes = Array.from(new Set(rows.flatMap((r) => [r.summaryCompanyCode, r.singleCompanyCode])))
     const companies = await prisma.company.findMany({ where: { code: { in: codes } }, select: { code: true, name: true } })

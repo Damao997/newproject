@@ -1,5 +1,6 @@
 ﻿import { Router } from 'express'
 import { authenticate } from '../middleware/auth'
+import { attachScope } from '../middleware/attach-scope'
 import { requirePermission } from '../middleware/permission'
 import { asyncHandler } from '../lib/async-handler'
 import { sendOk } from '../lib/response'
@@ -20,7 +21,7 @@ function scopeOf(authUser: AuthUserContext) {
   return { companyCode: authUser.companyCode, scopeValue: authUser.scopeValue, dataScopeCodes: authUser.dataScopeCodes }
 }
 
-router.use(authenticate)
+router.use(authenticate, attachScope())
 
 // ============ 单项分析（公司 × 科目 × 期间） ============
 

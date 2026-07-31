@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+﻿import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { basePrisma } from '../lib/prisma'
 import { TransactionService } from './TransactionService'
 
@@ -62,19 +62,19 @@ afterAll(async () => {
 describe('Req3 关联方过滤（真实 DB）', () => {
   it('listDetails 按 partyType 过滤，且合计随筛选变化', async () => {
     if (!dbReady) return
-    const related = await TransactionService.listDetails({ companyCode: CO, transactionType: TYPE, partyType: 'related' })
+    const related = await TransactionService.listDetails({ companyCodes: [CO], transactionType: TYPE, partyType: 'related' })
     expect(related.items).toHaveLength(1)
     expect(related.items[0].counterpartyCode).toBe('330099')
     expect(related.totals?.closingBalance).toBe(100)
 
-    const internal = await TransactionService.listDetails({ companyCode: CO, transactionType: TYPE, partyType: 'internal' })
+    const internal = await TransactionService.listDetails({ companyCodes: [CO], transactionType: TYPE, partyType: 'internal' })
     expect(internal.items).toHaveLength(1)
     expect(internal.totals?.closingBalance).toBe(300)
   })
 
   it('getAgingAnalysis 按 partyType 过滤', async () => {
     if (!dbReady) return
-    const rows = await TransactionService.getAgingAnalysis({ companyCode: CO, transactionType: TYPE, period: PERIOD, partyType: 'external', groupBy: 'counterparty' }) as Array<{ counterpartyCode: string; closingBalance: number }>
+    const rows = await TransactionService.getAgingAnalysis({ companyCodes: [CO], transactionType: TYPE, period: PERIOD, partyType: 'external', groupBy: 'counterparty' }) as Array<{ counterpartyCode: string; closingBalance: number }>
     // external 仅剩 C0001(200)；C0002(999) 因科目排除被剔除
     expect(rows).toHaveLength(1)
     expect(rows[0].counterpartyCode).toBe('C0001')
@@ -85,7 +85,7 @@ describe('Req3 关联方过滤（真实 DB）', () => {
 describe('Req5 科目排除（真实 DB）', () => {
   it('inactive 科目在明细中被自动剔除，合计不含其金额', async () => {
     if (!dbReady) return
-    const all = await TransactionService.listDetails({ companyCode: CO, transactionType: TYPE })
+    const all = await TransactionService.listDetails({ companyCodes: [CO], transactionType: TYPE })
     // A/B/C 三条（100+200+300），排除科目的 999 不在内
     expect(all.items).toHaveLength(3)
     expect(all.items.every((i) => i.accountCode !== ACC_INACTIVE)).toBe(true)
@@ -116,7 +116,7 @@ describe('Req5 科目排除（真实 DB）', () => {
 describe('Req4 明细合计（真实 DB）', () => {
   it('totals 为全筛选集期末余额之和（跨页）', async () => {
     if (!dbReady) return
-    const page1 = await TransactionService.listDetails({ companyCode: CO, transactionType: TYPE, page: 1, pageSize: 2 })
+    const page1 = await TransactionService.listDetails({ companyCodes: [CO], transactionType: TYPE, page: 1, pageSize: 2 })
     expect(page1.items).toHaveLength(2) // 分页只返回 2 条
     expect(page1.total).toBe(3)
     expect(page1.totals?.closingBalance).toBe(600) // 合计仍为全部 3 条之和

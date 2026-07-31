@@ -1,4 +1,4 @@
-import { prisma } from '../lib/prisma'
+﻿import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
 import { getFiscalStartMonth, formatPeriod, periodsInRange, fiscalYearLabel } from '../lib/period'
@@ -150,7 +150,8 @@ function parseDeclaredCoverage(coverageJson: unknown): DeclaredCoverageItem[] {
 interface ListParams {
   page?: number
   pageSize?: number
-  companyCode?: string
+  /** 已按数据范围归一化的公司编码集合（汇总主体在路由层展开为成员） */
+  companyCodes?: string[]
   transactionType?: string
   direction?: string
   counterpartyKeyword?: string
@@ -218,12 +219,12 @@ export const TransactionService = {
   /**
    * 六大往来总览：按往来类型汇总期末余额、账龄分布、内部/外部笔数。
    * 期末余额为时点数，跨期间求和会重复累加，因此支持 period 单期过滤（前端默认传最新期间）；
-   * companyCodes 多选 IN 过滤，空/未传 = 全部公司。
+   * companyCodes 多选 IN 过滤；空/未传 = 数据范围内全部公司（由 scopeContext 扩展兜底过滤）。
    */
   async getOverview(params: { companyCodes?: string[]; period?: string } = {}): Promise<TransactionOverviewItem[]> {
-    const companyCodes = (params.companyCodes ?? []).filter(Boolean)
     const where: Record<string, unknown> = {}
-    if (companyCodes.length) where.companyCode = { in: companyCodes }
+    // undefined = 不加显式过滤（交由 scopeContext 扩展兜底）；空数组 = 归一化后无可见公司，应返回空集
+    if (params.companyCodes) where.companyCode = { in: params.companyCodes.filter(Boolean) }
     if (params.period) where.period = params.period
 
     const rows = await prisma.transactionDetail.groupBy({
@@ -294,7 +295,7 @@ export const TransactionService = {
     const pageSize = Math.min(Math.max(params.pageSize || 20, 1), 500)
     const where: Record<string, unknown> = {}
 
-    if (params.companyCode) where.companyCode = params.companyCode
+    if (params.companyCodes) where.companyCode = { in: params.companyCodes }
     if (params.transactionType) where.transactionType = params.transactionType
     if (params.direction) where.direction = params.direction
     if (params.period) where.period = params.period
@@ -346,9 +347,9 @@ export const TransactionService = {
    * 账龄 10 段归集为 5 段展示（1-3月 / 4-6月 / 半年以上 / 1年至3年 / 3年以上）；
    * 支持 period 单期过滤（期末余额为时点数）与科目多选；结果按期末余额倒序。
    */
-  async getAgingAnalysis(params: { companyCode?: string; transactionType?: string; groupBy?: 'type' | 'counterparty' | 'account'; period?: string; accountCodes?: string[]; partyType?: string }) {
+  async getAgingAnalysis(params: { companyCodes?: string[]; transactionType?: string; groupBy?: 'type' | 'counterparty' | 'account'; period?: string; accountCodes?: string[]; partyType?: string }) {
     const where: Record<string, unknown> = {}
-    if (params.companyCode) where.companyCode = params.companyCode
+    if (params.companyCodes) where.companyCode = { in: params.companyCodes }
     if (params.transactionType) where.transactionType = params.transactionType
     if (params.period) where.period = params.period
     if (params.partyType) where.partyType = params.partyType
@@ -472,9 +473,9 @@ export const TransactionService = {
 
   /** 内部往来汇总：按(本方公司, 内部对方公司, 方向, 往来类型)汇总
    */
-  async getInternalSummary(companyCode?: string): Promise<InternalSummaryRow[]> {
+  async getInternalSummary(companyCodes?: string[]): Promise<InternalSummaryRow[]> {
     const where: Record<string, unknown> = { isInternal: true }
-    if (companyCode) where.companyCode = companyCode
+    if (companyCodes) where.companyCode = { in: companyCodes }
 
     const rows = await prisma.transactionDetail.groupBy({
       by: ['companyCode', 'internalPeerCode', 'direction', 'transactionType'],
@@ -496,8 +497,8 @@ export const TransactionService = {
   /**
    * 内部往来镜像校验：同一对内部公司 AR侧与AP侧应相抵（余额已按科目性质归一为正号，差额 = AR - AP）
    */
-  async getInternalMirrorCheck(companyCode?: string) {
-    const summary = await this.getInternalSummary(companyCode)
+  async getInternalMirrorCheck(companyCodes?: string[]) {
+    const summary = await this.getInternalSummary(companyCodes)
     const pairMap = new Map<string, { companyA: string; companyB: string; arAmount: number; apAmount: number }>()
 
     for (const row of summary) {
@@ -600,9 +601,9 @@ export const TransactionService = {
    * companyCodes 为空时返回全部公司逐公司曲线（不再合并为「全部公司」合计线）；非空时每公司一条线。
    */
   async getTrend(params: { transactionType: string; companyCodes?: string[]; months?: number; fiscalYear?: string }): Promise<TransactionTrendResult> {
-    const companyCodes = (params.companyCodes ?? []).filter(Boolean)
     const companyWhere: Record<string, unknown> = { transactionType: params.transactionType }
-    if (companyCodes.length) companyWhere.companyCode = { in: companyCodes }
+    // undefined = 不加显式过滤（交由 scopeContext 扩展兜底）；空数组 = 归一化后无可见公司，应返回空集
+    if (params.companyCodes) companyWhere.companyCode = { in: params.companyCodes.filter(Boolean) }
 
     let periods: string[]
     let dataWhere: Record<string, unknown>
@@ -679,13 +680,18 @@ export const TransactionService = {
    * active=生效批次有明细 / empty=无明细但被生效批次申报（已导入·该期确无往来款）/
    * draft=仅草稿批次有数据或申报（已传未激活）/ missing=无任何数据。
    * 期间轴终点 = max(数据最新期间, 当前自然月)。历史批次无 coverageJson，其真空单元格仍为 missing。
+   * companyCodes 为矩阵行集合（调用方按数据范围传入）：限定行集合同时使范围外公司的申报覆盖不产生单元格。
    */
-  async getImportCoverage(params: { months?: number } = {}): Promise<TransactionCoverageResult> {
+  async getImportCoverage(params: { months?: number; companyCodes?: string[] } = {}): Promise<TransactionCoverageResult> {
     const months = Math.min(Math.max(params.months || 6, 1), 24)
 
     const [companies, activeBatches, draftBatches, latestRow] = await Promise.all([
       prisma.company.findMany({
-        where: { entityType: 'single', status: 'active' },
+        where: {
+          entityType: 'single',
+          status: 'active',
+          ...(params.companyCodes ? { code: { in: params.companyCodes } } : {}),
+        },
         select: { code: true, name: true },
         orderBy: { orderNo: 'asc' },
       }),
@@ -828,9 +834,9 @@ export const TransactionService = {
   /**
    * 获取所有往来对象（去重）用于前端筛选
    */
-  async listCounterparties(companyCode?: string) {
+  async listCounterparties(companyCodes?: string[]) {
     const where: Record<string, unknown> = {}
-    if (companyCode) where.companyCode = companyCode
+    if (companyCodes) where.companyCode = { in: companyCodes }
 
     const rows = await prisma.transactionDetail.findMany({
       where,

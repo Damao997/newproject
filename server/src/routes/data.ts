@@ -1,6 +1,7 @@
-import { Router, type Response } from 'express'
+﻿import { Router, type Response } from 'express'
 import multer from 'multer'
 import { authenticate } from '../middleware/auth'
+import { attachScope } from '../middleware/attach-scope'
 import { requirePermission } from '../middleware/permission'
 import { asyncHandler } from '../lib/async-handler'
 import { sendOk } from '../lib/response'
@@ -43,7 +44,7 @@ function sendXlsx(res: Response, buffer: Buffer, filename: string): void {
   res.send(buffer)
 }
 
-router.use(authenticate)
+router.use(authenticate, attachScope())
 
 // ===== 导入批次 =====
 router.post('/imports', requirePermission('data:import:upload', 'import'), upload.single('file'), asyncHandler(async (req, res) => {
@@ -76,7 +77,7 @@ router.post('/imports/preview', requirePermission('data:import:upload', 'import'
 
 router.get('/imports', requirePermission('data:browse:view', 'view'), asyncHandler(async (req, res) => {
   const { page, pageSize } = pageParams(req.query)
-  const data = await ImportService.list({ page, pageSize, templateType: req.query.templateType as string | undefined })
+  const data = await ImportService.list({ page, pageSize, templateType: req.query.templateType as string | undefined, userId: (req.authUser as AuthUserContext).userId })
   sendOk(res, data)
 }))
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+﻿import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { basePrisma } from '../lib/prisma'
 import { CollectionService } from './CollectionService'
 
@@ -53,17 +53,17 @@ afterAll(async () => {
 describe('CollectionService（真实 DB）', () => {
   it('generateSuggestions 按逾期账龄生成计划且幂等', async () => {
     if (!dbReady) return
-    const first = await CollectionService.generateSuggestions({ companyCode: TEST_COMPANY, minAgingBucket: '6m' }, ctx)
+    const first = await CollectionService.generateSuggestions({ companyCodes: [TEST_COMPANY], minAgingBucket: '6m' }, ctx)
     expect(first.created).toBe(1)
     expect(first.skipped).toBe(0)
 
-    const page = await CollectionService.list({ companyCode: TEST_COMPANY })
+    const page = await CollectionService.list({ companyCodes: [TEST_COMPANY] })
     expect(page.total).toBe(1)
     expect(page.items[0].overdueAmount).toBe(500)
     expect(page.items[0].status).toBe('pending')
 
     // 再次生成：同键存在非终态计划则跳过
-    const second = await CollectionService.generateSuggestions({ companyCode: TEST_COMPANY, minAgingBucket: '6m' }, ctx)
+    const second = await CollectionService.generateSuggestions({ companyCodes: [TEST_COMPANY], minAgingBucket: '6m' }, ctx)
     expect(second.created).toBe(0)
     expect(second.skipped).toBe(1)
   })
@@ -75,7 +75,7 @@ describe('CollectionService（真实 DB）', () => {
 
   it('状态机：pending→collecting→partial→full 合法；跳跃/回退非法', async () => {
     if (!dbReady) return
-    const page = await CollectionService.list({ companyCode: TEST_COMPANY })
+    const page = await CollectionService.list({ companyCodes: [TEST_COMPANY] })
     const planId = page.items[0].id
 
     // pending → full 非法
@@ -98,7 +98,7 @@ describe('CollectionService（真实 DB）', () => {
 
   it('催收记录：新增与查询', async () => {
     if (!dbReady) return
-    const page = await CollectionService.list({ companyCode: TEST_COMPANY })
+    const page = await CollectionService.list({ companyCodes: [TEST_COMPANY] })
     const planId = page.items[0].id
     const log = await CollectionService.addLog(planId, { content: '电话联系对方财务，承诺月底回款' }, ctx)
     expect(log.content).toContain('电话联系')
