@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -22,7 +23,7 @@ import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { exportToExcel } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import type { MetricValue } from '@/lib/metric-values'
-import { Download, ChevronsDownUp, ChevronsUpDown, History } from 'lucide-react'
+import { Download, ChevronsDownUp, ChevronsUpDown, History, Eye } from 'lucide-react'
 import type { SubjectNode } from '@/types'
 
 /** 收集含子节点的科目编码（用于全部展开） */
@@ -74,6 +75,7 @@ function flattenForExport(rows: Row[], depth = 0): { row: Row; depth: number }[]
 
 export default function IndicatorsPage() {
   const { can } = usePermission()
+  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<'operating' | 'static'>('operating')
   const [dimFilter, setDimFilter] = useState('all')
   const [periodFilter, setPeriodFilter] = useState('')
@@ -308,6 +310,11 @@ export default function IndicatorsPage() {
               </div>
 
               <div className="flex items-center space-x-2">
+                {can('reports', 'view') && (
+                  <Button variant="outline" size="sm" onClick={() => navigate('/reports?tab=analyses')}>
+                    <Eye className="mr-2 h-4 w-4" /> 查看分析
+                  </Button>
+                )}
                 <Button variant="outline" size="sm" onClick={toggleExpandAll}>
                   {isAllExpanded ? (
                     <ChevronsDownUp className="mr-2 h-4 w-4" />

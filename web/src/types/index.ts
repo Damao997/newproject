@@ -543,7 +543,7 @@ export interface AnalysisRef {
 export interface AnalysisInput {
   companyCode: string
   subjectCode: string
-  subjectType?: 'operating' | 'static'
+  subjectType?: 'operating' | 'static' | 'transaction'
   fiscalYear: string
   period: string
   title: string

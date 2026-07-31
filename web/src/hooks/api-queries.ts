@@ -182,6 +182,8 @@ export function useActivateImport() {
       qc.invalidateQueries({ queryKey: ['data', 'imports'] })
       qc.invalidateQueries({ queryKey: ['data', 'cross-table'] })
       qc.invalidateQueries({ queryKey: ['indicators'] })
+      // 往来批次激活后同步刷新往来分析页（批次操作与分析消费跨页联动约定）
+      qc.invalidateQueries({ queryKey: ['transactions'] })
     },
   })
 }
@@ -202,6 +204,7 @@ export function useArchiveImport() {
       qc.invalidateQueries({ queryKey: ['data', 'imports'] })
       qc.invalidateQueries({ queryKey: ['data', 'cross-table'] })
       qc.invalidateQueries({ queryKey: ['indicators'] })
+      qc.invalidateQueries({ queryKey: ['transactions'] })
     },
   })
 }
@@ -215,6 +218,7 @@ export function usePurgeImport() {
       qc.invalidateQueries({ queryKey: ['data', 'imports'] })
       qc.invalidateQueries({ queryKey: ['data', 'cross-table'] })
       qc.invalidateQueries({ queryKey: ['indicators'] })
+      qc.invalidateQueries({ queryKey: ['transactions'] })
     },
   })
 }
@@ -875,18 +879,6 @@ export function useImportTransactions() {
   return useMutation({
     mutationFn: (files: File[]) => api.importTransactions(files) as Promise<TransactionImportUploadResult[]>,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['data', 'imports'] }),
-  })
-}
-
-/** 激活往来批次（复用通用激活接口），成功后失效往来查询 */
-export function useActivateTransactionImport() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (id: string) => api.activateImport(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['transactions'] })
-      qc.invalidateQueries({ queryKey: ['data', 'imports'] })
-    },
   })
 }
 

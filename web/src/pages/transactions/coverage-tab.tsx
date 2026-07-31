@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { usePermission } from '@/hooks/usePermission'
-import { useTransactionImportCoverage, useActivateTransactionImport } from '@/hooks/api-queries'
+import { useTransactionImportCoverage, useActivateImport } from '@/hooks/api-queries'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { AlertTriangle, CheckCircle2, Grid3X3, Loader2, RefreshCw } from 'lucide-react'
 import type { TransactionCoverageCell } from '@/types'
@@ -37,7 +37,7 @@ export function CoverageTab() {
   const canImport = can('transactions', 'import')
 
   const { data, isLoading, isError, error, refetch, isFetching } = useTransactionImportCoverage(months)
-  const activateMutation = useActivateTransactionImport()
+  const activateMutation = useActivateImport()
   const { getDisplayName } = useCompanyDisplayName()
   const [activatingId, setActivatingId] = useState<string | null>(null)
   const [activateError, setActivateError] = useState('')

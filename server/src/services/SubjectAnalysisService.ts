@@ -1,4 +1,4 @@
-import { prisma } from '../lib/prisma'
+﻿import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { resolveScope } from '../middleware/scope'
 import { sanitizeRichText } from '../lib/sanitize'
@@ -17,7 +17,7 @@ type Scope = Pick<AuthUserContext, 'companyCode' | 'scopeValue'> & { dataScopeCo
 export interface AnalysisInput {
   companyCode: string
   subjectCode: string
-  subjectType?: 'operating' | 'static'
+  subjectType?: 'operating' | 'static' | 'transaction'
   fiscalYear: string
   period: string
   title: string
@@ -72,9 +72,25 @@ async function assertCompanyInScope(scope: Scope, companyCode: string): Promise<
   }
 }
 
-/** 推断科目类型（operating/static），优先取入参，缺省查科目表 */
-async function resolveSubjectType(subjectCode: string, given?: string): Promise<'operating' | 'static'> {
+/** 往来单项分析对象（六大往来类型粒度）：TXN_* 编码 → 中文名，不属于 accountSubject 体系 */
+export const TRANSACTION_SUBJECTS: Record<string, string> = {
+  TXN_AR: '应收账款',
+  TXN_AROT: '其他应收款',
+  TXN_PER_AR: '预收账款',
+  TXN_AP: '应付账款',
+  TXN_APOT: '其他应付款',
+  TXN_PER_AP: '预付账款',
+}
+
+/** 推断科目类型（operating/static/transaction），优先取入参，缺省查科目表 */
+async function resolveSubjectType(subjectCode: string, given?: string): Promise<'operating' | 'static' | 'transaction'> {
+  if (given === 'transaction') {
+    if (!TRANSACTION_SUBJECTS[subjectCode]) throw errors.badRequest(`往来分析对象不存在：${subjectCode}`)
+    return 'transaction'
+  }
   if (given === 'operating' || given === 'static') return given
+  // 未显式给类型时，TXN_* 编码按往来类型解析，其余查科目表
+  if (TRANSACTION_SUBJECTS[subjectCode]) return 'transaction'
   const subject = await prisma.accountSubject.findUnique({ where: { code: subjectCode }, select: { subjectType: true } })
   if (!subject) throw errors.badRequest(`科目不存在：${subjectCode}`)
   return subject.subjectType
@@ -84,7 +100,7 @@ function toDTO(row: {
   id: string
   companyCode: string
   subjectCode: string
-  subjectType: 'operating' | 'static'
+  subjectType: 'operating' | 'static' | 'transaction'
   fiscalYear: string
   period: string
   title: string
@@ -126,7 +142,8 @@ async function enrich(rows: Awaited<ReturnType<typeof prisma.subjectAnalysis.fin
   ])
   const cMap = new Map(companies.map((c) => [c.code, c.name]))
   const sMap = new Map(subjects.map((s) => [s.code, s.name]))
-  return rows.map((r) => toDTO(r, cMap.get(r.companyCode) ?? null, sMap.get(r.subjectCode) ?? null))
+  // 往来分析对象（TXN_*）不在科目表中，名称取静态映射
+  return rows.map((r) => toDTO(r, cMap.get(r.companyCode) ?? null, sMap.get(r.subjectCode) ?? TRANSACTION_SUBJECTS[r.subjectCode] ?? null))
 }
 
 export const SubjectAnalysisService = {

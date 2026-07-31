@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -41,7 +42,9 @@ export default function ReportsPage() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
-  const [tab, setTab] = useState<'reports' | 'analyses'>('reports')
+  // tab 支持 URL 参数直达（?tab=analyses 定位到「单项分析」），便于其他页跳转查看
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [tab, setTab] = useState<'reports' | 'analyses'>(searchParams.get('tab') === 'analyses' ? 'analyses' : 'reports')
 
   if (selectedId) {
     return (
@@ -59,7 +62,7 @@ export default function ReportsPage() {
         <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="mr-2 h-4 w-4" /> 新建报告</Button>
       ) : null}
     >
-      <Tabs value={tab} onValueChange={(v) => setTab(v as 'reports' | 'analyses')} className="mb-3">
+      <Tabs value={tab} onValueChange={(v) => { const t = v as 'reports' | 'analyses'; setTab(t); setSearchParams(t === 'analyses' ? { tab: 'analyses' } : {}, { replace: true }) }} className="mb-3">
         <TabsList>
           <TabsTrigger value="reports">汇总报告</TabsTrigger>
           <TabsTrigger value="analyses">单项分析</TabsTrigger>

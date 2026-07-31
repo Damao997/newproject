@@ -32,6 +32,16 @@ import { FileText, Search, Pencil, Trash2, RotateCcw, Link2 } from 'lucide-react
 const ALL = '__all'
 const REPORT_STATUS_LABEL: Record<string, string> = { draft: '草稿', published: '已发布', archived: '已归档' }
 
+/** 往来单项分析对象（六大往来类型粒度，TXN_* 编码不在 accountSubject 体系内，前端静态提供） */
+const TXN_SUBJECT_OPTIONS = [
+  { code: 'TXN_AR', name: '应收账款' },
+  { code: 'TXN_AROT', name: '其他应收款' },
+  { code: 'TXN_PER_AR', name: '预收账款' },
+  { code: 'TXN_AP', name: '应付账款' },
+  { code: 'TXN_APOT', name: '其他应付款' },
+  { code: 'TXN_PER_AP', name: '预付账款' },
+]
+
 export function AnalysisManager() {
   const { can } = usePermission()
   const canUpdate = can('reports', 'update')
@@ -50,13 +60,14 @@ export function AnalysisManager() {
   const { data: periodsData } = useAvailablePeriods()
   const { data: subjectsData } = useSubjects(
     { type: subjectType === ALL ? undefined : subjectType, pageSize: 1000 },
-    { enabled: subjectType !== ALL },
+    { enabled: subjectType !== ALL && subjectType !== 'transaction' },
   )
 
   const entityCompanies = useMemo(() => (companies ?? []).filter((c) => c.type === 'entity'), [companies])
   const { displayNameMap, getDisplayName } = useCompanyDisplayName()
   const periods = useMemo(() => [...(periodsData?.periods ?? [])].sort((a, b) => b.localeCompare(a)), [periodsData])
-  const subjects = subjectsData?.items ?? []
+  // 往来科目为前端静态 6 项（TXN_*），其余类型查科目表
+  const subjects = subjectType === 'transaction' ? TXN_SUBJECT_OPTIONS : (subjectsData?.items ?? [])
 
   const { data, isLoading } = useAnalyses({
     companyCode: companyCode === ALL ? undefined : companyCode,
@@ -137,6 +148,7 @@ export function AnalysisManager() {
               <SelectItem value={ALL}>全部类型</SelectItem>
               <SelectItem value="operating">经营科目</SelectItem>
               <SelectItem value="static">静态科目</SelectItem>
+              <SelectItem value="transaction">往来科目</SelectItem>
             </SelectContent>
           </Select>
           <Select value={subjectCode} onValueChange={(v) => { setSubjectCode(v); resetPage() }} disabled={subjectType === ALL}>

@@ -34,6 +34,7 @@ enum EntityType {
 enum SubjectType {
   operating
   static
+  transaction
 }
 
 enum Direction {

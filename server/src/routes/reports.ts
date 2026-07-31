@@ -1,4 +1,4 @@
-import { Router } from 'express'
+﻿import { Router } from 'express'
 import { authenticate } from '../middleware/auth'
 import { requirePermission } from '../middleware/permission'
 import { asyncHandler } from '../lib/async-handler'
@@ -62,7 +62,7 @@ router.post('/analyses', requirePermission('reports:create', 'create'), asyncHan
   const data = await SubjectAnalysisService.create(scopeOf(authUser), {
     companyCode: String(b.companyCode ?? ''),
     subjectCode: String(b.subjectCode ?? ''),
-    subjectType: b.subjectType === 'static' ? 'static' : b.subjectType === 'operating' ? 'operating' : undefined,
+    subjectType: b.subjectType === 'static' ? 'static' : b.subjectType === 'operating' ? 'operating' : b.subjectType === 'transaction' ? 'transaction' : undefined,
     fiscalYear: String(b.fiscalYear ?? ''),
     period: String(b.period ?? ''),
     title: String(b.title ?? ''),

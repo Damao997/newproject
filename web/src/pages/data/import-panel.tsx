@@ -350,6 +350,11 @@ export function ImportPanel() {
             </label>
           </div>
 
+          {/* 模块边界：往来导入入口在往来分析页（就近维护），批次生命周期统一在下方列表管理 */}
+          <p className="text-xs text-muted-foreground">
+            往来数据（六大往来账龄报表）请在「往来分析」页的导入入口上传，批次统一在此列表管理。
+          </p>
+
           {fileError && (
             <div className="flex items-center space-x-2 rounded-lg border border-red-200 bg-red-50 p-3">
               <XCircle className="h-4 w-4 text-red-500" />

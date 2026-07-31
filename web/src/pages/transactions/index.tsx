@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState, type ReactNode } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -26,12 +27,13 @@ import { useCompanies, useTransactionOverview, useTransactionDetails, useTransac
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { usePermission } from '@/hooks/usePermission'
 import { cn, formatMoneyWan } from '@/lib/utils'
-import { ArrowLeftRight, TrendingUp, TrendingDown, Building2, AlertTriangle, Upload, ChevronDown } from 'lucide-react'
+import { ArrowLeftRight, TrendingUp, TrendingDown, Building2, AlertTriangle, Upload, ChevronDown, FileText, Eye } from 'lucide-react'
 import { TransactionImportDialog } from './import-dialog'
 import { CollectionsTab } from './collections-tab'
 import { TransactionTrendCard } from './trend-card'
 import { CoverageTab } from './coverage-tab'
 import { AccountFilterTab } from './account-filter-tab'
+import { TransactionAnalysisDrawer, type TransactionAnalysisTarget } from './analysis-drawer'
 import type { TransactionDetailItem, AgingAnalysisRow, InternalSummaryRow, InternalMirrorRow } from '@/types'
 
 const TRANSACTION_TYPES = ['应收账款', '其他应收款', '预收账款', '应付账款', '其他应付款', '预付账款']
@@ -91,12 +93,13 @@ function PartyTypeSelect({ value, onChange }: { value: string; onChange: (v: str
   return (
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger className="w-[130px]">
-        <SelectValue placeholder="关联方" />
+        <SelectValue placeholder="对象类型" />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="all">全部对象</SelectItem>
-        <SelectItem value="internal">内部公司</SelectItem>
+        <SelectItem value="external">外部</SelectItem>
         <SelectItem value="related">关联方</SelectItem>
+        <SelectItem value="internal">内部公司</SelectItem>
+        <SelectItem value="all">全部对象</SelectItem>
       </SelectContent>
     </Select>
   )
@@ -326,7 +329,7 @@ function DetailsTab() {
   const [periodFilter, setPeriodFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('')
   const [accountFilter, setAccountFilter] = useState<string[]>([])
-  const [partyFilter, setPartyFilter] = useState('all')
+  const [partyFilter, setPartyFilter] = useState('external')
   const [keyword, setKeyword] = useState('')
   const { data: periods } = useTransactionPeriods()
   const { getDisplayName } = useCompanyDisplayName()
@@ -447,12 +450,15 @@ function DetailsTab() {
 
 // ===== 账龄分析 Tab =====
 function AgingTab() {
+  const { can } = usePermission()
+  const navigate = useNavigate()
+  const [analysisTarget, setAnalysisTarget] = useState<TransactionAnalysisTarget | null>(null)
   const [companyFilter, setCompanyFilter] = useState('all')
   // 空串表示跟随最新期间（默认选中最近一期有数据的期间）；期末余额为时点数，不提供跨期累加
   const [periodFilter, setPeriodFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('')
   const [accountFilter, setAccountFilter] = useState<string[]>([])
-  const [partyFilter, setPartyFilter] = useState('all')
+  const [partyFilter, setPartyFilter] = useState('external')
   const [groupBy, setGroupBy] = useState<string>('type')
   const { data: periods } = useTransactionPeriods()
   const { getDisplayName } = useCompanyDisplayName()
@@ -535,6 +541,31 @@ function AgingTab() {
             <SelectItem value="counterparty">按往来对象</SelectItem>
           </SelectContent>
         </Select>
+        {can('reports', 'create') && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-auto"
+            disabled={!period}
+            onClick={() => setAnalysisTarget({
+              transactionType: typeFilter || '',
+              period: period as string,
+              defaultCompanyCode: companyFilter !== 'all' ? companyFilter : undefined,
+            })}
+          >
+            <FileText className="mr-1 h-4 w-4" /> 撰写单项分析
+          </Button>
+        )}
+        {can('reports', 'view') && (
+          <Button
+            variant="outline"
+            size="sm"
+            className={can('reports', 'create') ? undefined : 'ml-auto'}
+            onClick={() => navigate('/reports?tab=analyses')}
+          >
+            <Eye className="mr-1 h-4 w-4" /> 查看分析
+          </Button>
+        )}
       </div>
 
       <Card>
@@ -602,6 +633,9 @@ function AgingTab() {
           )}
         </CardContent>
       </Card>
+
+      {/* 往来单项分析抽屉（入口在筛选行按钮） */}
+      <TransactionAnalysisDrawer open={!!analysisTarget} target={analysisTarget} onClose={() => setAnalysisTarget(null)} />
     </div>
   )
 }
