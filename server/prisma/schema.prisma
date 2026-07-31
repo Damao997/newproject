@@ -1,12 +1,17 @@
 // 浙江壹品慧财年经营数据分析平台 — Prisma Schema
-// 依据 docs/plans/数据模型规范.md v1.0 落地。
+// 依据 docs/plans/数据模型规范.md v1.1 落地。
 //
 // 关系策略（增量交付）：
 //   - 认证/RBAC 图（user/role/permission/token_blacklist/company(user)/audit_log(user)）
 //     使用完整 Prisma 关系，本期已实现并测试。
 //   - 其余基座表（维度/事实/业务/报告/指标）以标量外键字段 + 索引 + 唯一约束落地，
 //     数据库级外键关系在对应业务模块实现时逐步形式化，避免一次性引入大量反向关系。
-// 命名：列 snake_case（@map）、表 snake_case 单数（@@map）。
+// 命名规范（详见 docs/plans/数据模型规范.md「二、命名规范」，pre-commit 由 scripts/check-schema-naming.mjs 守护）：
+//   - 表：snake_case 单数，模型 PascalCase + 强制 @@map；列：snake_case，字段 camelCase，多词字段强制 @map。
+//   - 前缀：fact_ 仅限三张导入事实表；ai_ 为 AI 域配置表；其余不加前缀。
+//   - 后缀速查：_log=append-only 流水；_version=内容快照；_history=定义变更留痕；
+//     _map=N:N 关联；_scheme=配置方案；_record=周期记录；_detail=行级明细。
+//   - 新表禁用 PG 保留字（存量 user 例外）；枚举值小写 snake_case（存量 AgingBucket 例外）。
 
 generator client {
   provider = "prisma-client-js"

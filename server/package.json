@@ -15,6 +15,7 @@
     "prisma:seed": "tsx prisma/seed.ts",
     "prisma:studio": "prisma studio",
     "db:local": "tsx scripts/local-db.ts",
+    "check:naming": "node scripts/check-schema-naming.mjs",
     "setup": "npm run db:local && npm run prisma:generate && npm run prisma:migrate && npm run prisma:seed"
   },
   "prisma": {
