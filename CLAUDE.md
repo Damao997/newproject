@@ -183,19 +183,42 @@ calc 类型额外字段：`source_account_codes`（JSON 数组，引用科目）
 | 首页看板 | `dashboard:view`、`dashboard:export` |
 | 财务指标 | `indicators:view`、`indicators:export` |
 | 往来分析 | `transactions:view`、`transactions:create`、`transactions:export` |
-| 存货管理 | `inventory:view`、`inventory:import` |
+| 存货管理 | `inventory:view`、`inventory:import`（资源码已预留，后端端点未实现） |
 | 分析报告 | `reports:view`、`reports:create`、`reports:export` |
+| 其他工具 | `tools:view`（企业工商信息查询） |
 | 数据管理 | `data:browse:view`、`data:import:upload`、`data:metric:create` |
 | 权限管理 | `admin:users:view`、`admin:users:create`、`admin:roles:view` |
 
+AI 路由（`/api/v1/ai/*`）不单设前缀，复用：润色/分析/概述 → `reports:create`；公式生成/检测 → `data:metric:create`。
+
+### 统一响应
+
+成功与失败一律经 `lib/response.ts` 的 `sendOk` / `sendFail` 返回，**均含 `traceId`**（由 `middleware/trace-id.ts` 注入，同时贯穿日志与审计）：
+
+```json
+{ "code": 0, "data": {}, "message": "success", "traceId": "uuid-v4" }
+```
+
 ### 中间件执行链
 
+**全局链**（`app.ts`）：
+
 ```
-helmet(CSP/HSTS) → cors(前端origin) → express.json → 速率限制
-  → auth(JWT+黑名单) → permission(requirePermission,默认拒绝)
-    → scope(Prisma extension自动拦截) → softDelete(status='active'过滤)
-      → audit(核心操作INSERT到audit_log) → Service → Prisma → PostgreSQL
+traceId → 访问日志 → helmet(CSP/HSTS 1年) → cors(FRONTEND_ORIGIN 白名单,支持多值)
+  → express.json(1mb) → 通用限流(100次/分,仅 /api/v1) → 路由 → 404 → errorHandler
 ```
+
+**路由级链**（各 `routes/*.ts` 内按端点叠加）：
+
+```
+authenticate(JWT+黑名单) → requirePermission(默认拒绝,403 补记审计)
+  → scope(Prisma $extends 自动拦截) → softDelete(status='active' 过滤)
+    → audit(核心操作 INSERT 到 audit_log) → Service → Prisma → PostgreSQL
+```
+
+公开端点（不挂 authenticate）：`/health`、`POST /auth/login`、`POST /auth/refresh`、`GET /reports/shared/:token`。
+鉴权刻意不做全局链——避免误拦公开端点，且让"端点 ↔ 所需权限"同行可读。
+
 
 ### 金额展示
 

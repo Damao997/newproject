@@ -1,27 +1,47 @@
-# 浙江壹品慧财年经营数据分析平台 — AI 模块规范 v1.0
+# 浙江壹品慧财年经营数据分析平台 — AI 模块规范 v1.1
 
-> **版本**: v1.0
-> **触发场景**: AI 编写 polish（润色）/ analyze（追加分析）/ desensitize（脱敏）/ prompt guard（注入防护）/ rate limiting（频率限制）
-> **自包含声明**: 本文档覆盖本平台 AI 模块的全部规范，包括双管道架构、脱敏规则、Prompt 注入防护、频率限制、AI 确认工作流及公式生成。AI 可凭本文档独立实现整个 AI 域，无需查阅其他文档。
+> **版本**: v1.1（变更记录见文末）
+> **触发场景**: AI 编写 polish（润色）/ analyze（追加分析）/ report-summary（总体概述）/ formula（公式生成与检测）/ desensitize（脱敏）/ prompt guard（注入防护）/ rate limiting（频率限制）
+> **自包含声明**: 本文档覆盖本平台 AI 模块的全部规范，包括多管道架构、脱敏规则、Prompt 注入防护、频率限制、AI 确认工作流及公式生成。AI 可凭本文档独立实现整个 AI 域，无需查阅其他文档。
 
 ---
 
 ## 一、模块清单
 
-本平台 AI 能力围绕三个核心用例构建：
+本平台 AI 能力围绕以下用例构建（全部经 `AIProxyService` 出口）：
 
-| 用例 | 触发入口 | 涉及数据 | 脱敏策略 | LLM 引擎 |
-|------|----------|----------|----------|----------|
-| **润色 (Polish)** | TipTap 编辑器工具栏 → "AI 润色" | 用户选中文本（富文本段落） | 动态公司名映射 + 注入防护 | DeepSeek Chat (deepseek-chat) |
-| **追加分析 (Analyze)** | 报告编辑页 → "AI 分析" | 结构化指标变化率 + 用户分析请求 | 百分比不脱敏 / 绝对值分层脱敏 / 公司名映射 | DeepSeek Chat (deepseek-chat) |
-| **公式生成 (Formula Gen)** | 指标管理 → "AI 辅助公式" | 科目结构（编码+名称） + 用户业务描述 | 仅传科目结构，不传实际数值 | DeepSeek Chat (deepseek-chat) |
+| 用例 | 触发入口 | 涉及数据 | 脱敏策略 | 模式 |
+|------|----------|----------|----------|------|
+| **润色 (Polish)** | TipTap 编辑器工具栏 → "AI 润色" | 用户选中文本（富文本段落） | 动态公司名映射 + 注入防护 + 反向还原 | SSE 流式 |
+| **追加分析 (Analyze)** | 报告编辑页 → "AI 分析" | 结构化指标变化率 + 用户分析请求 | 百分比不脱敏 / 不发绝对金额 / 公司名映射 | SSE 流式 |
+| **总体概述 (Report Summary)** | 报告编辑页 → "AI 总体概述" | 各章节正文摘录（截断） | 公司名映射 + 输出过滤 + 还原 | SSE 流式 |
+| **公式生成 (Formula Gen)** | 指标管理 → "AI 辅助公式" | 科目结构（编码+名称+层级） + 用户业务描述 | 仅传科目结构，不传实际数值 | 同步 |
+| **公式检测 (Formula Check)** | 公式维护 → "AI 批量检测" | 待审公式 + 科目结构（≤30 条/次） | 同上 | 同步 |
+| **公式规则批量生成/应用** | 公式维护 → 规则管理 | 规则表达式 + 科目结构 | 同上 | 同步 |
+
+> LLM 引擎统一为 DeepSeek（OpenAI 兼容接口），模型见 §1.1。
 
 ### 1.1 边界约束
 
-- **AI API 出口**: 仅通过 `AIProxyService` 调用 DeepSeek，其他模块禁止直接导入 DeepSeek SDK
-- **API Key**: 存于后端环境变量 `DEEPSEEK_API_KEY`，前端绝不接触
-- **网络出口**: 内网服务器需能访问 `https://api.deepseek.com`（防火墙放行出站 HTTPS 443）
-- **DeepSeek 配置**: `baseURL: https://api.deepseek.com/v1`，model: `deepseek-chat`，OpenAI 兼容接口
+- **AI API 出口**: 仅通过 `AIProxyService` 调用 DeepSeek，其他模块禁止直接导入 DeepSeek SDK（客户端封装于 `server/src/lib/deepseek.ts`，文件头注释已声明唯一出口约束）
+- **API Key**: 存于后端环境变量 `DEEPSEEK_API_KEY`，前端绝不接触；未配置时 AI 功能抛 503，但应用仍可正常启动
+- **网络出口**: 内网服务器需能访问 `https://api.deepseek.com`（防火墙放行出站 HTTPS 443）。注意：因 AI 调用一律经后端代理，**后端 Helmet 的 CSP `connectSrc` 无需放行该域名**
+- **DeepSeek 配置**: `baseURL: https://api.deepseek.com/v1`（`DEEPSEEK_API_BASE`），model: **`deepseek-v4-flash`**（默认，`DEEPSEEK_MODEL` 可切 `deepseek-v4-pro`），OpenAI 兼容接口
+
+> ⚠️ **模型名（v1.1 更正）**：v1.0 全文写作 `deepseek-chat`，该模型名已被 DeepSeek 官方废弃，调用将返回 **400**。当前 v1 接口仅接受 `deepseek-v4-flash` / `deepseek-v4-pro`。
+
+### 1.2 脱敏实现细节（v1.1 补记）
+
+实现见 `server/src/lib/desensitize.ts`：
+
+| 细节 | 说明 |
+|------|------|
+| **动态映射** | 每次请求从 `company` 表读取全部 active 公司，生成 `真实名 ⇄ 公司A/B/C…` 的 forward/reverse 双向映射；不依赖 `ai_desensitize_config` 的正则配置，零维护负担 |
+| **60s 缓存** | 公司名列表缓存 60 秒，避免高频 AI 调用反复查库；公司增删在 1 分钟内生效 |
+| **单趟 alternation 正则** | **必须**将所有待替换公司名合成一条 alternation 正则（`名1|名2|…`）并**按键长降序排列**，一次 `replace` 完成全部替换。**禁止**循环逐个 `replace`：短公司名可能是长公司名的子串（如"壹品慧" ⊂ "浙江壹品慧杭州分公司"），逐个替换会先命中短名，污染后续匹配并导致还原错乱 |
+| **还原对称性** | polish / analyze / report-summary 三个流式管道**均**在输出过滤后执行 `restoreCompanyMap`，保证用户看到的始终是真实公司名 |
+
+
 
 ---
 
@@ -190,10 +210,43 @@ export function buildReverseMap(companyMap: Map<string, string>): Map<string, st
 [outputFilter] ──► 检测编码/System Prompt 泄露
   │
   ▼
-返回前端 ──► 无需反向映射（analyze 管道输出不包含公司代号）
+返回前端 ──► 还原公司名（analyze 管道亦经 restoreCompanyMap，与 polish 一致）
 ```
 
-### 3.4 关键实现约束
+> **绝对金额口径（v1.1 澄清）**：实现中 Analyze 管道**根本不发送绝对金额** —— `AIProxyService.analyzeStream` 经 `IndicatorsService.getByCode` 仅取同比/环比/达成率/累计同比等**比率**与趋势方向作为事实约束注入。因此 §2 的"金额分档脱敏"（`desensitizeAmountWan`）在本管道**不适用**；该函数用于确有金额需外发的场景（当前无调用方，作为能力保留）。
+>
+> **事实约束注入的价值**：不仅是脱敏手段，更是**防幻觉**手段 —— 把后端算好的真实变化率作为"已确认事实"写入 prompt，使 AI 只做定性归因表述，不自行编造数值。
+
+### 3.4 Report Summary 管道（总体概述，v1.1 补记）
+
+```
+报告各章节正文
+  │
+  ▼
+[章节摘录 + 截断] ──► 按章节顺序拼接，超长截断（控制 token）
+  │
+  ▼
+[desensitizeCompanyNames] ──► 公司名 → 代号（60s 缓存的 forward 映射）
+  │
+  ▼
+[promptGuard] ──► 输入长度限制 + 注入模式检测
+  │
+  ▼
+[DeepSeek SSE] ──► 流式输出概述初稿
+  │
+  ▼
+[outputFilter] ──► 检测编码/System Prompt 泄露
+  │
+  ▼
+[restoreCompanyMap] ──► 代号 → 真实公司名
+  │
+  ▼
+返回前端 ──► 流式预览 → 用户确认后插入（携带 data-ai-suggested 标识）
+```
+
+实现：`AIProxyService.summarizeStream`；端点 `POST /api/v1/ai/report-summary`；前端 `pages/reports/report-editor.tsx` 的 `AISummaryDialog`。
+
+### 3.5 关键实现约束
 
 ```typescript
 // ❌ 禁止: 其他模块直接导入 DeepSeek 客户端
@@ -679,13 +732,19 @@ DeepSeek 返回公式建议
 export const DEEPSEEK_CONFIG = {
   baseURL: process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com/v1',
   apiKey: process.env.DEEPSEEK_API_KEY,
-  model: 'deepseek-chat',
+  model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash', // 可选 deepseek-v4-pro；旧名 deepseek-chat 已废弃(400)
   maxTokens: 4096,
   temperature: 0.3,      // 财务场景低温度, 减少随机性
   topP: 0.9,
-  timeout: 300_000,       // 5 分钟超时
+  // 超时按调用形态分设（实现见 lib/deepseek.ts）：
+  //   chatComplete（非流式，公式生成/检测）: 60_000  —— 单轮短响应，快速失败
+  //   chatStream  （SSE 流式，润色/分析/概述）: 90_000 —— 留足首 token 与长文生成时间
+  timeoutSync: 60_000,
+  timeoutStream: 90_000,
 };
 ```
+
+> **超时（v1.1 更正）**：v1.0 曾写 `timeout: 300_000`（5 分钟）。实现改为 60s/90s 双档，避免异常连接长期占用 Node 事件循环与上游配额；财务场景的正常响应远低于该阈值。
 
 ### 附录 B: 网络出口
 
@@ -783,4 +842,31 @@ data: {"type":"error","error":"频率限制超出"}
 
 ---
 
-> **本文档自包含声明**: 本文档覆盖 AI 模块的全部功能规范，包括双管道架构（Polish / Analyze）、分层脱敏规则、Prompt 注入四层防护、频率限制与监控、AI 确认工作流及公式生成。AI 可凭本文档独立实现平台的全部 AI 能力。
+## 变更记录
+
+### v1.1（2026-07-30）
+
+**模型与超时更正（以实现为准）**：
+- §1 用例表（3 处）、§1.1 边界约束、附录 A：`deepseek-chat` → **`deepseek-v4-flash`**（备选 `deepseek-v4-pro`），并注明旧模型名已废弃、调用返回 400。
+- 附录 A：单一 `timeout: 300_000` → **双档 `timeoutSync: 60_000` / `timeoutStream: 90_000`**，说明分档理由。
+- §1.1 补注：因 AI 一律经后端代理，后端 Helmet CSP 的 `connectSrc` 无需放行 `api.deepseek.com`（与《安全与权限规范》v1.1 §6.2 一致）。
+
+**补记规范未覆盖但已实现的能力**：
+- §1 用例表扩充为 6 项：新增 **总体概述（Report Summary）**、**公式检测（Formula Check，≤30 条/次，规则校验 + LLM 语义审查）**、**公式规则批量生成/应用**。
+- 新增 §3.4 **Report Summary 管道**完整流程（章节摘录截断 → 脱敏 → SSE → 输出过滤 → 还原），原 §3.4 顺延为 §3.5。
+- 新增 §一末「脱敏实现细节」：公司名映射 60s 缓存；单趟 alternation 正则（长键优先）替换以防子串误替换污染。
+
+**口径澄清**：
+- §3.3 Analyze 管道：明确**不发送绝对金额**，仅发比率与趋势方向，故金额分档脱敏在该管道不适用（`desensitizeAmountWan` 作为能力保留）；并补充"事实约束注入兼具防幻觉作用"。
+- §3.3 末行更正：analyze 管道输出**同样**经 `restoreCompanyMap` 还原公司名（v1.0 曾写"无需反向映射"）。
+
+> 依据：`docs/文档与代码差异对齐报告-2026-07-30.md` §六(6)、§四 D2、§三 C10。
+
+### v1.0
+
+- 初版：双管道架构 + 分层脱敏 + Prompt 注入四层防护 + 频率限制 + AI 确认工作流 + 公式生成。
+
+---
+
+> **本文档自包含声明**: 本文档覆盖 AI 模块的全部功能规范，包括多管道架构（Polish / Analyze / Report Summary / Formula）、分层脱敏规则、Prompt 注入四层防护、频率限制与监控、AI 确认工作流及公式生成与检测。AI 可凭本文档独立实现平台的全部 AI 能力。
+

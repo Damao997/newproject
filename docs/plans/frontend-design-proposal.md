@@ -1,6 +1,6 @@
 # 浙江壹品慧财年经营数据分析平台 — 前端设计方案
 
-> **版本**: v3.0  
+> **版本**: v3.1  
 > **日期**: 2026-07-21  
 > **风格定位**: 简洁专业 / 效率驱动  
 > **技术选型**: Radix UI + Shadcn + Tailwind CSS + CSS Animation
@@ -49,7 +49,11 @@ React 18 + TypeScript 5.5
 
 - AntD 全量引入约 120KB+（gzip），且样式不可控
 - 本方案仅需 ProTable 的虚拟滚动、固定列、可编辑单元格能力
-- 其余组件（Button、Form、Modal、Tabs 等）用 Shadcn 实现，更轻、更可控
+- 其余组件（Button、Form、Modal、Tabs 等）用 Radix + Tailwind 自建，更轻、更可控
+
+> **落地说明**：`antd` 作为 `@ant-design/pro-table` 的必需 peer 依赖仍在 `package.json` 中，但全仓仅 `components/data-table/pro-table-inner.tsx` 引用（`ConfigProvider`），且该文件经 `React.lazy` 动态加载，**不进首屏 chunk**，符合"仅表格"的体积目标。禁止在其他文件 `import from 'antd'`。
+> `ui/` 下组件为**基于 Radix 手写封装**（风格参照 Shadcn，但不通过 shadcn CLI 生成），以便完全掌控 Design Token 与中文财务场景细节。
+
 
 ### 2.2 为什么不用 Framer Motion
 
@@ -74,25 +78,29 @@ React 18 + TypeScript 5.5
   /* 卡片与表面 */
   --card: 0 0% 100%;                /* 卡片背景 */
   --card-foreground: 222 84% 5%;
+  --popover: 0 0% 100%;             /* 浮层（Dropdown/Select/Tooltip）背景 */
+  --popover-foreground: 222 84% 5%;
   --muted: 210 40% 96%;            /* 禁用/表头背景 */
   --muted-foreground: 215 16% 47%; /* 辅助文字 */
   
   /* 主题色 */
-  --primary: 221 83% 53%;          /* 品牌蓝：#2563EB */
-  --primary-foreground: 210 40% 98%;
+  --primary: 25 95% 53%;           /* 品牌橙：#F97316 */
+  --primary-foreground: 0 0% 100%;
   --secondary: 210 40% 96%;        /* 次要背景 */
   --secondary-foreground: 222 47% 11%;
+  --accent: 210 40% 96%;           /* 强调背景（ghost/outline hover 态） */
+  --accent-foreground: 222 47% 11%;
   
   /* 状态色 */
   --destructive: 0 84% 60%;        /* 删除/错误：#EF4444 */
   --destructive-foreground: 210 40% 98%;
-  --success: 142 76% 36%;          /* 成功/达成：#16A34A */
+  --success: 160 84% 39%;          /* 成功/达成：#10B981 */
   --warning: 38 92% 50%;            /* 警告/待审：#F59E0B */
   
   /* 边框与输入 */
   --border: 214 32% 91%;            /* 边框：#E2E8F0 */
   --input: 214 32% 91%;
-  --ring: 221 83% 53%;            /* Focus 光环 */
+  --ring: 25 95% 53%;             /* Focus 光环（同 primary） */
   
   /* 圆角 */
   --radius: 0.75rem;               /* 12px — 卡片级别 */
@@ -112,13 +120,20 @@ React 18 + TypeScript 5.5
 
 ### 3.3 字体
 
-| 层级 | 字体 | 大小 | 字重 | 用途 |
-|------|------|------|------|------|
-| Display | Inter + Noto Sans SC | 24px | 700 | 页面标题 |
-| Heading | Inter + Noto Sans SC | 18px | 600 | 卡片标题 |
-| Body | Inter + Noto Sans SC | 14px | 400 | 正文、表格内容 |
-| Caption | Inter + Noto Sans SC | 12px | 400 | 辅助文字、时间戳 |
-| Mono | JetBrains Mono | 13px | 400 | 金额数字、代码 |
+全站统一微软雅黑（非 Windows 环境回退 `system-ui`），不引入 Web Font，避免内网首屏字体加载抖动。
+
+| 层级 | 字体族 | 大小 | 字重 | 用途 |
+|------|--------|------|------|------|
+| Display | `font-sans`（Microsoft YaHei / 微软雅黑 / system-ui） | 24px | 700 | 页面标题 |
+| Heading | `font-sans` | 18px | 600 | 卡片标题 |
+| Body | `font-sans` | 14px | 400 | 正文、表格内容 |
+| Caption | `font-sans` | 12px | 400 | 辅助文字、时间戳 |
+| **Number** | `font-num`（微软雅黑 + `font-feature-settings: "tnum"`） | 13-14px | 400/500 | **金额/数量/比率等一切数字**，等宽数字保证表格纵向对齐 |
+
+**约束**：
+- 表单输入正文使用纯黑（`text-black`），保证财务录入场景可读性。
+- 数字列一律加 `font-num`；**禁止**使用 Inter / Noto Sans SC / JetBrains Mono（v3.0 曾规定，已废止）。
+
 
 ### 3.4 阴影
 
@@ -145,13 +160,16 @@ React 18 + TypeScript 5.5
 
 变体：
 ┌─────────────┬─────────────────────────────┐
-│ primary     │ 蓝底白字，hover 加深          │
+│ primary     │ 橙底白字，hover 加深          │
 │ secondary   │ 灰底深字，带边框              │
 │ outline     │ 白底灰边框，hover 灰背景       │
 │ ghost       │ 透明，hover 灰背景             │
 │ destructive │ 红底白字，删除/危险操作        │
+│ link        │ 无底色，primary 色文字 + hover 下划线 │
 └─────────────┴─────────────────────────────┘
 ```
+
+> 变体一律以 Design Token 类名实现（`bg-primary`/`text-primary-foreground`/`ring-ring`），**禁止硬编码色值**，保证换色只需改 `globals.css`。
 
 ### 4.2 Card
 
@@ -169,11 +187,11 @@ React 18 + TypeScript 5.5
 ```
 - 高度：40px
 - 圆角：10px
-- 边框：1px solid #E2E8F0
-- Focus：border-color: #2563EB, box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1)
+- 边框：1px solid #E2E8F0（`border-input`）
+- Focus：`focus-visible:ring-2 ring-ring ring-offset-2`（光环取 `--ring` = 品牌橙）
 - 背景：白色
-- 字体：14px
-- 占位符色：#64748B
+- 字体：14px，正文色纯黑（`text-black`，保证表单可读性）
+- 占位符色：#64748B（`placeholder:text-muted-foreground`）
 ```
 
 ### 4.4 Table（数据表格）
@@ -186,9 +204,10 @@ React 18 + TypeScript 5.5
 
 表头：
 - 背景：#F1F5F9
-- 字体：12px / 500 / 大写 / 字间距 0.025em
+- 字体：12px / 500
 - 颜色：#64748B
 - 内边距：12px 16px
+- **对齐：所有标题行单元格一律居中**（含金额列表头）
 
 行：
 - 字体：14px
@@ -197,10 +216,12 @@ React 18 + TypeScript 5.5
 - hover：背景 #F8FAFC
 - 过渡：background 0.15s ease
 
-关键列：
-- 金额列：font-family: JetBrains Mono, monospace; text-align: right
-- 百分比列：Badge 组件（rounded-full，语义色背景）
-- 同比列：红涨绿跌，font-weight: 500
+关键列（按 `account_subject.value_type` 分型渲染，见 `lib/utils.ts` 的 `formatMetricValue`）：
+- **amount（金额）**：`font-num` + 右对齐 + 千分位 2 位小数（`formatMoneyWan`），单位"万"以小字后缀独立渲染，数值内不含"万"字
+- **quantity（数量）**：`font-num` + 右对齐 + 千分位整数（`formatQuantity`），无小数
+- **ratio（比率）**：`font-num` + 右对齐 + 百分比 1 位小数（`formatPercent`）
+- 达成率列：Badge 组件（rounded-full，success/warning 语义色）
+- 同比列：红涨绿跌（`finance.red`/`finance.green`），font-weight: 500
 ```
 
 ### 4.5 Badge
@@ -210,14 +231,15 @@ React 18 + TypeScript 5.5
 - 内边距：2px 10px
 - 字体：12px / 500
 
-语义变体：
-┌──────────────┬─────────────────────────────┐
-│ primary      │ bg: #EFF6FF, text: #2563EB  │
-│ secondary    │ bg: #F1F5F9, text: #1E293B  │
-│ success      │ bg: #F0FDF4, text: #16A34A  │
-│ warning      │ bg: #FFFBEB, text: #D97706  │
-│ destructive  │ bg: #FEF2F2, text: #EF4444  │
-└──────────────┴─────────────────────────────┘
+语义变体（实现见 `components/ui/badge.tsx`）：
+┌──────────────┬──────────────────────────────────────────┐
+│ default      │ bg-primary + text-primary-foreground（橙底白字） │
+│ secondary    │ bg-secondary + text-secondary-foreground   │
+│ success      │ bg-green-100 + text-green-800              │
+│ warning      │ bg-amber-100 + text-amber-800              │
+│ destructive  │ bg-destructive + text-destructive-foreground │
+│ outline      │ 无底色，text-foreground + 边框              │
+└──────────────┴──────────────────────────────────────────┘
 ```
 
 ### 4.6 Tabs
@@ -258,17 +280,32 @@ React 18 + TypeScript 5.5
 
 ### 5.1 全局布局
 
+左侧固定侧边栏 + 顶部细顶栏。实现见 `components/layout/{main-layout,sidebar,header,nav-items}.tsx`。
+
 ```
-┌──────────────────────────────────────────┐
-│  Header (56px, 固定吸顶)                 │
-│  - Logo + 品牌名 + 导航 + 用户头像        │
-│  - 底部 1px 分割线 #E2E8F0                │
-├──────────────────────────────────────────┤
-│  Main Content (max-width: 1280px, 居中)  │
-│  - padding: 32px 24px                   │
-│  - 页面标题区 + 内容区                    │
-└──────────────────────────────────────────┘
+┌──────────┬───────────────────────────────────────┐
+│ Sidebar  │  Header (56px)                        │
+│ 展开240px│  - 财年选择器 + 用户头像下拉           │
+│ 收起 64px│  - 底部 1px 分割线 #E2E8F0             │
+│          ├───────────────────────────────────────┤
+│ Logo+品牌│  Main Content                          │
+│ ──────── │  - max-width: 1280px (max-w-7xl), 居中 │
+│ 导航项   │  - padding: 32px 24px (py-8 px-6)     │
+│ (按权限) │  - 独立纵向滚动                        │
+│ ──────── │                                        │
+│ 收起按钮 │                                        │
+└──────────┴───────────────────────────────────────┘
 ```
+
+**侧边栏规则**：
+- 展开 `w-60`(240px) / 收起 `w-16`(64px)，收起态仅显示图标并以 Tooltip 补名称；收起状态经 `localStorage`(`sidebar-collapsed`) 持久化。
+- 导航项按 `usePermission()` 过滤，仅展示当前角色具备 view 权限的模块（对齐《安全与权限规范》§2.2），资源码见 `nav-items.ts`。
+- 激活态：`bg-primary/10 text-primary` + 左侧 3px 圆角竖条。
+- `<768px`：侧边栏隐藏，改为顶栏汉堡按钮唤起的抽屉（含遮罩，路由切换自动关闭）。
+
+**顶栏规则**：
+- 桌面端仅承载全局财年选择器与用户菜单（品牌标识在侧边栏顶部）；移动端额外显示汉堡按钮 + 品牌标识。
+- 全局财年选择影响看板/指标/数据浏览的期间候选，状态存于 `periodStore`。
 
 ### 5.2 登录页
 
@@ -300,7 +337,7 @@ React 18 + TypeScript 5.5
 
 ### 5.5 数据导入页
 
-- **拖拽上传区**：虚线边框（2px dashed #E2E8F0），hover 变蓝
+- **拖拽上传区**：虚线边框（2px dashed #E2E8F0），hover 边框转 `primary`（品牌橙）
 - **模板类型**：Tabs 切换（经营数据 / 静态数据）
 - **数据预览**：表格展示前 20 行，表头灰色背景
 - **校验结果**：
@@ -383,12 +420,28 @@ React 18 + TypeScript 5.5
 
 ### 7.1 构建优化
 
-| 策略 | 实现 |
-|------|------|
-| 代码分割 | 路由级别 `React.lazy()` + `Suspense` |
-| 组件懒加载 | 表格组件按需加载（ProTable 动态 import） |
-| Tree Shaking | ECharts 按需引入，仅注册所需图表类型 |
-| 图片优化 | SVG 图标（Lucide React），无位图资源 |
+| 策略 | 实现 | 状态 |
+|------|------|:----:|
+| 代码分割 | 路由级别 `React.lazy()` + `Suspense`（`App.tsx` 9 个页面全部懒加载） | ✅ 已落地 |
+| 组件懒加载 | ProTable 动态 import（`pro-data-table.tsx` → `React.lazy(() => import('./pro-table-inner'))`，antd 及 ProTable 不进首屏 chunk） | ✅ 已落地 |
+| Tree Shaking | ECharts 按需注册：统一经 `components/charts/echarts-core.ts`（`echarts/core` + `echarts-for-react/lib/core`，仅注册 Bar/Line/Grid/Tooltip/Legend/DataZoom/SVGRenderer）。**新增图表类型必须同步补注册，否则运行时图表空白** | ✅ 已落地（1146KB → 590KB，↓48%） |
+| 导出库懒加载 | exceljs / jspdf / docx / file-saver 全部改为函数内 `await import()`（`lib/export.ts`、`report-export.ts`、`import-template.ts`、`transactions/trend-card.tsx`） | ✅ 已落地 |
+| 无用依赖清除 | 移除 `xlsx`、`sanitize-html`、`@types/sanitize-html`（前端零引用；HTML 净化用 dompurify，Excel 解析在后端） | ✅ 已落地（-28 包） |
+| manualChunks 策略 | 仅保留 `vendor-react` / `vendor-query`。**刻意不再手动分组 echarts/exceljs 等** —— 显式分组会把它们重新拉成静态 chunk，抵消动态 import | ✅ 已落地 |
+| 图片优化 | SVG 图标（Lucide React），无位图资源 | ✅ 已落地 |
+
+**实测首屏体积**（`node scripts/measure-bundle.mjs` 解析 `dist/index.html` 的 entry + modulepreload）：
+
+| 项 | 优化前 | 优化后 |
+|----|-------|-------|
+| 首屏 JS+CSS（gzip） | — | **176.5 kB** |
+| `vendor-charts` / `echarts-core` | 1146 kB（gzip 386 kB，**进首屏**） | 590 kB（gzip 202 kB，**按需**） |
+| `vendor-excel` / `exceljs` | 938 kB（gzip 271 kB，**进首屏**） | 917 kB（gzip 265 kB，**按需**） |
+| jspdf + html2canvas | 进首屏 | 按需（382 kB + 198 kB） |
+
+> 首屏 gzip 176.5 kB 仍略高于 §7.3 的 150 kB 目标，剩余空间主要在 entry chunk（434 kB / gzip 137 kB，含 Radix + axios + zustand + 共享组件）。进一步优化需拆分共享组件层，收益递减，暂不推进。
+
+
 
 ### 7.2 运行时优化
 
@@ -442,31 +495,38 @@ React 18 + TypeScript 5.5
 ```
 src/
 ├── components/
-│   ├── ui/              # Shadcn 基础组件（Button, Card, Input, Badge, Tabs, Dialog, Switch, Skeleton, Tooltip）
-│   ├── data-table/      # 表格相关（DataTable, Pagination, ColumnFilter）
+│   ├── ui/              # 基础组件（Radix 封装：Button, Card, Input, Badge, Tabs, Dialog, Switch, Skeleton, Tooltip, Select, Textarea, Collapsible…）
+│   ├── data-table/      # 表格（data-table, pagination, pro-data-table, pro-table-inner[懒加载]）
 │   ├── charts/          # 图表封装（TrendChart, KpiSparkline）
-│   └── layout/          # 布局组件（Header, Sidebar, PageContainer）
+│   ├── layout/          # 布局（main-layout, sidebar, header, nav-items, require-permission）
+│   ├── subject-tree/    # 科目树面板
+│   ├── dimension/       # 维度维护
+│   └── indicators/      # 指标页专用组件（分析抽屉等）
 ├── pages/
-│   ├── dashboard/
-│   ├── indicators/
-│   ├── import/
-│   ├── admin/
-│   └── login/
+│   ├── login/           ├── dashboard/       ├── indicators/
+│   ├── transactions/    ├── inventory/       ├── reports/
+│   ├── tools/           ├── data/            └── admin/
 ├── hooks/
-│   ├── useAuth.ts
-│   ├── useDataQuery.ts
-│   └── useTableFilter.ts
+│   ├── useAuth.ts       # 认证
+│   ├── usePermission.ts # 权限判定（守卫 + 导航过滤）
+│   └── api-queries.ts   # React Query hooks 集中定义
 ├── stores/
-│   └── authStore.ts     # Zustand
+│   ├── authStore.ts     # Zustand：登录态
+│   └── periodStore.ts   # Zustand：全局财年选择
 ├── lib/
-│   ├── utils.ts         # cn() 合并类名
+│   ├── utils.ts         # cn() + 金额/数量/比率格式化
 │   ├── api.ts           # API 封装
-│   └── constants.ts     # Design Token 常量
+│   ├── permissions.ts   # 资源码常量
+│   ├── ai-stream.ts     # SSE 消费
+│   └── constants.ts
 ├── styles/
-│   └── globals.css      # Tailwind + CSS 变量
+│   └── globals.css      # Tailwind + Design Token
 └── types/
-    └── index.ts         # TypeScript 类型定义
+    └── index.ts
 ```
+
+> 页面目录已覆盖 9 个模块（含规范初版未列的 `transactions`/`inventory`/`reports`/`tools`，`import` 已并入 `data`），与 `web/src/App.tsx` 路由一一对应。
+
 
 ### 9.2 命名规范
 
@@ -534,4 +594,38 @@ export function cn(...inputs: ClassValue[]) {
 
 ---
 
-*文档版本：v3.0 | 生成时间：2026-07-21 | 设计负责人：蟹蟹 🦀*
+## 变更记录
+
+### v3.1（2026-07-30）
+
+**主色决策落定（以实现为准）**：
+- §3.1 `--primary` / `--ring` 由品牌蓝 `221 83% 53%`(#2563EB) 更正为**品牌橙** `25 95% 53%`(#F97316)；`--primary-foreground` 更正为 `0 0% 100%`；`--success` 更正为 `160 84% 39%`(#10B981)。三项均与 `web/src/styles/globals.css` 一致。
+- §4.1 Button：primary 描述改「橙底白字」，补 `link` 变体，新增「变体一律用 Design Token 类名、禁止硬编码色值」约束。
+- §4.3 Input/Select：Focus 由硬编码 `#2563EB` + rgba 阴影改为 `focus-visible:ring-2 ring-ring ring-offset-2`；补记正文纯黑（`text-black`）。
+- §4.5 Badge：语义变体表由硬编码 hex 改为实际 Token/类名（对齐 `components/ui/badge.tsx`）。
+- §5.5 拖拽上传区 hover 由「变蓝」改为「转 primary」。
+
+**字体体系改写**：
+- §3.3 整表替换为全站微软雅黑（`font-sans`）+ 数字专用 `font-num`（微软雅黑 + `tnum` 等宽数字）；明确废止 Inter / Noto Sans SC / JetBrains Mono；补记表单正文纯黑。
+
+**表格规范细化**：
+- §4.4 表头补「所有标题行单元格一律居中」；关键列改按 `value_type` 分型渲染（amount 千分位 2 位小数、quantity 千分位整数、ratio 百分比 1 位小数），单位"万"以小字后缀独立渲染；金额列字体由 JetBrains Mono 改为 `font-num`。
+
+**布局改写**：
+- §5.1 由「顶部 Header 承载导航」改写为「左侧 Sidebar（展开 240 / 收起 64，localStorage 持久化，移动端抽屉）+ 顶栏 56px（财年选择 + 用户菜单）+ `max-w-7xl` 内容区」，并补记导航按 `usePermission` 过滤。
+
+**目录结构与依赖说明同步**：
+- §9.1 补齐实际 9 个页面模块、`subject-tree`/`dimension`/`indicators` 组件目录、`periodStore`、`api-queries`、`ai-stream`、`permissions` 等（`import/` 已并入 `data/`）。
+- §2.1 补「落地说明」：`antd` 作为 ProTable 必需 peer 依赖保留，仅 `pro-table-inner.tsx` 引用且经 `React.lazy` 懒加载，不进首屏；`ui/` 为基于 Radix 手写封装而非 shadcn CLI 产物。
+- §7.1 标注已落地项（路由懒加载、ProTable 动态 import）与待办项（ECharts 按需引入、导出库懒加载），并附实测 chunk 体积。
+
+> 依据：`docs/文档与代码差异对齐报告-2026-07-30.md` §五、§六(3)。本次为**纯文档同步，前端代码零改动**。
+
+
+### v3.0（2026-07-21）
+
+- 初版：纸质感方案，替换 v2 毛玻璃 + AntD 全量 + Framer Motion。
+
+---
+
+*文档版本：v3.1 | 初版 2026-07-21 / 更新 2026-07-30 | 设计负责人：蟹蟹 🦀*
