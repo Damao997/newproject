@@ -121,7 +121,7 @@ export default function LoginPage() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <CardTitle className="text-xl font-bold tracking-tight sm:text-2xl">壹品慧财务分析平台</CardTitle>
+              <CardTitle className="text-xl font-bold tracking-tight sm:text-2xl">浙江壹品慧经营分析平台</CardTitle>
               <CardDescription>欢迎回来，请登录您的账号</CardDescription>
             </div>
           </CardHeader>

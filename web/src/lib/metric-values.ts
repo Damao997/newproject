@@ -95,17 +95,30 @@ export function computeMetricMap(
   return map
 }
 
+/**
+ * 比率安全除法：分母为 0 或结果非有限时返回 0。
+ *
+ * 除零已由调用方的 falsy 判断覆盖，但极小分母（非规格化浮点）仍会
+ * 溢出为 Infinity，进而被 formatPercent 渲染成 "Infinity%"。
+ * 此处统一兜底，保证展示层永远拿到有限数。
+ */
+function safeRatio(numerator: number, denominator: number): number {
+  if (!denominator) return 0
+  const r = numerator / denominator
+  return Number.isFinite(r) ? r : 0
+}
+
 /** 同比 = 本月实际 相对 同期实际 */
 export function calcYoy(mv: MetricValue): number {
-  return mv.samePeriod ? (mv.actual - mv.samePeriod) / mv.samePeriod : 0
+  return safeRatio(mv.actual - mv.samePeriod, mv.samePeriod)
 }
 
 /** 达成率 = 本年累计 / 全年预算（预算为年度值，须用 YTD 累计作分子） */
 export function calcAchievement(mv: MetricValue): number {
-  return mv.budget ? mv.ytd / mv.budget : 0
+  return safeRatio(mv.ytd, mv.budget)
 }
 
 /** 累计同比 = 本年累计 相对 同期累计 */
 export function calcYtdYoy(mv: MetricValue): number {
-  return mv.samePeriodYtd ? (mv.ytd - mv.samePeriodYtd) / mv.samePeriodYtd : 0
+  return safeRatio(mv.ytd - mv.samePeriodYtd, mv.samePeriodYtd)
 }

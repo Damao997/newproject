@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
-import { usePreviewTransactionImport, useImportTransactions, useActivateTransactionImport } from '@/hooks/api-queries'
+import { cn, formatMoneyWan } from '@/lib/utils'
+import { usePreviewTransactionImport, useImportTransactions, useActivateImport } from '@/hooks/api-queries'
 import { Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, XCircle, Loader2 } from 'lucide-react'
 import type { TransactionImportPreview, TransactionImportUploadResult } from '@/types'
 
@@ -13,9 +13,12 @@ import type { TransactionImportPreview, TransactionImportUploadResult } from '@/
 
 type Step = 'select' | 'preview' | 'result'
 
+/**
+ * 往来金额展示：ERP 原值单位为元，按往来模块统一约定换算为万元后走全局千分位格式化
+ * （与 transactions/index.tsx、analysis-drawer.tsx 的 `formatMoneyWan(v / 10000)` 口径一致）。
+ */
 function formatAmount(v: number): string {
-  if (Math.abs(v) >= 10000) return `${(v / 10000).toFixed(2)}万`
-  return v.toFixed(2)
+  return `${formatMoneyWan(v / 10000)} 万`
 }
 
 export function TransactionImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -29,7 +32,7 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
 
   const previewMutation = usePreviewTransactionImport()
   const importMutation = useImportTransactions()
-  const activateMutation = useActivateTransactionImport()
+  const activateMutation = useActivateImport()
 
   const reset = () => {
     setStep('select')
