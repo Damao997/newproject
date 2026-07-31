@@ -5,6 +5,7 @@ import { asyncHandler } from '../lib/async-handler'
 import { sendOk } from '../lib/response'
 import { errors } from '../lib/errors'
 import { recordAudit, clientIp } from '../middleware/audit'
+import { updateRolePermissionsSchema } from '../lib/schema'
 import { AdminService } from '../services/AdminService'
 import type { AuthUserContext } from '../types/express'
 
@@ -96,8 +97,9 @@ router.post('/roles/:id/clone', requirePermission('admin:roles:create', 'create'
 }))
 
 router.put('/roles/:id/permissions', requirePermission('admin:permissions:update', 'update'), asyncHandler(async (req, res) => {
-  const permissions = Array.isArray(req.body?.permissions) ? req.body.permissions : []
-  await AdminService.updateRolePermissions(req.params.id as string, permissions, ctxOf(req))
+  // 入参走 zod 校验：resource 需为二/三段式编码，action 需落在 PermissionAction 枚举内
+  const parsed = updateRolePermissionsSchema.parse(req.body ?? {})
+  await AdminService.updateRolePermissions(req.params.id as string, parsed.permissions, ctxOf(req))
   sendOk(res, null)
 }))
 

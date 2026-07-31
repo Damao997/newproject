@@ -19,7 +19,7 @@ export function securityHeaders(): RequestHandler {
       },
     },
     hsts: {
-      maxAge: 15552000, // 180 天
+      maxAge: 31536000, // 1 年（安全与权限规范 §6.2）
       includeSubDomains: true,
     },
     frameguard: { action: 'deny' },

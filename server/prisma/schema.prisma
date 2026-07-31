@@ -49,6 +49,18 @@ enum ValueType {
   ratio
 }
 
+// 权限操作类型：与 seed.ts PERMISSIONS 的 action 值域一一对应，
+// 由库级枚举兜底，防止拼写错误的权限记录静默成为永不命中的死权限。
+enum PermissionAction {
+  view
+  create
+  update
+  delete
+  export
+  import
+  approve
+}
+
 enum RecordStatus {
   active
   inactive
@@ -645,13 +657,13 @@ model Role {
 
 // 7.3 权限表
 model Permission {
-  id         String   @id @default(uuid())
-  roleId     String   @map("role_id")
+  id         String           @id @default(uuid())
+  roleId     String           @map("role_id")
   resource   String
-  action     String
-  scopeType  String?  @map("scope_type")
-  scopeValue String?  @map("scope_value")
-  createdAt  DateTime @default(now()) @map("created_at")
+  action     PermissionAction
+  scopeType  String?          @map("scope_type")
+  scopeValue String?          @map("scope_value")
+  createdAt  DateTime         @default(now()) @map("created_at")
 
   role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
@@ -760,6 +772,7 @@ model AuditLog {
   targetId  String?  @map("target_id")
   detail    Json?    @db.JsonB
   ip        String?
+  userAgent String?  @map("user_agent") @db.VarChar(512)
   createdAt DateTime @default(now()) @map("created_at")
 
   user User? @relation(fields: [userId], references: [id])

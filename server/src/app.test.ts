@@ -22,6 +22,8 @@ vi.mock('./lib/prisma', () => ({
 vi.mock('./middleware/audit', () => ({
   recordAudit: mocks.recordAudit,
   clientIp: vi.fn(() => '127.0.0.1'),
+  clientUserAgent: vi.fn(() => 'vitest-agent/1.0'),
+  auditMeta: vi.fn(() => ({ ip: '127.0.0.1', userAgent: 'vitest-agent/1.0', traceId: 'test-trace' })),
 }))
 
 import request from 'supertest'

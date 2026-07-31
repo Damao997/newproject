@@ -1,18 +1,19 @@
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, type PermissionAction } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import { seedDomain } from './seed-domain'
 import { seedCompaniesAndMapping } from './seed-companies'
 
 // ============================================================
 // 种子数据：预置角色 + 完整权限矩阵 + 公司主体 + 演示用户
-// 依据 CLAUDE.md 附录 C（8 模块 × 6 操作 × 5 角色）与数据模型规范 §2.4 / §7.2。
+// 依据 安全与权限规范 v1.1（9 模块 × 7 操作 × 6 角色）与数据模型规范 §7.2 / §8.3。
 // 幂等：所有写入按唯一键 upsert，可重复执行。
 // ============================================================
 
 const prisma = new PrismaClient()
 
-// ---- 权限主清单：resource（三段式）→ action（6 操作枚举）----
-const PERMISSIONS: { resource: string; action: string }[] = [
+// ---- 权限主清单：resource（三段式）→ action（PermissionAction 枚举，7 值）----
+// 本数组是资源码的唯一权威来源；安全与权限规范 §2.3 的清单与此同步。
+const PERMISSIONS: { resource: string; action: PermissionAction }[] = [
   // 首页看板
   { resource: 'dashboard:view', action: 'view' },
   { resource: 'dashboard:export', action: 'export' },

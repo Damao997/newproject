@@ -61,7 +61,7 @@ router.get('/static', requirePermission('indicators:view', 'view'), asyncHandler
 }))
 
 // GET /indicators/periods
-router.get('/periods', asyncHandler(async (_req, res) => {
+router.get('/periods', requirePermission('indicators:view', 'view'), asyncHandler(async (_req, res) => {
   const periods = await IndicatorsService.getAvailablePeriods()
   sendOk(res, periods)
 }))

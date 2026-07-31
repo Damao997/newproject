@@ -1,3 +1,4 @@
+import type { PermissionAction } from '@prisma/client'
 import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
@@ -267,12 +268,12 @@ export const AdminService = {
     return rows.map((r, i) => ({ id: String(i + 1), resource: r.resource, action: r.action }))
   },
 
-  async updateRolePermissions(roleId: string, permissions: { resource: string; action: string }[], ctx: AuditCtx): Promise<void> {
+  async updateRolePermissions(roleId: string, permissions: { resource: string; action: PermissionAction }[], ctx: AuditCtx): Promise<void> {
     const role = await prisma.role.findUnique({ where: { id: roleId }, include: { permissions: { select: { resource: true, action: true } } } })
     if (!role) throw errors.notFound('角色不存在')
     // 系统失管保护：superadmin 角色权限集固定为全量，禁止修改；其余角色（含预置）均可编辑
     if (role.code === 'superadmin') throw errors.forbidden('超级管理员角色权限不可修改')
-    const keyOf = (p: { resource: string; action: string }) => `${p.resource}#${p.action}`
+    const keyOf = (p: { resource: string; action: PermissionAction }) => `${p.resource}#${p.action}`
     const beforeKeys = new Set(role.permissions.map(keyOf))
     const afterKeys = new Set(permissions.map(keyOf))
     const added = permissions.filter((p) => !beforeKeys.has(keyOf(p))).map((p) => p.resource)

@@ -44,6 +44,8 @@ export interface TokenPair {
 
 interface AuditMeta {
   ip?: string | null
+  /** 客户端 User-Agent（已由 auditMeta() 截断至 512 字符） */
+  userAgent?: string | null
   traceId?: string
 }
 
@@ -104,6 +106,7 @@ export const AuthService = {
           action: 'login_failed',
           targetId: username,
           ip: meta.ip ?? null,
+          userAgent: meta.userAgent ?? null,
         },
         meta.traceId,
       )
@@ -123,7 +126,7 @@ export const AuthService = {
     })
 
     await recordAudit(
-      { userId: user.id, module: 'auth', action: 'login', targetId: user.id, ip: meta.ip ?? null },
+      { userId: user.id, module: 'auth', action: 'login', targetId: user.id, ip: meta.ip ?? null, userAgent: meta.userAgent ?? null },
       meta.traceId,
     )
 
@@ -200,7 +203,7 @@ export const AuthService = {
       ])
     }
     await recordAudit(
-      { userId, module: 'auth', action: 'logout', targetId: userId, ip: meta.ip ?? null },
+      { userId, module: 'auth', action: 'logout', targetId: userId, ip: meta.ip ?? null, userAgent: meta.userAgent ?? null },
       meta.traceId,
     )
   },
@@ -232,7 +235,7 @@ export const AuthService = {
       data: { passwordHash, refreshTokenJti: null },
     })
     await recordAudit(
-      { userId, module: 'auth', action: 'update', targetId: userId, detail: { field: 'password' }, ip: meta.ip ?? null },
+      { userId, module: 'auth', action: 'update', targetId: userId, detail: { field: 'password' }, ip: meta.ip ?? null, userAgent: meta.userAgent ?? null },
       meta.traceId,
     )
   },

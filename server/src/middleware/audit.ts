@@ -15,6 +15,7 @@ export interface AuditInput {
   targetId?: string | null
   detail?: Record<string, unknown> | null
   ip?: string | null
+  userAgent?: string | null
 }
 
 /** 从请求中提取客户端 IP（信任反向代理链首段） */
@@ -24,6 +25,21 @@ export function clientIp(req: Request): string | null {
     return forwarded.split(',')[0]?.trim() ?? null
   }
   return req.ip ?? req.socket?.remoteAddress ?? null
+}
+
+/** User-Agent 上限（与 audit_log.user_agent VARCHAR(512) 对齐，超长截断避免写入失败） */
+const USER_AGENT_MAX = 512
+
+/** 从请求中提取 User-Agent（截断至 512 字符）；与 IP 配合用于区分同 IP 的不同客户端 */
+export function clientUserAgent(req: Request): string | null {
+  const ua = req.header('User-Agent')
+  if (!ua) return null
+  return ua.length > USER_AGENT_MAX ? ua.slice(0, USER_AGENT_MAX) : ua
+}
+
+/** 一次性提取审计所需的请求上下文（IP + User-Agent），供各路由/服务复用 */
+export function auditMeta(req: Request): { ip: string | null; userAgent: string | null; traceId: string } {
+  return { ip: clientIp(req), userAgent: clientUserAgent(req), traceId: req.traceId }
 }
 
 export async function recordAudit(input: AuditInput, traceId?: string): Promise<void> {
@@ -36,6 +52,8 @@ export async function recordAudit(input: AuditInput, traceId?: string): Promise<
         targetId: input.targetId ?? null,
         detail: (input.detail ?? undefined) as never,
         ip: input.ip ?? null,
+        // 兜底截断：即使调用方直接传入未处理的 UA，也不会因超长导致写入失败
+        userAgent: input.userAgent ? input.userAgent.slice(0, USER_AGENT_MAX) : null,
       },
     })
   } catch (err) {

@@ -31,3 +31,40 @@ export const updatePasswordSchema = z
     path: ['newPassword'],
   })
 export type UpdatePasswordInput = z.infer<typeof updatePasswordSchema>
+
+/**
+ * 角色权限批量替换入参。
+ * action 必须落在 PermissionAction 枚举内 —— 与 schema.prisma 的枚举、
+ * prisma/seed.ts 的 PERMISSIONS 三处保持同一值域。
+ * 无此校验时非法 action 会直达 createMany，由 PG 抛 22P02 变成 500；
+ * 此处前置拦截，改为语义清晰的 400。
+ */
+export const permissionActionSchema = z.enum([
+  'view',
+  'create',
+  'update',
+  'delete',
+  'export',
+  'import',
+  'approve',
+])
+
+export const updateRolePermissionsSchema = z.object({
+  permissions: z
+    .array(
+      z.object({
+        resource: z
+          .string()
+          .trim()
+          .min(1, 'resource 不能为空')
+          .max(128, 'resource 过长')
+          // 二/三段式资源码：模块:子页面[:操作]，仅允许小写字母/数字/连字符 + 冒号分隔。
+          // 至少两段 —— seed.ts 中全部资源码均含冒号（如 dashboard:view、data:import:upload），
+          // 单段式（仅模块名）不是有效权限码，放行会产生永不命中的死权限。
+          .regex(/^[a-z0-9-]+(:[a-z0-9-]+){1,2}$/, 'resource 必须为冒号分隔的二/三段式小写编码'),
+        action: permissionActionSchema,
+      }),
+    )
+    .max(500, '权限条目过多'),
+})
+export type UpdateRolePermissionsInput = z.infer<typeof updateRolePermissionsSchema>

@@ -2,7 +2,7 @@ import { Router, type Request, type Response, type NextFunction, type RequestHan
 import { AuthService } from '../services/AuthService'
 import { authenticate } from '../middleware/auth'
 import { loginRateLimiter } from '../middleware/rate-limit'
-import { clientIp } from '../middleware/audit'
+import { auditMeta } from '../middleware/audit'
 import { sendOk } from '../lib/response'
 import { errors } from '../lib/errors'
 import { loginSchema, refreshSchema, updatePasswordSchema } from '../lib/schema'
@@ -28,10 +28,7 @@ router.post(
   loginRateLimiter,
   asyncHandler(async (req, res) => {
     const parsed = loginSchema.parse(req.body)
-    const result = await AuthService.login(parsed.username, parsed.password, {
-      ip: clientIp(req),
-      traceId: req.traceId,
-    })
+    const result = await AuthService.login(parsed.username, parsed.password, auditMeta(req))
     sendOk(res, result)
   }),
 )
@@ -52,7 +49,7 @@ router.post(
   authenticate,
   asyncHandler(async (req, res) => {
     if (!req.authUser) throw errors.unauthorized()
-    await AuthService.logout(req.authUser.userId, { ip: clientIp(req), traceId: req.traceId })
+    await AuthService.logout(req.authUser.userId, auditMeta(req))
     sendOk(res, null)
   }),
 )
@@ -75,10 +72,7 @@ router.put(
   asyncHandler(async (req, res) => {
     if (!req.authUser) throw errors.unauthorized()
     const parsed = updatePasswordSchema.parse(req.body)
-    await AuthService.changePassword(req.authUser.userId, parsed.oldPassword, parsed.newPassword, {
-      ip: clientIp(req),
-      traceId: req.traceId,
-    })
+    await AuthService.changePassword(req.authUser.userId, parsed.oldPassword, parsed.newPassword, auditMeta(req))
     sendOk(res, null)
   }),
 )
