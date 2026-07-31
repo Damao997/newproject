@@ -17,6 +17,7 @@
 - [separator.tsx](file://web/src/components/ui/separator.tsx)
 - [avatar.tsx](file://web/src/components/ui/avatar.tsx)
 - [collapsible.tsx](file://web/src/components/ui/collapsible.tsx)
+- [status-indicator.tsx](file://web/src/components/ui/status-indicator.tsx)
 - [utils.ts](file://web/src/lib/utils.ts)
 - [constants.ts](file://web/src/lib/constants.ts)
 - [globals.css](file://web/src/styles/globals.css)
@@ -26,10 +27,10 @@
 
 ## 更新摘要
 **所做更改**   
-- 新增 Collapsible 可折叠组件章节，详细介绍零依赖折叠展开功能与 localStorage 持久化
-- 更新核心组件概览，包含新的 Collapsible 组件
-- 更新架构总览图，添加 Collapsible 组件关系
-- 补充 Collapsible 组件的详细分析和使用示例
+- 新增状态指示器组件章节，详细介绍样式更新以对齐新的主题规范
+- 更新核心组件概览，包含新的状态指示器组件
+- 更新架构总览图，添加状态指示器组件关系
+- 补充状态指示器组件的详细分析和使用示例
 
 ## 目录
 1. [简介](#简介)
@@ -51,7 +52,7 @@
 - 使用示例与最佳实践（样式定制、主题适配）
 - 组件组合与复用策略
 
-**最新更新**：新增了 Collapsible 可折叠组件，提供零依赖的折叠展开功能和用户偏好持久化存储。
+**最新更新**：新增了 Collapsible 可折叠组件和状态指示器组件，提供零依赖的折叠展开功能、用户偏好持久化存储以及符合新主题规范的样式系统。
 
 ## 项目结构
 UI 基础组件位于 web/src/components/ui 目录下，采用"按功能拆分"的组织方式，每个组件独立文件，便于维护与测试。通用工具与常量位于 lib 目录，全局样式与 Tailwind 配置位于 styles 与根目录。
@@ -74,6 +75,7 @@ Sk["skeleton.tsx"]
 Sep["separator.tsx"]
 Av["avatar.tsx"]
 Co["collapsible.tsx"]
+SI["status-indicator.tsx"]
 end
 subgraph "公共库"
 U["utils.ts"]
@@ -99,6 +101,7 @@ Sk --> U
 Sep --> U
 Av --> U
 Co --> U
+SI --> U
 U --> Const
 B --> TW
 I --> TW
@@ -115,6 +118,7 @@ Sk --> TW
 Sep --> TW
 Av --> TW
 Co --> TW
+SI --> TW
 TW --> G
 TW --> IC
 ```
@@ -135,6 +139,7 @@ TW --> IC
 - [separator.tsx](file://web/src/components/ui/separator.tsx)
 - [avatar.tsx](file://web/src/components/ui/avatar.tsx)
 - [collapsible.tsx](file://web/src/components/ui/collapsible.tsx)
+- [status-indicator.tsx](file://web/src/components/ui/status-indicator.tsx)
 - [utils.ts](file://web/src/lib/utils.ts)
 - [constants.ts](file://web/src/lib/constants.ts)
 - [globals.css](file://web/src/styles/globals.css)
@@ -149,11 +154,11 @@ TW --> IC
 - 对输入类组件提供受控与非受控两种模式
 - 对外暴露稳定事件回调，避免直接操作 DOM
 
-**新增**：Collapsible 组件提供可折叠内容区域，支持动画过渡和状态持久化。
+**新增**：Collapsible 组件提供可折叠内容区域，支持动画过渡和状态持久化；状态指示器组件提供符合新主题规范的视觉反馈系统。
 
 ## 架构总览
 UI 组件整体采用"原子化 + 组合式"的架构：
-- 原子组件：button、input、badge、label、separator、skeleton、avatar 等
+- 原子组件：button、input、badge、label、separator、skeleton、avatar、status-indicator 等
 - 复合组件：dialog、select、tabs、dropdown-menu、tooltip、collapsible 等
 - 公共能力：utils.ts 提供工具函数；constants.ts 提供常量；Tailwind 配置集中管理主题与变体
 
@@ -233,6 +238,12 @@ class Collapsible {
 +content : any
 +persistKey : string
 }
+class StatusIndicator {
++status : string
++variant : string
++size : string
++showAnimation : boolean
+}
 Button --> utils : "使用工具函数"
 Input --> utils : "使用工具函数"
 Dialog --> utils : "使用工具函数"
@@ -241,8 +252,10 @@ Tabs --> utils : "使用工具函数"
 Tooltip --> utils : "使用工具函数"
 Switch --> utils : "使用工具函数"
 Collapsible --> utils : "使用工具函数"
+StatusIndicator --> utils : "使用工具函数"
 Badge --> constants : "使用常量"
 Card --> constants : "使用常量"
+StatusIndicator --> constants : "使用常量"
 ```
 
 **图表来源**
@@ -261,6 +274,7 @@ Card --> constants : "使用常量"
 - [separator.tsx](file://web/src/components/ui/separator.tsx)
 - [avatar.tsx](file://web/src/components/ui/avatar.tsx)
 - [collapsible.tsx](file://web/src/components/ui/collapsible.tsx)
+- [status-indicator.tsx](file://web/src/components/ui/status-indicator.tsx)
 - [utils.ts](file://web/src/lib/utils.ts)
 - [constants.ts](file://web/src/lib/constants.ts)
 
@@ -595,6 +609,56 @@ LS-->>Col : "返回保存的展开状态"
 - [utils.ts](file://web/src/lib/utils.ts)
 - [tailwind.config.js](file://web/tailwind.config.js)
 
+### Status Indicator 状态指示器
+- 职责：提供视觉状态反馈，支持多种状态类型和动画效果
+- Props 要点
+  - status：状态类型（success、warning、error、info、loading）
+  - variant：视觉变体（dot、ring、pulse 等）
+  - size：尺寸大小（sm、md、lg）
+  - showAnimation：是否显示动画效果
+  - text：可选的状态描述文本
+- 事件处理
+  - 通常为纯展示组件，无需事件处理
+  - 可选的点击回调用于交互场景
+- 可访问性
+  - 设置 role="status" 和 aria-live 属性
+  - 提供适当的 aria-label 描述状态含义
+  - 支持屏幕阅读器朗读状态变化
+- 动画效果
+  - 支持脉冲、呼吸、旋转等多种动画效果
+  - 使用 CSS animations 实现流畅过渡
+  - 可配置动画持续时间和循环模式
+- 样式定制与主题
+  - 基于新的主题规范设计颜色系统
+  - 支持暗色模式和主题切换
+  - 通过 Tailwind 类名快速定制样式
+- 响应式设计
+  - 在不同屏幕尺寸下保持清晰的视觉效果
+  - 移动端优化触摸交互
+- 组合与复用
+  - 与 Button、Card、Table 等组件组合使用
+  - 适合表单验证、加载状态、操作结果反馈等场景
+
+```mermaid
+flowchart TD
+Init["初始化状态指示器"] --> CheckStatus["根据 status 确定状态类型"]
+CheckStatus --> SetVariant["应用对应的视觉变体"]
+SetVariant --> ApplyTheme["应用主题颜色系统"]
+ApplyTheme --> CheckAnimation{"是否启用动画?"}
+CheckAnimation --> |是| StartAnim["启动动画效果"]
+CheckAnimation --> |否| Render["直接渲染静态样式"]
+StartAnim --> Render
+Render --> End["完成渲染"]
+```
+
+**图表来源**
+- [status-indicator.tsx](file://web/src/components/ui/status-indicator.tsx)
+
+**章节来源**
+- [status-indicator.tsx](file://web/src/components/ui/status-indicator.tsx)
+- [constants.ts](file://web/src/lib/constants.ts)
+- [tailwind.config.js](file://web/tailwind.config.js)
+
 ### 其他基础组件概览
 - Label 标签：为输入控件提供可点击的关联标签，提升可访问性与易用性
 - Dropdown Menu 下拉菜单：提供一组动作入口，支持键盘导航与焦点管理
@@ -623,7 +687,7 @@ LS-->>Col : "返回保存的展开状态"
 - constants.ts 提供主题色、尺寸等常量，保证一致性
 - Tailwind 配置集中管理主题与变体，确保全局样式一致
 
-**更新**：Collapsible 组件依赖 localStorage API 进行用户偏好持久化，同时使用 CSS transitions 实现动画效果。
+**更新**：Collapsible 组件依赖 localStorage API 进行用户偏好持久化，同时使用 CSS transitions 实现动画效果；状态指示器组件基于新的主题规范设计，支持多种动画效果和主题切换。
 
 ```mermaid
 graph LR
@@ -635,13 +699,16 @@ Utils --> CompE["tabs.tsx"]
 Utils --> CompF["tooltip.tsx"]
 Utils --> CompG["switch.tsx"]
 Utils --> CompH["collapsible.tsx"]
+Utils --> CompI["status-indicator.tsx"]
 Const["constants.ts"] --> Badge["badge.tsx"]
 Const --> Card["card.tsx"]
+Const --> StatusInd["status-indicator.tsx"]
 TW["tailwind.config.js"] --> All["所有 UI 组件"]
 TW --> G["globals.css"]
 TW --> IC["index.css"]
 LS["localStorage"] --> CompH
 CSS["CSS Transitions"] --> CompH
+CSS2["CSS Animations"] --> CompI
 ```
 
 **图表来源**
@@ -658,6 +725,7 @@ CSS["CSS Transitions"] --> CompH
 - [tooltip.tsx](file://web/src/components/ui/tooltip.tsx)
 - [switch.tsx](file://web/src/components/ui/switch.tsx)
 - [collapsible.tsx](file://web/src/components/ui/collapsible.tsx)
+- [status-indicator.tsx](file://web/src/components/ui/status-indicator.tsx)
 - [badge.tsx](file://web/src/components/ui/badge.tsx)
 - [card.tsx](file://web/src/components/ui/card.tsx)
 
@@ -675,6 +743,7 @@ CSS["CSS Transitions"] --> CompH
 - 样式计算优化：合并类名与条件类名，减少运行时字符串拼接开销
 - 资源加载：Avatar 图片使用懒加载与占位图，Skeleton 提升感知性能
 - **Collapsible 优化**：使用 CSS transitions 而非 JavaScript 动画，避免重排重绘；localStorage 读写操作异步化，不影响主线程
+- **状态指示器优化**：使用 CSS animations 替代 JavaScript 动画，减少主线程压力；动画效果按需启用，避免不必要的性能开销
 
 ## 故障排查指南
 - 无法触发事件
@@ -693,6 +762,10 @@ CSS["CSS Transitions"] --> CompH
   - 检查 localStorage 权限和可用性
   - 验证 persistKey 的唯一性和命名规范
   - 确认动画时长配置合理，避免过长影响用户体验
+- **状态指示器问题**
+  - 检查主题配置是否正确加载
+  - 验证动画效果是否被浏览器支持
+  - 确认状态值的合法性与映射关系
 
 **章节来源**
 - [button.tsx](file://web/src/components/ui/button.tsx)
@@ -700,12 +773,13 @@ CSS["CSS Transitions"] --> CompH
 - [dialog.tsx](file://web/src/components/ui/dialog.tsx)
 - [select.tsx](file://web/src/components/ui/select.tsx)
 - [collapsible.tsx](file://web/src/components/ui/collapsible.tsx)
+- [status-indicator.tsx](file://web/src/components/ui/status-indicator.tsx)
 - [utils.ts](file://web/src/lib/utils.ts)
 - [constants.ts](file://web/src/lib/constants.ts)
 - [tailwind.config.js](file://web/tailwind.config.js)
 
 ## 结论
-pj3 的 UI 基础组件以原子化与组合式为核心，借助 Tailwind 构建一致的视觉语言，并通过 ARIA 与键盘交互保障可访问性。通过统一的 Props 约定与事件模型，组件具备良好的可组合性与可扩展性。新增的 Collapsible 组件为零依赖的可折叠解决方案，提供了完整的用户偏好持久化功能。建议在业务中优先复用这些基础组件，并结合主题常量与工具函数保持风格一致与性能最优。
+pj3 的 UI 基础组件以原子化与组合式为核心，借助 Tailwind 构建一致的视觉语言，并通过 ARIA 与键盘交互保障可访问性。通过统一的 Props 约定与事件模型，组件具备良好的可组合性与可扩展性。新增的 Collapsible 组件为零依赖的可折叠解决方案，提供了完整的用户偏好持久化功能；状态指示器组件则基于新的主题规范设计，提供了丰富的视觉反馈系统。建议在业务中优先复用这些基础组件，并结合主题常量与工具函数保持风格一致与性能最优。
 
 ## 附录
 - 使用示例与最佳实践
@@ -713,10 +787,13 @@ pj3 的 UI 基础组件以原子化与组合式为核心，借助 Tailwind 构�
   - 数据展示：Card + Badge + Button 组合，呈现信息块与关键状态
   - 交互引导：Dialog + Button 组合，完成确认/编辑流程
   - **内容组织：Collapsible + Content 组合，实现可折叠的信息区块和设置面板**
+  - **状态反馈：Status Indicator + Action 组合，提供清晰的操作结果反馈**
 - 主题适配
   - 通过 Tailwind 配置扩展新变体与尺寸
   - 使用 constants.ts 中的主题常量，避免硬编码颜色
+  - **状态指示器支持暗色模式和主题切换，确保一致的视觉体验**
 - 组合与复用策略
   - 将常用组合封装为高阶组件或页面级模板
   - 通过 props 透传与插槽模式增强灵活性
   - **Collapsible 使用建议：为不同的折叠区域设置唯一的 persistKey，避免状态冲突**
+  - **状态指示器使用建议：根据业务场景选择合适的状态类型和动画效果**

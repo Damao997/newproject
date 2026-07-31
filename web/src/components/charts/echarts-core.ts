@@ -6,17 +6,19 @@
  * 实际用到的图表与组件，其余（地图/关系图/3D 等）不进产物。
  *
  * 注册清单来源（新增图表类型时必须同步补注册，否则运行时图表空白）：
- *   - BarChart   : components/charts/trend-chart.tsx（收入/成本柱）
+ *   - BarChart   : components/charts/trend-chart.tsx（收入/成本柱）、
+ *                  pages/inventory/category-rank-card.tsx、trend-card.tsx
  *   - LineChart  : trend-chart.tsx（毛利/预算线）、kpi-sparkline.tsx、
- *                  pages/transactions/trend-card.tsx
+ *                  pages/transactions/trend-card.tsx、pages/inventory/trend-card.tsx
+ *   - PieChart   : pages/inventory/category-pie-card.tsx（品类占比饼图）
  *   - Grid       : 全部图表
- *   - Tooltip    : trend-chart、trend-card
+ *   - Tooltip    : trend-chart、trend-card、inventory 各卡
  *   - Legend     : trend-chart、trend-card
  *   - DataZoom   : trend-card（inside + slider）
  *   - SVGRenderer: 全部图表均传 opts={{ renderer: 'svg' }}
  */
 import * as echarts from 'echarts/core'
-import { BarChart, LineChart } from 'echarts/charts'
+import { BarChart, LineChart, PieChart } from 'echarts/charts'
 import {
   GridComponent,
   TooltipComponent,
@@ -29,6 +31,7 @@ import ReactEChartsCore from 'echarts-for-react/lib/core'
 echarts.use([
   BarChart,
   LineChart,
+  PieChart,
   GridComponent,
   TooltipComponent,
   LegendComponent,

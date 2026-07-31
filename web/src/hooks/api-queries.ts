@@ -22,11 +22,27 @@ export const queryKeys = {
 }
 
 // ---------------- Dashboard ----------------
-export function useDashboardOverview(period?: string) {
+export function useDashboardOverview(params: { period?: string; companyCode?: string } = {}) {
   return useQuery({
-    queryKey: queryKeys.dashboardOverview(period),
-    queryFn: () => api.getDashboardOverview(period ? { period } : undefined),
+    queryKey: queryKeys.dashboardOverview(params),
+    queryFn: () => api.getDashboardOverview({
+      ...(params.period ? { period: params.period } : {}),
+      ...(params.companyCode ? { companyCode: params.companyCode } : {}),
+    }),
     placeholderData: keepPreviousData,
+    // 看板数据随批次激活才变化，5 分钟内路由往返不重复请求
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+/** 应收账款按主体分布：期间跟随看板当前期间，period 未定时不发请求 */
+export function useDashboardReceivables(params: { period?: string; mode: 'single' | 'summary' }) {
+  return useQuery({
+    queryKey: ['dashboard', 'receivables', params.period ?? '', params.mode] as const,
+    queryFn: () => api.getDashboardReceivables({ period: params.period as string, mode: params.mode }),
+    enabled: !!params.period,
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60 * 1000,
   })
 }
 
@@ -863,6 +879,82 @@ export function useTransactionFiscalYears() {
   return useQuery({
     queryKey: ['transactions', 'fiscal-years'] as const,
     queryFn: () => api.getTransactionFiscalYears() as Promise<string[]>,
+  })
+}
+
+// ---------------- Inventory（存货管理） ----------------
+
+export interface InventoryCategoryRow {
+  code: string
+  name: string
+  current: number
+  yearStart: number
+  samePeriod: number
+  lastYearStart: number
+  /** 占存货总额比例（%） */
+  share: number
+  /** 同比增减率（%） */
+  yoy: number
+  /** 金额降序排名（1 起） */
+  rank: number
+}
+
+export interface InventoryOverviewResult {
+  period: string
+  companyCount: number
+  total: { current: number; yearStart: number; samePeriod: number; lastYearStart: number }
+  /** 存货周转天数（年初类时点列无口径，仅本期/同期） */
+  turnoverDays: { current: number; samePeriod: number }
+  categories: InventoryCategoryRow[]
+}
+
+export interface InventoryDetailRow {
+  companyCode: string
+  companyName: string
+  companyShortName: string | null
+  categoryCode: string
+  categoryName: string
+  current: number
+  yearStart: number
+  samePeriod: number
+  lastYearStart: number
+  yoy: number
+}
+
+export interface InventoryTrendResult {
+  fiscalYear: string
+  months: string[]
+  total: number[]
+  byCategory: { code: string; name: string; values: number[] }[]
+}
+
+/** 存货总览：总额 + 品类占比/排名 + 周转天数 */
+export function useInventoryOverview(params: { period?: string; companyCodes?: string[] }) {
+  return useQuery({
+    queryKey: ['inventory', 'overview', params.period ?? '', params.companyCodes ?? []] as const,
+    queryFn: () => api.getInventoryOverview({ period: params.period as string, companyCodes: params.companyCodes }) as Promise<InventoryOverviewResult>,
+    enabled: !!params.period,
+    placeholderData: keepPreviousData,
+  })
+}
+
+/** 存货明细：公司 × 品类 */
+export function useInventoryDetails(params: { period?: string; companyCodes?: string[] }) {
+  return useQuery({
+    queryKey: ['inventory', 'details', params.period ?? '', params.companyCodes ?? []] as const,
+    queryFn: () => api.getInventoryDetails({ period: params.period as string, companyCodes: params.companyCodes }) as Promise<{ period: string; rows: InventoryDetailRow[] }>,
+    enabled: !!params.period,
+    placeholderData: keepPreviousData,
+  })
+}
+
+/** 存货趋势：财年内各月总额与品类值 */
+export function useInventoryTrend(params: { fiscalYear?: string | null; companyCodes?: string[] }) {
+  return useQuery({
+    queryKey: ['inventory', 'trend', params.fiscalYear ?? '', params.companyCodes ?? []] as const,
+    queryFn: () => api.getInventoryTrend({ fiscalYear: params.fiscalYear as string, companyCodes: params.companyCodes }) as Promise<InventoryTrendResult>,
+    enabled: !!params.fiscalYear,
+    placeholderData: keepPreviousData,
   })
 }
 

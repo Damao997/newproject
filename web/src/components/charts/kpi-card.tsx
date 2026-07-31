@@ -5,8 +5,8 @@ import { cn } from '@/lib/utils'
 import { 
   TrendingUp, 
   DollarSign, 
-  Receipt, 
-  Target,
+  Wallet,
+  Banknote,
   ArrowUpRight,
   ArrowDownRight,
   Minus
@@ -22,8 +22,8 @@ interface KpiCardProps {
 const iconMap: Record<string, React.ElementType> = {
   TrendingUp,
   DollarSign,
-  Receipt,
-  Target,
+  Wallet,
+  Banknote,
 }
 
 /** 四色活泼体系：橙 / 蓝 / 绿 / 淡紫，按卡片序号轮换 */
@@ -34,12 +34,21 @@ const ACCENTS = [
   { icon: 'bg-violet-500/10 text-violet-500', spark: '#8B5CF6' },
 ]
 
+/** 达成率展示：null（无预算）显示 "–" */
+function rateText(rate: number | null): string {
+  return rate === null ? '–' : formatPercent(rate / 100)
+}
+
+/**
+ * 核心 KPI 卡（收入/毛利/净利润/回款）：
+ * 大字体 = 本月合计 + 月度预算达成率；小字体 = 累计实际 / 同比 / 累计达成率；底部迷你趋势图。
+ */
 export function KpiCard({ data, index = 0 }: KpiCardProps) {
   const Icon = iconMap[data.icon] || TrendingUp
-  const changePrefix = getChangePrefix(data.change)
+  const changePrefix = getChangePrefix(data.yoy)
   // 红涨绿跌（A 股/国内财报习惯）：正数红 #FF3B30 / 负数绿 #34C759 / 持平灰
-  const isPositive = data.change > 0
-  const isFlat = data.change === 0
+  const isPositive = data.yoy > 0
+  const isFlat = data.yoy === 0
   const accent = ACCENTS[index % ACCENTS.length]
 
   return (
@@ -56,32 +65,53 @@ export function KpiCard({ data, index = 0 }: KpiCardProps) {
         </div>
       </CardHeader>
       <CardContent className="px-5 pb-4">
-        <div className="mb-3 flex items-baseline gap-2">
-          <span className="font-num text-[28px] font-bold leading-tight tracking-tight text-foreground">
-            {data.unit === '%' ? formatPercent(data.value / 100) : formatMoneyWan(data.value)}
-          </span>
+        {/* 大字体区：本月合计 + 月度达成率 */}
+        <div className="mb-3 flex items-end justify-between gap-2">
+          <div className="min-w-0">
+            <span className="font-num block truncate text-[26px] font-bold leading-tight tracking-tight text-foreground" title={`本月合计（万元）`}>
+              {formatMoneyWan(data.monthActual)}
+            </span>
+            <span className="text-[10px] text-[#94A3B8]">本月合计（万元）</span>
+          </div>
+          <div className="shrink-0 text-right">
+            <span className="font-num block text-[22px] font-bold leading-tight tracking-tight text-primary" title="月度预算达成率">
+              {rateText(data.monthRate)}
+            </span>
+            <span className="text-[10px] text-[#94A3B8]">月度达成率</span>
+          </div>
         </div>
-        <div className="flex items-center justify-between">
-          <span
-            className={cn(
-              'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
-              isFlat
-                ? 'bg-[#F1F5F9] text-[#64748B]'
-                : isPositive
-                  ? 'bg-[#FEF2F2] text-[#FF3B30]'
-                  : 'bg-[#F0FDF4] text-[#34C759]'
-            )}
-          >
-            {isFlat ? (
-              <Minus className="h-3 w-3" />
-            ) : isPositive ? (
-              <ArrowUpRight className="h-3 w-3" />
-            ) : (
-              <ArrowDownRight className="h-3 w-3" />
-            )}
-            <span className="font-num">{changePrefix}{(Math.abs(data.change) * 100).toFixed(1)}%</span>
-          </span>
-          <span className="text-[10px] text-[#64748B]">同比</span>
+        {/* 小字体区：累计实际 / 同比 / 累计达成率 */}
+        <div className="space-y-1.5 text-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[#64748B]">累计实际</span>
+            <span className="font-num font-medium text-foreground">{formatMoneyWan(data.ytdActual)}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[#64748B]">同比</span>
+            <span
+              className={cn(
+                'inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[11px] font-medium',
+                isFlat
+                  ? 'bg-[#F1F5F9] text-[#64748B]'
+                  : isPositive
+                    ? 'bg-[#FEF2F2] text-[#FF3B30]'
+                    : 'bg-[#F0FDF4] text-[#34C759]'
+              )}
+            >
+              {isFlat ? (
+                <Minus className="h-3 w-3" />
+              ) : isPositive ? (
+                <ArrowUpRight className="h-3 w-3" />
+              ) : (
+                <ArrowDownRight className="h-3 w-3" />
+              )}
+              <span className="font-num">{changePrefix}{(Math.abs(data.yoy) * 100).toFixed(1)}%</span>
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[#64748B]">累计达成率</span>
+            <span className="font-num font-medium text-foreground">{rateText(data.ytdRate)}</span>
+          </div>
         </div>
         <div className="mt-3 border-t border-border pt-3">
           <KpiSparkline data={data.trend} color={accent.spark} />

@@ -15,7 +15,7 @@ const PageContainer = React.forwardRef<HTMLDivElement, PageContainerProps>(
       {...props}
     >
       {(title || description || actions) && (
-        <div className="flex animate-slide-in items-center justify-between">
+        <div className="flex animate-slide-in flex-wrap items-center justify-between gap-3">
           <div className="space-y-1">
             {title && (
               <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
@@ -24,7 +24,7 @@ const PageContainer = React.forwardRef<HTMLDivElement, PageContainerProps>(
               <p className="text-sm text-muted-foreground">{description}</p>
             )}
           </div>
-          {actions && <div className="flex items-center space-x-2">{actions}</div>}
+          {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
         </div>
       )}
       {children}

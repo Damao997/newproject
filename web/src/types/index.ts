@@ -183,21 +183,53 @@ export interface ReclassifyLog {
   createdAt: string
 }
 
+/** 核心 KPI 卡（收入/毛利/净利润/回款）：金额万元，达成率 0-100，null=无预算（显示 "–"） */
 export interface KpiData {
   title: string
-  value: number
-  unit: string
-  change: number
-  trend: number[]
   icon: string
+  /** 本月合计金额（万元） */
+  monthActual: number
+  /** 月度预算达成率（%，本月实际/月均预算） */
+  monthRate: number | null
+  /** 累计实际金额（YTD，万元） */
+  ytdActual: number
+  /** 同比变化率（小数，0.1=+10%） */
+  yoy: number
+  /** 累计预算达成率（%，YTD 实际/年预算） */
+  ytdRate: number | null
+  /** 财年内各月本月合计序列（迷你趋势图） */
+  trend: number[]
 }
 
+/** 财年趋势行：三个可选指标的 本月合计/上年同期/月度预算 + 回款；null=该月无数据 */
 export interface TrendData {
   period: string
-  revenue: number
-  cost: number
-  profit: number
-  budget?: number
+  revenueActual: number | null
+  revenueSame: number | null
+  revenueBudget: number | null
+  profitActual: number | null
+  profitSame: number | null
+  profitBudget: number | null
+  netProfitActual: number | null
+  netProfitSame: number | null
+  netProfitBudget: number | null
+  collectionActual: number | null
+}
+
+/** 应收账款主体分布行（横向柱状图） */
+export interface ReceivableRow {
+  code: string
+  name: string
+  balance: number
+}
+
+/** 首页看板预警（后端由 alert 表派生的展示结构） */
+export interface DashboardAlert {
+  id: string
+  severity: 'info' | 'warning' | 'error'
+  title: string
+  message: string
+  createdAt: string
 }
 
 export interface Alert {

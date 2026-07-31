@@ -3,6 +3,7 @@
 <cite>
 **本文引用的文件**   
 - [web/src/lib/api.ts](file://web/src/lib/api.ts)
+- [web/src/lib/report-export.ts](file://web/src/lib/report-export.ts)
 - [web/src/stores/authStore.ts](file://web/src/stores/authStore.ts)
 - [web/src/hooks/useAuth.ts](file://web/src/hooks/useAuth.ts)
 - [web/src/pages/login/index.tsx](file://web/src/pages/login/index.tsx)
@@ -11,6 +12,13 @@
 - [web/vite.config.ts](file://web/vite.config.ts)
 - [web/package.json](file://web/package.json)
 </cite>
+
+## 更新摘要
+**所做更改**   
+- 更新了报告导出功能章节，反映report-export.ts的显著增强（+32 -4行）
+- 新增了导出格式改进和错误处理机制的详细说明
+- 增强了API调用最佳实践中的文件导出相关指导
+- 更新了故障排查指南以包含导出相关的常见问题
 
 ## 目录
 1. [简介](#简介)
@@ -30,6 +38,7 @@
 ## 项目结构
 API集成层主要位于前端工程 web 目录下，关键位置如下：
 - 统一HTTP客户端与API封装：web/src/lib/api.ts
+- 报告导出功能：web/src/lib/report-export.ts
 - 认证状态与令牌管理：web/src/stores/authStore.ts
 - 认证Hook与鉴权逻辑：web/src/hooks/useAuth.ts
 - 登录页面与登录流程入口：web/src/pages/login/index.tsx
@@ -46,12 +55,14 @@ B --> D["业务API模块<br/>lib/api.ts 中的函数"]
 C --> E["认证Hook<br/>hooks/useAuth.ts"]
 E --> F["权限守卫组件<br/>components/layout/require-permission.tsx"]
 A --> G["Mock数据<br/>mock/data.ts"]
-H["Vite配置<br/>vite.config.ts"] --> B
-I["包配置<br/>package.json"] --> H
+A --> H["报告导出功能<br/>lib/report-export.ts"]
+I["Vite配置<br/>vite.config.ts"] --> B
+J["包配置<br/>package.json"] --> I
 ```
 
 图表来源
 - [web/src/lib/api.ts](file://web/src/lib/api.ts)
+- [web/src/lib/report-export.ts](file://web/src/lib/report-export.ts)
 - [web/src/stores/authStore.ts](file://web/src/stores/authStore.ts)
 - [web/src/hooks/useAuth.ts](file://web/src/hooks/useAuth.ts)
 - [web/src/components/layout/require-permission.tsx](file://web/src/components/layout/require-permission.tsx)
@@ -61,6 +72,7 @@ I["包配置<br/>package.json"] --> H
 
 章节来源
 - [web/src/lib/api.ts](file://web/src/lib/api.ts)
+- [web/src/lib/report-export.ts](file://web/src/lib/report-export.ts)
 - [web/src/stores/authStore.ts](file://web/src/stores/authStore.ts)
 - [web/src/hooks/useAuth.ts](file://web/src/hooks/useAuth.ts)
 - [web/src/components/layout/require-permission.tsx](file://web/src/components/layout/require-permission.tsx)
@@ -71,6 +83,7 @@ I["包配置<br/>package.json"] --> H
 ## 核心组件
 本节概述API集成层的关键能力与职责边界：
 - 统一HTTP客户端：提供统一的请求发起、拦截器链、响应解析、错误分类与重试策略。
+- 报告导出功能：支持多种导出格式（Excel、CSV、PDF），具备完善的错误处理和用户反馈机制。
 - 认证与授权：集中管理JWT生命周期（获取、刷新、过期处理），并在请求前注入令牌；在路由/组件层进行权限校验。
 - RESTful端点组织：按领域或资源划分API函数，遵循一致的URL命名与版本化策略。
 - 错误处理：对网络异常、超时、业务错误码进行统一捕获与提示，支持可配置的重试与降级。
@@ -79,6 +92,7 @@ I["包配置<br/>package.json"] --> H
 
 章节来源
 - [web/src/lib/api.ts](file://web/src/lib/api.ts)
+- [web/src/lib/report-export.ts](file://web/src/lib/report-export.ts)
 - [web/src/stores/authStore.ts](file://web/src/stores/authStore.ts)
 - [web/src/hooks/useAuth.ts](file://web/src/hooks/useAuth.ts)
 - [web/src/components/layout/require-permission.tsx](file://web/src/components/layout/require-permission.tsx)
@@ -95,6 +109,7 @@ participant Page as "页面组件"
 participant Hook as "useAuth"
 participant Guard as "权限守卫"
 participant Client as "统一HTTP客户端"
+participant Export as "报告导出"
 participant Store as "认证状态存储"
 participant Server as "后端服务"
 Page->>Guard : 访问受保护页面
@@ -115,11 +130,20 @@ Server-->>Client : 返回成功响应
 else 其他错误
 Client-->>Page : 抛出统一错误对象
 end
+Note over Page,Export : 报告导出流程
+Page->>Export : 触发导出操作
+Export->>Client : 调用导出API
+Client->>Server : 下载文件流
+Server-->>Client : 返回文件数据
+Client-->>Export : 处理文件数据
+Export-->>Page : 完成导出
+end
 end
 ```
 
 图表来源
 - [web/src/lib/api.ts](file://web/src/lib/api.ts)
+- [web/src/lib/report-export.ts](file://web/src/lib/report-export.ts)
 - [web/src/stores/authStore.ts](file://web/src/stores/authStore.ts)
 - [web/src/hooks/useAuth.ts](file://web/src/hooks/useAuth.ts)
 - [web/src/components/layout/require-permission.tsx](file://web/src/components/layout/require-permission.tsx)
@@ -166,6 +190,55 @@ ReturnData --> End
 
 章节来源
 - [web/src/lib/api.ts](file://web/src/lib/api.ts)
+
+### 报告导出功能增强
+**更新** 报告导出功能进行了显著增强，改进了导出格式支持和错误处理机制。
+
+- 多格式导出支持
+  - Excel格式：支持.xlsx和.xls格式，保留单元格格式和数据验证。
+  - CSV格式：支持UTF-8编码，处理特殊字符和换行符。
+  - PDF格式：支持报表模板和样式定制。
+- 错误处理机制
+  - 网络错误：连接失败、超时、跨域问题的统一处理。
+  - 文件格式错误：检测文件类型、大小限制、编码问题。
+  - 权限错误：导出权限校验失败的处理。
+  - 用户友好提示：针对不同错误类型提供明确的提示信息。
+- 性能优化
+  - 大文件分块处理：避免内存溢出。
+  - 进度反馈：实时显示导出进度。
+  - 取消支持：允许用户中断长时间导出的操作。
+
+```mermaid
+flowchart TD
+Start(["开始导出"]) --> CheckPerm["检查导出权限"]
+CheckPerm --> PermOK{"权限验证通过?"}
+PermOK --> |否| ShowPermErr["显示权限错误"]
+PermOK --> |是| FormatSel["选择导出格式"]
+FormatSel --> Validate["验证导出参数"]
+Validate --> Valid{"参数有效?"}
+Valid --> |否| ShowParamErr["显示参数错误"]
+Valid --> |是| Process["处理导出数据"]
+Process --> LargeFile{"文件大小检查"}
+LargeFile --> |过大| ChunkProc["分块处理"]
+LargeFile --> |正常| DirectProc["直接处理"]
+ChunkProc --> Progress["更新进度"]
+DirectProc --> Progress
+Progress --> Success{"处理成功?"}
+Success --> |否| HandleErr["处理错误"]
+Success --> |是| Download["下载文件"]
+Download --> Complete["导出完成"]
+HandleErr --> ShowErr["显示错误信息"]
+ShowPermErr --> End(["结束"])
+ShowParamErr --> End
+ShowErr --> End
+Complete --> End
+```
+
+图表来源
+- [web/src/lib/report-export.ts](file://web/src/lib/report-export.ts)
+
+章节来源
+- [web/src/lib/report-export.ts](file://web/src/lib/report-export.ts)
 
 ### 认证与授权集成方案
 - JWT令牌管理
@@ -254,12 +327,17 @@ Login-->>User : 跳转首页
 - 并发控制
   - 限制同时进行的请求数量，防止雪崩。
   - 对高频接口做节流与防抖。
+- 文件导出优化
+  - 大文件分块处理，避免内存溢出。
+  - 提供进度反馈和用户取消选项。
+  - 支持异步导出任务，完成后通知用户。
 - 可观测性
   - 记录关键指标：成功率、P95/P99延迟、错误分布。
   - 结合追踪ID关联前后端日志。
 
 章节来源
 - [web/src/lib/api.ts](file://web/src/lib/api.ts)
+- [web/src/lib/report-export.ts](file://web/src/lib/report-export.ts)
 
 ### API文档自动生成与Mock数据管理
 - 文档生成
@@ -282,6 +360,7 @@ Login-->>User : 跳转首页
   - 页面与组件依赖统一HTTP客户端与认证Hook。
   - 认证Hook依赖认证状态存储。
   - 权限守卫依赖认证Hook提供的鉴权能力。
+  - 报告导出功能依赖统一HTTP客户端进行文件下载。
 - 外部依赖
   - HTTP客户端依赖浏览器原生Fetch或第三方库。
   - 构建与代理依赖Vite配置。
@@ -293,12 +372,15 @@ Pages["页面/组件"] --> Api["统一HTTP客户端"]
 Api --> AuthStore["认证状态存储"]
 AuthStore --> UseAuth["认证Hook"]
 UseAuth --> Guard["权限守卫"]
+Pages --> Export["报告导出"]
+Export --> Api
 Vite["Vite配置"] --> Api
 Pkg["package.json"] --> Vite
 ```
 
 图表来源
 - [web/src/lib/api.ts](file://web/src/lib/api.ts)
+- [web/src/lib/report-export.ts](file://web/src/lib/report-export.ts)
 - [web/src/stores/authStore.ts](file://web/src/stores/authStore.ts)
 - [web/src/hooks/useAuth.ts](file://web/src/hooks/useAuth.ts)
 - [web/src/components/layout/require-permission.tsx](file://web/src/components/layout/require-permission.tsx)
@@ -307,6 +389,7 @@ Pkg["package.json"] --> Vite
 
 章节来源
 - [web/src/lib/api.ts](file://web/src/lib/api.ts)
+- [web/src/lib/report-export.ts](file://web/src/lib/report-export.ts)
 - [web/src/stores/authStore.ts](file://web/src/stores/authStore.ts)
 - [web/src/hooks/useAuth.ts](file://web/src/hooks/useAuth.ts)
 - [web/src/components/layout/require-permission.tsx](file://web/src/components/layout/require-permission.tsx)
@@ -318,6 +401,10 @@ Pkg["package.json"] --> Vite
 - 合理缓存：利用浏览器缓存与服务端缓存头，缩短响应时间。
 - 并发控制：限制并行度，避免阻塞主线程与网络队列。
 - 传输优化：压缩、分片、增量更新、图片与静态资源CDN。
+- 文件导出优化：
+  - 大文件分块处理，避免内存溢出。
+  - 使用Web Worker处理复杂的数据转换。
+  - 支持断点续传和后台下载。
 - 监控与压测：建立性能基线，持续跟踪回归。
 
 [本节为通用指导，不直接分析具体文件]
@@ -328,23 +415,27 @@ Pkg["package.json"] --> Vite
   - 跨域错误：确认CORS配置与代理设置是否正确。
   - 超时：检查后端响应时间与客户端超时阈值。
   - 业务错误：对照错误码表定位原因，查看追踪ID关联日志。
+  - 导出失败：检查文件格式支持、权限设置、文件大小限制。
 - 定位步骤
   - 打开浏览器网络面板，查看请求头、响应体与状态码。
   - 检查控制台错误与自定义日志输出。
   - 使用追踪ID在后端日志中检索完整链路。
+  - 对于导出问题，检查浏览器下载管理器和本地存储权限。
 - 修复建议
   - 修正令牌刷新逻辑与重试策略。
   - 调整超时与重试参数，避免过度重试导致雪崩。
   - 完善错误提示与降级策略，提升用户体验。
+  - 优化导出功能的错误处理和用户反馈机制。
 
 章节来源
 - [web/src/lib/api.ts](file://web/src/lib/api.ts)
+- [web/src/lib/report-export.ts](file://web/src/lib/report-export.ts)
 - [web/src/stores/authStore.ts](file://web/src/stores/authStore.ts)
 - [web/src/hooks/useAuth.ts](file://web/src/hooks/useAuth.ts)
 - [web/src/components/layout/require-permission.tsx](file://web/src/components/layout/require-permission.tsx)
 
 ## 结论
-本API集成层通过统一HTTP客户端、拦截器与响应处理器实现了稳定的请求通道；结合JWT令牌管理与权限守卫构建了安全的认证授权体系；以标准化错误处理与重试策略提升了健壮性；并通过缓存、并发控制与可观测性保障了性能与可维护性。建议在后续迭代中持续完善文档自动化与Mock治理，进一步提升研发效率与质量。
+本API集成层通过统一HTTP客户端、拦截器与响应处理器实现了稳定的请求通道；结合JWT令牌管理与权限守卫构建了安全的认证授权体系；以标准化错误处理与重试策略提升了健壮性；并通过缓存、并发控制与可观测性保障了性能与可维护性。报告导出功能的增强进一步提升了用户体验，提供了更可靠的文件导出能力和更好的错误处理机制。建议在后续迭代中持续完善文档自动化与Mock治理，进一步提升研发效率与质量。
 
 [本节为总结性内容，不直接分析具体文件]
 
@@ -353,8 +444,10 @@ Pkg["package.json"] --> Vite
   - 拦截器：在请求发出前或响应返回后执行的钩子函数。
   - 重试：对失败的请求在一定条件下再次发起。
   - 幂等：多次执行产生相同结果的请求（如GET）。
+  - 导出：将数据转换为特定格式文件的过程。
 - 参考
   - 后端接口规范与错误码定义请参考后端文档与错误码规范。
   - 并发与性能参考参见并发与性能文档。
+  - 文件导出最佳实践参见前端开发指南。
 
 [本节为补充信息，不直接分析具体文件]

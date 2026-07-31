@@ -30,10 +30,10 @@ export function KpiCardSkeleton() {
   )
 }
 
-/** KPI 卡片网格骨架 */
-export function KpiGridSkeleton({ count = 5 }: { count?: number }) {
+/** KPI 卡片网格骨架（列断点与看板 KPI 网格保持一致，避免加载态/就绪态布局跳变） */
+export function KpiGridSkeleton({ count = 4 }: { count?: number }) {
   return (
-    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
+    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
       {Array.from({ length: count }).map((_, i) => (
         <KpiCardSkeleton key={i} />
       ))}

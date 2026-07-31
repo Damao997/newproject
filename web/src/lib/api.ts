@@ -1,6 +1,6 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios'
 import { useAuthStore } from '@/stores/authStore'
-import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse, FilterParams, KpiData, TrendData, Alert, ImportBatch, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData } from '@/types'
+import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse, FilterParams, KpiData, TrendData, DashboardAlert, ReceivableRow, ImportBatch, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData } from '@/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
@@ -144,10 +144,10 @@ class ApiClient {
   }
 
   // Dashboard API
-  async getDashboardOverview(params?: { period?: string }): Promise<{
+  async getDashboardOverview(params?: { period?: string; companyCode?: string }): Promise<{
     kpiData: KpiData[]
     trendData: TrendData[]
-    alerts: Alert[]
+    alerts: DashboardAlert[]
     lastUpdatedAt: string
     period: string
     availablePeriods: string[]
@@ -155,6 +155,18 @@ class ApiClient {
     return this.request({
       method: 'GET',
       url: '/dashboard/overview',
+      params,
+    })
+  }
+
+  /** 应收账款按主体分布（单体/汇总口径） */
+  async getDashboardReceivables(params: { period: string; mode: 'single' | 'summary' }): Promise<{
+    period: string | null
+    rows: ReceivableRow[]
+  }> {
+    return this.request({
+      method: 'GET',
+      url: '/dashboard/receivables',
       params,
     })
   }
@@ -184,7 +196,7 @@ class ApiClient {
     })
   }
 
-  async getDashboardAlerts(): Promise<Alert[]> {
+  async getDashboardAlerts(): Promise<DashboardAlert[]> {
     return this.request({
       method: 'GET',
       url: '/dashboard/alerts',
@@ -825,6 +837,44 @@ class ApiClient {
   // 往来数据涉及的财年列表（倒序）
   async getTransactionFiscalYears() {
     return this.request({ method: 'GET', url: '/transactions/fiscal-years' })
+  }
+
+  // ==================== 存货管理 ====================
+
+  // 存货总览：总额四维值 + 品类占比/排名 + 存货周转天数
+  async getInventoryOverview(params: { period: string; companyCodes?: string[] }) {
+    return this.request({
+      method: 'GET',
+      url: '/inventory/overview',
+      params: {
+        period: params.period,
+        companyCodes: params.companyCodes?.length ? params.companyCodes.join(',') : undefined,
+      },
+    })
+  }
+
+  // 存货明细：公司 × 品类（本期/年初/同期）
+  async getInventoryDetails(params: { period: string; companyCodes?: string[] }) {
+    return this.request({
+      method: 'GET',
+      url: '/inventory/details',
+      params: {
+        period: params.period,
+        companyCodes: params.companyCodes?.length ? params.companyCodes.join(',') : undefined,
+      },
+    })
+  }
+
+  // 存货趋势：财年内各月总额与品类值
+  async getInventoryTrend(params: { fiscalYear: string; companyCodes?: string[] }) {
+    return this.request({
+      method: 'GET',
+      url: '/inventory/trend',
+      params: {
+        fiscalYear: params.fiscalYear,
+        companyCodes: params.companyCodes?.length ? params.companyCodes.join(',') : undefined,
+      },
+    })
   }
 
   // 往来导入（六大往来账龄汇总表，多文件）

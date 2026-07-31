@@ -79,11 +79,26 @@ describe('服务层集成（真实 DB）', () => {
     expect(singles.every((c) => c.entityType === 'single')).toBe(true)
   })
 
-  it('看板概览：5 个 KPI 结构', async () => {
+  it('看板概览：4 张核心 KPI（收入/毛利/净利润/回款）+ 财年趋势结构', async () => {
     if (!dbReady) return
     const ov = await DashboardService.getOverview(ADMIN_SCOPE)
-    expect(ov.kpiData.length).toBe(5)
-    expect(Array.isArray(ov.trendData)).toBe(true)
+    expect(ov.kpiData.map((k) => k.title)).toEqual(['收入', '毛利', '净利润', '回款'])
+    for (const kpi of ov.kpiData) {
+      expect(typeof kpi.monthActual).toBe('number')
+      expect(typeof kpi.ytdActual).toBe('number')
+      expect(typeof kpi.yoy).toBe('number')
+      // 达成率允许 null（无预算），非 null 时为数值
+      if (kpi.monthRate !== null) expect(typeof kpi.monthRate).toBe('number')
+      if (kpi.ytdRate !== null) expect(typeof kpi.ytdRate).toBe('number')
+      expect(Array.isArray(kpi.trend)).toBe(true)
+    }
+    // 趋势为当期所属财年的 12 个月，含三指标 actual/same/budget 序列
+    expect(ov.trendData.length).toBe(12)
+    const first = ov.trendData[0]
+    expect(first).toHaveProperty('revenueActual')
+    expect(first).toHaveProperty('profitSame')
+    expect(first).toHaveProperty('netProfitBudget')
+    expect(first).toHaveProperty('collectionActual')
   })
 
   it('交叉表：指定单体公司列 + 全层级科目行（树前序，含 level/parentCode）', async () => {

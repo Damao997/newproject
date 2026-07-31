@@ -15,6 +15,7 @@ import adminRouter from './routes/admin'
 import aiRouter from './routes/ai'
 import reportsRouter from './routes/reports'
 import transactionsRouter from './routes/transactions'
+import inventoryRouter from './routes/inventory'
 import toolsRouter from './routes/tools'
 
 /**
@@ -72,6 +73,7 @@ export function createApp(): Application {
   app.use('/api/v1/ai', aiRouter)
   app.use('/api/v1/reports', reportsRouter)
   app.use('/api/v1/transactions', transactionsRouter)
+  app.use('/api/v1/inventory', inventoryRouter)
   app.use('/api/v1/tools', toolsRouter)
 
   // 兜底 404 与全局错误处理

@@ -21,6 +21,16 @@ router.use(authenticate, attachScope())
 router.get('/overview', requirePermission('dashboard:view', 'view'), asyncHandler(async (req, res) => {
   const data = await DashboardService.getOverview(scopeOf(req.authUser as AuthUserContext), {
     period: req.query.period as string | undefined,
+    companyCode: req.query.companyCode as string | undefined,
+  })
+  sendOk(res, data)
+}))
+
+router.get('/receivables', requirePermission('dashboard:view', 'view'), asyncHandler(async (req, res) => {
+  const mode = req.query.mode === 'summary' ? 'summary' : 'single'
+  const data = await DashboardService.getReceivables(scopeOf(req.authUser as AuthUserContext), {
+    period: req.query.period as string | undefined,
+    mode,
   })
   sendOk(res, data)
 }))
