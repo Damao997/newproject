@@ -1,5 +1,5 @@
-import ReactECharts from 'echarts-for-react'
 import type { EChartsOption, SeriesOption } from 'echarts'
+import ReactECharts, { echarts } from './echarts-core'
 import { formatMoneyWan } from '@/lib/utils'
 import type { TrendData } from '@/types'
 
@@ -175,6 +175,7 @@ export function TrendChart({ data, showBudget = true }: TrendChartProps) {
 
   return (
     <ReactECharts
+      echarts={echarts}
       option={option}
       style={{ height: 320, width: '100%' }}
       opts={{ renderer: 'svg' }}

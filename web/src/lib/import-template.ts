@@ -1,6 +1,3 @@
-import ExcelJS from 'exceljs'
-import { saveAs } from 'file-saver'
-
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
 type TemplateType = 'operating' | 'static' | 'budget'
@@ -13,8 +10,15 @@ type TemplateType = 'operating' | 'static' | 'budget'
  *    列按 (公司 × 月份) 排列，最新月为本月实际、上一月为同期实际。
  *  - static   ：行1=公司名，行2=快照月份，行3+=科目值。
  *  - budget   ：行1=公司名，行2+=科目年度预算值（无月份行）。
+ *
+ * ExcelJS 与 file-saver 动态 import：下载模板是低频操作，不进首屏 chunk。
  */
 export async function downloadImportTemplate(type: TemplateType): Promise<void> {
+  const [{ default: ExcelJS }, { saveAs }] = await Promise.all([
+    import('exceljs'),
+    import('file-saver'),
+  ])
+
   const workbook = new ExcelJS.Workbook()
   const sheet = workbook.addWorksheet('导入模板')
 

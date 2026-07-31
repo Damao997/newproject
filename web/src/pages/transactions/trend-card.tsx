@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
-import ReactECharts from 'echarts-for-react'
 import type { EChartsOption } from 'echarts'
-import { saveAs } from 'file-saver'
+import ReactECharts, { echarts } from '@/components/charts/echarts-core'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
@@ -135,7 +134,8 @@ export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] 
   }, [data, transactionType, getDisplayName])
 
   // CSV 导出：公司,往来类型,期间,期末余额（BOM 防中文乱码）
-  const handleExport = () => {
+  // 注意：数值保持 toFixed(2) 原始格式 —— 加千分位会引入逗号破坏 CSV 分隔
+  const handleExport = async () => {
     if (!data) return
     const lines = ['公司,往来类型,期间,期末余额']
     for (const s of data.series) {
@@ -146,6 +146,8 @@ export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] 
       })
     }
     const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' })
+    // 按需加载 file-saver，避免进入首屏 chunk
+    const { saveAs } = await import('file-saver')
     saveAs(blob, `往来变动趋势_${transactionType}_${data.periods[0] ?? ''}_${data.periods[data.periods.length - 1] ?? ''}.csv`)
   }
 
@@ -203,6 +205,7 @@ export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] 
           <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">暂无数据</div>
         ) : (
           <ReactECharts
+            echarts={echarts}
             option={option}
             notMerge
             style={{ height: 320, width: '100%' }}

@@ -1,6 +1,3 @@
-import ExcelJS from 'exceljs'
-import { saveAs } from 'file-saver'
-
 export interface ExportColumn {
   /** 表头文本 */
   header: string
@@ -26,6 +23,9 @@ const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.s
  *
  * 使用 ExcelJS 生成工作簿并通过 file-saver 触发浏览器下载，
  * 供各页面「导出 Excel」按钮统一调用（导出内容为当前筛选结果）。
+ *
+ * ExcelJS（~900KB）与 file-saver 在函数内动态 import：
+ * 导出是低频交互，不应让所有引用本模块的页面在首屏就付出该体积代价。
  */
 export async function exportToExcel({
   filename,
@@ -33,6 +33,11 @@ export async function exportToExcel({
   columns,
   rows,
 }: ExportOptions): Promise<void> {
+  const [{ default: ExcelJS }, { saveAs }] = await Promise.all([
+    import('exceljs'),
+    import('file-saver'),
+  ])
+
   const workbook = new ExcelJS.Workbook()
   const sheet = workbook.addWorksheet(sheetName)
 

@@ -8,6 +8,9 @@ import { dirname, join } from 'path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(__dirname, '..', 'public');
+// 源图位于 web/logo.png（非 public/logo.png）。
+// 该文件是图标生成的唯一输入，虽未被前端代码 import，但**不可删除** ——
+// 删除后 `node scripts/generate-icons.mjs` 会直接失败，无法再生成 favicon 套图。
 const logoPath = join(__dirname, '..', 'logo.png');
 
 async function generateIcons() {

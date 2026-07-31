@@ -1,5 +1,5 @@
-import ReactECharts from 'echarts-for-react'
 import type { EChartsOption } from 'echarts'
+import ReactECharts, { echarts } from './echarts-core'
 
 interface KpiSparklineProps {
   data: number[]
@@ -56,6 +56,7 @@ export function KpiSparkline({ data, color = '#F97316', height = 48 }: KpiSparkl
 
   return (
     <ReactECharts
+      echarts={echarts}
       option={option}
       style={{ height, width: '100%' }}
       opts={{ renderer: 'svg' }}

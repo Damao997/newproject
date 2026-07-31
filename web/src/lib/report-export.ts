@@ -1,11 +1,13 @@
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from 'docx'
-import { jsPDF } from 'jspdf'
-import { saveAs } from 'file-saver'
+import type { Paragraph as DocxParagraph } from 'docx'
 import type { ReportExportData } from '@/lib/api'
 
 /**
  * 汇总分析报告导出：依据后端返回的结构化章节数据，前端生成 Word(docx) / PDF。
  * 正文使用后端已净化的纯文本（plainText），避免富文本注入风险。
+ *
+ * docx（~400KB）/ jspdf（含 html2canvas ~200KB）/ file-saver 均在函数内
+ * 动态 import —— 导出为低频操作，不应计入报告页首屏体积。
+ * 类型以 `import type` 引入（编译期擦除，无运行时开销）。
  */
 
 function safeFilename(title: string): string {
@@ -14,7 +16,12 @@ function safeFilename(title: string): string {
 
 /** 导出 Word（.docx） */
 export async function exportReportToDocx(data: ReportExportData): Promise<void> {
-  const children: Paragraph[] = []
+  const [
+    { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType },
+    { saveAs },
+  ] = await Promise.all([import('docx'), import('file-saver')])
+
+  const children: DocxParagraph[] = []
   children.push(
     new Paragraph({ text: data.title, heading: HeadingLevel.TITLE, alignment: AlignmentType.CENTER }),
     new Paragraph({
@@ -47,7 +54,8 @@ export async function exportReportToDocx(data: ReportExportData): Promise<void> 
 }
 
 /** 导出 PDF（jspdf 内置字体不含中文，正文以英文/数字为主时可读；中文环境建议优先 Word） */
-export function exportReportToPdf(data: ReportExportData): void {
+export async function exportReportToPdf(data: ReportExportData): Promise<void> {
+  const { jsPDF } = await import('jspdf')
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
   const margin = 48
   const pageWidth = doc.internal.pageSize.getWidth()

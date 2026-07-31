@@ -226,7 +226,7 @@ export function ReportEditor({ reportId, onBack }: { reportId: string; onBack: (
     try {
       const data = await api.exportReport(reportId, format)
       if (format === 'docx') await exportReportToDocx(data)
-      else exportReportToPdf(data)
+      else await exportReportToPdf(data)
     } catch (e) {
       flash((e as Error).message || '导出失败')
     }

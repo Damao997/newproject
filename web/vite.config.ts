@@ -13,11 +13,15 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
+        // 仅对"必然进首屏"的框架层做手动分组，便于长期缓存。
+        // 刻意不再手动分组 echarts / exceljs / jspdf / docx：
+        //   前者已改为 echarts/core 按需注册（components/charts/echarts-core.ts），
+        //   后者已改为导出时动态 import（lib/export.ts、report-export.ts、import-template.ts）。
+        //   若在此处显式分组，Rollup 会把它们重新拉成静态 chunk，
+        //   动态 import 的按需加载效果会被完全抵消。
         manualChunks: {
           'vendor-react': ['react', 'react-dom', 'react-router-dom'],
           'vendor-query': ['@tanstack/react-query'],
-          'vendor-charts': ['echarts', 'echarts-for-react'],
-          'vendor-excel': ['exceljs', 'xlsx'],
         },
       },
     },
