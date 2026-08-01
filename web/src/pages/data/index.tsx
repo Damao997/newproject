@@ -29,6 +29,7 @@ import {
 import { SubjectTreePanel } from '@/components/subject-tree/subject-tree-panel'
 import { CompanyPanel } from '@/components/dimension/company-panel'
 import { AggregationMapPanel } from '@/components/dimension/aggregation-map-panel'
+import { ProductCategoryPanel } from '@/components/dimension/product-category-panel'
 import { ReclassifyCompanyDialog } from '@/components/reclassify/reclassify-company-dialog'
 import { ReclassifySubjectDialog } from '@/components/reclassify/reclassify-subject-dialog'
 import { ReclassifyLogsPanel } from '@/components/reclassify/reclassify-logs-panel'
@@ -312,6 +313,7 @@ export default function DataPage() {
                   <TabsTrigger value="static">静态科目</TabsTrigger>
                   <TabsTrigger value="company">公司</TabsTrigger>
                   <TabsTrigger value="summary">汇总主体</TabsTrigger>
+                  <TabsTrigger value="category">品类配置</TabsTrigger>
                 </TabsList>
                 <TabsContent value="operating">
                   <SubjectTreePanel
@@ -346,6 +348,13 @@ export default function DataPage() {
                 </TabsContent>
                 <TabsContent value="summary">
                   <AggregationMapPanel canUpdate={can('data:company', 'update')} />
+                </TabsContent>
+                <TabsContent value="category">
+                  <ProductCategoryPanel
+                    canCreate={can('data:subject', 'create')}
+                    canUpdate={can('data:subject', 'update')}
+                    canDelete={can('data:subject', 'delete')}
+                  />
                 </TabsContent>
               </Tabs>
             </CardContent>

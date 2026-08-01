@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma'
-import { AggregationService, resolveCompanyCodes } from './AggregationService'
+import { AggregationService, flattenValueTree, resolveCompanyCodes } from './AggregationService'
 import { latestOperatingPeriod } from './IndicatorsService'
 import { OPERATING_DIMS } from '../lib/metric-values'
 import { fiscalYearStartPeriod, fiscalYearLabel, periodsInRange, formatPeriod, parsePeriod } from '../lib/period'
@@ -39,6 +39,24 @@ interface Trend {
   netProfitSame: number | null
   netProfitBudget: number | null
   collectionActual: number | null
+}
+
+/** 品类预算达成的单指标组（收入/毛利各一组）：预算为年度总额，月均口径由前端按 预算/12 折算 */
+interface ProductBudgetMetric {
+  budget: number
+  monthActual: number
+  monthRate: number | null
+  monthYoy: number
+  ytdActual: number
+  ytdRate: number | null
+  ytdYoy: number
+}
+
+/** 品类预算达成行：品类名 + 收入/毛利镜像科目各一组口径值 */
+interface ProductBudgetRow {
+  category: string
+  income: ProductBudgetMetric
+  profit: ProductBudgetMetric
 }
 
 /** 看板预警（由 alert 表原始行派生的展示结构） */
@@ -218,6 +236,103 @@ async function budgetRowsOf(companyCodes: string[], fiscalYear: string): Promise
   return grouped.map((g) => ({ accountCode: g.accountCode, period: g.period, value: Number(g._sum.value ?? 0) }))
 }
 
+/** 单指标组口径取值：本月/累计预算达成率（月均=年度/12）+ 单月/累计同比；节点缺失时全 0/null */
+export function productMetric(node?: ValueNode): ProductBudgetMetric {
+  return {
+    budget: round2(budget(node)),
+    monthActual: round2(actual(node)),
+    monthRate: rateOf(actual(node), budget(node), 12),
+    monthYoy: changeRate(actual(node), samePeriod(node)),
+    ytdActual: round2(ytd(node)),
+    ytdRate: rateOf(ytd(node), budget(node)),
+    ytdYoy: changeRate(ytd(node), node?.values[OPERATING_DIMS.SAME_PERIOD_YTD] ?? 0),
+  }
+}
+
+/** 品类配置的匹配载体（由 product_category 表派生） */
+export interface ProductCategoryMatch {
+  code: string
+  name: string
+  subjectKeyword: string
+}
+
+/** 品类 × 科目树匹配结果：rows 供看板展示；covered/uncovered 供科目树变化检测 */
+export interface ProductCategoryMatchResult {
+  rows: ProductBudgetRow[]
+  covered: { name: string; subjects: string[] }[]
+  uncovered: string[]
+}
+
+/** 由 values 构造仅参与口径取值的节点（productMetric 只读 values） */
+function nodeOf(values: Record<string, number>): ValueNode {
+  return {
+    code: '', name: '', level: 0, category: '', dataType: 'data', direction: 'debit',
+    valueType: 'amount', isLeaf: true, values, children: [],
+  }
+}
+
+/** 毛利镜像科目名：收入名末尾/括号前（如"（不含净水及服务）"）的"收入"→"毛利" */
+export function profitMirrorName(name: string): string {
+  return name.replace(/收入(?=$|（)/, '毛利')
+}
+
+/**
+ * 品类 × 科目树匹配：按关键词命中收入类别节点（可多个，各维度求和；汇总节点值=子级求和），
+ * 毛利按镜像名（profitMirrorName，"XX收入"→"XX毛利"）在毛利类别中取值求和。
+ * uncovered = 收入类别 level>=1 且自身与祖先均未被任何品类匹配的节点
+ * （已配置品类节点的后代叶子视为已覆盖，仅提示真正未配置的业务线，如新增业务线）。
+ */
+export function matchProductCategories(
+  categories: ProductCategoryMatch[],
+  incomeRoots: ValueNode[],
+  profitByName: Map<string, ValueNode>,
+): ProductCategoryMatchResult {
+  const matchedNames = new Set<string>()
+  const rows: ProductBudgetRow[] = []
+  const covered: { name: string; subjects: string[] }[] = []
+  const allNodes: ValueNode[] = []
+  const walkAll = (nodes: ValueNode[]): void => {
+    for (const n of nodes) {
+      allNodes.push(n)
+      walkAll(n.children)
+    }
+  }
+  walkAll(incomeRoots)
+  const sumValues = (nodes: ValueNode[]): Record<string, number> => {
+    const acc: Record<string, number> = {}
+    for (const n of nodes) {
+      for (const [dim, v] of Object.entries(n.values)) acc[dim] = round2((acc[dim] ?? 0) + (v ?? 0))
+    }
+    return acc
+  }
+  for (const cat of categories) {
+    const hits = allNodes.filter((n) => n.name.includes(cat.subjectKeyword))
+    for (const h of hits) matchedNames.add(h.name)
+    const income = productMetric(hits.length > 0 ? nodeOf(sumValues(hits)) : undefined)
+    const profitHits = hits
+      .map((h) => profitByName.get(profitMirrorName(h.name)))
+      .filter((n): n is ValueNode => !!n)
+    const profit = productMetric(profitHits.length > 0 ? nodeOf(sumValues(profitHits)) : undefined)
+    const row: ProductBudgetRow = { category: cat.name, income, profit }
+    // 金额与预算全为 0 的品类不展示（无导入数据/无预算）
+    const hasData = row.income.monthActual !== 0 || row.income.ytdActual !== 0 || row.income.budget !== 0
+      || row.profit.monthActual !== 0 || row.profit.ytdActual !== 0 || row.profit.budget !== 0
+    if (hasData) rows.push(row)
+    covered.push({ name: cat.name, subjects: hits.map((h) => h.name) })
+  }
+  // 未覆盖传播：自身或任一祖先被品类关键词命中则视为已覆盖（叶子科目随业务线一并覆盖）
+  const uncovered: string[] = []
+  const walk = (nodes: ValueNode[], ancestorMatched: boolean): void => {
+    for (const n of nodes) {
+      const selfMatched = matchedNames.has(n.name)
+      if (n.level >= 1 && !selfMatched && !ancestorMatched) uncovered.push(n.name)
+      walk(n.children, ancestorMatched || selfMatched)
+    }
+  }
+  walk(incomeRoots, false)
+  return { rows, covered, uncovered }
+}
+
 /** 构建看板核心数据：4 张 KPI 卡 + 当期所属财年 12 个月的趋势行 */
 async function buildDashboardData(companyCodes: string[], period: string, available: string[]): Promise<{ kpiData: Kpi[]; trendData: Trend[] }> {
   const fyStart = fiscalYearStartPeriod(period)
@@ -313,6 +428,29 @@ export const DashboardService = {
     const period = periods[periods.length - 1] ?? (await latestOperatingPeriod())
     const { trendData } = await buildDashboardData(companyCodes, period, periods)
     return params.months && params.months > 0 ? trendData.slice(-params.months) : trendData
+  },
+
+  /**
+   * 品类预算达成表（单期间）：按品类配置（product_category，关键词匹配收入科目节点）聚合，
+   * 毛利列取名称镜像科目（"XX收入"→"XX毛利"，公式层已计算）；未配置的科目不展示。
+   * 月度/累计、月度预算/年度预算两对口径由前端按模式组合展示（后端一次返回全字段）。
+   */
+  async getProductBudget(scope: Scope, params: { period?: string; companyCode?: string } = {}): Promise<{ period: string; rows: ProductBudgetRow[] }> {
+    const [companyCodes, periods] = await Promise.all([resolveCompanyCodes(scope, params.companyCode), availablePeriods()])
+    const period = (params.period && periods.includes(params.period) ? params.period : periods[periods.length - 1]) ?? (await latestOperatingPeriod())
+    const [tree, categories] = await Promise.all([
+      AggregationService.buildOperatingTree(companyCodes, period),
+      prisma.productCategory.findMany({
+        where: { status: 'active' },
+        orderBy: { sortOrder: 'asc' },
+        select: { code: true, name: true, subjectKeyword: true },
+      }),
+    ])
+    const flat = flattenValueTree(tree)
+    const incomeRoots = tree.filter((n) => n.category === '收入')
+    const profitByName = new Map(flat.filter((n) => n.category === '毛利').map((n) => [n.name, n]))
+    const { rows } = matchProductCategories(categories, incomeRoots, profitByName)
+    return { period, rows }
   },
 
   /**

@@ -46,6 +46,59 @@ export function useDashboardReceivables(params: { period?: string; mode: 'single
   })
 }
 
+/** 品类预算达成表：单期间 + 主体口径（跟随看板筛选），period 未定时不发请求 */
+export function useProductBudget(params: { period?: string; companyCode?: string }) {
+  return useQuery({
+    queryKey: ['dashboard', 'product-budget', params.period ?? '', params.companyCode ?? ''] as const,
+    queryFn: () => api.getProductBudget({
+      ...(params.period ? { period: params.period } : {}),
+      ...(params.companyCode ? { companyCode: params.companyCode } : {}),
+    }),
+    enabled: !!params.period,
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+// ---------------- 品类配置（品类预算达成分析，数据维护） ----------------
+export function useProductCategories() {
+  return useQuery({
+    queryKey: ['data', 'product-categories'] as const,
+    queryFn: () => api.getProductCategories(),
+    staleTime: 30 * 1000,
+  })
+}
+
+export function useProductCategoryCheck() {
+  return useQuery({
+    queryKey: ['data', 'product-categories', 'check'] as const,
+    queryFn: () => api.checkProductCategories(),
+    staleTime: 30 * 1000,
+  })
+}
+
+export function useProductCategoryMutations() {
+  const queryClient = useQueryClient()
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['data', 'product-categories'] })
+  }
+  return {
+    create: useMutation({
+      mutationFn: (input: { code: string; name: string; subjectKeyword: string; sortOrder?: number; status?: string }) => api.createProductCategory(input),
+      onSuccess: invalidate,
+    }),
+    update: useMutation({
+      mutationFn: (input: { id: string; name?: string; subjectKeyword?: string; sortOrder?: number; status?: string }) =>
+        api.updateProductCategory(input.id, input),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => api.deleteProductCategory(id),
+      onSuccess: invalidate,
+    }),
+  }
+}
+
 // ---------------- Indicators ----------------
 export interface OperatingResult {
   items: OperatingRow[]

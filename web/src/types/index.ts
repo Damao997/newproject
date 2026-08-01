@@ -216,6 +216,56 @@ export interface TrendData {
   collectionActual: number | null
 }
 
+/** 品类预算达成的单指标组（收入/毛利各一组）：预算为年度总额（万元），月均口径由前端按 预算/12 折算 */
+export interface ProductBudgetMetric {
+  budget: number
+  monthActual: number
+  monthRate: number | null
+  monthYoy: number
+  ytdActual: number
+  ytdRate: number | null
+  ytdYoy: number
+}
+
+/** 品类预算达成行：品类名 + 收入/毛利镜像科目各一组口径值 */
+export interface ProductBudgetRow {
+  category: string
+  income: ProductBudgetMetric
+  profit: ProductBudgetMetric
+}
+
+/** 品类预算达成接口响应 */
+export interface ProductBudgetResponse {
+  period: string
+  rows: ProductBudgetRow[]
+}
+
+/** 品类配置（品类预算达成分析：品类 ↔ 收入科目名关键词） */
+export interface ProductCategory {
+  id: string
+  code: string
+  name: string
+  subjectKeyword: string
+  sortOrder: number
+  status: 'active' | 'inactive'
+  createdAt: string
+  updatedAt: string
+}
+
+/** 品类配置检测行：匹配到的收入科目与毛利镜像是否齐全 */
+export type ProductCategoryCheckItem = ProductCategory & {
+  matchedSubjects: string[]
+  profitOk: boolean
+}
+
+/** 科目树变化检测结果 */
+export interface ProductCategoryCheckResult {
+  categories: ProductCategoryCheckItem[]
+  uncoveredSubjects: string[]
+  brokenKeywords: string[]
+  missingProfitMirror: string[]
+}
+
 /** 应收账款主体分布行（横向柱状图） */
 export interface ReceivableRow {
   code: string

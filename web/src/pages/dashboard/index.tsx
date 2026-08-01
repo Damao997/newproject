@@ -11,6 +11,7 @@ import { KpiGridSkeleton, ChartSkeleton, ListSkeleton } from '@/components/ui/sk
 import { useCompanies, useDashboardOverview, useAvailablePeriods } from '@/hooks/api-queries'
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { TrendSection } from './trend-section'
+import { ProductBudgetCard } from './product-budget-card'
 import { ReceivablesCard } from './receivables-card'
 import { InventoryPieCard } from './inventory-pie-card'
 import { AlertTriangle, Inbox, Loader2, RefreshCw } from 'lucide-react'
@@ -152,8 +153,19 @@ export default function DashboardPage() {
             ))}
           </div>
 
-          {/* 财年趋势（指标可切换） */}
-          <TrendSection data={trendData} metric={trendMetric} onMetricChange={setTrendMetric} fiscalYearLabel={fiscalYear} />
+          {/* 财年趋势（指标可切换 + 主体口径联动顶部筛选） */}
+          <TrendSection
+            data={trendData}
+            metric={trendMetric}
+            onMetricChange={setTrendMetric}
+            fiscalYearLabel={fiscalYear}
+            companies={companies ?? []}
+            dimFilter={dimFilter}
+            onDimFilterChange={setDimFilter}
+          />
+
+          {/* 品类预算达成（单期间，主体口径跟随顶部筛选） */}
+          <ProductBudgetCard period={currentPeriod || undefined} companyCode={companyCode} />
 
           {/* 应收分布 + 存货占比（各自独立筛选，期间跟随看板） */}
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">

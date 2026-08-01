@@ -210,7 +210,22 @@ model AccountSubject {
   @@map("account_subject")
 }
 
-// 3.4 期间维度表
+// 3.4 品类配置表（品类预算达成分析：品类 ↔ 收入科目名关键词，支持科目树变化后由管理员维护）
+model ProductCategory {
+  id             String       @id @default(uuid())
+  code           String       @unique
+  name           String
+  subjectKeyword String       @map("subject_keyword")
+  sortOrder      Int          @default(0) @map("sort_order")
+  status         RecordStatus @default(active)
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@map("product_category")
+}
+
+// 3.5 期间维度表
 model PeriodDimension {
   id                 String               @id @default(uuid())
   code               String               @unique
@@ -239,7 +254,7 @@ model TransactionAccount {
   @@map("transaction_account")
 }
 
-// 3.5 客商表
+// 3.6 客商表
 model Counterparty {
   id            String       @id @default(uuid())
   code          String       @unique
@@ -257,7 +272,7 @@ model Counterparty {
   @@map("counterparty")
 }
 
-// 3.6 维度通用表
+// 3.7 维度通用表
 model Dimension {
   id          String   @id @default(uuid())
   code        String   @unique

@@ -9,6 +9,7 @@ import { errors } from '../lib/errors'
 import { recordAudit, clientIp } from '../middleware/audit'
 import { ImportService } from '../services/ImportService'
 import { DataService } from '../services/DataService'
+import { ProductCategoryService } from '../services/ProductCategoryService'
 import { IndicatorsService } from '../services/IndicatorsService'
 import { ReclassificationService } from '../services/ReclassificationService'
 import { fyLabelOfDate } from '../lib/period'
@@ -180,6 +181,28 @@ router.delete('/subjects/:id', requirePermission('data:subject:delete', 'delete'
 // 科目归类调整（换父，category 向下传播）
 router.post('/subjects/:id/reclassify', requirePermission('data:reclassify:subject', 'update'), asyncHandler(async (req, res) => {
   sendOk(res, await DataService.reclassifySubject(req.params.id as string, { parentCode: req.body?.parentCode === undefined ? null : req.body.parentCode }, ctxOf(req)))
+}))
+
+// ===== 品类配置（品类预算达成分析）=====
+router.get('/product-categories', requirePermission('data:browse:view', 'view'), asyncHandler(async (_req, res) => {
+  sendOk(res, await ProductCategoryService.list())
+}))
+
+router.get('/product-categories/check', requirePermission('data:browse:view', 'view'), asyncHandler(async (_req, res) => {
+  sendOk(res, await ProductCategoryService.check())
+}))
+
+router.post('/product-categories', requirePermission('data:subject:create', 'create'), asyncHandler(async (req, res) => {
+  sendOk(res, await ProductCategoryService.create(req.body ?? {}, ctxOf(req)))
+}))
+
+router.put('/product-categories/:id', requirePermission('data:subject:update', 'update'), asyncHandler(async (req, res) => {
+  sendOk(res, await ProductCategoryService.update(req.params.id as string, req.body ?? {}, ctxOf(req)))
+}))
+
+router.delete('/product-categories/:id', requirePermission('data:subject:delete', 'delete'), asyncHandler(async (req, res) => {
+  await ProductCategoryService.remove(req.params.id as string, ctxOf(req))
+  sendOk(res, null)
 }))
 
 // ===== 指标 =====

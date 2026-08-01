@@ -49,6 +49,14 @@ router.get('/trend', requirePermission('dashboard:view', 'view'), asyncHandler(a
   sendOk(res, data)
 }))
 
+router.get('/product-budget', requirePermission('dashboard:view', 'view'), asyncHandler(async (req, res) => {
+  const data = await DashboardService.getProductBudget(scopeOf(req.authUser as AuthUserContext), {
+    period: req.query.period as string | undefined,
+    companyCode: req.query.companyCode as string | undefined,
+  })
+  sendOk(res, data)
+}))
+
 router.get('/alerts', requirePermission('dashboard:view', 'view'), asyncHandler(async (req, res) => {
   const data = await DashboardService.getAlerts(scopeOf(req.authUser as AuthUserContext))
   sendOk(res, data)

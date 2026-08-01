@@ -1,6 +1,6 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios'
 import { useAuthStore } from '@/stores/authStore'
-import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse, FilterParams, KpiData, TrendData, DashboardAlert, ReceivableRow, ImportBatch, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData } from '@/types'
+import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse, FilterParams, KpiData, TrendData, DashboardAlert, ReceivableRow, ProductBudgetResponse, ProductCategory, ProductCategoryCheckResult, ImportBatch, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData } from '@/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
@@ -193,6 +193,54 @@ class ApiClient {
       method: 'GET',
       url: '/dashboard/trend',
       params,
+    })
+  }
+
+  /** 品类预算达成表（单期间）：收入/毛利品类的预算、本月/累计金额、达成率与同比 */
+  async getProductBudget(params?: { period?: string; companyCode?: string }): Promise<ProductBudgetResponse> {
+    return this.request({
+      method: 'GET',
+      url: '/dashboard/product-budget',
+      params,
+    })
+  }
+
+  // ---- 品类配置（品类预算达成分析，数据维护）----
+  async getProductCategories(): Promise<ProductCategory[]> {
+    return this.request({
+      method: 'GET',
+      url: '/data/product-categories',
+    })
+  }
+
+  /** 科目树变化检测：品类覆盖状态 / 未覆盖科目 / 失效关键词 / 毛利镜像缺失 */
+  async checkProductCategories(): Promise<ProductCategoryCheckResult> {
+    return this.request({
+      method: 'GET',
+      url: '/data/product-categories/check',
+    })
+  }
+
+  async createProductCategory(input: { code: string; name: string; subjectKeyword: string; sortOrder?: number; status?: string }): Promise<ProductCategory> {
+    return this.request({
+      method: 'POST',
+      url: '/data/product-categories',
+      data: input,
+    })
+  }
+
+  async updateProductCategory(id: string, input: { name?: string; subjectKeyword?: string; sortOrder?: number; status?: string }): Promise<ProductCategory> {
+    return this.request({
+      method: 'PUT',
+      url: `/data/product-categories/${id}`,
+      data: input,
+    })
+  }
+
+  async deleteProductCategory(id: string): Promise<void> {
+    return this.request({
+      method: 'DELETE',
+      url: `/data/product-categories/${id}`,
     })
   }
 
