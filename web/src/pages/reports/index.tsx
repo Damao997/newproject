@@ -163,7 +163,7 @@ function ReportList({ onOpen, canDelete }: { onOpen: (id: string) => void; canDe
                     <div className="flex items-center justify-center gap-1">
                       <Button variant="ghost" size="sm" onClick={() => onOpen(r.id)}><ExternalLink className="mr-1 h-3.5 w-3.5" /> 打开</Button>
                       {canDelete && r.status !== 'archived' && (
-                        <Button variant="ghost" size="sm" onClick={() => handleDelete(r.id, r.title)} className="text-finance-red"><Trash2 className="h-3.5 w-3.5" /></Button>
+                        <Button variant="ghost" size="sm" aria-label="删除报告" onClick={() => handleDelete(r.id, r.title)} className="text-finance-red"><Trash2 className="h-3.5 w-3.5" /></Button>
                       )}
                     </div>
                   </td>

@@ -59,6 +59,7 @@ export function Header({ onMenuClick }: HeaderProps) {
             variant="ghost"
             size="icon"
             className="h-8 w-8"
+            aria-label="打开导航菜单"
             onClick={onMenuClick}
           >
             <Menu className="h-5 w-5" />

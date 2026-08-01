@@ -126,7 +126,7 @@ function PolishPanel({
     <div className="flex w-72 shrink-0 flex-col border-l bg-muted/20">
       <div className="flex items-center justify-between border-b px-3 py-2">
         <span className="flex items-center gap-1 text-[13px] font-medium text-foreground"><Sparkles className="h-3.5 w-3.5 text-primary" /> AI 润色</span>
-        <button type="button" onClick={onClose} className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"><X className="h-4 w-4" /></button>
+        <button type="button" onClick={onClose} aria-label="关闭" className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"><X className="h-4 w-4" /></button>
       </div>
       <div className="flex items-center gap-1 border-b px-3 py-1.5">
         {(Object.keys(STYLE_LABEL) as PolishStyle[]).map((s) => (

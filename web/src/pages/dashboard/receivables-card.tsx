@@ -108,6 +108,10 @@ export function ReceivablesCard({ period }: { period?: string }) {
       <CardContent className="px-6 pb-6">
         {isLoading ? (
           <div className="skeleton h-[260px] w-full rounded-lg lg:h-[320px]" />
+        ) : !period ? (
+          <div className="flex h-[260px] items-center justify-center text-sm text-muted-foreground lg:h-[320px]">
+            正在加载期间数据...
+          </div>
         ) : rows.length === 0 ? (
           <div className="flex h-[260px] items-center justify-center text-sm text-muted-foreground lg:h-[320px]">
             当前期间暂无应收账款数据

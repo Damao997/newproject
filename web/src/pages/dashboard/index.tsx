@@ -4,27 +4,22 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { KpiCard } from '@/components/charts/kpi-card'
-import { TREND_METRIC_LABELS, seriesOf, type TrendMetric } from '@/components/charts/trend-metrics'
+import { type TrendMetric } from '@/components/charts/trend-metrics'
 import { PageContainer } from '@/components/layout/page-container'
 import { StatusIndicator } from '@/components/ui/status-indicator'
 import { KpiGridSkeleton, ChartSkeleton, ListSkeleton } from '@/components/ui/skeleton-blocks'
-import { usePermission } from '@/hooks/usePermission'
 import { useCompanies, useDashboardOverview, useAvailablePeriods } from '@/hooks/api-queries'
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
-import { exportToExcel } from '@/lib/export'
-import { AlertsCard } from './alerts-card'
-import { QuickActions } from './quick-actions'
 import { TrendSection } from './trend-section'
 import { ReceivablesCard } from './receivables-card'
 import { InventoryPieCard } from './inventory-pie-card'
-import { Download, Upload, AlertTriangle, Inbox, Loader2, RefreshCw } from 'lucide-react'
+import { AlertTriangle, Inbox, Loader2, RefreshCw } from 'lucide-react'
 
 export default function DashboardPage() {
   const [selectedPeriod, setSelectedPeriod] = useState('')
   // 主体筛选：all / company:CODE / summary:CODE（与指标页一致的三态格式）
   const [dimFilter, setDimFilter] = useState('all')
   const [trendMetric, setTrendMetric] = useState<TrendMetric>('revenue')
-  const { can } = usePermission()
   const navigate = useNavigate()
 
   // 期间候选：可用期间按全局选中财年过滤；未选时后端默认取最新期
@@ -56,33 +51,11 @@ export default function DashboardPage() {
   })
   const kpiData = data?.kpiData ?? []
   const trendData = data?.trendData ?? []
-  const alerts = data?.alerts ?? []
   const lastUpdatedAt = data?.lastUpdatedAt
-  const currentPeriod = selectedPeriod || data?.period || ''
+  const currentPeriod = selectedPeriod || data?.period || periodOptions[periodOptions.length - 1] || ''
   // keepPreviousData 下期间/主体切换的后台刷新态（非首屏加载）
   const isRefreshing = isFetching && !isLoading
   const isEmpty = !isLoading && !isError && kpiData.length === 0
-
-  const handleExport = async () => {
-    const label = TREND_METRIC_LABELS[trendMetric]
-    const { actual, same, budget } = seriesOf(trendData, trendMetric)
-    await exportToExcel({
-      filename: `首页看板_${label}趋势_${new Date().toISOString().slice(0, 10)}.xlsx`,
-      sheetName: `${label}趋势`,
-      columns: [
-        { header: '期间', key: 'period', width: 12 },
-        { header: '本月合计(万)', key: 'actual', width: 14 },
-        { header: '上年同期(万)', key: 'same', width: 14 },
-        { header: '月度预算(万)', key: 'budget', width: 14 },
-      ],
-      rows: trendData.map((r, i) => ({
-        period: r.period,
-        actual: actual[i] ?? '-',
-        same: same[i] ?? '-',
-        budget: budget[i] ?? '-',
-      })),
-    })
-  }
 
   return (
     <PageContainer
@@ -132,18 +105,6 @@ export default function DashboardPage() {
               {isRefreshing && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
             </div>
           )}
-          {can('dashboard', 'export') && (
-            <Button variant="outline" size="sm" className="h-9 px-4" onClick={handleExport} disabled={trendData.length === 0}>
-              <Download className="mr-2 h-4 w-4" />
-              导出数据
-            </Button>
-          )}
-          {can('data:import', 'upload') && (
-            <Button size="sm" className="h-9 px-4" onClick={() => navigate('/data')}>
-              <Upload className="mr-2 h-4 w-4" />
-              导入数据
-            </Button>
-          )}
         </div>
       }
     >
@@ -172,7 +133,7 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       ) : isEmpty ? (
-        // 空态：暂无经营数据，引导导入
+        // 空态：暂无经营数据
         <Card className="animate-fade-in border border-border shadow-sm">
           <CardContent className="flex flex-col items-center gap-3 py-16 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted">
@@ -180,12 +141,6 @@ export default function DashboardPage() {
             </div>
             <p className="text-sm font-medium text-foreground">暂无经营数据</p>
             <p className="text-xs text-muted-foreground">导入并激活经营数据批次后，看板将自动展示核心指标</p>
-            {can('data:import', 'upload') && (
-              <Button size="sm" className="mt-2" onClick={() => navigate('/data')}>
-                <Upload className="mr-2 h-4 w-4" />
-                前往导入
-              </Button>
-            )}
           </CardContent>
         </Card>
       ) : (
@@ -205,9 +160,6 @@ export default function DashboardPage() {
             <ReceivablesCard period={currentPeriod || undefined} />
             <InventoryPieCard period={currentPeriod || undefined} />
           </div>
-
-          <AlertsCard alerts={alerts} />
-          <QuickActions />
         </>
       )}
     </PageContainer>

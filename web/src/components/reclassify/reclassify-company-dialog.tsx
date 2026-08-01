@@ -241,9 +241,9 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
             <SectionTitle>转移设置</SectionTitle>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
               <div className="flex-1 space-y-1">
-                <Label>源公司</Label>
+                <Label htmlFor="rc-source-company">源公司</Label>
                 <Select value={sourceCompanyCode} onValueChange={(v) => { setSourceCompanyCode(v); reset() }}>
-                  <SelectTrigger><SelectValue placeholder="选择源公司" /></SelectTrigger>
+                  <SelectTrigger id="rc-source-company"><SelectValue placeholder="选择源公司" /></SelectTrigger>
                   <SelectContent className="max-h-[280px]">
                     {entityCompanies.map((c) => (
                       <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
@@ -256,6 +256,7 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
                 variant="ghost"
                 size="icon"
                 className="mx-auto h-9 w-9 shrink-0 text-muted-foreground sm:mx-0"
+                aria-label="交换源公司与目标公司"
                 title="交换源公司与目标公司"
                 onClick={handleSwap}
                 disabled={!sourceCompanyCode && !targetCompanyCode}
@@ -263,9 +264,9 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
                 <ArrowLeftRight className="h-4 w-4" />
               </Button>
               <div className="flex-1 space-y-1">
-                <Label>目标公司</Label>
+                <Label htmlFor="rc-target-company">目标公司</Label>
                 <Select value={targetCompanyCode} onValueChange={(v) => { setTargetCompanyCode(v); reset() }}>
-                  <SelectTrigger><SelectValue placeholder="选择目标公司" /></SelectTrigger>
+                  <SelectTrigger id="rc-target-company"><SelectValue placeholder="选择目标公司" /></SelectTrigger>
                   <SelectContent className="max-h-[280px]">
                     {entityCompanies.filter((c) => c.code !== sourceCompanyCode).map((c) => (
                       <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
@@ -277,9 +278,9 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
-                <Label>转移方式</Label>
+                <Label htmlFor="rc-transfer-mode">转移方式</Label>
                 <Select value={transferMode} onValueChange={(v) => { setTransferMode(v as 'all' | 'ratio' | 'amount'); reset() }}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="rc-transfer-mode"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">整体迁移</SelectItem>
                     <SelectItem value="ratio">按比例部分转移</SelectItem>
@@ -289,8 +290,9 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
               </div>
               {transferMode === 'ratio' && (
                 <div className="space-y-1">
-                  <Label>转移比例（%）</Label>
+                  <Label htmlFor="rc-ratio">转移比例（%）</Label>
                   <Input
+                    id="rc-ratio"
                     type="number"
                     min={0}
                     max={100}
@@ -306,8 +308,9 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
               )}
               {transferMode === 'amount' && (
                 <div className="space-y-1">
-                  <Label>转移金额（万元）</Label>
+                  <Label htmlFor="rc-amount">转移金额（万元）</Label>
                   <Input
+                    id="rc-amount"
                     type="number"
                     min={0}
                     step="0.01"

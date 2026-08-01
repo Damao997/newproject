@@ -2,25 +2,17 @@ import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuCheckboxItem,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu'
-import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { CompanyMultiSelect } from '@/components/filters/company-select'
 import { PageContainer } from '@/components/layout/page-container'
 import { AnalysisDrawer, type AnalysisTarget } from '@/components/indicators/analysis-drawer'
 import {
   useAvailablePeriods,
-  useCompanies,
   useInventoryDetails,
   useInventoryOverview,
   type InventoryDetailRow,
@@ -29,7 +21,7 @@ import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { usePermission } from '@/hooks/usePermission'
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { cn, formatMoneyWan, getChangeColor, getChangePrefix } from '@/lib/utils'
-import { Package, Boxes, CalendarClock, TrendingUp, ChevronDown, FileText } from 'lucide-react'
+import { Package, Boxes, CalendarClock, TrendingUp, FileText } from 'lucide-react'
 import { CategoryPieCard } from './category-pie-card'
 import { CategoryRankCard } from './category-rank-card'
 import { InventoryTrendCard } from './trend-card'
@@ -120,16 +112,7 @@ export default function InventoryPage() {
   const overview = overviewQuery.data
   const detailRows = detailsQuery.data?.rows ?? []
 
-  const { data: companies } = useCompanies()
-  const { displayNameMap, getDisplayName } = useCompanyDisplayName()
-  const companyLabel = useMemo(() => {
-    if (selectedCompanies.length === 0) return '全部公司'
-    const firstName = displayNameMap.get(selectedCompanies[0]) ?? selectedCompanies[0]
-    return selectedCompanies.length === 1 ? firstName : `${firstName} 等 ${selectedCompanies.length} 家`
-  }, [selectedCompanies, displayNameMap])
-
-  const toggleCompany = (code: string, checked: boolean) =>
-    setSelectedCompanies((prev) => (checked ? [...prev, code] : prev.filter((c) => c !== code)))
+  const { getDisplayName } = useCompanyDisplayName()
 
   /** 打开单项分析抽屉：品类为静态科目，指标上下文映射与指标页静态口径一致 */
   const handleAnalyze = (row: InventoryDetailRow) => {
@@ -160,39 +143,7 @@ export default function InventoryPage() {
       <div className="space-y-6">
         {/* 筛选行：公司多选 + 期间单选（财年由顶部导航全局控制） */}
         <div className="flex flex-wrap items-center gap-3">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="h-9 w-[220px] justify-between px-3 font-normal">
-                <span className="truncate">{companyLabel}</span>
-                <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="max-h-[320px] w-[240px] overflow-y-auto">
-              <DropdownMenuItem
-                className="text-xs text-muted-foreground"
-                onSelect={(e) => { e.preventDefault(); setSelectedCompanies((companies || []).map((c) => c.code)) }}
-              >
-                全选
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="text-xs text-muted-foreground"
-                onSelect={(e) => { e.preventDefault(); setSelectedCompanies([]) }}
-              >
-                清空（全部公司）
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {(companies || []).map((company) => (
-                <DropdownMenuCheckboxItem
-                  key={company.code}
-                  checked={selectedCompanies.includes(company.code)}
-                  onCheckedChange={(checked) => toggleCompany(company.code, checked === true)}
-                  onSelect={(e) => e.preventDefault()}
-                >
-                  {displayNameMap.get(company.code) ?? company.name}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <CompanyMultiSelect value={selectedCompanies} onChange={setSelectedCompanies} />
           <Select value={period ?? ''} onValueChange={setPeriodFilter}>
             <SelectTrigger className="w-[140px]">
               <SelectValue placeholder="期间" />

@@ -15,8 +15,9 @@ import { cn } from '@/lib/utils'
 import { Pagination } from '@/components/data-table/pagination'
 import { PAGINATION } from '@/lib/constants'
 import { usePermission } from '@/hooks/usePermission'
-import { useCollections, useGenerateCollections, useUpdateCollection, useCollectionLogs, useAddCollectionLog, useCompanies } from '@/hooks/api-queries'
+import { useCollections, useGenerateCollections, useUpdateCollection, useCollectionLogs, useAddCollectionLog } from '@/hooks/api-queries'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
+import { CompanySelect } from '@/components/filters/company-select'
 import { Loader2, PhoneCall, History } from 'lucide-react'
 import type { CollectionPlanItem, CollectionStatus } from '@/types'
 
@@ -291,8 +292,7 @@ export function CollectionsTab() {
   const [updatingPlan, setUpdatingPlan] = useState<CollectionPlanItem | null>(null)
   const [logsPlan, setLogsPlan] = useState<CollectionPlanItem | null>(null)
   const { can } = usePermission()
-  const { data: companies } = useCompanies()
-  const { displayNameMap, getDisplayName } = useCompanyDisplayName()
+  const { getDisplayName } = useCompanyDisplayName()
 
   const companyCode = companyFilter === 'all' ? undefined : companyFilter
   const canCreate = can('transactions', 'create')
@@ -313,17 +313,7 @@ export function CollectionsTab() {
     <div className="space-y-4">
       {/* 筛选栏 + 操作 */}
       <div className="flex flex-wrap items-center gap-3">
-        <Select value={companyFilter} onValueChange={(v) => { setCompanyFilter(v); setPage(1) }}>
-          <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder="选择公司" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">全部公司</SelectItem>
-            {(companies || []).map((c) => (
-              <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <CompanySelect value={companyFilter} onChange={(v) => { setCompanyFilter(v); setPage(1) }} />
         <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v === 'all' ? '' : v); setPage(1) }}>
           <SelectTrigger className="w-[140px]">
             <SelectValue placeholder="催收状态" />

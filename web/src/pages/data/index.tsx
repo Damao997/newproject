@@ -3,15 +3,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { MonthPicker } from '@/components/ui/month-picker'
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { MonthPicker } from '@/components/ui/month-picker'
+import { CompanyMultiSelect } from '@/components/filters/company-select'
 import { PageContainer } from '@/components/layout/page-container'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { usePermission } from '@/hooks/usePermission'
@@ -36,6 +35,34 @@ import { ReclassifyLogsPanel } from '@/components/reclassify/reclassify-logs-pan
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { FormulaMaintenance } from './formula-maintenance'
 import { ImportPanel } from './import-panel'
+
+/** 数据调整入口（科目调整 / 跨公司重分类）：按权限码显隐，两个 Tab 复用 */
+function ReclassifyMenu({ canSubject, canCompany, onSubject, onCompany }: {
+  canSubject: boolean
+  canCompany: boolean
+  onSubject: () => void
+  onCompany: () => void
+}) {
+  if (!canSubject && !canCompany) return null
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" aria-label="数据调整">
+          <ArrowLeftRight className="mr-2 h-4 w-4" />
+          数据调整
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        {canSubject && (
+          <DropdownMenuItem onClick={onSubject}>科目调整</DropdownMenuItem>
+        )}
+        {canCompany && (
+          <DropdownMenuItem onClick={onCompany}>跨公司重分类</DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
 
 export default function DataPage() {
   const { can } = usePermission()
@@ -73,7 +100,6 @@ export default function DataPage() {
   }), [browsePeriod, browseSubjectType])
   const { data: crossTable, isLoading: crossLoading, isFetching: crossFetching } = useCrossTable(crossParams)
 
-  const entityCompanies = useMemo(() => (companies ?? []).filter((c) => c.type === 'entity'), [companies])
   // 全称映射仅用于 Excel 导出（正式文件用全称）；屏幕展示统一走 displayNameMap（跟随「显示简称」开关）
   const companyNameMap = useMemo(() => new Map((companies ?? []).map((c) => [c.code, c.name])), [companies])
   const { displayNameMap } = useCompanyDisplayName()
@@ -84,19 +110,8 @@ export default function DataPage() {
     return browseCompanies.length === 0 ? all : all.filter((c) => browseCompanies.includes(c))
   }, [crossTable, browseCompanies])
 
-  // 公司多选触发按钮文案：全部 / 单选名称 / 首选名称 等 N 家
-  const companyTriggerLabel = useMemo(() => {
-    if (browseCompanies.length === 0) return '全部公司'
-    const firstName = displayNameMap.get(browseCompanies[0]) ?? browseCompanies[0]
-    return browseCompanies.length === 1 ? firstName : `${firstName} 等 ${browseCompanies.length} 家`
-  }, [browseCompanies, displayNameMap])
-
   // 编辑对话框预填：公司多选恰好只选 1 家时预填该公司
   const singleBrowseCompany = browseCompanies.length === 1 ? browseCompanies[0] : undefined
-
-  const toggleBrowseCompany = (code: string, checked: boolean) => {
-    setBrowseCompanies((prev) => (checked ? [...prev, code] : prev.filter((c) => c !== code)))
-  }
 
   type CrossRow = { code: string; name: string; valueType?: 'amount' | 'quantity' | 'ratio'; level: number; parentCode: string | null; isLeaf: boolean; values: Record<string, number> }
   const crossRows = useMemo(() => (crossTable?.rows ?? []) as CrossRow[], [crossTable])
@@ -219,39 +234,7 @@ export default function DataPage() {
                       <SelectItem value="static">静态指标</SelectItem>
                     </SelectContent>
                   </Select>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" className="h-9 w-[200px] max-w-full shrink-0 justify-between px-3 font-normal">
-                        <span className="truncate">{companyTriggerLabel}</span>
-                        <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="max-h-[320px] w-[220px] overflow-y-auto">
-                      <DropdownMenuItem
-                        className="text-xs text-muted-foreground"
-                        onSelect={(e) => { e.preventDefault(); setBrowseCompanies(entityCompanies.map((c) => c.code)) }}
-                      >
-                        全选
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="text-xs text-muted-foreground"
-                        onSelect={(e) => { e.preventDefault(); setBrowseCompanies([]) }}
-                      >
-                        清空（全部公司）
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      {entityCompanies.map((company) => (
-                        <DropdownMenuCheckboxItem
-                          key={company.code}
-                          checked={browseCompanies.includes(company.code)}
-                          onCheckedChange={(checked) => toggleBrowseCompany(company.code, checked === true)}
-                          onSelect={(e) => e.preventDefault()}
-                        >
-                          {displayNameMap.get(company.code) ?? company.name}
-                        </DropdownMenuCheckboxItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <CompanyMultiSelect value={browseCompanies} onChange={setBrowseCompanies} entitiesOnly className="w-[200px]" />
                   <div className="flex shrink-0 items-center space-x-2">
                     <span className="text-sm text-muted-foreground">月份:</span>
                     <MonthPicker value={browsePeriod} onChange={setBrowsePeriod} availablePeriods={dynamicPeriods ?? []} />
@@ -266,18 +249,12 @@ export default function DataPage() {
                     )}
                     {isAllRowsExpanded ? '全部折叠' : '全部展开'}
                   </Button>
-                  {canReclassifySubject && (
-                    <Button variant="outline" size="sm" onClick={() => setAdjustSubjectOpen(true)}>
-                      <ArrowLeftRight className="mr-2 h-4 w-4" />
-                      科目调整
-                    </Button>
-                  )}
-                  {canReclassifyCompany && (
-                    <Button variant="outline" size="sm" onClick={() => setReclassifyCompanyOpen(true)}>
-                      <ArrowLeftRight className="mr-2 h-4 w-4" />
-                      跨公司重分类
-                    </Button>
-                  )}
+                  <ReclassifyMenu
+                    canSubject={canReclassifySubject}
+                    canCompany={canReclassifyCompany}
+                    onSubject={() => setAdjustSubjectOpen(true)}
+                    onCompany={() => setReclassifyCompanyOpen(true)}
+                  />
                   {canExport && (
                     <Button variant="outline" size="sm" onClick={handleBrowseExport}>
                       <Download className="mr-2 h-4 w-4" />
@@ -309,20 +286,12 @@ export default function DataPage() {
             <CardHeader>
               <CardTitle className="flex flex-wrap items-center justify-between gap-2">
                 <span>重分类记录</span>
-                <span className="flex items-center gap-2">
-                  {canReclassifySubject && (
-                    <Button variant="outline" size="sm" onClick={() => setAdjustSubjectOpen(true)}>
-                      <ArrowLeftRight className="mr-2 h-4 w-4" />
-                      科目调整
-                    </Button>
-                  )}
-                  {canReclassifyCompany && (
-                    <Button variant="outline" size="sm" onClick={() => setReclassifyCompanyOpen(true)}>
-                      <ArrowLeftRight className="mr-2 h-4 w-4" />
-                      跨公司重分类
-                    </Button>
-                  )}
-                </span>
+                <ReclassifyMenu
+                  canSubject={canReclassifySubject}
+                  canCompany={canReclassifyCompany}
+                  onSubject={() => setAdjustSubjectOpen(true)}
+                  onCompany={() => setReclassifyCompanyOpen(true)}
+                />
               </CardTitle>
             </CardHeader>
             <CardContent>

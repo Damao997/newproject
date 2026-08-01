@@ -23,8 +23,9 @@ import { Input } from '@/components/ui/input'
 import { PageContainer } from '@/components/layout/page-container'
 import { Pagination } from '@/components/data-table/pagination'
 import { PAGINATION } from '@/lib/constants'
-import { useCompanies, useTransactionOverview, useTransactionDetails, useTransactionAging, useInternalSummary, useInternalMirrorCheck, useTransactionPeriods, useTransactionAccounts } from '@/hooks/api-queries'
+import { useTransactionOverview, useTransactionDetails, useTransactionAging, useInternalSummary, useInternalMirrorCheck, useTransactionPeriods, useTransactionAccounts } from '@/hooks/api-queries'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
+import { CompanySelect, CompanyMultiSelect } from '@/components/filters/company-select'
 import { usePermission } from '@/hooks/usePermission'
 import { cn, formatMoneyWan } from '@/lib/utils'
 import { ArrowLeftRight, TrendingUp, TrendingDown, Building2, AlertTriangle, Upload, ChevronDown, FileText, Eye } from 'lucide-react'
@@ -57,24 +58,7 @@ function formatAmount(v: number): ReactNode {
   )
 }
 
-// 各 Tab 共用的公司单选筛选器（筛选器下沉到 Tab 内部，各自独立控制）
-function CompanySelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const { data: companies } = useCompanies()
-  const { displayNameMap } = useCompanyDisplayName()
-  return (
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="w-[200px]">
-        <SelectValue placeholder="选择公司" />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="all">全部公司</SelectItem>
-        {(companies || []).map((c) => (
-          <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  )
-}
+// 各 Tab 共用的公司单选筛选器统一走共享组件（@/components/filters/company-select）
 
 // 关联方三分类标签样式（内部公司/关联方/外部）
 const PARTY_TYPE_META: Record<string, { label: string; className: string }> = {
@@ -173,22 +157,10 @@ function OverviewTab() {
   const [selectedCompanies, setSelectedCompanies] = useState<string[]>([])
   // 期间筛选（仅作用于卡片）：空串表示跟随最新期间
   const [periodFilter, setPeriodFilter] = useState('')
-  const { data: companies } = useCompanies()
   const { data: periods } = useTransactionPeriods()
   // 期末余额为时点数，默认取最新期间（列表倒序首项），不提供跨期累加
   const period = periodFilter || periods?.[0]
   const { data: overview, isLoading } = useTransactionOverview({ companyCodes: selectedCompanies, period })
-
-  const { displayNameMap } = useCompanyDisplayName()
-  const companyLabel = useMemo(() => {
-    if (selectedCompanies.length === 0) return '全部公司'
-    const firstName = displayNameMap.get(selectedCompanies[0]) ?? selectedCompanies[0]
-    return selectedCompanies.length === 1 ? firstName : `${firstName} 等 ${selectedCompanies.length} 家`
-  }, [selectedCompanies, displayNameMap])
-
-  const toggleCompany = (code: string, checked: boolean) => {
-    setSelectedCompanies((prev) => (checked ? [...prev, code] : prev.filter((c) => c !== code)))
-  }
 
   const list = overview ?? []
   // 净往来余额 = 债权合计(应收+其他应收+预付) - 债务合计(预收+应付+其他应付)，余额已按科目性质归一为正号
@@ -200,39 +172,7 @@ function OverviewTab() {
     <div className="space-y-6">
       {/* 筛选行：公司多选（图表与卡片共享）+ 期间单选（仅作用于卡片） */}
       <div className="flex flex-wrap items-center gap-3">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="h-9 w-[220px] justify-between px-3 font-normal">
-              <span className="truncate">{companyLabel}</span>
-              <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent className="max-h-[320px] w-[240px] overflow-y-auto">
-            <DropdownMenuItem
-              className="text-xs text-muted-foreground"
-              onSelect={(e) => { e.preventDefault(); setSelectedCompanies((companies || []).map((c) => c.code)) }}
-            >
-              全选
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="text-xs text-muted-foreground"
-              onSelect={(e) => { e.preventDefault(); setSelectedCompanies([]) }}
-            >
-              清空（全部公司）
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            {(companies || []).map((company) => (
-              <DropdownMenuCheckboxItem
-                key={company.code}
-                checked={selectedCompanies.includes(company.code)}
-                onCheckedChange={(checked) => toggleCompany(company.code, checked === true)}
-                onSelect={(e) => e.preventDefault()}
-              >
-                {displayNameMap.get(company.code) ?? company.name}
-              </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <CompanyMultiSelect value={selectedCompanies} onChange={setSelectedCompanies} />
         <Select value={period ?? ''} onValueChange={setPeriodFilter}>
           <SelectTrigger className="w-[140px]">
             <SelectValue placeholder="期间" />

@@ -11,10 +11,10 @@ interface TrendChartProps {
   metric: TrendMetric
 }
 
-const SERIES_COLORS = { actual: CHART_SERIES[0], same: CHART_INK.sub, budget: CHART_SERIES[4] }
+const SERIES_COLORS = { actual: CHART_SERIES[0], same: CHART_SERIES[1], budget: CHART_SERIES[4] }
 
 /**
- * 财年趋势图：本月合计（柱，品牌橙）+ 上年同期（柱，暖灰）+ 月度预算（虚线曲线，柔紫）。
+ * 财年趋势图：本月合计（柱，品牌橙）+ 上年同期（柱，青蓝）+ 月度预算（实线曲线，柔紫）。
  * X 轴为所选财年 12 个月，未导入数据的月份留空（null 断点）。
  */
 export function TrendChart({ data, metric }: TrendChartProps) {
@@ -151,7 +151,7 @@ export function TrendChart({ data, metric }: TrendChartProps) {
         lineStyle: {
           color: SERIES_COLORS.budget,
           width: 2,
-          type: 'dashed',
+          type: 'solid',
           cap: 'round',
         },
         symbol: 'diamond',

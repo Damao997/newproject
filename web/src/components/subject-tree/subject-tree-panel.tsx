@@ -234,13 +234,14 @@ export function SubjectTreePanel({
                     <Button
                       variant="ghost"
                       size="sm"
+                      aria-label="编辑科目"
                       onClick={() => setDialog({ open: true, mode: 'edit', subject: flat.find((f) => f.code === node.code) ?? null })}
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>
                   )}
                   {canDelete && (
-                    <Button variant="ghost" size="sm" onClick={() => handleDisable(node)}>
+                    <Button variant="ghost" size="sm" aria-label="停用科目" onClick={() => handleDisable(node)}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   )}

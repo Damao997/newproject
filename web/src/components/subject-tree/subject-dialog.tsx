@@ -158,21 +158,21 @@ export function SubjectDialog({ open, mode, type, subject, flat, onClose }: Subj
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1">
-            <Label>科目编码</Label>
-            <Input value={code} onChange={(e) => setCode(e.target.value)} disabled={mode === 'edit'} placeholder="如：OP_200（编码不可修改）" />
+            <Label htmlFor="subject-code">科目编码</Label>
+            <Input id="subject-code" value={code} onChange={(e) => setCode(e.target.value)} disabled={mode === 'edit'} placeholder="如：OP_200（编码不可修改）" />
           </div>
           <div className="space-y-1">
-            <Label>科目名称</Label>
-            <Input value={name} onChange={(e) => handleNameChange(e.target.value)} placeholder="科目名称" />
+            <Label htmlFor="subject-name">科目名称</Label>
+            <Input id="subject-name" value={name} onChange={(e) => handleNameChange(e.target.value)} placeholder="科目名称" />
           </div>
           <div className="space-y-1">
-            <Label>类别{parentChanged && <span className="ml-1 text-xs text-muted-foreground">（随上级自动推导）</span>}</Label>
-            <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="如：收入（留空取名称）" readOnly={parentChanged} />
+            <Label htmlFor="subject-category">类别{parentChanged && <span className="ml-1 text-xs text-muted-foreground">（随上级自动推导）</span>}</Label>
+            <Input id="subject-category" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="如：收入（留空取名称）" readOnly={parentChanged} />
           </div>
           <div className="space-y-1">
-            <Label>值类型{mode === 'create' && !valueTypeTouched && <span className="ml-1 text-xs text-muted-foreground">（随名称自动推断，可手动调整）</span>}</Label>
+            <Label htmlFor="subject-value-type">值类型{mode === 'create' && !valueTypeTouched && <span className="ml-1 text-xs text-muted-foreground">（随名称自动推断，可手动调整）</span>}</Label>
             <Select value={valueType} onValueChange={(v) => { setValueType(v as SubjectValueType); setValueTypeTouched(true) }}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger id="subject-value-type"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="amount">金额（万元，千分位两位小数）</SelectItem>
                 <SelectItem value="quantity">数量（整数，如户数/天数）</SelectItem>
@@ -181,9 +181,9 @@ export function SubjectDialog({ open, mode, type, subject, flat, onClose }: Subj
             </Select>
           </div>
           <div className="space-y-1">
-            <Label>是否叶子</Label>
+            <Label htmlFor="subject-is-leaf">是否叶子</Label>
             <Select value={isLeaf} onValueChange={(v) => setIsLeaf(v as 'true' | 'false')}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger id="subject-is-leaf"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="true">是</SelectItem>
                 <SelectItem value="false">否</SelectItem>
@@ -191,9 +191,9 @@ export function SubjectDialog({ open, mode, type, subject, flat, onClose }: Subj
             </Select>
           </div>
           <div className="space-y-1">
-            <Label>上级科目</Label>
+            <Label htmlFor="subject-parent">上级科目</Label>
             <Select value={parentCode} onValueChange={handleParentChange}>
-              <SelectTrigger><SelectValue placeholder="选择上级科目" /></SelectTrigger>
+              <SelectTrigger id="subject-parent"><SelectValue placeholder="选择上级科目" /></SelectTrigger>
               <SelectContent className="max-h-[280px]">
                 <SelectItem value="none">无（根节点）</SelectItem>
                 {flat

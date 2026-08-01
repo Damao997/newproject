@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft, ArrowUp, ArrowDown, Trash2, Plus, Save, History, FileDown, RefreshCw, Link2,
-  Send, Undo2, Eye, Sparkles, Loader2,
+  Send, Undo2, Eye, Sparkles, Loader2, MoreHorizontal,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,6 +11,9 @@ import { useConfirm } from '@/components/ui/confirm-dialog'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { RichTextEditor } from '@/components/editor/rich-text-editor'
 import { sanitizeForDisplay } from '@/lib/sanitize'
 import { exportReportToDocx, exportReportToPdf } from '@/lib/report-export'
@@ -236,31 +239,25 @@ export function ReportEditor({ reportId, onBack }: { reportId: string; onBack: (
 
   return (
     <div className="space-y-3">
-      {/* 工具栏 */}
+      {/* 工具栏：主动作常驻（AI 概述/保存章节/发布），次动作收入「更多」菜单 */}
       <Card className="animate-fade-in">
         <CardContent className="flex flex-wrap items-center justify-between gap-2 p-4">
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleBack}><ArrowLeft className="mr-1 h-4 w-4" /> 返回列表</Button>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-semibold text-foreground">{report.title}</h3>
-                <Badge variant="secondary">{STATUS_LABEL[report.status] ?? report.status}</Badge>
-                <span className="text-[12px] text-muted-foreground">v{report.currentVersion}</span>
-                {dirty && <Badge variant="destructive">未保存</Badge>}
-              </div>
-              <p className="text-[12px] text-muted-foreground">
-                {report.companyScope.name ?? report.companyScope.code}（{report.companyScope.type === 'summary' ? '汇总主体' : '公司'}）｜财年 {report.fiscalYear}｜期间 {report.period}
-              </p>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="truncate text-base font-semibold text-foreground">{report.title}</h3>
+              <Badge variant="secondary">{STATUS_LABEL[report.status] ?? report.status}</Badge>
+              <span className="text-[12px] text-muted-foreground">v{report.currentVersion}</span>
+              {dirty && <Badge variant="destructive">未保存</Badge>}
             </div>
+            <p className="text-[12px] text-muted-foreground">
+              {report.companyScope.name ?? report.companyScope.code}（{report.companyScope.type === 'summary' ? '汇总主体' : '公司'}）｜财年 {report.fiscalYear}｜期间 {report.period}
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {canEdit && (
               <>
-                <Button variant="outline" size="sm" onClick={handleGenerate} disabled={busy}><RefreshCw className="mr-1 h-4 w-4" /> 拉取单项分析</Button>
-                <Button variant="outline" size="sm" onClick={() => addFreeSection()} disabled={busy}><Plus className="mr-1 h-4 w-4" /> 自由章节</Button>
                 <Button variant="outline" size="sm" onClick={() => setAiOpen(true)} disabled={busy}><Sparkles className="mr-1 h-4 w-4" /> AI 概述</Button>
                 <Button variant="outline" size="sm" onClick={persistSections} disabled={busy}><Save className="mr-1 h-4 w-4" /> 保存章节</Button>
-                <Button variant="outline" size="sm" onClick={() => setVersionDialogOpen(true)} disabled={busy}><History className="mr-1 h-4 w-4" /> 存版本</Button>
                 <Button size="sm" onClick={() => handleStatusChange('published', '报告已发布')} disabled={busy}><Send className="mr-1 h-4 w-4" /> 发布</Button>
               </>
             )}
@@ -270,13 +267,46 @@ export function ReportEditor({ reportId, onBack }: { reportId: string; onBack: (
             {canUpdate && report.status === 'archived' && (
               <Button variant="outline" size="sm" onClick={() => handleStatusChange('draft', '已恢复为草稿')} disabled={busy}><Undo2 className="mr-1 h-4 w-4" /> 恢复为草稿</Button>
             )}
-            {canExport && (
-              <>
-                <Button variant="outline" size="sm" onClick={() => handleExport('docx')}><FileDown className="mr-1 h-4 w-4" /> Word</Button>
-                <Button variant="outline" size="sm" onClick={() => handleExport('pdf')}><FileDown className="mr-1 h-4 w-4" /> PDF</Button>
-              </>
-            )}
-            <Button variant="outline" size="sm" onClick={() => setShowVersions((v) => !v)}><History className="mr-1 h-4 w-4" /> 版本历史</Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" aria-label="更多操作">
+                  <MoreHorizontal className="mr-1 h-4 w-4" /> 更多
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem onClick={handleBack}>
+                  <ArrowLeft className="mr-2 h-4 w-4" /> 返回列表
+                </DropdownMenuItem>
+                {canEdit && (
+                  <>
+                    <DropdownMenuItem onClick={handleGenerate} disabled={busy}>
+                      <RefreshCw className="mr-2 h-4 w-4" /> 拉取单项分析
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => addFreeSection()} disabled={busy}>
+                      <Plus className="mr-2 h-4 w-4" /> 自由章节
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setVersionDialogOpen(true)} disabled={busy}>
+                      <History className="mr-2 h-4 w-4" /> 存版本
+                    </DropdownMenuItem>
+                  </>
+                )}
+                {canExport && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => handleExport('docx')}>
+                      <FileDown className="mr-2 h-4 w-4" /> 导出 Word
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleExport('pdf')}>
+                      <FileDown className="mr-2 h-4 w-4" /> 导出 PDF
+                    </DropdownMenuItem>
+                  </>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setShowVersions((v) => !v)}>
+                  <History className="mr-2 h-4 w-4" /> 版本历史
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </CardContent>
       </Card>
@@ -343,9 +373,9 @@ export function ReportEditor({ reportId, onBack }: { reportId: string; onBack: (
                 </div>
                 {canEdit && (
                   <div className="flex shrink-0 items-center gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => move(idx, -1)} disabled={idx === 0}><ArrowUp className="h-4 w-4" /></Button>
-                    <Button variant="ghost" size="sm" onClick={() => move(idx, 1)} disabled={idx === sections.length - 1}><ArrowDown className="h-4 w-4" /></Button>
-                    <Button variant="ghost" size="sm" onClick={() => removeSection(s.key)} className="text-finance-red"><Trash2 className="h-4 w-4" /></Button>
+                    <Button variant="ghost" size="sm" aria-label="上移章节" onClick={() => move(idx, -1)} disabled={idx === 0}><ArrowUp className="h-4 w-4" /></Button>
+                    <Button variant="ghost" size="sm" aria-label="下移章节" onClick={() => move(idx, 1)} disabled={idx === sections.length - 1}><ArrowDown className="h-4 w-4" /></Button>
+                    <Button variant="ghost" size="sm" aria-label="删除章节" onClick={() => removeSection(s.key)} className="text-finance-red"><Trash2 className="h-4 w-4" /></Button>
                   </div>
                 )}
               </div>

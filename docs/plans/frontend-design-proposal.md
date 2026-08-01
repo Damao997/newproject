@@ -1,6 +1,6 @@
 # 浙江壹品慧财年经营数据分析平台 — 前端设计方案
 
-> **版本**: v3.4  
+> **版本**: v3.5  
 > **日期**: 2026-07-31  
 > **风格定位**: 简洁专业 / 效率驱动  
 > **技术选型**: Radix UI + Shadcn + Tailwind CSS + CSS Animation
@@ -304,6 +304,27 @@ React 18 + TypeScript 5.5
 - 动画：fadeInScale 0.25s
 - 最大宽度：28rem（默认）/ 32rem（大）
 ```
+
+### 4.8 筛选器与工具栏（v3.5 新增）
+
+**筛选器行**：
+- 布局：`flex flex-wrap items-center gap-2/3`，小屏自动换行不溢出。
+- 选择器宽度：`w-full sm:w-[Npx]`（N 取 140/160/200/220），小屏占满整行（正例：`indicators/index.tsx`）。
+- 公司/期间选择一律使用共享组件，禁止页面内联实现：
+  - 公司单选 → `@/components/filters/company-select` 的 `CompanySelect`（内置"全部公司"，`entitiesOnly` 仅列单体公司）。
+  - 公司多选 → 同文件 `CompanyMultiSelect`（空数组语义=全部公司，触发器文案"全部公司 / X / X 等 N 家"）。
+  - 期间单选 → `@/components/ui/month-picker` 的 `MonthPicker`。
+- 共享组件名称统一跟随全局"显示简称"开关（`useCompanyDisplayName`）。
+
+**工具栏**：
+- 主动作常驻 ≤ 3 个（高频操作），其余次动作收入"更多"DropdownMenu（`MoreHorizontal` 图标 + "更多"文字）。正例：`report-editor.tsx` 顶部工具栏。
+- 同一页面多个 Tab 共用的操作组，抽成局部组件复用，禁止逐 Tab 复制（正例：`data/index.tsx` 的 `ReclassifyMenu`）。
+- 危险操作：`variant="destructive"` + `useConfirm` 二次确认。
+
+**无障碍（P0 强制）**：
+- 纯图标按钮必须携带 `aria-label`（行内编辑/删除/上移/下移/查看/关闭等）。
+- 表单控件必须 `Label htmlFor` + 控件 `id` 关联（Radix `SelectTrigger` 同样接受 `id`）。
+- 弹窗须含 `DialogDescription`（Radix 自动关联 `aria-describedby`）。
 
 ---
 
@@ -639,6 +660,19 @@ export function cn(...inputs: ClassValue[]) {
 
 ## 变更记录
 
+### v3.5（2026-07-31）
+
+**UI 组件简化与统一（代码 + 文档双向同步）**：
+
+代码侧重构：
+- 新增共享公司选择器 `components/filters/company-select.tsx`（`CompanySelect` 单选 + `CompanyMultiSelect` 多选），替换 5 处页面内联实现（数据浏览、存货管理、往来总览、催收管理、看板存货卡），净删约 150 行重复代码。
+- 报告编辑器工具栏收敛：10 个横排按钮 → 3 个主动作（AI 概述/保存章节/发布）+「更多」DropdownMenu（7 项次动作）。
+- 数据管理"科目调整/跨公司重分类"合并为 `ReclassifyMenu` 下拉，manage/reclassify 两 Tab 复用。
+- 无障碍补齐：28+ 处纯图标按钮补 `aria-label`；admin/reclassify/subject 弹窗表单补 `Label htmlFor` + 控件 `id` 关联。
+
+文档侧同步：
+- 新增 §4.8 筛选器与工具栏规范（共享选择器、工具栏主动作收敛、无障碍硬性约束）。
+
 ### v3.4（2026-07-31）
 
 **品牌橙主题全量 Token 化（代码 + 文档双向同步）**：
@@ -724,4 +758,4 @@ Token 层：
 
 ---
 
-*文档版本：v3.4 | 初版 2026-07-21 / 更新 2026-07-31 | 设计负责人：蟹蟹 🦀*
+*文档版本：v3.5 | 初版 2026-07-21 / 更新 2026-07-31 | 设计负责人：蟹蟹 🦀*

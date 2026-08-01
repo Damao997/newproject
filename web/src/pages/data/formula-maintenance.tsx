@@ -408,13 +408,13 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
         (effectiveUpdate || canDelete || canPurge || canConvert) ? (
           <div className="flex items-center justify-end gap-1">
             {effectiveUpdate && (
-              <Button variant="ghost" size="sm" onClick={() => openEdit(r)} title="编辑公式">
+              <Button variant="ghost" size="sm" onClick={() => openEdit(r)} aria-label="编辑公式" title="编辑公式">
                 <Pencil className="h-4 w-4" />
               </Button>
             )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm">
+                <Button variant="ghost" size="sm" aria-label="更多操作">
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>

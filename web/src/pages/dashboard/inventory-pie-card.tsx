@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import type { EChartsOption } from 'echarts'
 import ReactECharts, { echarts } from '@/components/charts/echarts-core'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { useCompanies, useInventoryOverview } from '@/hooks/api-queries'
+import { CompanySelect } from '@/components/filters/company-select'
+import { useInventoryOverview } from '@/hooks/api-queries'
 import { formatMoneyWan } from '@/lib/utils'
 import { CATEGORY_COLORS } from '@/lib/chart-colors'
 import { CHART_FONT, CHART_INK, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
@@ -18,8 +18,6 @@ import { PieChart } from 'lucide-react'
 export function InventoryPieCard({ period }: { period?: string }) {
   const [companyFilter, setCompanyFilter] = useState('all')
   const navigate = useNavigate()
-  const { data: companies } = useCompanies()
-  const singles = useMemo(() => (companies ?? []).filter((c) => c.type === 'entity'), [companies])
   const companyCodes = companyFilter === 'all' ? undefined : [companyFilter]
   const { data, isLoading } = useInventoryOverview({ period, companyCodes })
   const categories = useMemo(() => data?.categories ?? [], [data])
@@ -89,21 +87,21 @@ export function InventoryPieCard({ period }: { period?: string }) {
             {period ? `期间 ${period} · ` : ''}品类本期金额占比（万元），与库存管理同源
           </p>
         </div>
-        <Select value={companyFilter} onValueChange={setCompanyFilter}>
-          <SelectTrigger className="h-8 w-[160px] text-xs">
-            <SelectValue placeholder="全部公司" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">全部公司</SelectItem>
-            {singles.map((c) => (
-              <SelectItem key={c.code} value={c.code}>{c.shortName ?? c.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <CompanySelect
+          value={companyFilter}
+          onChange={setCompanyFilter}
+          entitiesOnly
+          placeholder="全部公司"
+          className="h-8 w-[160px] text-xs"
+        />
       </CardHeader>
       <CardContent className="px-6 pb-6">
         {isLoading ? (
           <div className="skeleton h-[260px] w-full rounded-lg lg:h-[320px]" />
+        ) : !period ? (
+          <div className="flex h-[260px] items-center justify-center text-sm text-muted-foreground lg:h-[320px]">
+            正在加载期间数据...
+          </div>
         ) : pieData.length === 0 ? (
           <div className="flex h-[260px] items-center justify-center text-sm text-muted-foreground lg:h-[320px]">
             当前期间暂无存货数据

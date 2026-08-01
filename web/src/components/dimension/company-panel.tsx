@@ -156,13 +156,13 @@ export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete =
           render: (c: Company) => (
             <div className="flex items-center justify-end gap-1">
               {canUpdate && (
-                <Button variant="ghost" size="sm" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
+                <Button variant="ghost" size="sm" aria-label="编辑公司" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
               )}
               {canDelete && c.status === 'active' && (
-                <Button variant="ghost" size="sm" onClick={() => handleDelete(c)}><Trash2 className="h-4 w-4" /></Button>
+                <Button variant="ghost" size="sm" aria-label="删除公司" onClick={() => handleDelete(c)}><Trash2 className="h-4 w-4" /></Button>
               )}
               {canUpdate && c.status !== 'active' && (
-                <Button variant="ghost" size="sm" className="text-primary hover:text-primary" title="重新启用" onClick={() => handleReEnable(c)}>
+                <Button variant="ghost" size="sm" className="text-primary hover:text-primary" aria-label="重新启用" title="重新启用" onClick={() => handleReEnable(c)}>
                   <RotateCcw className="h-4 w-4" />
                 </Button>
               )}
