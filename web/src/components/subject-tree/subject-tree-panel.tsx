@@ -38,6 +38,8 @@ interface SubjectTreePanelProps {
   canCreate?: boolean
   canUpdate?: boolean
   canDelete?: boolean
+  /** 是否可进行指标类型转换（data:metric:convert，仅 superadmin） */
+  canConvert?: boolean
   /** 是否显示导出按钮 */
   canExport?: boolean
   /** 导出文件名（不含扩展名） */
@@ -58,6 +60,7 @@ export function SubjectTreePanel({
   canCreate = false,
   canUpdate = false,
   canDelete = false,
+  canConvert = false,
   canExport = false,
   exportFileName = '科目层级',
   exportSheet = '科目层级',
@@ -257,6 +260,7 @@ export function SubjectTreePanel({
         type={type}
         subject={dialog.subject}
         flat={flat}
+        canConvert={canConvert}
         onClose={() => setDialog((d) => ({ ...d, open: false }))}
       />
 

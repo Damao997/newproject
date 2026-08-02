@@ -10,7 +10,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useTransactionTrend, useTransactionFiscalYears } from '@/hooks/api-queries'
+import { useTransactionTrend, useTransactionFiscalYears, useTransactionPeriods } from '@/hooks/api-queries'
+import { usePeriodStore } from '@/stores/periodStore'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { formatMoneyWan } from '@/lib/utils'
 import { CHART_FONT, CHART_INK, CHART_SERIES, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
@@ -20,33 +21,44 @@ import { Download, LineChart, RefreshCw } from 'lucide-react'
  * 往来变动趋势折线图：单一往来类型 × 多公司的期末余额月度趋势。
  * 数据来自 GET /transactions/trend（公司×月份 DB 侧聚合）；
  * 公司多选由页面筛选区传入（空数组 = 全部公司合计一条线）。
+ * 期间模式：跟随全局 Header 财年（默认）/ 指定财年 / 自定义期间范围（开始=结束即单月）。
  */
 
 const TRANSACTION_TYPES = ['应收账款', '其他应收款', '预收账款', '应付账款', '其他应付款', '预付账款']
-
-const MONTH_OPTIONS = [
-  { value: 6, label: '最近 6 个月' },
-  { value: 12, label: '最近 12 个月' },
-  { value: 24, label: '最近 24 个月' },
-  { value: 36, label: '最近 36 个月' },
-]
 
 /** 折线色板：按公司顺序轮转，统一取自图表序列色 */
 const LINE_COLORS = CHART_SERIES
 
 export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] }) {
   const [transactionType, setTransactionType] = useState('应收账款')
-  // 期间范围：数字串 = 最近 N 个月；FYxxxx = 完整财年轴
-  const [range, setRange] = useState('12')
+  // 期间模式：'fiscal' = 跟随全局 Header 财年（默认）；'custom' = 自定义期间范围；'FYxxxx' = 指定财年
+  const [rangeMode, setRangeMode] = useState<'fiscal' | 'custom' | string>('fiscal')
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo] = useState('')
   const { getDisplayName } = useCompanyDisplayName()
   const { data: fiscalYears } = useTransactionFiscalYears()
+  const { data: periods } = useTransactionPeriods()
+  const fiscalYear = usePeriodStore((s) => s.fiscalYear)
 
-  const isMonths = /^\d+$/.test(range)
-  const { data, isLoading, isError, error, refetch, isFetching } = useTransactionTrend({
-    transactionType,
-    companyCodes,
-    ...(isMonths ? { months: Number(range) } : { fiscalYear: range }),
-  })
+  // 请求参数推导：自定义期间（未选完时返回 null 禁用查询）> 跟随全局财年 > 指定财年
+  const trendParams = useMemo(() => {
+    if (rangeMode === 'custom') {
+      if (!customFrom || !customTo) return null
+      // 开始晚于结束时自动交换归一，无需限制 UI 选择
+      const [from, to] = customFrom > customTo ? [customTo, customFrom] : [customFrom, customTo]
+      return { transactionType, companyCodes, periodFrom: from, periodTo: to }
+    }
+    if (rangeMode === 'fiscal') {
+      // 默认遵循全局财年筛选器；未归一化（null）时回退最近 12 个月
+      return fiscalYear ? { transactionType, companyCodes, fiscalYear } : { transactionType, companyCodes, months: 12 }
+    }
+    return { transactionType, companyCodes, fiscalYear: rangeMode }
+  }, [transactionType, companyCodes, rangeMode, customFrom, customTo, fiscalYear])
+
+  const { data, isLoading, isError, error, refetch, isFetching } = useTransactionTrend(
+    trendParams ?? { transactionType, companyCodes },
+    { enabled: !!trendParams },
+  )
 
   const hasData = !!data && data.series.length > 0 && data.series.some((s) => s.points.some((p) => p !== null))
 
@@ -167,19 +179,44 @@ export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] 
                 ))}
               </SelectContent>
             </Select>
-            <Select value={range} onValueChange={setRange}>
-              <SelectTrigger className="h-8 w-[140px] text-sm">
+            <Select value={rangeMode} onValueChange={setRangeMode}>
+              <SelectTrigger className="h-8 w-[150px] text-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {MONTH_OPTIONS.map((m) => (
-                  <SelectItem key={m.value} value={String(m.value)}>{m.label}</SelectItem>
+                <SelectItem value="fiscal">{fiscalYear ? `当前财年 ` : '财年'}</SelectItem>
+                {/* 指定财年选项排除全局 Header 已选财年，避免与「财年 FYxxxx」重复显示；未归一化（null）时全量列出 */}
+                {(fiscalYears || []).filter((fy) => fy !== fiscalYear).map((fy) => (
+                  <SelectItem key={fy} value={fy}>{fy}</SelectItem>
                 ))}
-                {(fiscalYears || []).map((fy) => (
-                  <SelectItem key={fy} value={fy}>{fy}（财年）</SelectItem>
-                ))}
+                <SelectItem value="custom">自定义期间…</SelectItem>
               </SelectContent>
             </Select>
+            {rangeMode === 'custom' && (
+              <>
+                <Select value={customFrom} onValueChange={setCustomFrom}>
+                  <SelectTrigger className="h-8 w-[130px] text-sm">
+                    <SelectValue placeholder="开始期间" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(periods || []).map((p) => (
+                      <SelectItem key={p} value={p}>{p}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="text-xs text-muted-foreground">至</span>
+                <Select value={customTo} onValueChange={setCustomTo}>
+                  <SelectTrigger className="h-8 w-[130px] text-sm">
+                    <SelectValue placeholder="结束期间" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(periods || []).map((p) => (
+                      <SelectItem key={p} value={p}>{p}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            )}
             <Button variant="outline" size="sm" className="h-8" disabled={!hasData} onClick={handleExport}>
               <Download className="mr-1 h-3.5 w-3.5" />
               导出 CSV
@@ -199,7 +236,9 @@ export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] 
             </Button>
           </div>
         ) : !hasData ? (
-          <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">暂无数据</div>
+          <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">
+            {rangeMode === 'custom' && (!customFrom || !customTo) ? '请选择开始与结束期间' : '暂无数据'}
+          </div>
         ) : (
           <ReactECharts
             echarts={echarts}

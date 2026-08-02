@@ -83,6 +83,13 @@ router.get('/imports', requirePermission('data:browse:view', 'view'), asyncHandl
   sendOk(res, data)
 }))
 
+// 下载导入模板（自动读取科目体系数据类指标生成，见 ImportService.getTemplate）；须在 /imports/:id 之前注册
+router.get('/imports/template', requirePermission('data:import:upload', 'import'), asyncHandler(async (req, res) => {
+  const type = req.query.type === 'static' ? 'static' : req.query.type === 'budget' ? 'budget' : 'operating'
+  const buffer = await ImportService.getTemplate(type)
+  sendXlsx(res, buffer, `import-template-${type}.xlsx`)
+}))
+
 router.get('/imports/:id', requirePermission('data:browse:view', 'view'), asyncHandler(async (req, res) => {
   sendOk(res, await ImportService.getById(req.params.id as string))
 }))
@@ -261,7 +268,7 @@ router.post('/metrics/:id/restore', requirePermission('data:metric:update', 'upd
   sendOk(res, await DataService.restoreMetric(req.params.id as string, { clearFormula: req.body?.clearFormula === true }, ctxOf(req)))
 }))
 
-// 指标类型转换（高危，仅 superadmin）：data ↔ calc，data→calc 可携带初始公式
+// 指标类型转换（高危，仅 superadmin）：data ↔ calc、data/calc → display（display 只读不可转出），data→calc 可携带初始公式
 router.post('/metrics/:id/convert', requirePermission('data:metric:convert', 'update'), asyncHandler(async (req, res) => {
   const dataType = String(req.body?.dataType ?? '')
   if (!dataType) throw errors.badRequest('目标类型必填')

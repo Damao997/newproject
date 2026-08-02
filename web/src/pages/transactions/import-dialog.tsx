@@ -157,6 +157,12 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
                     ))}
                   </div>
                 )}
+                {/* 空模板状态：格式正确但无数据行，激活后将按申报范围标记该期该类型为「无往来数据」 */}
+                {p.recordCount === 0 && p.errorCount === 0 && (
+                  <p className="mt-2 rounded bg-info/10 px-2 py-1 text-xs text-info">
+                    空模板：格式正确但无数据行，激活后将申报覆盖该 公司×期间×往来类型 为「无往来数据」
+                  </p>
+                )}
                 {p.errorCount > 0 && (
                   <div className="mt-2 rounded bg-warning/[0.08] p-2 text-xs text-warning-strong">
                     <p className="font-medium">解析错误 {p.errorCount} 条（错误行将跳过）：</p>
@@ -234,7 +240,7 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
           {step === 'preview' && (
             <>
               <Button variant="outline" onClick={() => setStep('select')}>上一步</Button>
-              <Button disabled={importMutation.isPending || previews.every((p) => p.recordCount === 0)} onClick={handleImport}>
+              <Button disabled={importMutation.isPending} onClick={handleImport}>
                 {importMutation.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
                 确认导入
               </Button>

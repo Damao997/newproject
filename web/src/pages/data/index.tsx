@@ -343,6 +343,7 @@ export default function DataPage() {
                   canCreate={can('data:subject', 'create')}
                   canUpdate={can('data:subject', 'update')}
                   canDelete={can('data:subject', 'delete')}
+                  canConvert={canConvertMetric}
                   canExport={canExport}
                   exportFileName="经营分析科目"
                   exportSheet="经营分析科目"
@@ -355,6 +356,7 @@ export default function DataPage() {
                   canCreate={can('data:subject', 'create')}
                   canUpdate={can('data:subject', 'update')}
                   canDelete={can('data:subject', 'delete')}
+                  canConvert={canConvertMetric}
                   canExport={canExport}
                   exportFileName="静态科目"
                   exportSheet="静态科目"

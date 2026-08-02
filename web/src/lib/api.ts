@@ -386,6 +386,15 @@ class ApiClient {
     })
   }
 
+  /** 下载导入模板（后端按科目体系数据类指标生成） */
+  async downloadImportTemplate(type: 'operating' | 'static' | 'budget'): Promise<Blob> {
+    const response = await this.client.get('/data/imports/template', {
+      params: { type },
+      responseType: 'blob',
+    })
+    return response.data as Blob
+  }
+
   async getImports(params?: FilterParams): Promise<PaginatedResponse<ImportBatch>> {
     return this.request({
       method: 'GET',
@@ -480,8 +489,8 @@ class ApiClient {
     })
   }
 
-  /** 指标类型转换（高危，仅 superadmin）：data ↔ calc，data→calc 可携带初始公式 */
-  async convertMetric(id: string, data: { dataType: 'data' | 'calc'; formula?: string }): Promise<Metric> {
+  /** 指标类型转换（高危，仅 superadmin）：data ↔ calc、data/calc → display（display 只读不可转出），data→calc 可携带初始公式 */
+  async convertMetric(id: string, data: { dataType: 'data' | 'calc' | 'display'; formula?: string }): Promise<Metric> {
     return this.request({
       method: 'POST',
       url: `/data/metrics/${id}/convert`,
@@ -933,8 +942,8 @@ class ApiClient {
     return this.request({ method: 'GET', url: '/transactions/periods' })
   }
 
-  // 往来余额变动趋势（单类型，按 公司×月份 聚合；支持财年轴）
-  async getTransactionTrend(params: { transactionType: string; companyCodes?: string[]; months?: number; fiscalYear?: string }) {
+  // 往来余额变动趋势（单类型，按 公司×月份 聚合；支持财年轴与自定义期间范围）
+  async getTransactionTrend(params: { transactionType: string; companyCodes?: string[]; months?: number; fiscalYear?: string; periodFrom?: string; periodTo?: string }) {
     return this.request({
       method: 'GET',
       url: '/transactions/trend',
@@ -943,6 +952,8 @@ class ApiClient {
         companyCodes: params.companyCodes?.length ? params.companyCodes.join(',') : undefined,
         months: params.months,
         fiscalYear: params.fiscalYear,
+        periodFrom: params.periodFrom,
+        periodTo: params.periodTo,
       },
     })
   }
