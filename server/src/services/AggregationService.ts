@@ -512,7 +512,7 @@ export const AggregationService = {
       for (const n of opFlat) {
         current[n.code] = n.values[OPERATING_DIMS.ACTUAL_MONTH] ?? 0
         same[n.code] = n.values[OPERATING_DIMS.SAME_PERIOD_ACTUAL] ?? 0
-        // 全 5 维快照：供跨维度公式的复合键引用（如 {OP_031@YTD_ACTUAL}）
+        // 全 5 维快照：供跨维度公式的复合键引用（如 {OP_0201@YTD_ACTUAL}）
         externalAllDims[n.code] = { ...n.values }
       }
       externalByDim = new Map([

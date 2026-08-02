@@ -341,7 +341,7 @@ export interface AuditLog {
 
 /** 科目树节点（经营分析 level0-level4 / 静态指标 level0-level1 通用） */
 export interface SubjectNode {
-  /** 前端生成的科目编码，如 OP_001 / ST_001 */
+  /** 科目编码（级联数字编码，前缀+每级 2 位：如 OP_02 / OP_0201 / ST_1201） */
   code: string
   /** 科目名称 */
   name: string

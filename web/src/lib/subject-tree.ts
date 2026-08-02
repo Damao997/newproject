@@ -16,29 +16,84 @@ export interface FlatSubjectRow {
 }
 
 /**
- * 前序遍历装饰原始树：为每个节点赋 code（`${prefix}_` + 3 位序号）、level（= 深度）、category（= level0 根名）。
+ * 前序遍历装饰原始树：为每个节点赋级联编码（level0 用段位表如 OP_02，子级 = 父码 + 2 位序号如 OP_0201）、
+ * level（= 深度）、category（= level0 根名）。
  */
-export function decorateTree(raw: RawSubjectNode[], prefix = 'OP'): SubjectNode[] {
-  let seq = 0
-  const nextCode = () => `${prefix}_${String(++seq).padStart(3, '0')}`
 
-  const walk = (nodes: RawSubjectNode[], level: number, category: string): SubjectNode[] =>
-    nodes.map((n) => {
+/**
+ * level0 科目段位表（名称 → 2 位段位，会计大类分段）。
+ * 与 server/prisma/seed-data/subject-trees.ts 的 SUBJECT_SEGMENT_MAP 保持一致（同一编码体系）。
+ * 经营科目 01-08；静态科目按 资产 10-15 / 负债 20-24 / 权益 30-31 / 比率 40-44。
+ */
+export const SUBJECT_SEGMENT_MAP: Record<string, string> = {
+  // 经营科目
+  '回款': '01',
+  '收入': '02',
+  '成本': '03',
+  '毛利': '04',
+  '费用': '05',
+  '经营指标': '06',
+  '财务指标': '07',
+  '现金流指标': '08',
+  // 静态科目（资产）
+  '总资产': '10',
+  '银行存款': '11',
+  '应收账款': '12',
+  '存货': '13',
+  '固定资产净值': '14',
+  '在建工程': '15',
+  // 静态科目（负债）
+  '总负债': '20',
+  '预收账款': '21',
+  '应付账款': '22',
+  '内部往来': '23',
+  '应付股利': '24',
+  // 静态科目（权益）
+  '权益净资产': '30',
+  '累计未分配利润(万元)': '31',
+  // 静态科目（比率）
+  '总资产报酬率（ROA,%）': '40',
+  '资产负债率(%)': '41',
+  '净资产回报率（ROE,%）': '42',
+  '存货周转天数': '43',
+  '应收账款周转天数': '44',
+}
+
+/** level0 编码：前缀 + 段位表登记段位（未登记抛错，强制维护） */
+function rootSubjectCodeOf(prefix: string, name: string): string {
+  const segment = SUBJECT_SEGMENT_MAP[name]
+  if (!segment) throw new Error(`科目未登记 level0 段位：${name}（请向 SUBJECT_SEGMENT_MAP 补充）`)
+  return `${prefix}_${segment}`
+}
+
+/** 子级编码：父码数字段 + 2 位序号 */
+function childSubjectCodeOf(parentCode: string, seq: number): string {
+  return `${parentCode}${String(seq).padStart(2, '0')}`
+}
+
+/** 前序遍历装饰原始树：级联赋码（level0 段位 + 子级父码拼接）、level=深度、category=level0 根名 */
+export function decorateTree(raw: RawSubjectNode[], prefix = 'OP'): SubjectNode[] {
+  const walk = (nodes: RawSubjectNode[], level: number, parentCode: string | null, category: string): SubjectNode[] => {
+    // 本级序号：同一父节点下从 1 递增（level0 用段位表，不使用序号）
+    let seq = 0
+    return nodes.map((n) => {
+      const code = level === 0 ? rootSubjectCodeOf(prefix, n.name) : childSubjectCodeOf(parentCode as string, ++seq)
       // level0 节点自身即类别根
       const rootCategory = level === 0 ? n.name : category
       const decorated: SubjectNode = {
-        code: nextCode(),
+        code,
         name: n.name,
         level,
         category: rootCategory,
         dataType: n.dataType,
         children: [],
       }
-      decorated.children = n.children ? walk(n.children, level + 1, rootCategory) : []
+      decorated.children = n.children ? walk(n.children, level + 1, code, rootCategory) : []
       return decorated
     })
+  }
 
-  return walk(raw, 0, '')
+  return walk(raw, 0, null, '')
 }
 
 /** 由后端扁平列表（含 parentCode/dataType）按 parentCode 构树，根为 parentCode 为空者 */

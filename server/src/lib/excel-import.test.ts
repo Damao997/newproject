@@ -17,9 +17,9 @@ const resolvers: Resolvers = {
     ['宁波公司', 'EN330058'],
   ]),
   subjectByName: new Map([
-    ['灶具收入', 'OP_010'],
-    ['热水器收入', 'OP_011'],
-    ['总资产', 'ST_001'],
+    ['灶具收入', 'OP_020101'],
+    ['热水器收入', 'OP_020102'],
+    ['总资产', 'ST_10'],
   ]),
   defaultFiscalYear: 'FY2025',
 }
@@ -38,9 +38,9 @@ describe('excel-import 转置布局解析', () => {
     expect(res.operating.length).toBe(8)
     // 全部为 ACTUAL_MONTH，无 SAME_PERIOD 打标
     expect(res.operating.every((r) => r.periodDimCode === OPERATING_DIMS.ACTUAL_MONTH)).toBe(true)
-    const hzCur = res.operating.find((r) => r.companyCode === 'EN330059' && r.accountCode === 'OP_010' && r.period === '2026-03')
+    const hzCur = res.operating.find((r) => r.companyCode === 'EN330059' && r.accountCode === 'OP_020101' && r.period === '2026-03')
     expect(hzCur).toMatchObject({ fiscalYear: 'FY2025', value: 100 }) // S=4: 3月<4月 → 属上一财年
-    const hzPrev = res.operating.find((r) => r.companyCode === 'EN330059' && r.accountCode === 'OP_010' && r.period === '2025-03')
+    const hzPrev = res.operating.find((r) => r.companyCode === 'EN330059' && r.accountCode === 'OP_020101' && r.period === '2025-03')
     expect(hzPrev).toMatchObject({ fiscalYear: 'FY2024', value: 80 })
   })
 
@@ -51,7 +51,7 @@ describe('excel-import 转置布局解析', () => {
       ['灶具收入', 10, 20, 8, 16],
     ])
     const res = parseImportWorkbook(buf, 'operating', resolvers)
-    const rows = res.operating.filter((r) => r.accountCode === 'OP_010')
+    const rows = res.operating.filter((r) => r.accountCode === 'OP_020101')
     expect(rows.length).toBe(4)
     expect(rows.every((r) => r.periodDimCode === OPERATING_DIMS.ACTUAL_MONTH)).toBe(true)
     const periods = rows.map((r) => r.period).sort()
@@ -70,9 +70,9 @@ describe('excel-import 转置布局解析', () => {
     expect(res.static.length).toBe(2)
     // 全部为原始快照 marker，四维由聚合层按快照月份派生
     expect(res.static.every((r) => r.periodDimCode === STATIC_DIMS.CURRENT_AMOUNT)).toBe(true)
-    const mar = res.static.find((r) => r.accountCode === 'ST_001' && r.snapshotDate.getUTCMonth() === 2)
+    const mar = res.static.find((r) => r.accountCode === 'ST_10' && r.snapshotDate.getUTCMonth() === 2)
     expect(mar).toMatchObject({ companyCode: 'EN330059', value: 5000 })
-    const jan = res.static.find((r) => r.accountCode === 'ST_001' && r.snapshotDate.getUTCMonth() === 0)
+    const jan = res.static.find((r) => r.accountCode === 'ST_10' && r.snapshotDate.getUTCMonth() === 0)
     expect(jan).toMatchObject({ value: 4500 })
   })
 
@@ -83,7 +83,7 @@ describe('excel-import 转置布局解析', () => {
     ])
     const res = parseImportWorkbook(buf, 'budget', resolvers)
     expect(res.budget.length).toBe(2)
-    expect(res.budget[0]).toMatchObject({ companyCode: 'EN330059', accountCode: 'OP_010', period: 'annual', fiscalYear: 'FY2025', value: 1000 })
+    expect(res.budget[0]).toMatchObject({ companyCode: 'EN330059', accountCode: 'OP_020101', period: 'annual', fiscalYear: 'FY2025', value: 1000 })
   })
 
   it('未知公司名与科目名记为错误', () => {
@@ -122,9 +122,9 @@ describe('excel-import 标准布局解析', () => {
     expect(res.dataRowCount).toBe(3)
     expect(res.operating.length).toBe(6)
     expect(res.operating.every((r) => r.periodDimCode === OPERATING_DIMS.ACTUAL_MONTH)).toBe(true)
-    const hzApr = res.operating.find((r) => r.companyCode === 'EN330059' && r.accountCode === 'OP_010' && r.period === '2026-04')
+    const hzApr = res.operating.find((r) => r.companyCode === 'EN330059' && r.accountCode === 'OP_020101' && r.period === '2026-04')
     expect(hzApr).toMatchObject({ fiscalYear: 'FY2026', value: 100 })
-    const nbApr = res.operating.find((r) => r.companyCode === 'EN330058' && r.accountCode === 'OP_011' && r.period === '2026-04')
+    const nbApr = res.operating.find((r) => r.companyCode === 'EN330058' && r.accountCode === 'OP_020102' && r.period === '2026-04')
     expect(nbApr).toMatchObject({ value: 60 })
   })
 
@@ -233,7 +233,7 @@ describe('excel-import 覆盖摘要 summary', () => {
     expect(res.summary.totalValue).toBe(350)
     expect(res.summary.zeroValueCount).toBe(1)
     expect(res.summary.duplicateCount).toBe(0)
-    expect([...res.summary.accountCodes].sort()).toEqual(['OP_010', 'OP_011'])
+    expect([...res.summary.accountCodes].sort()).toEqual(['OP_020101', 'OP_020102'])
   })
 
   it('文件内重复：同公司同科目同月份被检出并按科目求和合并', () => {

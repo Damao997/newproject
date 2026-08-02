@@ -558,7 +558,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
           </DialogHeader>
           <div className="space-y-2">
             <label className="text-sm font-medium">公式表达式</label>
-            <Input value={draftFormula} onChange={(e) => setDraftFormula(e.target.value)} placeholder="如：{OP_002} - {OP_030}" maxLength={500} />
+            <Input value={draftFormula} onChange={(e) => setDraftFormula(e.target.value)} placeholder="如：{OP_0201} - {OP_020101}" maxLength={500} />
             {draftFormula.trim() && (
               <p className="text-xs text-muted-foreground">中文预览：{renderColoredFormula(draftFormula)}</p>
             )}
@@ -726,7 +726,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium">公式（可选）</label>
-              <Input value={createForm.formula} onChange={(e) => setCreateForm({ ...createForm, formula: e.target.value })} placeholder="如：{OP_057} / {OP_005}" maxLength={500} />
+              <Input value={createForm.formula} onChange={(e) => setCreateForm({ ...createForm, formula: e.target.value })} placeholder="如：{OP_020101} / {OP_02}" maxLength={500} />
               {createForm.formula.trim() && (
                 <p className="text-xs text-muted-foreground">中文预览：{formatFormula(createForm.formula)}</p>
               )}
@@ -790,7 +790,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium">初始公式（可选）</label>
-              <Input value={convertForm.formula} onChange={(e) => setConvertForm({ ...convertForm, formula: e.target.value })} placeholder="如：{OP_057} / {OP_005}" maxLength={500} />
+              <Input value={convertForm.formula} onChange={(e) => setConvertForm({ ...convertForm, formula: e.target.value })} placeholder="如：{OP_020101} / {OP_02}" maxLength={500} />
               {convertForm.formula.trim() && (
                 <p className="text-xs text-muted-foreground">中文预览：{formatFormula(convertForm.formula)}</p>
               )}

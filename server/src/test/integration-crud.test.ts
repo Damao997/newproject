@@ -61,7 +61,7 @@ describe('科目 CRUD', () => {
   it('创建→更新→软删除（未引用科目）', async () => {
     if (!dbReady) return
     const code = `OP_TEST_${Date.now().toString(36)}`
-    const created = await DataService.createSubject({ code, name: '测试科目', type: 'operating', level: 1, parentCode: 'OP_001', isLeaf: true }, ctx())
+    const created = await DataService.createSubject({ code, name: '测试科目', type: 'operating', level: 1, parentCode: 'OP_02', isLeaf: true }, ctx())
     expect(created.code).toBe(code)
     const updated = await DataService.updateSubject(created.id, { name: '测试科目改' }, ctx())
     expect(updated.name).toBe('测试科目改')
@@ -391,8 +391,8 @@ describe('公式试算递归展开 calc 依赖', () => {
     const calcCode = `OP_TCC_${suffix}`
     tempMetricCodes.push(dataCode, calcCode)
     try {
-      await DataService.createSubject({ code: dataCode, name: '试算数据叶', type: 'operating', level: 1, parentCode: 'OP_001', isLeaf: true }, ctx())
-      await DataService.createSubject({ code: calcCode, name: '试算计算项', type: 'operating', level: 1, parentCode: 'OP_001', isLeaf: true }, ctx())
+      await DataService.createSubject({ code: dataCode, name: '试算数据叶', type: 'operating', level: 1, parentCode: 'OP_02', isLeaf: true }, ctx())
+      await DataService.createSubject({ code: calcCode, name: '试算计算项', type: 'operating', level: 1, parentCode: 'OP_02', isLeaf: true }, ctx())
       await DataService.createMetric({ code: dataCode, name: '试算数据叶', dataType: 'data', category: '自定义' }, ctx())
       await DataService.createMetric({ code: calcCode, name: '试算计算项', dataType: 'calc', formula: `{${dataCode}}`, category: '自定义' }, ctx())
       await basePrisma.factOperating.create({
@@ -428,12 +428,12 @@ describe('跨公司重分类', () => {
     try {
       await basePrisma.factOperating.createMany({
         data: [
-          { batchId: batch.id, companyCode: src, accountCode: 'OP_001', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 100 },
-          { batchId: batch.id, companyCode: src, accountCode: 'OP_002', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 200 },
+          { batchId: batch.id, companyCode: src, accountCode: 'OP_02', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 100 },
+          { batchId: batch.id, companyCode: src, accountCode: 'OP_0201', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 200 },
         ],
       })
-      // 目标公司已有 OP_001@2026-05 (50) → 合并
-      await basePrisma.factOperating.create({ data: { batchId: batch.id, companyCode: tgt, accountCode: 'OP_001', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 50 } })
+      // 目标公司已有 OP_02@2026-05 (50) → 合并
+      await basePrisma.factOperating.create({ data: { batchId: batch.id, companyCode: tgt, accountCode: 'OP_02', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 50 } })
 
       const pv = await ReclassificationService.previewCompany({ templateType: 'operating', sourceCompanyCode: src, targetCompanyCode: tgt, period: '2026-05' }, scope)
       expect(pv.affectedRows).toBe(2)
@@ -506,12 +506,12 @@ describe('跨公司重分类', () => {
     try {
       await basePrisma.factOperating.createMany({
         data: [
-          { batchId: batch.id, companyCode: src, accountCode: 'OP_001', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 100 },
-          { batchId: batch.id, companyCode: src, accountCode: 'OP_002', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 200 },
+          { batchId: batch.id, companyCode: src, accountCode: 'OP_02', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 100 },
+          { batchId: batch.id, companyCode: src, accountCode: 'OP_0201', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 200 },
         ],
       })
-      // 目标公司已有 OP_001@2026-05 (50) → 累加；OP_002 无行 → 新建
-      await basePrisma.factOperating.create({ data: { batchId: batch.id, companyCode: tgt, accountCode: 'OP_001', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 50 } })
+      // 目标公司已有 OP_02@2026-05 (50) → 累加；OP_0201 无行 → 新建
+      await basePrisma.factOperating.create({ data: { batchId: batch.id, companyCode: tgt, accountCode: 'OP_02', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 50 } })
 
       const pv = await ReclassificationService.previewCompany(
         { templateType: 'operating', sourceCompanyCode: src, targetCompanyCode: tgt, period: '2026-05', transferMode: 'amount', amount: 90 },
@@ -567,7 +567,7 @@ describe('跨公司重分类', () => {
     const scope = { companyCode: null, scopeValue: '*' }
     try {
       await basePrisma.factOperating.create({
-        data: { batchId: batch.id, companyCode: src, accountCode: 'OP_001', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 100 },
+        data: { batchId: batch.id, companyCode: src, accountCode: 'OP_02', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 100 },
       })
       const res = await ReclassificationService.reclassifyCompany(
         { templateType: 'operating', sourceCompanyCode: src, targetCompanyCode: tgt, period: '2026-05', transferMode: 'ratio', ratio: 0.3 },
@@ -688,7 +688,7 @@ describe('同公司科目间金额调整', () => {
     if (!dbReady) return
     await expect(
       ReclassificationService.previewAdjustSubject(
-        { templateType: 'operating', companyCode: 'EN330058', sourceAccountCode: 'OP_001', decreaseAmount: 100, period: '2026-05', reason: 'x' },
+        { templateType: 'operating', companyCode: 'EN330058', sourceAccountCode: 'OP_02', decreaseAmount: 100, period: '2026-05', reason: 'x' },
         { companyCode: 'EN330059', scopeValue: '' },
       ),
     ).rejects.toMatchObject({ code: 403 })

@@ -37,10 +37,10 @@ describe('prompt-guard 输出编码泄露过滤', () => {
   })
 
   it('公司/科目/汇总编码被打码', () => {
-    const r = filterOutput('CO330059 的 OP_025 与 ET0001 及 CALC_资产负债率')
+    const r = filterOutput('CO330059 的 OP_0201 与 ET0001 及 CALC_资产负债率')
     expect(r.clean).toBe(false)
     expect(r.sanitized).not.toContain('CO330059')
-    expect(r.sanitized).not.toContain('OP_025')
+    expect(r.sanitized).not.toContain('OP_0201')
     expect(r.sanitized).not.toContain('ET0001')
     expect(r.sanitized).toContain('[已隐藏]')
     expect(r.leaks).toContain('company')
@@ -48,8 +48,8 @@ describe('prompt-guard 输出编码泄露过滤', () => {
   })
 
   it('静态科目编码与 system prompt 复述被捕获', () => {
-    const r = filterOutput('ST_012 的数据；我是润色助手')
-    expect(r.sanitized).not.toContain('ST_012')
+    const r = filterOutput('ST_1201 的数据；我是润色助手')
+    expect(r.sanitized).not.toContain('ST_1201')
     expect(r.leaks).toContain('static')
     expect(r.leaks).toContain('system_prompt')
   })

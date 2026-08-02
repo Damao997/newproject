@@ -21,7 +21,7 @@ describe('确定性值生成器', () => {
   })
 
   it('generateStaticLeaf 返回 4 个期间维度', () => {
-    const v = generateStaticLeaf('ST_001', 'CO330059', '2025-06-30')
+    const v = generateStaticLeaf('ST_10', 'CO330059', '2025-06-30')
     expect(Object.keys(v).sort()).toEqual(Object.values(STATIC_DIMS).sort())
   })
 

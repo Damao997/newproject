@@ -16,7 +16,7 @@ import type { OperatingRow } from './IndicatorsService'
 describe('buildAnalyzeFactBlock', () => {
   it('百分数值直接拼单位，不再 ×100 二次缩放', () => {
     const row = {
-      code: 'OP_001', name: '收入', level: 1, category: '收入', dataType: 'data', valueType: 'amount', isLeaf: true,
+      code: 'OP_02', name: '收入', level: 1, category: '收入', dataType: 'data', valueType: 'amount', isLeaf: true,
       budget: 1200, actual: 100, samePeriod: 90, ytd: 600, samePeriodYtd: 540,
       yoy: 11.11, achievement: 50, ytdYoy: 11.11,
     } as OperatingRow
@@ -30,14 +30,14 @@ describe('buildAnalyzeFactBlock', () => {
 
 describe('parseFormulaOutput', () => {
   it('解析「公式:/解释:」两行格式', () => {
-    const out = parseFormulaOutput('公式: {OP_040} / {OP_001}\n解释: 毛利率等于毛利除以收入')
-    expect(out.formula).toBe('{OP_040} / {OP_001}')
+    const out = parseFormulaOutput('公式: {OP_0401} / {OP_0201}\n解释: 毛利率等于毛利除以收入')
+    expect(out.formula).toBe('{OP_0401} / {OP_0201}')
     expect(out.explanation).toContain('毛利率')
   })
 
   it('兜底取首个含 {CODE} 的行', () => {
-    const out = parseFormulaOutput('好的，建议如下：\n{OP_001} - {OP_030}')
-    expect(out.formula).toBe('{OP_001} - {OP_030}')
+    const out = parseFormulaOutput('好的，建议如下：\n{OP_0201} - {OP_0301}')
+    expect(out.formula).toBe('{OP_0201} - {OP_0301}')
   })
 
   it('无公式时返回 null', () => {
@@ -47,7 +47,7 @@ describe('parseFormulaOutput', () => {
 
 describe('AIProxyService.generateFormula（mock DeepSeek）', () => {
   let dbReady = false
-  let realCode = 'OP_001'
+  let realCode = 'OP_02'
 
   beforeAll(async () => {
     try {
@@ -136,7 +136,7 @@ describe('AIProxyService.polishStream（mock chatStream）', () => {
   it('输出中的内部编码被过滤', async () => {
     if (!dbReady) return
     mocks.chatStream.mockImplementation(async (_s: string, _u: string, onToken: (d: string) => void) => {
-      onToken('参见 OP_025 科目')
+      onToken('参见 OP_0201 科目')
     })
     const { finalText } = await AIProxyService.polishStream({ text: '测试文本', userId: 'u1' }, () => {})
     expect(finalText).not.toContain('OP_025')
@@ -224,7 +224,7 @@ describe('AIProxyService.summarizeStream（mock chatStream）', () => {
     mocks.chatStream.mockImplementation(async (_s: string, user: string, onToken: (d: string) => void) => {
       capturedUser = user
       onToken('据指标表显示，整体稳健。')
-      onToken('参见 OP_025 科目。')
+      onToken('参见 OP_0201 科目。')
     })
     const { finalText } = await AIProxyService.summarizeStream(
       { title: '总体报告', sections: [{ title: '收入分析', plainText: '收入同比增长 12.3%' }], userId: 'u1' },

@@ -159,7 +159,7 @@ export function SubjectDialog({ open, mode, type, subject, flat, onClose }: Subj
         <div className="space-y-3">
           <div className="space-y-1">
             <Label htmlFor="subject-code">科目编码</Label>
-            <Input id="subject-code" value={code} onChange={(e) => setCode(e.target.value)} disabled={mode === 'edit'} placeholder="如：OP_200（编码不可修改）" />
+            <Input id="subject-code" value={code} onChange={(e) => setCode(e.target.value)} disabled={mode === 'edit'} placeholder="如：OP_0201010102（编码不可修改）" />
           </div>
           <div className="space-y-1">
             <Label htmlFor="subject-name">科目名称</Label>

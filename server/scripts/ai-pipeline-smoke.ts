@@ -43,7 +43,7 @@ async function main(): Promise<void> {
     (d) => process.stdout.write(d),
   )
   console.log('\n[pipeline] 最终：', analyze.finalText.slice(0, 200))
-  console.log('[pipeline] 编码泄露校验：', /CO\d{6}|OP_\d{3}|ET\d{4}/.test(analyze.finalText) ? '发现编码 ❌' : '无内部编码 ✅')
+  console.log('[pipeline] 编码泄露校验：', /CO\d{6}|OP_\d{2}(?:\d{2})*|ET\d{4}/.test(analyze.finalText) ? '发现编码 ❌' : '无内部编码 ✅')
 
   console.log('\n[pipeline] 全链路联调完成 ✅')
 }

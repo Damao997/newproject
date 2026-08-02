@@ -26,12 +26,12 @@ const sampleRaw: RawSubjectNode[] = [
 ]
 
 describe('decorateTree', () => {
-  it('前序赋 OP_ 三位编码且唯一', () => {
+  it('级联赋码：level0 段位 + 子级父码拼接，编码唯一', () => {
     const tree = decorateTree(sampleRaw)
     const codes = flattenTree(tree).map((r) => r.node.code)
-    expect(codes).toEqual(['OP_001', 'OP_002', 'OP_003', 'OP_004'])
+    expect(codes).toEqual(['OP_02', 'OP_0201', 'OP_020101', 'OP_06'])
     expect(new Set(codes).size).toBe(codes.length)
-    expect(codes.every((c) => /^OP_\d{3}$/.test(c))).toBe(true)
+    expect(codes.every((c) => /^OP_\d{2}(?:\d{2})*$/.test(c))).toBe(true)
   })
 
   it('level 等于深度，category 传播为 level0 根名', () => {
@@ -64,7 +64,7 @@ describe('filterTree', () => {
   })
 
   it('可按编码过滤', () => {
-    const result = filterTree(tree, 'OP_004')
+    const result = filterTree(tree, 'OP_06')
     expect(result).toHaveLength(1)
     expect(result[0].name).toBe('经营指标')
   })
@@ -97,20 +97,27 @@ describe('operatingAnalysis 全量数据', () => {
   })
 })
 
-describe('decorateTree 编码前缀', () => {
-  it('支持自定义前缀生成 ST_ 编码', () => {
-    const tree = decorateTree(sampleRaw, 'ST')
+describe('decorateTree 静态前缀', () => {
+  it('ST 前缀按静态段位表级联赋码', () => {
+    const stRaw: RawSubjectNode[] = [
+      {
+        name: '应收账款',
+        dataType: 'calc',
+        children: [{ name: '集团内客户（含城燃体系）', dataType: 'data' }],
+      },
+    ]
+    const tree = decorateTree(stRaw, 'ST')
     const codes = flattenTree(tree).map((r) => r.node.code)
-    expect(codes[0]).toBe('ST_001')
-    expect(codes.every((c) => /^ST_\d{3}$/.test(c))).toBe(true)
+    expect(codes).toEqual(['ST_12', 'ST_1201'])
+    expect(codes.every((c) => /^ST_\d{2}(?:\d{2})*$/.test(c))).toBe(true)
   })
 })
 
 describe('staticAnalysis 全量数据', () => {
-  it('节点数大于 30 且编码形如 ST_ 并唯一', () => {
+  it('节点数大于 30 且编码形如 ST_ 级联格式并唯一', () => {
     expect(staticAnalysisFlat.length).toBeGreaterThan(30)
     const codes = staticAnalysisFlat.map((r) => r.node.code)
-    expect(codes.every((c) => /^ST_\d{3}$/.test(c))).toBe(true)
+    expect(codes.every((c) => /^ST_\d{2}(?:\d{2})*$/.test(c))).toBe(true)
     expect(new Set(codes).size).toBe(codes.length)
   })
 
