@@ -50,12 +50,13 @@ export function guardInput(text: string): GuardResult {
 }
 
 // LLM 输出编码泄露检测（见 AI模块规范 §6.4）：公司/科目/指标编码 + system prompt 关键词
+// 科目编码为级联数字格式：前缀 + 每级 2 位（如 OP_02 / OP_0201 / OP_0201010101、ST_12 / ST_1201）
 const LEAK_PATTERNS: { name: string; re: RegExp }[] = [
   { name: 'company', re: /\bCO\d{6}\b/g },
   { name: 'summary', re: /\bET\d{4}\b/g },
   { name: 'summary_alt', re: /\bSUM\d{4}\b/g },
-  { name: 'operating', re: /\bOP_\d{3}\b/g },
-  { name: 'static', re: /\bST_\d{3}\b/g },
+  { name: 'operating', re: /\bOP_\d{2}(?:\d{2})*\b/g },
+  { name: 'static', re: /\bST_\d{2}(?:\d{2})*\b/g },
   { name: 'calc', re: /\bCALC_[A-Za-z\u4e00-\u9fa5]+\b/g },
 ]
 

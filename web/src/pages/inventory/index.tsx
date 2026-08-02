@@ -2,25 +2,17 @@ import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuCheckboxItem,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu'
-import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { CompanyMultiSelect } from '@/components/filters/company-select'
 import { PageContainer } from '@/components/layout/page-container'
 import { AnalysisDrawer, type AnalysisTarget } from '@/components/indicators/analysis-drawer'
 import {
   useAvailablePeriods,
-  useCompanies,
   useInventoryDetails,
   useInventoryOverview,
   type InventoryDetailRow,
@@ -29,7 +21,7 @@ import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { usePermission } from '@/hooks/usePermission'
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { cn, formatMoneyWan, getChangeColor, getChangePrefix } from '@/lib/utils'
-import { Package, Boxes, CalendarClock, TrendingUp, ChevronDown, FileText } from 'lucide-react'
+import { Package, Boxes, CalendarClock, TrendingUp, FileText } from 'lucide-react'
 import { CategoryPieCard } from './category-pie-card'
 import { CategoryRankCard } from './category-rank-card'
 import { InventoryTrendCard } from './trend-card'
@@ -40,12 +32,12 @@ import { InventoryTrendCard } from './trend-card'
  * 周转指标直接复用静态树「存货周转天数」，与指标页口径一致。金额单位：万元。
  */
 
-/** KPI 图标底色：与看板四色体系一致，按序轮换 */
+/** KPI 图标底色：与看板四色体系一致（图表序列色），按序轮换 */
 const KPI_ACCENTS = [
-  'bg-orange-500/10 text-orange-500',
-  'bg-blue-500/10 text-blue-500',
-  'bg-emerald-500/10 text-emerald-500',
-  'bg-violet-500/10 text-violet-500',
+  'bg-chart-1/10 text-chart-1',
+  'bg-chart-2/10 text-chart-2',
+  'bg-chart-3/10 text-chart-3',
+  'bg-chart-5/10 text-chart-5',
 ]
 
 function StatCard({ title, icon: Icon, value, sub, index }: {
@@ -57,11 +49,11 @@ function StatCard({ title, icon: Icon, value, sub, index }: {
 }) {
   return (
     <Card
-      className="animate-fade-in border border-border bg-white shadow-sm transition-shadow duration-200 hover:shadow-md"
+      className="animate-fade-in border border-border shadow-sm"
       style={{ animationDelay: `${index * 80}ms` }}
     >
       <CardHeader className="flex flex-row items-center justify-between space-y-0 px-5 pb-1 pt-5">
-        <CardTitle className="text-xs font-medium tracking-wide text-[#64748B]">{title}</CardTitle>
+        <CardTitle className="text-xs font-medium tracking-wide text-muted-foreground">{title}</CardTitle>
         <div className={cn('flex h-8 w-8 items-center justify-center rounded-lg', KPI_ACCENTS[index % KPI_ACCENTS.length])}>
           <Icon className="h-4 w-4" />
         </div>
@@ -120,16 +112,7 @@ export default function InventoryPage() {
   const overview = overviewQuery.data
   const detailRows = detailsQuery.data?.rows ?? []
 
-  const { data: companies } = useCompanies()
-  const { displayNameMap, getDisplayName } = useCompanyDisplayName()
-  const companyLabel = useMemo(() => {
-    if (selectedCompanies.length === 0) return '全部公司'
-    const firstName = displayNameMap.get(selectedCompanies[0]) ?? selectedCompanies[0]
-    return selectedCompanies.length === 1 ? firstName : `${firstName} 等 ${selectedCompanies.length} 家`
-  }, [selectedCompanies, displayNameMap])
-
-  const toggleCompany = (code: string, checked: boolean) =>
-    setSelectedCompanies((prev) => (checked ? [...prev, code] : prev.filter((c) => c !== code)))
+  const { getDisplayName } = useCompanyDisplayName()
 
   /** 打开单项分析抽屉：品类为静态科目，指标上下文映射与指标页静态口径一致 */
   const handleAnalyze = (row: InventoryDetailRow) => {
@@ -160,39 +143,7 @@ export default function InventoryPage() {
       <div className="space-y-6">
         {/* 筛选行：公司多选 + 期间单选（财年由顶部导航全局控制） */}
         <div className="flex flex-wrap items-center gap-3">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="h-9 w-[220px] justify-between px-3 font-normal">
-                <span className="truncate">{companyLabel}</span>
-                <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="max-h-[320px] w-[240px] overflow-y-auto">
-              <DropdownMenuItem
-                className="text-xs text-muted-foreground"
-                onSelect={(e) => { e.preventDefault(); setSelectedCompanies((companies || []).map((c) => c.code)) }}
-              >
-                全选
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="text-xs text-muted-foreground"
-                onSelect={(e) => { e.preventDefault(); setSelectedCompanies([]) }}
-              >
-                清空（全部公司）
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {(companies || []).map((company) => (
-                <DropdownMenuCheckboxItem
-                  key={company.code}
-                  checked={selectedCompanies.includes(company.code)}
-                  onCheckedChange={(checked) => toggleCompany(company.code, checked === true)}
-                  onSelect={(e) => e.preventDefault()}
-                >
-                  {displayNameMap.get(company.code) ?? company.name}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <CompanyMultiSelect value={selectedCompanies} onChange={setSelectedCompanies} />
           <Select value={period ?? ''} onValueChange={setPeriodFilter}>
             <SelectTrigger className="w-[140px]">
               <SelectValue placeholder="期间" />
@@ -270,7 +221,7 @@ export default function InventoryPage() {
             ) : (
               <div className={cn('max-h-[520px] overflow-auto transition-opacity duration-200', detailsQuery.isFetching && 'opacity-60')}>
                 <table className="w-full text-sm">
-                  <thead className="sticky top-0 bg-white">
+                  <thead className="sticky top-0 bg-card">
                     <tr className="border-b text-center text-black">
                       <th className="px-2 py-2 font-medium">公司</th>
                       <th className="px-2 py-2 font-medium">品类</th>

@@ -216,6 +216,94 @@ export interface TrendData {
   collectionActual: number | null
 }
 
+/** 品类预算达成的单指标组（收入/毛利各一组）：预算为年度总额（万元），月均口径由前端按 预算/12 折算 */
+export interface ProductBudgetMetric {
+  budget: number
+  monthActual: number
+  /** 上年同月实际（供合计行同比按 Σ金额重算） */
+  monthSame: number
+  monthRate: number | null
+  monthYoy: number
+  ytdActual: number
+  /** 上年同期累计（供合计行同比按 Σ金额重算） */
+  ytdSame: number
+  ytdRate: number | null
+  ytdYoy: number
+}
+
+/** 品类预算达成行：品类名 + 收入/毛利镜像科目各一组口径值 */
+export interface ProductBudgetRow {
+  category: string
+  income: ProductBudgetMetric
+  profit: ProductBudgetMetric
+}
+
+/** 品类预算达成接口响应 */
+export interface ProductBudgetResponse {
+  period: string
+  rows: ProductBudgetRow[]
+}
+
+/** 主体预算达成行：主体（单体公司/汇总主体）+ 收入/毛利/净利润各一组口径值 */
+export interface SubjectBudgetRow {
+  code: string
+  name: string
+  income: ProductBudgetMetric
+  profit: ProductBudgetMetric
+  netProfit: ProductBudgetMetric
+}
+
+/** 主体预算达成接口响应 */
+export interface SubjectBudgetResponse {
+  period: string
+  mode: 'single' | 'summary'
+  rows: SubjectBudgetRow[]
+}
+
+/** 品类配置（品类预算达成分析：品类 ↔ 收入科目名关键词） */
+export interface ProductCategory {
+  id: string
+  code: string
+  name: string
+  subjectKeyword: string
+  sortOrder: number
+  status: 'active' | 'inactive'
+  createdAt: string
+  updatedAt: string
+}
+
+/** 品类配置检测行：匹配到的收入科目与毛利镜像是否齐全 */
+export type ProductCategoryCheckItem = ProductCategory & {
+  matchedSubjects: string[]
+  profitOk: boolean
+}
+
+/** 科目树变化检测结果 */
+export interface ProductCategoryCheckResult {
+  categories: ProductCategoryCheckItem[]
+  uncoveredSubjects: string[]
+  brokenKeywords: string[]
+  missingProfitMirror: string[]
+}
+
+/** 主体展示配置（主体预算达成分析：配置展示的主体/排序/启停） */
+export interface SubjectBudgetConfig {
+  id: string
+  companyCode: string
+  companyName: string
+  entityType: 'single' | 'summary'
+  sortOrder: number
+  status: 'active' | 'inactive'
+  createdAt: string
+  updatedAt: string
+}
+
+/** 主体配置检测结果：已配置列表 + 公司表新增但未配置的主体 */
+export interface SubjectBudgetConfigCheckResult {
+  configs: SubjectBudgetConfig[]
+  unconfiguredSubjects: { code: string; name: string; entityType: 'single' | 'summary' }[]
+}
+
 /** 应收账款主体分布行（横向柱状图） */
 export interface ReceivableRow {
   code: string
@@ -253,7 +341,7 @@ export interface AuditLog {
 
 /** 科目树节点（经营分析 level0-level4 / 静态指标 level0-level1 通用） */
 export interface SubjectNode {
-  /** 前端生成的科目编码，如 OP_001 / ST_001 */
+  /** 科目编码（级联数字编码，前缀+每级 2 位：如 OP_02 / OP_0201 / ST_1201） */
   code: string
   /** 科目名称 */
   name: string

@@ -120,7 +120,7 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
               <ul className="max-h-40 space-y-1 overflow-y-auto text-sm">
                 {files.map((f) => (
                   <li key={f.name} className="flex items-center gap-2">
-                    <FileSpreadsheet className="h-4 w-4 shrink-0 text-green-600" />
+                    <FileSpreadsheet className="h-4 w-4 shrink-0 text-success" />
                     <span className="truncate">{f.name}</span>
                     <span className="ml-auto shrink-0 text-xs text-muted-foreground">{(f.size / 1024).toFixed(0)} KB</span>
                   </li>
@@ -136,7 +136,7 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
             {previews.map((p) => (
               <div key={p.filename} className="rounded-lg border p-3 text-sm">
                 <div className="flex items-center gap-2 font-medium">
-                  {p.errorCount > 0 ? <AlertTriangle className="h-4 w-4 text-orange-500" /> : <CheckCircle2 className="h-4 w-4 text-green-600" />}
+                  {p.errorCount > 0 ? <AlertTriangle className="h-4 w-4 text-warning" /> : <CheckCircle2 className="h-4 w-4 text-success" />}
                   <span className="truncate">{p.filename}</span>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -146,19 +146,25 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
                   <span>客商: {p.summary.counterpartyCount}</span>
                   <span>期末余额合计: {formatAmount(p.summary.totalClosingBalance)}</span>
                   {p.summary.internalCount > 0 && <span>内部往来: {p.summary.internalCount}</span>}
-                  {p.summary.duplicateCount > 0 && <span className="text-orange-600">文件内重复合并: {p.summary.duplicateCount}</span>}
+                  {p.summary.duplicateCount > 0 && <span className="text-warning-strong">文件内重复合并: {p.summary.duplicateCount}</span>}
                 </div>
                 {p.sheets.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {p.sheets.map((s) => (
-                      <span key={s.sheetName} className={cn('rounded px-1.5 py-0.5 text-xs', s.direction === 'AR' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300')}>
+                      <span key={s.sheetName} className={cn('rounded px-1.5 py-0.5 text-xs', s.direction === 'AR' ? 'bg-info/10 text-info' : 'bg-destructive/10 text-destructive')}>
                         {s.transactionType} · {s.recordCount} 条{s.cutoffDate ? ` · 截止 ${s.cutoffDate}` : ''}
                       </span>
                     ))}
                   </div>
                 )}
+                {/* 空模板状态：格式正确但无数据行，激活后将按申报范围标记该期该类型为「无往来数据」 */}
+                {p.recordCount === 0 && p.errorCount === 0 && (
+                  <p className="mt-2 rounded bg-info/10 px-2 py-1 text-xs text-info">
+                    空模板：格式正确但无数据行，激活后将申报覆盖该 公司×期间×往来类型 为「无往来数据」
+                  </p>
+                )}
                 {p.errorCount > 0 && (
-                  <div className="mt-2 rounded bg-orange-50 p-2 text-xs text-orange-700 dark:bg-orange-950/20 dark:text-orange-300">
+                  <div className="mt-2 rounded bg-warning/[0.08] p-2 text-xs text-warning-strong">
                     <p className="font-medium">解析错误 {p.errorCount} 条（错误行将跳过）：</p>
                     <ul className="mt-1 max-h-24 space-y-0.5 overflow-y-auto">
                       {p.errors.slice(0, 10).map((e, i) => (
@@ -177,7 +183,7 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
                       <p className="text-muted-foreground">激活后新增 {p.activationImpact.newKeys.length} 个组合：{p.activationImpact.newKeys.slice(0, 3).map((k) => `${k.companyCode} ${k.period} ${k.transactionType}`).join('、')}{p.activationImpact.newKeys.length > 3 ? ' 等' : ''}</p>
                     )}
                     {p.activationImpact.overlappingKeys.length > 0 && (
-                      <p className="font-medium text-orange-600 dark:text-orange-400">
+                      <p className="font-medium text-warning-strong">
                         激活后将替换 {p.activationImpact.overlappingKeys.length} 个已生效组合：
                         {p.activationImpact.overlappingKeys.slice(0, 3).map((k) => `${k.companyCode} ${k.period} ${k.transactionType}(现有${k.existingCount}条)`).join('、')}
                         {p.activationImpact.overlappingKeys.length > 3 ? ' 等' : ''}
@@ -195,7 +201,7 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
           <div className="space-y-2">
             {results.map((r) => (
               <div key={r.filename} className="flex items-center gap-2 rounded-lg border p-3 text-sm">
-                {r.error ? <XCircle className="h-4 w-4 shrink-0 text-destructive" /> : <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />}
+                {r.error ? <XCircle className="h-4 w-4 shrink-0 text-destructive" /> : <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />}
                 <div className="min-w-0 flex-1">
                   <p className="truncate">{r.filename}</p>
                   {r.error ? (
@@ -206,7 +212,7 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
                 </div>
                 {r.batch && (
                   activatedIds.has(r.batch.id) ? (
-                    <span className="shrink-0 rounded bg-green-100 px-2 py-0.5 text-xs text-green-700 dark:bg-green-900/30 dark:text-green-300">已激活</span>
+                    <span className="shrink-0 rounded bg-success/10 px-2 py-0.5 text-xs text-success-strong">已激活</span>
                   ) : (
                     <Button size="sm" variant="outline" className="shrink-0" disabled={activateMutation.isPending} onClick={() => handleActivate(r.batch!.id)}>
                       {activateMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : '激活'}
@@ -234,7 +240,7 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
           {step === 'preview' && (
             <>
               <Button variant="outline" onClick={() => setStep('select')}>上一步</Button>
-              <Button disabled={importMutation.isPending || previews.every((p) => p.recordCount === 0)} onClick={handleImport}>
+              <Button disabled={importMutation.isPending} onClick={handleImport}>
                 {importMutation.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
                 确认导入
               </Button>

@@ -46,6 +46,112 @@ export function useDashboardReceivables(params: { period?: string; mode: 'single
   })
 }
 
+/** 品类预算达成表：单期间 + 主体口径（跟随看板筛选），period 未定时不发请求 */
+export function useProductBudget(params: { period?: string; companyCode?: string }) {
+  return useQuery({
+    queryKey: ['dashboard', 'product-budget', params.period ?? '', params.companyCode ?? ''] as const,
+    queryFn: () => api.getProductBudget({
+      ...(params.period ? { period: params.period } : {}),
+      ...(params.companyCode ? { companyCode: params.companyCode } : {}),
+    }),
+    enabled: !!params.period,
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+/** 主体预算达成表：单期间 + 主体类型（单体/汇总）+ 可选指定主体（跟随看板顶部筛选），period 未定时不发请求 */
+export function useSubjectBudget(params: { period?: string; mode: 'single' | 'summary'; companyCode?: string }) {
+  return useQuery({
+    queryKey: ['dashboard', 'subject-budget', params.period ?? '', params.mode, params.companyCode ?? ''] as const,
+    queryFn: () => api.getSubjectBudget({
+      period: params.period as string,
+      mode: params.mode,
+      ...(params.companyCode ? { companyCode: params.companyCode } : {}),
+    }),
+    enabled: !!params.period,
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+// ---------------- 品类配置（品类预算达成分析，数据维护） ----------------
+export function useProductCategories() {
+  return useQuery({
+    queryKey: ['data', 'product-categories'] as const,
+    queryFn: () => api.getProductCategories(),
+    staleTime: 30 * 1000,
+  })
+}
+
+export function useProductCategoryCheck() {
+  return useQuery({
+    queryKey: ['data', 'product-categories', 'check'] as const,
+    queryFn: () => api.checkProductCategories(),
+    staleTime: 30 * 1000,
+  })
+}
+
+export function useProductCategoryMutations() {
+  const queryClient = useQueryClient()
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['data', 'product-categories'] })
+  }
+  return {
+    create: useMutation({
+      mutationFn: (input: { code: string; name: string; subjectKeyword: string; sortOrder?: number; status?: string }) => api.createProductCategory(input),
+      onSuccess: invalidate,
+    }),
+    update: useMutation({
+      mutationFn: (input: { id: string; name?: string; subjectKeyword?: string; sortOrder?: number; status?: string }) =>
+        api.updateProductCategory(input.id, input),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => api.deleteProductCategory(id),
+      onSuccess: invalidate,
+    }),
+  }
+}
+
+// ---------------- 主体展示配置（主体预算达成分析，数据维护） ----------------
+export function useSubjectBudgetConfigs() {
+  return useQuery({
+    queryKey: ['data', 'subject-budget-configs'] as const,
+    queryFn: () => api.getSubjectBudgetConfigs(),
+    staleTime: 30 * 1000,
+  })
+}
+
+export function useSubjectBudgetConfigCheck() {
+  return useQuery({
+    queryKey: ['data', 'subject-budget-configs', 'check'] as const,
+    queryFn: () => api.checkSubjectBudgetConfigs(),
+    staleTime: 30 * 1000,
+  })
+}
+
+export function useSubjectBudgetConfigMutations() {
+  const queryClient = useQueryClient()
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['data', 'subject-budget-configs'] })
+  }
+  return {
+    create: useMutation({
+      mutationFn: (input: { companyCode: string; sortOrder?: number; status?: string }) => api.createSubjectBudgetConfig(input),
+      onSuccess: invalidate,
+    }),
+    update: useMutation({
+      mutationFn: (input: { id: string; sortOrder?: number; status?: string }) => api.updateSubjectBudgetConfig(input.id, input),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => api.deleteSubjectBudgetConfig(id),
+      onSuccess: invalidate,
+    }),
+  }
+}
+
 // ---------------- Indicators ----------------
 export interface OperatingResult {
   items: OperatingRow[]
@@ -433,11 +539,11 @@ export function useRestoreMetric() {
   })
 }
 
-/** 指标类型转换（高危，仅 superadmin）：data ↔ calc */
+/** 指标类型转换（高危，仅 superadmin）：data ↔ calc、data/calc → display（display 只读不可转出） */
 export function useConvertMetric() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (vars: { id: string; dataType: 'data' | 'calc'; formula?: string }) => api.convertMetric(vars.id, { dataType: vars.dataType, formula: vars.formula }),
+    mutationFn: (vars: { id: string; dataType: 'data' | 'calc' | 'display'; formula?: string }) => api.convertMetric(vars.id, { dataType: vars.dataType, formula: vars.formula }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['data', 'metrics'] }),
   })
 }
@@ -865,11 +971,12 @@ export function useTransactionPeriods() {
   })
 }
 
-/** 往来余额变动趋势（单类型，按 公司×月份 聚合） */
-export function useTransactionTrend(params: { transactionType: string; companyCodes?: string[]; months?: number; fiscalYear?: string }) {
+/** 往来余额变动趋势（单类型，按 公司×月份 聚合；支持财年轴与自定义期间范围，未选完自定义期间时 enabled 禁用） */
+export function useTransactionTrend(params: { transactionType: string; companyCodes?: string[]; months?: number; fiscalYear?: string; periodFrom?: string; periodTo?: string }, options: { enabled?: boolean } = {}) {
   return useQuery({
-    queryKey: ['transactions', 'trend', params.transactionType, params.companyCodes ?? [], params.months ?? 12, params.fiscalYear ?? ''] as const,
+    queryKey: ['transactions', 'trend', params.transactionType, params.companyCodes ?? [], params.months ?? 12, params.fiscalYear ?? '', params.periodFrom ?? '', params.periodTo ?? ''] as const,
     queryFn: () => api.getTransactionTrend(params) as Promise<TransactionTrendResult>,
+    enabled: options.enabled ?? true,
     placeholderData: keepPreviousData,
   })
 }

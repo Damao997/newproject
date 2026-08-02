@@ -24,8 +24,8 @@ export function RequirePermission({ resource, action, children }: RequirePermiss
     return (
       <Card className="animate-fade-in">
         <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-100">
-            <ShieldAlert className="h-7 w-7 text-amber-600" />
+          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-warning/15">
+            <ShieldAlert className="h-7 w-7 text-warning-strong" />
           </div>
           <h2 className="text-lg font-semibold text-foreground">无访问权限</h2>
           <p className="mt-1 text-sm text-muted-foreground">

@@ -69,7 +69,7 @@ export function AggregationMapPanel({ canUpdate = false }: AggregationMapPanelPr
           key: 'actions', header: '操作', align: 'right' as const,
           render: (r: AggregationMap) => (
             <div className="flex items-center justify-end gap-1">
-              <Button variant="ghost" size="sm" onClick={() => handleRemove(r)}><Trash2 className="h-4 w-4" /></Button>
+              <Button variant="ghost" size="sm" aria-label="删除映射" onClick={() => handleRemove(r)}><Trash2 className="h-4 w-4" /></Button>
             </div>
           ),
         }]

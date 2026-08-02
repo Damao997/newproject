@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import type { EChartsOption } from 'echarts'
 import ReactECharts, { echarts } from '@/components/charts/echarts-core'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { useCompanies, useInventoryOverview } from '@/hooks/api-queries'
+import { CompanySelect } from '@/components/filters/company-select'
+import { useInventoryOverview } from '@/hooks/api-queries'
 import { formatMoneyWan } from '@/lib/utils'
 import { CATEGORY_COLORS } from '@/lib/chart-colors'
+import { CHART_FONT, CHART_INK, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
 import { PieChart } from 'lucide-react'
 
 /**
@@ -17,8 +18,6 @@ import { PieChart } from 'lucide-react'
 export function InventoryPieCard({ period }: { period?: string }) {
   const [companyFilter, setCompanyFilter] = useState('all')
   const navigate = useNavigate()
-  const { data: companies } = useCompanies()
-  const singles = useMemo(() => (companies ?? []).filter((c) => c.type === 'entity'), [companies])
   const companyCodes = companyFilter === 'all' ? undefined : [companyFilter]
   const { data, isLoading } = useInventoryOverview({ period, companyCodes })
   const categories = useMemo(() => data?.categories ?? [], [data])
@@ -30,29 +29,26 @@ export function InventoryPieCard({ period }: { period?: string }) {
   const option = useMemo<EChartsOption>(() => {
     const sum = pieData.reduce((s, c) => s + c.current, 0)
     return {
+      animation: false,
       textStyle: {
-        fontFamily: "'Microsoft YaHei', '微软雅黑', sans-serif",
+        fontFamily: CHART_FONT,
       },
       tooltip: {
         trigger: 'item',
-        backgroundColor: '#fff',
-        borderColor: '#E2E8F0',
-        borderWidth: 1,
-        padding: [12, 16],
-        textStyle: { color: '#1E293B', fontSize: 13 },
+        ...tooltipShell,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         formatter: (params: any) => {
           const pct = sum > 0 ? ((params.value / sum) * 100).toFixed(1) : '0.0'
-          return `<div style="font-weight:600;margin-bottom:6px;color:#0F172A;font-size:14px">${params.name}</div>
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:16px">
-              <span style="color:#64748B;font-size:12px">金额</span>
-              <span style="font-weight:500;font-family:'Microsoft YaHei','微软雅黑',sans-serif;font-variant-numeric:tabular-nums;font-size:13px">${formatMoneyWan(params.value)}</span>
+          return titleSpan(params.name)
+            + `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px">
+              ${labelSpan('金额')}
+              ${numSpan(formatMoneyWan(params.value))}
             </div>
             <div style="display:flex;align-items:center;justify-content:space-between;gap:16px">
-              <span style="color:#64748B;font-size:12px">占比</span>
-              <span style="font-weight:500;font-family:'Microsoft YaHei','微软雅黑',sans-serif;font-variant-numeric:tabular-nums;font-size:13px">${pct}%</span>
+              ${labelSpan('占比')}
+              ${numSpan(`${pct}%`)}
             </div>
-            <div style="margin-top:6px;color:#94A3B8;font-size:11px">点击查看库存明细</div>`
+            <div style="margin-top:6px;color:${CHART_INK.axis};font-size:11px">点击查看库存明细</div>`
         },
       },
       series: [
@@ -60,13 +56,13 @@ export function InventoryPieCard({ period }: { period?: string }) {
           type: 'pie',
           radius: ['42%', '70%'],
           center: ['50%', '50%'],
-          itemStyle: { borderColor: '#fff', borderWidth: 2, borderRadius: 4 },
+          itemStyle: { borderColor: CHART_INK.surface, borderWidth: 2, borderRadius: 4 },
           label: {
             fontSize: 11,
-            color: '#64748B',
+            color: CHART_INK.sub,
             formatter: (p: { name: string; percent?: number }) => `${p.name} ${p.percent?.toFixed(1) ?? 0}%`,
           },
-          labelLine: { length: 10, length2: 8, lineStyle: { color: '#CBD5E1' } },
+          labelLine: { length: 10, length2: 8, lineStyle: { color: CHART_INK.grid } },
           data: pieData.map((c, i) => ({
             name: c.name,
             value: c.current,
@@ -78,12 +74,12 @@ export function InventoryPieCard({ period }: { period?: string }) {
   }, [pieData])
 
   return (
-    <Card className="animate-fade-in border border-border bg-white shadow-sm transition-shadow duration-200 hover:shadow-md" style={{ animationDelay: '240ms' }}>
+    <Card className="animate-fade-in border border-border shadow-sm" style={{ animationDelay: '240ms' }}>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 px-6 pb-3 pt-5">
         <div>
           <CardTitle className="flex items-center gap-2 text-lg font-semibold">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50">
-              <PieChart className="h-4 w-4 text-emerald-600" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-success/10">
+              <PieChart className="h-4 w-4 text-success" />
             </div>
             存货品类占比
           </CardTitle>
@@ -91,35 +87,37 @@ export function InventoryPieCard({ period }: { period?: string }) {
             {period ? `期间 ${period} · ` : ''}品类本期金额占比（万元），与库存管理同源
           </p>
         </div>
-        <Select value={companyFilter} onValueChange={setCompanyFilter}>
-          <SelectTrigger className="h-8 w-[160px] text-xs">
-            <SelectValue placeholder="全部公司" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">全部公司</SelectItem>
-            {singles.map((c) => (
-              <SelectItem key={c.code} value={c.code}>{c.shortName ?? c.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <CompanySelect
+          value={companyFilter}
+          onChange={setCompanyFilter}
+          entitiesOnly
+          placeholder="全部公司"
+          className="h-8 w-[160px] text-xs"
+        />
       </CardHeader>
       <CardContent className="px-6 pb-6">
         {isLoading ? (
-          <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">加载中...</div>
+          <div className="skeleton h-[260px] w-full rounded-lg lg:h-[320px]" />
+        ) : !period ? (
+          <div className="flex h-[260px] items-center justify-center text-sm text-muted-foreground lg:h-[320px]">
+            正在加载期间数据...
+          </div>
         ) : pieData.length === 0 ? (
-          <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">
+          <div className="flex h-[260px] items-center justify-center text-sm text-muted-foreground lg:h-[320px]">
             当前期间暂无存货数据
           </div>
         ) : (
           <>
-            <ReactECharts
-              echarts={echarts}
-              option={option}
-              notMerge
-              style={{ height: 320, width: '100%' }}
-              opts={{ renderer: 'svg' }}
-              onEvents={{ click: () => navigate('/inventory') }}
-            />
+            <div className="h-[260px] w-full lg:h-[320px]">
+              <ReactECharts
+                echarts={echarts}
+                option={option}
+                notMerge
+                style={{ height: '100%', width: '100%' }}
+                opts={{ renderer: 'svg' }}
+                onEvents={{ click: () => navigate('/inventory') }}
+              />
+            </div>
             {negatives.length > 0 && (
               <p className="mt-2 text-xs text-muted-foreground">
                 金额为负的品类未计入饼图：{negatives.map((c) => `${c.name}（${formatMoneyWan(c.current)}）`).join('、')}

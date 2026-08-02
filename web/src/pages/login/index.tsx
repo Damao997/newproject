@@ -189,7 +189,7 @@ export default function LoginPage() {
                     tabIndex={-1}
                     disabled={isLoading}
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                    className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-50"
                     aria-label={showPassword ? '隐藏密码' : '显示密码'}
                   >
                     {/* 图标表示当前可见状态：明文=睁眼，密文=闭眼 */}

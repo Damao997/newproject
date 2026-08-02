@@ -1,6 +1,6 @@
 # 浙江壹品慧财年经营数据分析平台 — 前端设计方案
 
-> **版本**: v3.2  
+> **版本**: v3.5  
 > **日期**: 2026-07-31  
 > **风格定位**: 简洁专业 / 效率驱动  
 > **技术选型**: Radix UI + Shadcn + Tailwind CSS + CSS Animation
@@ -71,52 +71,71 @@ React 18 + TypeScript 5.5
 
 ```css
 :root {
-  /* 基础色 */
+  /* 基础色（暖中性：色相 24-30，与品牌橙同族，避免冷灰蓝与橙的冲突） */
   --background: 0 0% 100%;          /* 页面背景：纯白 */
-  --foreground: 222 84% 5%;        /* 主文本：深灰近黑 */
-  
+  --foreground: 24 10% 10%;        /* 主文本：暖近黑 */
+  --page: 30 30% 98%;              /* 内容区底色，与卡片白底形成层次 */
+
   /* 卡片与表面 */
   --card: 0 0% 100%;                /* 卡片背景 */
-  --card-foreground: 222 84% 5%;
+  --card-foreground: 24 10% 10%;
   --popover: 0 0% 100%;             /* 浮层（Dropdown/Select/Tooltip）背景 */
-  --popover-foreground: 222 84% 5%;
-  --muted: 210 40% 96%;            /* 禁用/表头背景 */
-  --muted-foreground: 215 16% 47%; /* 辅助文字 */
-  
+  --popover-foreground: 24 10% 10%;
+  --muted: 30 25% 96%;             /* 禁用/表头背景 */
+  --muted-foreground: 25 8% 45%;   /* 辅助文字 */
+
   /* 主题色 */
   --primary: 25 95% 53%;           /* 品牌橙：#F97316 */
   --primary-foreground: 0 0% 100%;
-  --secondary: 210 40% 96%;        /* 次要背景 */
-  --secondary-foreground: 222 47% 11%;
-  --accent: 210 40% 96%;           /* 强调背景（ghost/outline hover 态） */
-  --accent-foreground: 222 47% 11%;
-  
+  --secondary: 30 25% 96%;         /* 次要背景 */
+  --secondary-foreground: 25 20% 18%;
+  --accent: 30 40% 95%;            /* 强调背景（ghost/outline/导航 hover 态） */
+  --accent-foreground: 25 25% 18%;
+
   /* 状态色 */
   --destructive: 0 84% 60%;        /* 删除/错误：#EF4444 */
-  --destructive-foreground: 210 40% 98%;
-  --success: 160 84% 39%;          /* 成功/达成：#10B981 */
-  --warning: 38 92% 50%;            /* 警告/待审：#F59E0B */
-  
+  --destructive-foreground: 0 0% 100%;
+  --success: 160 84% 39%;          /* 成功/达成：#10B981（图标、色块、填充） */
+  --warning: 38 92% 50%;            /* 警告/待审：#F59E0B（图标、色块、填充） */
+  --success-strong: 160 84% 26%;   /* 白底小字号成功文本，对比度 ≥ 4.5:1 */
+  --warning-strong: 32 90% 36%;    /* 白底小字号警告文本，对比度 ≥ 4.5:1 */
+  --info: 205 80% 38%;             /* 中性信息态（进行中/提示），替代蓝色调色板 */
+
   /* 边框与输入 */
-  --border: 214 32% 91%;            /* 边框：#E2E8F0 */
-  --input: 214 32% 91%;
+  --border: 30 18% 89%;             /* 边框：#E9E2DB */
+  --input: 30 18% 89%;
   --ring: 25 95% 53%;             /* Focus 光环（同 primary） */
-  
+
+  /* 图表序列色：橙主导 + 和谐化多色，13 色覆盖分类色板全部槽位 */
+  --chart-1: 25 95% 53%;   --chart-2: 200 78% 45%;  --chart-3: 160 84% 39%;
+  --chart-4: 38 92% 50%;   --chart-5: 262 58% 60%;  --chart-6: 25 12% 55%;
+  --chart-7: 340 68% 55%;  --chart-8: 190 58% 42%;  --chart-9: 95 42% 42%;
+  --chart-10: 12 68% 48%;  --chart-11: 280 42% 55%; --chart-12: 45 72% 44%;
+  --chart-13: 210 20% 52%;
+
   /* 圆角 */
   --radius: 0.75rem;               /* 12px — 卡片级别 */
   /* 派生：md = calc(var(--radius) - 2px), sm = calc(var(--radius) - 4px) */
 }
 ```
 
+**令牌使用约束（P0 强制）**
+
+- 业务代码禁止十六进制色值与 Tailwind 调色板类（`bg-blue-500`、`text-green-600`、`bg-slate-50` 等），一律使用上表令牌映射出的类名。
+- 多彩强调位（KPI 图标、快捷入口、分类标签）使用 `bg-chart-N/10 text-chart-N`，四色轮换固定为 `chart-1 / chart-2 / chart-3 / chart-5`。
+- 白底上的小字号状态文本用 `-strong` 变体；图标与色块用 base 令牌。
+- ECharts（canvas 渲染）与 antd `theme.token` 无法读取 CSS 变量，统一从 `web/src/lib/chart-theme.ts` 取 hex 镜像：`CHART_SERIES`（序列色）、`CHART_INK`（坐标轴/网格/浮层）、`THEME_HEX`（antd 语义色）。该文件是全仓唯一允许出现 hex 的位置，修改颜色时必须与 `globals.css` 同步。
+- Tailwind 配置 `darkMode: 'class'`：平台维持纯亮色，`dark:` 变体不会被系统偏好触发。
+
 ### 3.2 财务专用色
 
 | 用途 | 色值 | 说明 |
 |------|------|------|
-| 收入/利润增长 | `#FF3B30`（红） | 红涨，符合 A 股/国内财报习惯 |
-| 成本/下降 | `#34C759`（绿） | 绿跌 |
-| 预算达标 | `#16A34A` | 达成率 ≥ 95% |
-| 预算预警 | `#F59E0B` | 达成率 85%-95% |
-| 预算严重偏离 | `#EF4444` | 达成率 < 85% |
+| 收入/利润增长 | `#FF3B30`（`text-finance-red`） | 红涨，符合 A 股/国内财报习惯 |
+| 成本/下降 | `#34C759`（`text-finance-green`） | 绿跌 |
+| 预算达标 | `text-success-strong` | 达成率 ≥ 95% |
+| 预算预警 | `text-warning-strong` | 达成率 85%-95% |
+| 预算严重偏离 | `text-destructive` | 达成率 < 85% |
 
 ### 3.3 字体
 
@@ -137,11 +156,20 @@ React 18 + TypeScript 5.5
 
 ### 3.4 阴影
 
+暖调阴影：以褐黑 `rgb(28 20 12)` 替代纯黑，与品牌橙更协调。定义在 `web/tailwind.config.js` 的 `boxShadow`。
+
 | 层级 | 阴影值 | 用途 |
 |------|--------|------|
-| `shadow-sm` | `0 1px 3px 0 rgb(0 0 0 / 0.05)` | 按钮、输入框 |
-| `shadow-md` | `0 4px 6px -1px rgb(0 0 0 / 0.08)` | 卡片 hover |
-| `shadow-lg` | `0 25px 50px -12px rgb(0 0 0 / 0.25)` | Dialog、Dropdown |
+| `shadow-sm` | `0 1px 3px 0 rgb(28 20 12 / 0.05)` | 按钮、输入框、顶栏 |
+| `shadow-md` | `0 4px 6px -1px rgb(28 20 12 / 0.08), 0 2px 4px -2px rgb(28 20 12 / 0.06)` | 卡片 hover |
+| `shadow-lg` | `0 12px 24px -8px rgb(28 20 12 / 0.12)` | Dropdown、移动端抽屉 |
+| `shadow-xl` | `0 25px 50px -12px rgb(28 20 12 / 0.18)` | Dialog、登录卡 |
+
+### 3.5 缓动曲线
+
+| 令牌 | 值 | 用途 |
+|------|-----|------|
+| `ease-brand` | `cubic-bezier(0.22, 1, 0.36, 1)` | 侧边栏展开/收起、卡片阴影、图表柱体增长 |
 
 ---
 
@@ -175,11 +203,11 @@ React 18 + TypeScript 5.5
 
 ```
 - 背景：hsl(var(--card)) = 白色
-- 边框：1px solid hsl(var(--border)) = #E2E8F0
+- 边框：1px solid hsl(var(--border)) = #E9E2DB
 - 圆角：var(--radius) = 12px
 - 阴影：shadow-sm（默认），hover 时 shadow-md
 - 内边距：card-header / card-content 统一 `p-6`（24px，content 顶部由 `pt-0` 衔接）
-- 过渡：box-shadow 0.2s ease
+- 过渡：`transition-shadow duration-200 ease-brand`（写在 Card 基类，页面不重复声明）
 ```
 
 ### 4.3 Input / Select
@@ -187,23 +215,23 @@ React 18 + TypeScript 5.5
 ```
 - 高度：40px
 - 圆角：10px
-- 边框：1px solid #E2E8F0（`border-input`）
+- 边框：1px solid hsl(var(--input))（`border-input`）
 - Focus：`focus-visible:ring-2 ring-ring ring-offset-2`（光环取 `--ring` = 品牌橙）
 - 背景：白色
 - 字体：14px，正文色纯黑（`text-black`，保证表单可读性）
-- 占位符色：#64748B（`placeholder:text-muted-foreground`）
+- 占位符色：`placeholder:text-muted-foreground`
 ```
 
 ### 4.4 Table（数据表格）
 
 ```
 容器：
-- 边框：1px solid #E2E8F0
+- 边框：1px solid hsl(var(--border))
 - 圆角：12px
 - overflow: hidden
 
 表头：
-- 背景：bg-muted/50（#F1F5F9 半透明）
+- 背景：bg-muted/50（暖中性半透明）
 - 字体：13px / 500
 - 颜色：text-black
 - 内边距：h-11 + px-4（紧凑表 h-8）
@@ -212,8 +240,8 @@ React 18 + TypeScript 5.5
 行：
 - 字体：13px（`text-[13px]`）
 - 内边距：p-4（紧凑表 px-4 py-1.5）
-- 边框：顶部 1px solid #E2E8F0
-- hover：背景 #F8FAFC
+- 边框：顶部 1px solid hsl(var(--border))
+- hover：背景 bg-muted/50
 - 过渡：background 0.15s ease
 
 关键列（按 `account_subject.value_type` 分型渲染，见 `lib/utils.ts` 的 `formatMetricValue`；对齐分场景）：
@@ -224,7 +252,7 @@ React 18 + TypeScript 5.5
 - **ratio（比率）**：百分比 1 位小数（`formatPercent`）
 - 达成率列：Badge 组件（rounded-full，success/warning 语义色）
 - 同比列：红涨绿跌（`finance.red`/`finance.green`），font-weight: 500
-- 微型状态胶囊（AR/AP 标签、覆盖率格子等）允许使用**成对** Tailwind 调色板类（如 `bg-green-100 text-green-700` + dark 变体）；除此之外**禁止硬编码 hex 色值**，一律走 Design Token 或调色板类
+- 微型状态胶囊（AR/AP 标签、覆盖率格子等）一律使用语义令牌对（`bg-info/10 text-info`、`bg-success/10 text-success-strong`、`bg-warning/15 text-warning-strong`、`bg-destructive/10 text-destructive`、`bg-muted text-muted-foreground`）；**禁止** hex 与 Tailwind 调色板类
 ```
 
 ### 4.5 Badge
@@ -238,8 +266,8 @@ React 18 + TypeScript 5.5
 ┌──────────────┬──────────────────────────────────────────┐
 │ default      │ bg-primary + text-primary-foreground（橙底白字） │
 │ secondary    │ bg-secondary + text-secondary-foreground   │
-│ success      │ bg-green-100 + text-green-800              │
-│ warning      │ bg-amber-100 + text-amber-800              │
+│ success      │ bg-success/10 + text-success-strong        │
+│ warning      │ bg-warning/15 + text-warning-strong        │
 │ destructive  │ bg-destructive + text-destructive-foreground │
 │ outline      │ 无底色，text-foreground + 边框              │
 └──────────────┴──────────────────────────────────────────┘
@@ -249,14 +277,14 @@ React 18 + TypeScript 5.5
 
 ```
 容器：
-- 背景：#F1F5F9
+- 背景：bg-muted
 - 圆角：10px
 - 内边距：4px
 - 宽度：fit-content
 
 触发器：
-- 默认：透明背景，#64748B 文字
-- 激活：白色背景，#0F172A 文字，shadow-sm
+- 默认：透明背景，text-muted-foreground 文字
+- 激活：`data-[state=active]:bg-background` + `text-foreground` + shadow-sm
 - 圆角：8px
 - 过渡：all 0.15s ease
 ```
@@ -271,11 +299,32 @@ React 18 + TypeScript 5.5
 内容：
 - 背景：白色
 - 圆角：12px
-- 边框：1px solid #E2E8F0
-- 阴影：shadow-lg
+- 边框：1px solid hsl(var(--border))
+- 阴影：shadow-xl
 - 动画：fadeInScale 0.25s
 - 最大宽度：28rem（默认）/ 32rem（大）
 ```
+
+### 4.8 筛选器与工具栏（v3.5 新增）
+
+**筛选器行**：
+- 布局：`flex flex-wrap items-center gap-2/3`，小屏自动换行不溢出。
+- 选择器宽度：`w-full sm:w-[Npx]`（N 取 140/160/200/220），小屏占满整行（正例：`indicators/index.tsx`）。
+- 公司/期间选择一律使用共享组件，禁止页面内联实现：
+  - 公司单选 → `@/components/filters/company-select` 的 `CompanySelect`（内置"全部公司"，`entitiesOnly` 仅列单体公司）。
+  - 公司多选 → 同文件 `CompanyMultiSelect`（空数组语义=全部公司，触发器文案"全部公司 / X / X 等 N 家"）。
+  - 期间单选 → `@/components/ui/month-picker` 的 `MonthPicker`。
+- 共享组件名称统一跟随全局"显示简称"开关（`useCompanyDisplayName`）。
+
+**工具栏**：
+- 主动作常驻 ≤ 3 个（高频操作），其余次动作收入"更多"DropdownMenu（`MoreHorizontal` 图标 + "更多"文字）。正例：`report-editor.tsx` 顶部工具栏。
+- 同一页面多个 Tab 共用的操作组，抽成局部组件复用，禁止逐 Tab 复制（正例：`data/index.tsx` 的 `ReclassifyMenu`）。
+- 危险操作：`variant="destructive"` + `useConfirm` 二次确认。
+
+**无障碍（P0 强制）**：
+- 纯图标按钮必须携带 `aria-label`（行内编辑/删除/上移/下移/查看/关闭等）。
+- 表单控件必须 `Label htmlFor` + 控件 `id` 关联（Radix `SelectTrigger` 同样接受 `id`）。
+- 弹窗须含 `DialogDescription`（Radix 自动关联 `aria-describedby`）。
 
 ---
 
@@ -289,11 +338,11 @@ React 18 + TypeScript 5.5
 ┌──────────┬───────────────────────────────────────┐
 │ Sidebar  │  Header (56px)                        │
 │ 展开240px│  - 财年选择器 + 用户头像下拉           │
-│ 收起 64px│  - 底部 1px 分割线 #E2E8F0             │
+│ 收起 64px│  - 底部 1px 分割线 + shadow-sm         │
 │          ├───────────────────────────────────────┤
 │ Logo+品牌│  Main Content                          │
-│ ──────── │  - max-width: 1280px (max-w-7xl), 居中 │
-│ 导航项   │  - padding: 32px 24px (py-8 px-6)     │
+│ ──────── │  - max-width: 1536px (max-w-screen-2xl)│
+│ 导航项   │  - padding: 24px 16px → lg:32px 32px   │
 │ (按权限) │  - 独立纵向滚动                        │
 │ ──────── │                                        │
 │ 收起按钮 │                                        │
@@ -301,15 +350,15 @@ React 18 + TypeScript 5.5
 ```
 
 **侧边栏规则**：
-- 展开 `w-60`(240px) / 收起 `w-16`(64px)，收起态仅显示图标并以 Tooltip 补名称；收起状态经 `localStorage`(`sidebar-collapsed`) 持久化。
+- 展开 `w-60`(240px) / 收起 `w-16`(64px)，宽度过渡 `duration-200 ease-brand`；收起态仅显示图标并以 Tooltip 补名称（含收起/展开按钮本身），收起状态经 `localStorage`(`sidebar-collapsed`) 持久化。
 - 导航项按 `usePermission()` 过滤，仅展示当前角色具备 view 权限的模块（对齐《安全与权限规范》§2.2），资源码见 `nav-items.ts`。
-- 激活态：`bg-primary/10 text-primary` + 左侧 3px 圆角竖条。
+- 激活态：`bg-gradient-to-r from-primary/[0.12] to-primary/[0.04]` + `font-semibold text-primary` + 左侧 3px 圆角竖条；非激活 hover 走 `bg-accent hover:text-accent-foreground`。
 - `<768px`：侧边栏隐藏，改为顶栏汉堡按钮唤起的抽屉（含遮罩，路由切换自动关闭）。
 
 **顶栏规则**：
 - 桌面端仅承载全局财年选择器与用户菜单（品牌标识在侧边栏顶部）；移动端额外显示汉堡按钮 + 品牌标识。
 - 全局财年选择影响看板/指标/数据浏览的期间候选，状态存于 `periodStore`。
-- 内容区背景为 `bg-slate-50`（#F8FAFC，浅蓝灰），卡片保持纯白形成层次。
+- 内容区背景为 `bg-page`（`--page`，暖白），卡片保持纯白形成层次。
 
 ### 5.2 登录页
 
@@ -321,12 +370,18 @@ React 18 + TypeScript 5.5
 
 ### 5.3 首页看板
 
-- **KPI 卡片区**：5 张等宽卡片（1 行 5 列），每张包含：
-  - 标题（Caption 色）+ 数值（Display 字体，28px）+ 同比（Badge 色）
-  - 底部迷你趋势图（ECharts，高度 40px，无网格线）
-- **趋势图区**：12 个月柱状图，保留网格线（财务数据需精确读数）
-- **事业部概览**：进度条形式显示预算执行率
-- **预警提醒**：amber 色 Alert 卡片，顶部可关闭
+- **主体/期间筛选**：页头 actions 区含主体维度选择器（全部主体 / 公司 / 汇总主体分组，汇总主体经后端展开为成员合并口径）与期间选择器（跟随全局财年过滤）。
+- **KPI 卡片区**：4 张核心指标卡（收入 / 毛利 / 净利润 / 回款），`sm` 2 列、`xl` 4 列，每张包含：
+  - 标题（Caption 色）+ 右上角四色轮换图标
+  - 大字体区：本月合计（`text-2xl` + `font-num`）+ 月度预算达成率（`text-lg`，按 §3.2 三级语义色：≥95% 绿 / 85-95% 琥珀 / <85% 红；无预算显示 "–" 灰）
+  - 小字体区：累计实际 / 同比（红涨绿跌胶囊，`finance.red`/`finance.green`）/ 累计预算达成率（同三级色）
+  - 底部迷你趋势图（ECharts sparkline，财年内逐月本月合计）
+  - 整卡可点击钻取财务指标页
+- **财年趋势卡**：指标 Tabs（收入/毛利/净利润）切换，本月合计柱（品牌橙）+ 上年同期柱（灰蓝）+ 月度预算虚线（紫）；X 轴为所选财年 12 个月，保留网格线（财务数据需精确读数），高度 `h-[260px] lg:h-[320px]`
+- **应收账款分布卡**：横向条形图（余额降序），卡头单体/汇总口径 Tabs，期间跟随看板
+- **存货品类占比卡**：环形图（品类本期金额占比，与库存管理同源），卡内独立公司筛选，点击扇区跳转库存页
+- **预警提醒**：amber/red 色 Alert 列表，标题带未确认计数 Badge（含 error 级时 destructive 变体）
+- **快捷入口**：4 个直达按钮（导入数据 / 新建报告 / 财务指标 / 往来分析），hover 边框转 `primary`
 
 ### 5.4 财务指标页
 
@@ -341,7 +396,7 @@ React 18 + TypeScript 5.5
 
 ### 5.5 数据导入页
 
-- **拖拽上传区**：虚线边框（2px dashed #E2E8F0），hover 边框转 `primary`（品牌橙）
+- **拖拽上传区**：虚线边框（2px dashed，`border-border`），hover 边框转 `primary`（品牌橙）
 - **模板类型**：Tabs 切换（经营数据 / 静态数据）
 - **数据预览**：表格展示前 20 行，表头灰色背景
 - **校验结果**：
@@ -405,7 +460,12 @@ React 18 + TypeScript 5.5
   100% { background-position: 200% 0; }
 }
 .skeleton {
-  background: linear-gradient(90deg, #F1F5F9 25%, #E2E8F0 50%, #F1F5F9 75%);
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted)) 25%,
+    hsl(var(--border)) 50%,
+    hsl(var(--muted)) 75%
+  );
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
 }
@@ -479,8 +539,8 @@ React 18 + TypeScript 5.5
 
 | 断点 | 设备 | 布局调整 |
 |------|------|---------|
-| `≥1280px` | 桌面 | 完整布局，5 列 KPI 卡片 |
-| `1024-1279px` | 小桌面 | 4 列 KPI，侧边栏收起 |
+| `≥1280px` | 桌面 | 完整布局，4 列 KPI 卡片（`xl:grid-cols-4`） |
+| `1024-1279px` | 小桌面 | 2 列 KPI，侧边栏收起 |
 | `768-1023px` | 平板 | 2 列 KPI，表格横向滚动 |
 | `<768px` | 手机 | 1 列 KPI，卡片垂直堆叠，侧边栏改为汉堡按钮唤起的抽屉（同 §5.1） |
 
@@ -600,6 +660,57 @@ export function cn(...inputs: ClassValue[]) {
 
 ## 变更记录
 
+### v3.5（2026-07-31）
+
+**UI 组件简化与统一（代码 + 文档双向同步）**：
+
+代码侧重构：
+- 新增共享公司选择器 `components/filters/company-select.tsx`（`CompanySelect` 单选 + `CompanyMultiSelect` 多选），替换 5 处页面内联实现（数据浏览、存货管理、往来总览、催收管理、看板存货卡），净删约 150 行重复代码。
+- 报告编辑器工具栏收敛：10 个横排按钮 → 3 个主动作（AI 概述/保存章节/发布）+「更多」DropdownMenu（7 项次动作）。
+- 数据管理"科目调整/跨公司重分类"合并为 `ReclassifyMenu` 下拉，manage/reclassify 两 Tab 复用。
+- 无障碍补齐：28+ 处纯图标按钮补 `aria-label`；admin/reclassify/subject 弹窗表单补 `Label htmlFor` + 控件 `id` 关联。
+
+文档侧同步：
+- 新增 §4.8 筛选器与工具栏规范（共享选择器、工具栏主动作收敛、无障碍硬性约束）。
+
+### v3.4（2026-07-31）
+
+**品牌橙主题全量 Token 化（代码 + 文档双向同步）**：
+
+Token 层：
+- §3.1 中性色由冷灰蓝（色相 210/222）迁移为暖中性（色相 24-30），与品牌橙同族；新增 `--page`（内容区底色）、`--info`（中性信息态，替代蓝色调色板）、`--success-strong` / `--warning-strong`（白底小字号文本 AA 变体）、`--chart-1 ~ --chart-13`（橙主导 + 和谐化多色序列）。
+- §3.4 阴影改暖调（`rgb(28 20 12)`）并补 `shadow-xl`；新增 §3.5 `ease-brand` 缓动令牌。
+- `tailwind.config.js` 显式 `darkMode: 'class'`：此前缺省为 `media`，而 CSS 变量无 `.dark` 覆盖，导致系统开启暗色偏好时出现「白底 + 暗色标签」错乱；改为 class 策略后 `dark:` 变体不再被误触发。
+- 新增 `web/src/lib/chart-theme.ts` 作为 canvas/antd 的 hex 镜像单一来源（`CHART_SERIES` / `CHART_INK` / `THEME_HEX`）；`lib/chart-colors.ts` 的 `CATEGORY_COLORS` 改为再导出 `CHART_SERIES`。
+
+代码侧修复：
+- ProTable 主题对齐：`pro-table-inner.tsx` 的 antd `ConfigProvider` 此前仅设 `fontFamily`，排序/勾选/分页/链接沿用 antd 默认蓝 `#1677FF`；现补齐 `colorPrimary/colorLink/colorSuccess/...` 与 `Table` 组件级令牌。
+- 全站 29 个文件的硬编码色清零：13 个文件约 78 处 hex（6 个 ECharts 图表的坐标轴/网格/tooltip、3 组序列色板）、16 个文件约 41 处调色板类（KPI 四色轮换、快捷入口、往来/覆盖度/催收状态胶囊、导入校验横幅、重分类提示条）全部改为令牌或 `chart-theme` 常量。
+- 布局与体验：内容区 `max-w-7xl px-6 py-8` → `max-w-screen-2xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8`（宽屏表格可用宽度 +256px）；页面底色 `bg-slate-50` → `bg-page`；侧边栏激活态改品牌橙渐变 + `font-semibold`，hover 走 `bg-accent`，折叠按钮补 `aria-label` 与收起态 Tooltip；顶栏补 `shadow-sm`；`Card` 基类收敛 `transition-shadow duration-200 ease-brand`（各页面移除重复的 `bg-white`/过渡类）；登录页密码显隐按钮补 focus ring。
+- `lib/constants.ts` 的 `FINANCIAL_COLORS.BUDGET_ACHIEVED` 由 `#16A34A` 对齐为 `#10B981`（同 `--success`）。
+
+文档侧同步：
+- 本文 §3.1 补令牌使用约束（禁 hex / 禁调色板类 / chart-N 轮换 / strong 变体 / hex 唯一来源 / darkMode）；§3.2 财务色改令牌类名；§5.1 布局图与侧边栏规则按实现更新。
+- `docs/references/frontend.md` §2.1-§2.4、§3.1-§3.7 由品牌蓝 `#2563EB` 体系整体更正为品牌橙 + 暖中性；§2.3 字体表移除 Inter / Noto Sans SC，金额列由 JetBrains Mono 更正为 `font-num`。
+- `docs/plans/整体方案v3.md` 主色行由 Brand Blue 更正为品牌橙。
+
+### v3.3（2026-07-31）
+
+**看板二期 UI 对齐（代码 + 文档双向同步）**：
+
+代码侧修复：
+- KPI 卡 8 处硬编码 hex 全部 Token 化（`text-muted-foreground`、`bg-muted`、`bg-red-50 text-finance-red`、`bg-green-50 text-finance-green`）。
+- 预算达成率新增三级语义色（§3.2：≥95% `text-green-600` / 85-95% `text-amber-500` / <85% `text-destructive`；无预算灰色 "–"）。
+- KPI 卡大字区字号收敛（26px→`text-2xl`、22px→`text-lg`），防 xl 4 列截断；整卡可点击钻取财务指标页。
+- 图表卡加载态由文字改为 `.skeleton` shimmer（§6.3）；应收/存货卡图表高度改响应式 `h-[260px] lg:h-[320px]`。
+- 趋势图/应收条形图/存货饼图补 `animation: false`（§7.2）。
+- 预警卡标题增加未确认计数 Badge（含 error 级用 destructive 变体）。
+- 快捷入口 hover 边框与「导入数据」图标色 Token 化（`hover:border-primary/50`、`bg-primary/10 text-primary`）。
+
+文档侧同步（以实现为准）：
+- §5.3 首页看板整节重写为看板二期现状（4 张核心 KPI 卡 / 财年趋势卡 / 应收分布卡 / 存货占比卡 / 预警计数 / 快捷入口）。
+- §8 响应式表 KPI 列数由「5 列」更正为「xl 4 列 / sm-lg 2 列 / 手机 1 列」。
+
 ### v3.2（2026-07-31）
 
 **设计规范一致性修复（代码 + 文档双向同步）**：
@@ -647,4 +758,4 @@ export function cn(...inputs: ClassValue[]) {
 
 ---
 
-*文档版本：v3.2 | 初版 2026-07-21 / 更新 2026-07-31 | 设计负责人：蟹蟹 🦀*
+*文档版本：v3.5 | 初版 2026-07-21 / 更新 2026-07-31 | 设计负责人：蟹蟹 🦀*

@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import type { EChartsOption, SeriesOption } from 'echarts'
 import ReactECharts, { echarts } from './echarts-core'
 import { formatMoneyWan } from '@/lib/utils'
+import { CHART_FONT, CHART_INK, CHART_SERIES, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
 import { seriesOf, type TrendMetric } from './trend-metrics'
 import type { TrendData } from '@/types'
 
@@ -10,10 +11,10 @@ interface TrendChartProps {
   metric: TrendMetric
 }
 
-const SERIES_COLORS = { actual: '#F97316', same: '#94A3B8', budget: '#8B5CF6' }
+const SERIES_COLORS = { actual: CHART_SERIES[0], same: CHART_SERIES[1], budget: CHART_SERIES[4] }
 
 /**
- * 财年趋势图：本月合计（柱，品牌橙）+ 上年同期（柱，灰蓝）+ 月度预算（虚线曲线，紫）。
+ * 财年趋势图：本月合计（柱，品牌橙）+ 上年同期（柱，青蓝）+ 月度预算（实线曲线，柔紫）。
  * X 轴为所选财年 12 个月，未导入数据的月份留空（null 断点）。
  */
 export function TrendChart({ data, metric }: TrendChartProps) {
@@ -22,8 +23,9 @@ export function TrendChart({ data, metric }: TrendChartProps) {
     const periods = data.map(d => d.period)
     const { actual, same, budget } = seriesOf(data, metric)
     return {
+    animation: false,
     textStyle: {
-      fontFamily: "'Microsoft YaHei', '微软雅黑', sans-serif",
+      fontFamily: CHART_FONT,
     },
     tooltip: {
       trigger: 'axis',
@@ -33,17 +35,10 @@ export function TrendChart({ data, metric }: TrendChartProps) {
           color: 'rgba(0, 0, 0, 0.04)',
         },
       },
-      backgroundColor: '#fff',
-      borderColor: '#E2E8F0',
-      borderWidth: 1,
-      padding: [12, 16],
-      textStyle: {
-        color: '#1E293B',
-        fontSize: 13,
-      },
+      ...tooltipShell,
       formatter: (params: any) => {
         if (!Array.isArray(params)) return ''
-        let result = `<div style="font-weight:600;margin-bottom:8px;color:#0F172A;font-size:14px">${params[0].axisValue}</div>`
+        let result = titleSpan(params[0].axisValue)
         params.forEach((item: any) => {
           const color = item.seriesName === '本月合计' ? SERIES_COLORS.actual
             : item.seriesName === '上年同期' ? SERIES_COLORS.same
@@ -52,9 +47,9 @@ export function TrendChart({ data, metric }: TrendChartProps) {
           result += `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin:4px 0">
             <div style="display:flex;align-items:center;gap:8px">
               <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color}"></span>
-              <span style="color:#64748B;font-size:12px">${item.seriesName}</span>
+              ${labelSpan(item.seriesName)}
             </div>
-            <span style="font-weight:500;font-family:'Microsoft YaHei','微软雅黑',sans-serif;font-variant-numeric:tabular-nums;font-size:13px">${value}</span>
+            ${numSpan(value)}
           </div>`
         })
         return result
@@ -67,7 +62,7 @@ export function TrendChart({ data, metric }: TrendChartProps) {
       itemHeight: 8,
       itemGap: 24,
       textStyle: {
-        color: '#64748B',
+        color: CHART_INK.sub,
         fontSize: 12,
       },
     },
@@ -84,14 +79,14 @@ export function TrendChart({ data, metric }: TrendChartProps) {
       data: periods,
       axisLine: {
         lineStyle: {
-          color: '#E2E8F0',
+          color: CHART_INK.grid,
         },
       },
       axisTick: {
         show: false,
       },
       axisLabel: {
-        color: '#94A3B8',
+        color: CHART_INK.axis,
         fontSize: 11,
         formatter: (value: string) => {
           const parts = value.split('-')
@@ -103,7 +98,7 @@ export function TrendChart({ data, metric }: TrendChartProps) {
       type: 'value',
       name: '万元',
       nameTextStyle: {
-        color: '#94A3B8',
+        color: CHART_INK.axis,
         fontSize: 11,
         padding: [0, 0, 0, -24],
       },
@@ -115,12 +110,12 @@ export function TrendChart({ data, metric }: TrendChartProps) {
       },
       splitLine: {
         lineStyle: {
-          color: '#E2E8F0',
+          color: CHART_INK.grid,
           type: 'dashed',
         },
       },
       axisLabel: {
-        color: '#94A3B8',
+        color: CHART_INK.axis,
         fontSize: 11,
         formatter: '{value}',
       },
@@ -156,7 +151,7 @@ export function TrendChart({ data, metric }: TrendChartProps) {
         lineStyle: {
           color: SERIES_COLORS.budget,
           width: 2,
-          type: 'dashed',
+          type: 'solid',
           cap: 'round',
         },
         symbol: 'diamond',
@@ -164,7 +159,7 @@ export function TrendChart({ data, metric }: TrendChartProps) {
         itemStyle: {
           color: SERIES_COLORS.budget,
           borderWidth: 2,
-          borderColor: '#fff',
+          borderColor: CHART_INK.surface,
         },
       },
     ] as SeriesOption[],

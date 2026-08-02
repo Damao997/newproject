@@ -169,7 +169,7 @@ export function EnterpriseLookup() {
                       onClick={() => copyCreditCode(result.creditCode)}
                       title="复制信用代码"
                     >
-                      {copied ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+                      {copied ? <Check className="h-3.5 w-3.5 text-success-strong" /> : <Copy className="h-3.5 w-3.5" />}
                     </Button>
                   </div>
                 </div>

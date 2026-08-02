@@ -45,6 +45,7 @@ coverage
 
 # Qoder internal (repowiki 需纳入版本管理)
 .qoder/better-harness
+.qoder/specs
 
 # Claude internal
 .claude

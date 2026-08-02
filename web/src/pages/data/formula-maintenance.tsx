@@ -408,13 +408,13 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
         (effectiveUpdate || canDelete || canPurge || canConvert) ? (
           <div className="flex items-center justify-end gap-1">
             {effectiveUpdate && (
-              <Button variant="ghost" size="sm" onClick={() => openEdit(r)} title="编辑公式">
+              <Button variant="ghost" size="sm" onClick={() => openEdit(r)} aria-label="编辑公式" title="编辑公式">
                 <Pencil className="h-4 w-4" />
               </Button>
             )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm">
+                <Button variant="ghost" size="sm" aria-label="更多操作">
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -558,13 +558,13 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
           </DialogHeader>
           <div className="space-y-2">
             <label className="text-sm font-medium">公式表达式</label>
-            <Input value={draftFormula} onChange={(e) => setDraftFormula(e.target.value)} placeholder="如：{OP_002} - {OP_030}" maxLength={500} />
+            <Input value={draftFormula} onChange={(e) => setDraftFormula(e.target.value)} placeholder="如：{OP_0201} - {OP_020101}" maxLength={500} />
             {draftFormula.trim() && (
               <p className="text-xs text-muted-foreground">中文预览：{renderColoredFormula(draftFormula)}</p>
             )}
             {draftFormula.trim() && (
               formulaValidation.valid ? (
-                <p className="text-xs text-green-600">语法校验通过</p>
+                <p className="text-xs text-success-strong">语法校验通过</p>
               ) : (
                 <div className="space-y-0.5">
                   {formulaValidation.messages.map((m, i) => (
@@ -726,7 +726,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium">公式（可选）</label>
-              <Input value={createForm.formula} onChange={(e) => setCreateForm({ ...createForm, formula: e.target.value })} placeholder="如：{OP_057} / {OP_005}" maxLength={500} />
+              <Input value={createForm.formula} onChange={(e) => setCreateForm({ ...createForm, formula: e.target.value })} placeholder="如：{OP_020101} / {OP_02}" maxLength={500} />
               {createForm.formula.trim() && (
                 <p className="text-xs text-muted-foreground">中文预览：{formatFormula(createForm.formula)}</p>
               )}
@@ -790,7 +790,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium">初始公式（可选）</label>
-              <Input value={convertForm.formula} onChange={(e) => setConvertForm({ ...convertForm, formula: e.target.value })} placeholder="如：{OP_057} / {OP_005}" maxLength={500} />
+              <Input value={convertForm.formula} onChange={(e) => setConvertForm({ ...convertForm, formula: e.target.value })} placeholder="如：{OP_020101} / {OP_02}" maxLength={500} />
               {convertForm.formula.trim() && (
                 <p className="text-xs text-muted-foreground">中文预览：{formatFormula(convertForm.formula)}</p>
               )}

@@ -273,9 +273,9 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
             <SectionTitle>数据范围</SectionTitle>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
-                <Label>模板类型</Label>
+                <Label htmlFor="rs-template-type">模板类型</Label>
                 <Select value={templateType} onValueChange={(v) => { setTemplateType(v); reset(); setSourceAccountCode(''); setTargetAccountCode('') }}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="rs-template-type"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="operating">经营数据</SelectItem>
                     <SelectItem value="static">静态数据</SelectItem>
@@ -284,9 +284,9 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label>公司</Label>
+                <Label htmlFor="rs-company">公司</Label>
                 <Select value={companyCode} onValueChange={(v) => { setCompanyCode(v); reset() }}>
-                  <SelectTrigger><SelectValue placeholder="选择公司" /></SelectTrigger>
+                  <SelectTrigger id="rs-company"><SelectValue placeholder="选择公司" /></SelectTrigger>
                   <SelectContent className="max-h-[280px]">
                     {entityCompanies.map((c) => (
                       <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
@@ -306,9 +306,9 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
           <section className="space-y-2">
             <SectionTitle>调整设置</SectionTitle>
             <div className="space-y-1">
-              <Label>调整方式</Label>
+              <Label htmlFor="rs-adjust-mode">调整方式</Label>
               <Select value={adjustMode} onValueChange={(v) => handleModeChange(v as AdjustMode)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger id="rs-adjust-mode"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {(Object.keys(ADJUST_MODE_LABEL) as AdjustMode[]).map((m) => (
                     <SelectItem key={m} value={m}>{ADJUST_MODE_LABEL[m]}</SelectItem>
@@ -319,8 +319,8 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
             <div className={cn('grid grid-cols-1 gap-3', adjustMode === 'both' && 'sm:grid-cols-2')}>
               {/* 调减侧（decrease/both） */}
               {adjustMode !== 'increase' && (
-              <div className="space-y-2 rounded-lg border border-red-200 bg-red-50/40 p-3">
-                <p className="flex items-center gap-1.5 text-sm font-medium text-red-700">
+              <div className="space-y-2 rounded-lg border border-destructive/25 bg-destructive/[0.06] p-3">
+                <p className="flex items-center gap-1.5 text-sm font-medium text-destructive">
                   <MinusCircle className="h-4 w-4" />
                   调减侧（源科目）
                 </p>
@@ -335,8 +335,9 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>{decSideQty ? '调减数量（整数）' : '调减金额（万元）'} <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="rs-decrease">{decSideQty ? '调减数量（整数）' : '调减金额（万元）'} <span className="text-destructive">*</span></Label>
                   <Input
+                    id="rs-decrease"
                     type="number"
                     min={0}
                     step={decSideQty ? 1 : '0.01'}
@@ -353,9 +354,9 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
 
               {/* 调增侧（increase/both） */}
               {adjustMode !== 'decrease' && (
-              <div className="space-y-2 rounded-lg border border-green-200 bg-green-50/40 p-3">
+              <div className="space-y-2 rounded-lg border border-success/25 bg-success/10 p-3">
                 <div className="flex items-center justify-between">
-                  <p className="flex items-center gap-1.5 text-sm font-medium text-green-700">
+                  <p className="flex items-center gap-1.5 text-sm font-medium text-success-strong">
                     <PlusCircle className="h-4 w-4" />
                     调增侧（目标科目）
                   </p>
@@ -383,8 +384,9 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>{incSideQty ? '调增数量（整数）' : '调增金额（万元）'} <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="rs-increase">{incSideQty ? '调增数量（整数）' : '调增金额（万元）'} <span className="text-destructive">*</span></Label>
                   <Input
+                    id="rs-increase"
                     type="number"
                     min={0}
                     step={incSideQty ? 1 : '0.01'}
@@ -405,7 +407,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
               <div
                 className={cn(
                   'rounded-md border p-2.5 text-sm',
-                  localNet !== 0 ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-muted bg-muted/30 text-muted-foreground',
+                  localNet !== 0 ? 'border-warning/30 bg-warning/[0.08] text-warning-strong' : 'border-muted bg-muted/30 text-muted-foreground',
                 )}
               >
                 {localNet !== 0
@@ -417,8 +419,9 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
 
           {/* ===== 调整原因 ===== */}
           <section className="space-y-1">
-            <Label>调整原因 <span className="text-destructive">*</span></Label>
+            <Label htmlFor="rs-reason">调整原因 <span className="text-destructive">*</span></Label>
             <Textarea
+              id="rs-reason"
               rows={2}
               placeholder="如：××科目 5 月数据重复计算，调减重复部分"
               value={reason}

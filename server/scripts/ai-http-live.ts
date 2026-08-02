@@ -60,7 +60,7 @@ async function main(): Promise<void> {
   const comp = await compRes.json() as { data?: { code: string; type: string }[] }
   const company = comp.data?.find((c) => c.type === 'entity')
   if (company) {
-    await readSSE('/ai/analyze', token, { companyCode: company.code, subjectCode: 'OP_001', subjectType: 'operating', period: '2025-06' })
+    await readSSE('/ai/analyze', token, { companyCode: company.code, subjectCode: 'OP_02', subjectType: 'operating', period: '2025-06' })
   } else {
     console.log('[live] 未找到单体公司，跳过 analyze')
   }

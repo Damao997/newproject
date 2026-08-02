@@ -19,9 +19,9 @@ interface ReclassifyLogsPanelProps {
 const PAGE_SIZE = 10
 
 const TYPE_BADGE_CLASS: Record<string, string> = {
-  company: 'border-transparent bg-blue-100 text-blue-800',
+  company: 'border-transparent bg-info/10 text-info',
   subject: 'border-transparent bg-secondary text-secondary-foreground',
-  subject_adjust: 'border-transparent bg-amber-100 text-amber-800',
+  subject_adjust: 'border-transparent bg-warning/15 text-warning-strong',
 }
 
 const TRANSFER_MODE_LABEL: Record<string, string> = {
@@ -82,9 +82,9 @@ function AmountDetail({ log }: { log: ReclassifyLog }) {
     return (
       <span className="inline-flex items-center gap-1.5 font-num text-xs">
         {modeLabel && <span className="text-muted-foreground">{modeLabel}</span>}
-        {(d.decreaseAmount ?? 0) > 0 && <span className="text-red-600">-{formatByType(d.decreaseAmount ?? 0, d.valueType)}</span>}
-        {(d.increaseAmount ?? 0) > 0 && <span className="text-green-700">+{formatByType(d.increaseAmount ?? 0, d.valueType)}</span>}
-        <span className={cn(net !== 0 ? 'text-amber-700' : 'text-muted-foreground')}>（净 {formatByType(net, d.valueType)}）</span>
+        {(d.decreaseAmount ?? 0) > 0 && <span className="text-destructive">-{formatByType(d.decreaseAmount ?? 0, d.valueType)}</span>}
+        {(d.increaseAmount ?? 0) > 0 && <span className="text-success-strong">+{formatByType(d.increaseAmount ?? 0, d.valueType)}</span>}
+        <span className={cn(net !== 0 ? 'text-warning-strong' : 'text-muted-foreground')}>（净 {formatByType(net, d.valueType)}）</span>
       </span>
     )
   }
@@ -111,7 +111,7 @@ function ExpandedDetail({ log }: { log: ReclassifyLog }) {
         </>
       )}
       {log.revertedAt && (
-        <p className="text-amber-700">已于 {new Date(log.revertedAt).toLocaleString('zh-CN')} 由 {log.revertedBy ?? '-'} 撤销。</p>
+        <p className="text-warning-strong">已于 {new Date(log.revertedAt).toLocaleString('zh-CN')} 由 {log.revertedBy ?? '-'} 撤销。</p>
       )}
       {!d && <p>无更多明细（历史记录）。</p>}
     </div>
@@ -191,7 +191,7 @@ export function ReclassifyLogsPanel({ canRevert }: ReclassifyLogsPanelProps) {
       key: 'status', header: '状态',
       render: (r) => r.revertedAt
         ? <Badge variant="outline" className="border-transparent bg-muted text-muted-foreground">已撤销</Badge>
-        : <Badge variant="outline" className="border-transparent bg-green-100 text-green-800">已生效</Badge>,
+        : <Badge variant="outline" className="border-transparent bg-success/10 text-success-strong">已生效</Badge>,
     },
   ]
   if (canRevert) {

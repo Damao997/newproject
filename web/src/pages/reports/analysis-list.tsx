@@ -235,7 +235,7 @@ export function AnalysisManager() {
                           <Button variant="ghost" size="sm" onClick={() => setEditing(a)}><Pencil className="mr-1 h-3.5 w-3.5" /> 编辑</Button>
                         )}
                         {!inactive && canDelete && (
-                          <Button variant="ghost" size="sm" onClick={() => handleDelete(a)} className="text-finance-red"><Trash2 className="h-3.5 w-3.5" /></Button>
+                          <Button variant="ghost" size="sm" aria-label="删除分析" onClick={() => handleDelete(a)} className="text-finance-red"><Trash2 className="h-3.5 w-3.5" /></Button>
                         )}
                         {inactive && canUpdate && (
                           <Button variant="ghost" size="sm" onClick={() => handleRestore(a)}><RotateCcw className="mr-1 h-3.5 w-3.5" /> 恢复</Button>

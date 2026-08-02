@@ -12,8 +12,8 @@ let dbReady = false
 let adminId = ''
 const tempMetricCodes: string[] = []
 const tempSubjectCodes: string[] = []
-let realCodeA = 'OP_001'
-let realCodeB = 'OP_002'
+let realCodeA = 'OP_02'
+let realCodeB = 'OP_0201'
 
 beforeAll(async () => {
   try {

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { CHART_SERIES } from '@/lib/chart-theme'
 import { cn } from '@/lib/utils'
 
 export interface MiniBarChartItem {
@@ -28,7 +29,7 @@ interface MiniBarChartProps {
  * 仅用 CSS 宽度过渡实现流畅的条形增长动画（挂载后从 0 增长到目标值）。
  * 适合分类少、只需展示相对占比的轻量场景。
  */
-const DEFAULT_BAR_COLORS = ['#F97316', '#3B82F6', '#10B981', '#8B5CF6']
+const DEFAULT_BAR_COLORS = CHART_SERIES.slice(0, 4)
 
 export function MiniBarChart({ data, max, valueFormatter, barColors = DEFAULT_BAR_COLORS, className }: MiniBarChartProps) {
   const [ready, setReady] = useState(false)
@@ -58,7 +59,7 @@ export function MiniBarChart({ data, max, valueFormatter, barColors = DEFAULT_BA
                 </span>
               </div>
             </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
               <div
                 className="chart-bar h-full rounded-full"
                 style={{ width: ready ? `${pct}%` : '0%', backgroundColor: barColor }}

@@ -51,7 +51,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   }
 
   return (
-    <header className="z-40 w-full shrink-0 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="z-40 w-full shrink-0 border-b bg-background/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex h-14 items-center px-4">
         {/* 移动端：菜单按钮 + 品牌标识 */}
         <div className="flex items-center gap-2 md:hidden">
@@ -59,6 +59,7 @@ export function Header({ onMenuClick }: HeaderProps) {
             variant="ghost"
             size="icon"
             className="h-8 w-8"
+            aria-label="打开导航菜单"
             onClick={onMenuClick}
           >
             <Menu className="h-5 w-5" />

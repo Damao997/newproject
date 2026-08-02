@@ -9,6 +9,8 @@ import { errors } from '../lib/errors'
 import { recordAudit, clientIp } from '../middleware/audit'
 import { ImportService } from '../services/ImportService'
 import { DataService } from '../services/DataService'
+import { ProductCategoryService } from '../services/ProductCategoryService'
+import { SubjectBudgetConfigService } from '../services/SubjectBudgetConfigService'
 import { IndicatorsService } from '../services/IndicatorsService'
 import { ReclassificationService } from '../services/ReclassificationService'
 import { fyLabelOfDate } from '../lib/period'
@@ -79,6 +81,13 @@ router.get('/imports', requirePermission('data:browse:view', 'view'), asyncHandl
   const { page, pageSize } = pageParams(req.query)
   const data = await ImportService.list({ page, pageSize, templateType: req.query.templateType as string | undefined, userId: (req.authUser as AuthUserContext).userId })
   sendOk(res, data)
+}))
+
+// 下载导入模板（自动读取科目体系数据类指标生成，见 ImportService.getTemplate）；须在 /imports/:id 之前注册
+router.get('/imports/template', requirePermission('data:import:upload', 'import'), asyncHandler(async (req, res) => {
+  const type = req.query.type === 'static' ? 'static' : req.query.type === 'budget' ? 'budget' : 'operating'
+  const buffer = await ImportService.getTemplate(type)
+  sendXlsx(res, buffer, `import-template-${type}.xlsx`)
 }))
 
 router.get('/imports/:id', requirePermission('data:browse:view', 'view'), asyncHandler(async (req, res) => {
@@ -182,6 +191,50 @@ router.post('/subjects/:id/reclassify', requirePermission('data:reclassify:subje
   sendOk(res, await DataService.reclassifySubject(req.params.id as string, { parentCode: req.body?.parentCode === undefined ? null : req.body.parentCode }, ctxOf(req)))
 }))
 
+// ===== 品类配置（品类预算达成分析）=====
+router.get('/product-categories', requirePermission('data:browse:view', 'view'), asyncHandler(async (_req, res) => {
+  sendOk(res, await ProductCategoryService.list())
+}))
+
+router.get('/product-categories/check', requirePermission('data:browse:view', 'view'), asyncHandler(async (_req, res) => {
+  sendOk(res, await ProductCategoryService.check())
+}))
+
+router.post('/product-categories', requirePermission('data:subject:create', 'create'), asyncHandler(async (req, res) => {
+  sendOk(res, await ProductCategoryService.create(req.body ?? {}, ctxOf(req)))
+}))
+
+router.put('/product-categories/:id', requirePermission('data:subject:update', 'update'), asyncHandler(async (req, res) => {
+  sendOk(res, await ProductCategoryService.update(req.params.id as string, req.body ?? {}, ctxOf(req)))
+}))
+
+router.delete('/product-categories/:id', requirePermission('data:subject:delete', 'delete'), asyncHandler(async (req, res) => {
+  await ProductCategoryService.remove(req.params.id as string, ctxOf(req))
+  sendOk(res, null)
+}))
+
+// ===== 主体展示配置（主体预算达成分析）=====
+router.get('/subject-budget-configs', requirePermission('data:browse:view', 'view'), asyncHandler(async (_req, res) => {
+  sendOk(res, await SubjectBudgetConfigService.list())
+}))
+
+router.get('/subject-budget-configs/check', requirePermission('data:browse:view', 'view'), asyncHandler(async (_req, res) => {
+  sendOk(res, await SubjectBudgetConfigService.check())
+}))
+
+router.post('/subject-budget-configs', requirePermission('data:subject:create', 'create'), asyncHandler(async (req, res) => {
+  sendOk(res, await SubjectBudgetConfigService.create(req.body ?? {}, ctxOf(req)))
+}))
+
+router.put('/subject-budget-configs/:id', requirePermission('data:subject:update', 'update'), asyncHandler(async (req, res) => {
+  sendOk(res, await SubjectBudgetConfigService.update(req.params.id as string, req.body ?? {}, ctxOf(req)))
+}))
+
+router.delete('/subject-budget-configs/:id', requirePermission('data:subject:delete', 'delete'), asyncHandler(async (req, res) => {
+  await SubjectBudgetConfigService.remove(req.params.id as string, ctxOf(req))
+  sendOk(res, null)
+}))
+
 // ===== 指标 =====
 router.get('/metrics', requirePermission('data:browse:view', 'view'), asyncHandler(async (req, res) => {
   const { page, pageSize } = pageParams(req.query)
@@ -215,7 +268,7 @@ router.post('/metrics/:id/restore', requirePermission('data:metric:update', 'upd
   sendOk(res, await DataService.restoreMetric(req.params.id as string, { clearFormula: req.body?.clearFormula === true }, ctxOf(req)))
 }))
 
-// 指标类型转换（高危，仅 superadmin）：data ↔ calc，data→calc 可携带初始公式
+// 指标类型转换（高危，仅 superadmin）：data ↔ calc、data/calc → display（display 只读不可转出），data→calc 可携带初始公式
 router.post('/metrics/:id/convert', requirePermission('data:metric:convert', 'update'), asyncHandler(async (req, res) => {
   const dataType = String(req.body?.dataType ?? '')
   if (!dataType) throw errors.badRequest('目标类型必填')

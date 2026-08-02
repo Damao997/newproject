@@ -42,9 +42,10 @@ export default function ReportsPage() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
-  // tab 支持 URL 参数直达（?tab=analyses 定位到「单项分析」），便于其他页跳转查看
-  const [searchParams, setSearchParams] = useSearchParams()
-  const [tab, setTab] = useState<'reports' | 'analyses'>(searchParams.get('tab') === 'analyses' ? 'analyses' : 'reports')
+  // 子标签由 URL ?tab= 直接派生（非 useState：同 pathname 切换 tab 时组件不重挂载，
+  // 派生可保证导航菜单点击后页面立即联动；?tab=analyses 定位「单项分析」）
+  const [searchParams] = useSearchParams()
+  const tab: 'reports' | 'analyses' = searchParams.get('tab') === 'analyses' ? 'analyses' : 'reports'
 
   if (selectedId) {
     return (
@@ -62,12 +63,6 @@ export default function ReportsPage() {
         <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="mr-2 h-4 w-4" /> 新建报告</Button>
       ) : null}
     >
-      <Tabs value={tab} onValueChange={(v) => { const t = v as 'reports' | 'analyses'; setTab(t); setSearchParams(t === 'analyses' ? { tab: 'analyses' } : {}, { replace: true }) }} className="mb-3">
-        <TabsList>
-          <TabsTrigger value="reports">汇总报告</TabsTrigger>
-          <TabsTrigger value="analyses">单项分析</TabsTrigger>
-        </TabsList>
-      </Tabs>
       {tab === 'reports' ? (
         <ReportList onOpen={setSelectedId} canDelete={canDelete} />
       ) : (
@@ -163,7 +158,7 @@ function ReportList({ onOpen, canDelete }: { onOpen: (id: string) => void; canDe
                     <div className="flex items-center justify-center gap-1">
                       <Button variant="ghost" size="sm" onClick={() => onOpen(r.id)}><ExternalLink className="mr-1 h-3.5 w-3.5" /> 打开</Button>
                       {canDelete && r.status !== 'archived' && (
-                        <Button variant="ghost" size="sm" onClick={() => handleDelete(r.id, r.title)} className="text-finance-red"><Trash2 className="h-3.5 w-3.5" /></Button>
+                        <Button variant="ghost" size="sm" aria-label="删除报告" onClick={() => handleDelete(r.id, r.title)} className="text-finance-red"><Trash2 className="h-3.5 w-3.5" /></Button>
                       )}
                     </div>
                   </td>

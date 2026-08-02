@@ -184,23 +184,23 @@ export function UserDialog({ open, mode, user, roles, onClose }: UserDialogProps
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1">
-            <Label>用户名</Label>
-            <Input value={username} onChange={(e) => setUsername(e.target.value)} disabled={mode === 'edit'} placeholder="登录用户名" />
+            <Label htmlFor="user-username">用户名</Label>
+            <Input id="user-username" value={username} onChange={(e) => setUsername(e.target.value)} disabled={mode === 'edit'} placeholder="登录用户名" />
           </div>
           <div className="space-y-1">
-            <Label>姓名</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="显示名称" />
+            <Label htmlFor="user-name">姓名</Label>
+            <Input id="user-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="显示名称" />
           </div>
           {mode === 'create' && (
             <div className="space-y-1">
-              <Label>初始密码</Label>
-              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="至少 8 位，含字母与数字" />
+              <Label htmlFor="user-password">初始密码</Label>
+              <Input id="user-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="至少 8 位，含字母与数字" />
             </div>
           )}
           <div className="space-y-1">
-            <Label>角色</Label>
+            <Label htmlFor="user-role">角色</Label>
             <Select value={role} onValueChange={setRole}>
-              <SelectTrigger><SelectValue placeholder="选择角色" /></SelectTrigger>
+              <SelectTrigger id="user-role"><SelectValue placeholder="选择角色" /></SelectTrigger>
               <SelectContent>
                 {roles.map((r) => (
                   <SelectItem key={r.code} value={r.code}>{r.name}</SelectItem>
@@ -281,16 +281,16 @@ export function RoleDialog({ open, mode, role, onClose }: RoleDialogProps) {
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1">
-            <Label>角色编码</Label>
-            <Input value={code} onChange={(e) => setCode(e.target.value)} disabled={mode === 'edit'} placeholder="如 auditor" />
+            <Label htmlFor="role-code">角色编码</Label>
+            <Input id="role-code" value={code} onChange={(e) => setCode(e.target.value)} disabled={mode === 'edit'} placeholder="如 auditor" />
           </div>
           <div className="space-y-1">
-            <Label>角色名称</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="如 审计员" />
+            <Label htmlFor="role-name">角色名称</Label>
+            <Input id="role-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="如 审计员" />
           </div>
           <div className="space-y-1">
-            <Label>描述</Label>
-            <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="角色说明" />
+            <Label htmlFor="role-description">描述</Label>
+            <Input id="role-description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="角色说明" />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
@@ -483,8 +483,9 @@ export function ResetPasswordDialog({ open, user, onClose }: ResetPasswordDialog
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1">
-            <Label>新密码</Label>
+            <Label htmlFor="reset-password">新密码</Label>
             <Input
+              id="reset-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

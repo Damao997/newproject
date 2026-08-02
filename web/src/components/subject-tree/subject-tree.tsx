@@ -40,7 +40,7 @@ function highlight(text: string, keyword?: string) {
   return (
     <>
       {text.slice(0, idx)}
-      <mark className="rounded bg-amber-100 px-0.5 text-amber-900">
+      <mark className="rounded bg-warning/15 px-0.5 text-warning-strong">
         {text.slice(idx, idx + kw.length)}
       </mark>
       {text.slice(idx + kw.length)}

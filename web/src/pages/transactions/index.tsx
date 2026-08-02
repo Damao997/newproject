@@ -1,8 +1,7 @@
 import { Fragment, useMemo, useState, type ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -23,8 +22,9 @@ import { Input } from '@/components/ui/input'
 import { PageContainer } from '@/components/layout/page-container'
 import { Pagination } from '@/components/data-table/pagination'
 import { PAGINATION } from '@/lib/constants'
-import { useCompanies, useTransactionOverview, useTransactionDetails, useTransactionAging, useInternalSummary, useInternalMirrorCheck, useTransactionPeriods, useTransactionAccounts } from '@/hooks/api-queries'
+import { useTransactionOverview, useTransactionDetails, useTransactionAging, useInternalSummary, useInternalMirrorCheck, useTransactionPeriods, useTransactionAccounts } from '@/hooks/api-queries'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
+import { CompanySelect, CompanyMultiSelect } from '@/components/filters/company-select'
 import { usePermission } from '@/hooks/usePermission'
 import { cn, formatMoneyWan } from '@/lib/utils'
 import { ArrowLeftRight, TrendingUp, TrendingDown, Building2, AlertTriangle, Upload, ChevronDown, FileText, Eye } from 'lucide-react'
@@ -37,6 +37,11 @@ import { TransactionAnalysisDrawer, type TransactionAnalysisTarget } from './ana
 import type { TransactionDetailItem, AgingAnalysisRow, InternalSummaryRow, InternalMirrorRow } from '@/types'
 
 const TRANSACTION_TYPES = ['应收账款', '其他应收款', '预收账款', '应付账款', '其他应付款', '预付账款']
+// 默认展示口径：浙江省公司汇总（汇总主体编码 ET0001，后端按汇总映射展开为成员合并口径）
+const DEFAULT_SUMMARY_CODE = 'ET0001'
+// 页面子标签（与侧边栏二级菜单 ?tab= 参数对应）
+const TRANSACTION_TABS = ['overview', 'details', 'aging', 'internal', 'coverage', 'account-filter', 'collections'] as const
+type TransactionTab = (typeof TRANSACTION_TABS)[number]
 // 账龄分析展示分段（后端已由 10 段归集为 5 段）
 const AGING_GROUPS = ['1-3月', '4-6月', '半年以上', '1年至3年', '3年以上']
 
@@ -57,30 +62,13 @@ function formatAmount(v: number): ReactNode {
   )
 }
 
-// 各 Tab 共用的公司单选筛选器（筛选器下沉到 Tab 内部，各自独立控制）
-function CompanySelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const { data: companies } = useCompanies()
-  const { displayNameMap } = useCompanyDisplayName()
-  return (
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="w-[200px]">
-        <SelectValue placeholder="选择公司" />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="all">全部公司</SelectItem>
-        {(companies || []).map((c) => (
-          <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  )
-}
+// 各 Tab 共用的公司单选筛选器统一走共享组件（@/components/filters/company-select）
 
 // 关联方三分类标签样式（内部公司/关联方/外部）
 const PARTY_TYPE_META: Record<string, { label: string; className: string }> = {
-  internal: { label: '内部公司', className: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' },
-  related: { label: '关联方', className: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' },
-  external: { label: '外部', className: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400' },
+  internal: { label: '内部公司', className: 'bg-chart-1/10 text-chart-1' },
+  related: { label: '关联方', className: 'bg-chart-5/10 text-chart-5' },
+  external: { label: '外部', className: 'bg-muted text-muted-foreground' },
 }
 
 function PartyTypeTag({ partyType }: { partyType?: string }) {
@@ -169,26 +157,15 @@ function AccountMultiSelect({ value, onChange, transactionType }: { value: strin
 
 // ===== 总览 Tab =====
 function OverviewTab() {
-  // 共享公司多选：同时驱动趋势图与汇总/分类卡片，空数组语义为「全部公司」
-  const [selectedCompanies, setSelectedCompanies] = useState<string[]>([])
+  // 共享公司多选：同时驱动趋势图与汇总/分类卡片，空数组语义为「全部公司」；
+  // 默认浙江省公司汇总（ET0001，后端按汇总映射展开为成员合并口径）
+  const [selectedCompanies, setSelectedCompanies] = useState<string[]>([DEFAULT_SUMMARY_CODE])
   // 期间筛选（仅作用于卡片）：空串表示跟随最新期间
   const [periodFilter, setPeriodFilter] = useState('')
-  const { data: companies } = useCompanies()
   const { data: periods } = useTransactionPeriods()
   // 期末余额为时点数，默认取最新期间（列表倒序首项），不提供跨期累加
   const period = periodFilter || periods?.[0]
   const { data: overview, isLoading } = useTransactionOverview({ companyCodes: selectedCompanies, period })
-
-  const { displayNameMap } = useCompanyDisplayName()
-  const companyLabel = useMemo(() => {
-    if (selectedCompanies.length === 0) return '全部公司'
-    const firstName = displayNameMap.get(selectedCompanies[0]) ?? selectedCompanies[0]
-    return selectedCompanies.length === 1 ? firstName : `${firstName} 等 ${selectedCompanies.length} 家`
-  }, [selectedCompanies, displayNameMap])
-
-  const toggleCompany = (code: string, checked: boolean) => {
-    setSelectedCompanies((prev) => (checked ? [...prev, code] : prev.filter((c) => c !== code)))
-  }
 
   const list = overview ?? []
   // 净往来余额 = 债权合计(应收+其他应收+预付) - 债务合计(预收+应付+其他应付)，余额已按科目性质归一为正号
@@ -200,39 +177,7 @@ function OverviewTab() {
     <div className="space-y-6">
       {/* 筛选行：公司多选（图表与卡片共享）+ 期间单选（仅作用于卡片） */}
       <div className="flex flex-wrap items-center gap-3">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="h-9 w-[220px] justify-between px-3 font-normal">
-              <span className="truncate">{companyLabel}</span>
-              <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent className="max-h-[320px] w-[240px] overflow-y-auto">
-            <DropdownMenuItem
-              className="text-xs text-muted-foreground"
-              onSelect={(e) => { e.preventDefault(); setSelectedCompanies((companies || []).map((c) => c.code)) }}
-            >
-              全选
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="text-xs text-muted-foreground"
-              onSelect={(e) => { e.preventDefault(); setSelectedCompanies([]) }}
-            >
-              清空（全部公司）
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            {(companies || []).map((company) => (
-              <DropdownMenuCheckboxItem
-                key={company.code}
-                checked={selectedCompanies.includes(company.code)}
-                onCheckedChange={(checked) => toggleCompany(company.code, checked === true)}
-                onSelect={(e) => e.preventDefault()}
-              >
-                {displayNameMap.get(company.code) ?? company.name}
-              </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <CompanyMultiSelect value={selectedCompanies} onChange={setSelectedCompanies} />
         <Select value={period ?? ''} onValueChange={setPeriodFilter}>
           <SelectTrigger className="w-[140px]">
             <SelectValue placeholder="期间" />
@@ -259,8 +204,8 @@ function OverviewTab() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <Card>
               <CardContent className="flex items-center gap-4 pt-6">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/30">
-                  <TrendingUp className="h-6 w-6 text-blue-600" />
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-info/10">
+                  <TrendingUp className="h-6 w-6 text-info" />
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">债权合计（应收+其他应收+预付）</p>
@@ -270,8 +215,8 @@ function OverviewTab() {
             </Card>
             <Card>
               <CardContent className="flex items-center gap-4 pt-6">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/30">
-                  <TrendingDown className="h-6 w-6 text-red-600" />
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-destructive/10">
+                  <TrendingDown className="h-6 w-6 text-destructive" />
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">债务合计（应付+其他应付+预收）</p>
@@ -281,8 +226,8 @@ function OverviewTab() {
             </Card>
             <Card>
               <CardContent className="flex items-center gap-4 pt-6">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900/30">
-                  <ArrowLeftRight className="h-6 w-6 text-green-600" />
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-success/10">
+                  <ArrowLeftRight className="h-6 w-6 text-success" />
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">净往来余额</p>
@@ -302,7 +247,7 @@ function OverviewTab() {
                   <CardHeader className="pb-2">
                     <CardTitle className="flex items-center justify-between text-sm">
                       <span>{item.transactionType}</span>
-                      <span className={cn('rounded px-1.5 py-0.5 text-xs', isCredit ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300')}>
+                      <span className={cn('rounded px-1.5 py-0.5 text-xs', isCredit ? 'bg-destructive/10 text-destructive' : 'bg-info/10 text-info')}>
                         {isCredit ? 'AP' : 'AR'}
                       </span>
                     </CardTitle>
@@ -324,10 +269,12 @@ function OverviewTab() {
 function DetailsTab() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<number>(PAGINATION.DEFAULT_PAGE_SIZE)
-  const [companyFilter, setCompanyFilter] = useState('all')
+  // 默认浙江省公司汇总（ET0001，后端按汇总映射展开为成员合并口径）
+  const [companyFilter, setCompanyFilter] = useState(DEFAULT_SUMMARY_CODE)
   // 空串表示跟随最新期间（默认选中最近一期有数据的期间）；'all' 为全部期间
   const [periodFilter, setPeriodFilter] = useState('')
-  const [typeFilter, setTypeFilter] = useState<string>('')
+  // 默认展示「应收账款」往来类型
+  const [typeFilter, setTypeFilter] = useState<string>('应收账款')
   const [accountFilter, setAccountFilter] = useState<string[]>([])
   const [partyFilter, setPartyFilter] = useState('external')
   const [keyword, setKeyword] = useState('')
@@ -453,10 +400,12 @@ function AgingTab() {
   const { can } = usePermission()
   const navigate = useNavigate()
   const [analysisTarget, setAnalysisTarget] = useState<TransactionAnalysisTarget | null>(null)
-  const [companyFilter, setCompanyFilter] = useState('all')
+  // 默认浙江省公司汇总（ET0001，后端按汇总映射展开为成员合并口径）
+  const [companyFilter, setCompanyFilter] = useState(DEFAULT_SUMMARY_CODE)
   // 空串表示跟随最新期间（默认选中最近一期有数据的期间）；期末余额为时点数，不提供跨期累加
   const [periodFilter, setPeriodFilter] = useState('')
-  const [typeFilter, setTypeFilter] = useState<string>('')
+  // 默认展示「应收账款」往来类型
+  const [typeFilter, setTypeFilter] = useState<string>('应收账款')
   const [accountFilter, setAccountFilter] = useState<string[]>([])
   const [partyFilter, setPartyFilter] = useState('external')
   const [groupBy, setGroupBy] = useState<string>('type')
@@ -616,7 +565,7 @@ function AgingTab() {
                     // 小计 / 合计行
                     const isTotal = rr.kind === 'total'
                     return (
-                      <tr key={idx} className={cn('border-t font-semibold', isTotal ? 'border-t-2 bg-blue-50/70 dark:bg-blue-950/30' : 'bg-muted/50')}>
+                      <tr key={idx} className={cn('border-t font-semibold', isTotal ? 'border-t-2 bg-primary/5' : 'bg-muted/50')}>
                         <td className="px-2 py-2 text-xs" colSpan={labelColSpan}>{rr.label}</td>
                         <td className="px-2 py-2 text-right font-num whitespace-nowrap">{rr.closingBalance.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
                         {AGING_GROUPS.map((b) => (
@@ -688,7 +637,7 @@ function InternalTab() {
                       <td className="px-2 py-2">{row.companyCode}</td>
                       <td className="px-2 py-2">{row.internalPeerCode}</td>
                       <td className="px-2 py-2">
-                        <span className={cn('rounded px-1.5 py-0.5 text-xs', row.direction === 'AR' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300')}>
+                        <span className={cn('rounded px-1.5 py-0.5 text-xs', row.direction === 'AR' ? 'bg-info/10 text-info' : 'bg-destructive/10 text-destructive')}>
                           {row.direction}
                         </span>
                       </td>
@@ -731,12 +680,12 @@ function InternalTab() {
                 </thead>
                 <tbody>
                   {mirror.map((row, idx) => (
-                    <tr key={idx} className={cn('border-b last:border-0', Math.abs(row.difference) > 0.01 && 'bg-orange-50 dark:bg-orange-950/20')}>
+                    <tr key={idx} className={cn('border-b last:border-0', Math.abs(row.difference) > 0.01 && 'bg-warning/[0.08]')}>
                       <td className="px-2 py-2">{row.companyA}</td>
                       <td className="px-2 py-2">{row.companyB}</td>
                       <td className="px-2 py-2 text-right font-num">{row.arAmount.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
                       <td className="px-2 py-2 text-right font-num">{row.apAmount.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
-                      <td className={cn('px-2 py-2 text-right font-num font-medium', Math.abs(row.difference) > 0.01 ? 'text-orange-600' : 'text-green-600')}>
+                      <td className={cn('px-2 py-2 text-right font-num font-medium', Math.abs(row.difference) > 0.01 ? 'text-warning-strong' : 'text-success-strong')}>
                         {row.difference.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
                       </td>
                     </tr>
@@ -753,7 +702,13 @@ function InternalTab() {
 
 // ===== 主页面 =====
 export default function TransactionsPage() {
-  const [activeTab, setActiveTab] = useState('overview')
+  // 子标签由 URL ?tab= 直接派生（非 useState：同 pathname 切换 tab 时组件不重挂载，
+  // 派生可保证导航菜单点击后页面立即联动；默认总览）
+  const [searchParams] = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  const activeTab: TransactionTab = TRANSACTION_TABS.includes(tabParam as TransactionTab)
+    ? (tabParam as TransactionTab)
+    : 'overview'
   const [importOpen, setImportOpen] = useState(false)
   const { can } = usePermission()
 
@@ -773,40 +728,14 @@ export default function TransactionsPage() {
           </div>
         )}
 
-        {/* Tab 切换 */}
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList>
-            <TabsTrigger value="overview">总览</TabsTrigger>
-            <TabsTrigger value="details">明细查询</TabsTrigger>
-            <TabsTrigger value="aging">账龄分析</TabsTrigger>
-            <TabsTrigger value="internal">内部往来</TabsTrigger>
-            <TabsTrigger value="coverage">导入覆盖</TabsTrigger>
-            <TabsTrigger value="account-filter">科目过滤</TabsTrigger>
-            <TabsTrigger value="collections">催收管理</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="overview">
-            <OverviewTab />
-          </TabsContent>
-          <TabsContent value="details">
-            <DetailsTab />
-          </TabsContent>
-          <TabsContent value="aging">
-            <AgingTab />
-          </TabsContent>
-          <TabsContent value="internal">
-            <InternalTab />
-          </TabsContent>
-          <TabsContent value="coverage">
-            <CoverageTab />
-          </TabsContent>
-          <TabsContent value="account-filter">
-            <AccountFilterTab />
-          </TabsContent>
-          <TabsContent value="collections">
-            <CollectionsTab />
-          </TabsContent>
-        </Tabs>
+        {/* 子标签内容：由 URL ?tab= 控制渲染 */}
+        {activeTab === 'overview' && <OverviewTab />}
+        {activeTab === 'details' && <DetailsTab />}
+        {activeTab === 'aging' && <AgingTab />}
+        {activeTab === 'internal' && <InternalTab />}
+        {activeTab === 'coverage' && <CoverageTab />}
+        {activeTab === 'account-filter' && <AccountFilterTab />}
+        {activeTab === 'collections' && <CollectionsTab />}
       </div>
 
       <TransactionImportDialog open={importOpen} onOpenChange={setImportOpen} />

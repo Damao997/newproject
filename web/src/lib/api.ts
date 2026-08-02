@@ -1,8 +1,34 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios'
 import { useAuthStore } from '@/stores/authStore'
-import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse, FilterParams, KpiData, TrendData, DashboardAlert, ReceivableRow, ImportBatch, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData } from '@/types'
+import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse, FilterParams, KpiData, TrendData, DashboardAlert, ReceivableRow, ProductBudgetResponse, SubjectBudgetResponse, ProductCategory, ProductCategoryCheckResult, SubjectBudgetConfig, SubjectBudgetConfigCheckResult, ImportBatch, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData } from '@/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+
+/**
+ * 单飞刷新：并发 401 请求共享同一个 refresh 流程。
+ * 后端 refresh token 为轮转制——同一 token 只可成功使用一次（重复使用返回 401），
+ * 若多个 401 各自独立 refresh，竞态中除首个外全部失败并触发登出跳转。
+ * 该 Promise 在成功后置空，保证下次 401 可重新发起刷新。
+ */
+let refreshPromise: Promise<string> | null = null
+
+async function refreshAccessTokenOnce(): Promise<string> {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      const { refreshToken, setTokens } = useAuthStore.getState()
+      if (!refreshToken) throw new Error('无刷新令牌')
+      const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
+        refreshToken,
+      })
+      const { accessToken, refreshToken: newRefreshToken } = response.data.data
+      setTokens(accessToken, newRefreshToken)
+      return accessToken
+    })().finally(() => {
+      refreshPromise = null
+    })
+  }
+  return refreshPromise
+}
 
 /** 导入预览（dry-run）返回结构：计数 + 错误明细 + 覆盖摘要 + 激活影响预告 + 看板 KPI 覆盖检查 */
 export interface ImportPreviewResult {
@@ -71,18 +97,9 @@ class ApiClient {
           originalRequest._retry = true
           
           try {
-            const { refreshToken, setTokens } = useAuthStore.getState()
-            if (refreshToken) {
-              const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
-                refreshToken,
-              })
-              
-              const { accessToken, refreshToken: newRefreshToken } = response.data.data
-              setTokens(accessToken, newRefreshToken)
-              
-              originalRequest.headers.Authorization = `Bearer ${accessToken}`
-              return this.client(originalRequest)
-            }
+            const accessToken = await refreshAccessTokenOnce()
+            originalRequest.headers.Authorization = `Bearer ${accessToken}`
+            return this.client(originalRequest)
           } catch (refreshError) {
             useAuthStore.getState().logout()
             window.location.href = '/login'
@@ -196,6 +213,102 @@ class ApiClient {
     })
   }
 
+  /** 品类预算达成表（单期间）：收入/毛利品类的预算、本月/累计金额、达成率与同比 */
+  async getProductBudget(params?: { period?: string; companyCode?: string }): Promise<ProductBudgetResponse> {
+    return this.request({
+      method: 'GET',
+      url: '/dashboard/product-budget',
+      params,
+    })
+  }
+
+  /** 主体预算达成表（单期间）：全部单体公司或汇总主体的收入/毛利/净利润预算达成；companyCode 传入时仅返回该主体一行 */
+  async getSubjectBudget(params: { period?: string; mode: 'single' | 'summary'; companyCode?: string }): Promise<SubjectBudgetResponse> {
+    return this.request({
+      method: 'GET',
+      url: '/dashboard/subject-budget',
+      params,
+    })
+  }
+
+  // ---- 品类配置（品类预算达成分析，数据维护）----
+  async getProductCategories(): Promise<ProductCategory[]> {
+    return this.request({
+      method: 'GET',
+      url: '/data/product-categories',
+    })
+  }
+
+  /** 科目树变化检测：品类覆盖状态 / 未覆盖科目 / 失效关键词 / 毛利镜像缺失 */
+  async checkProductCategories(): Promise<ProductCategoryCheckResult> {
+    return this.request({
+      method: 'GET',
+      url: '/data/product-categories/check',
+    })
+  }
+
+  async createProductCategory(input: { code: string; name: string; subjectKeyword: string; sortOrder?: number; status?: string }): Promise<ProductCategory> {
+    return this.request({
+      method: 'POST',
+      url: '/data/product-categories',
+      data: input,
+    })
+  }
+
+  async updateProductCategory(id: string, input: { name?: string; subjectKeyword?: string; sortOrder?: number; status?: string }): Promise<ProductCategory> {
+    return this.request({
+      method: 'PUT',
+      url: `/data/product-categories/${id}`,
+      data: input,
+    })
+  }
+
+  async deleteProductCategory(id: string): Promise<void> {
+    return this.request({
+      method: 'DELETE',
+      url: `/data/product-categories/${id}`,
+    })
+  }
+
+  // ---- 主体展示配置（主体预算达成分析，数据维护）----
+  async getSubjectBudgetConfigs(): Promise<SubjectBudgetConfig[]> {
+    return this.request({
+      method: 'GET',
+      url: '/data/subject-budget-configs',
+    })
+  }
+
+  /** 主体变化检测：配置状态 + 公司表新增但未配置的主体 */
+  async checkSubjectBudgetConfigs(): Promise<SubjectBudgetConfigCheckResult> {
+    return this.request({
+      method: 'GET',
+      url: '/data/subject-budget-configs/check',
+    })
+  }
+
+  async createSubjectBudgetConfig(input: { companyCode: string; sortOrder?: number; status?: string }): Promise<SubjectBudgetConfig> {
+    return this.request({
+      method: 'POST',
+      url: '/data/subject-budget-configs',
+      data: input,
+    })
+  }
+
+  async updateSubjectBudgetConfig(id: string, input: { sortOrder?: number; status?: string }): Promise<SubjectBudgetConfig> {
+    return this.request({
+      method: 'PUT',
+      url: `/data/subject-budget-configs/${id}`,
+      data: input,
+    })
+  }
+
+  async deleteSubjectBudgetConfig(id: string): Promise<void> {
+    return this.request({
+      method: 'DELETE',
+      url: `/data/subject-budget-configs/${id}`,
+    })
+  }
+
   async getDashboardAlerts(): Promise<DashboardAlert[]> {
     return this.request({
       method: 'GET',
@@ -271,6 +384,15 @@ class ApiClient {
         'Content-Type': 'multipart/form-data',
       },
     })
+  }
+
+  /** 下载导入模板（后端按科目体系数据类指标生成） */
+  async downloadImportTemplate(type: 'operating' | 'static' | 'budget'): Promise<Blob> {
+    const response = await this.client.get('/data/imports/template', {
+      params: { type },
+      responseType: 'blob',
+    })
+    return response.data as Blob
   }
 
   async getImports(params?: FilterParams): Promise<PaginatedResponse<ImportBatch>> {
@@ -367,8 +489,8 @@ class ApiClient {
     })
   }
 
-  /** 指标类型转换（高危，仅 superadmin）：data ↔ calc，data→calc 可携带初始公式 */
-  async convertMetric(id: string, data: { dataType: 'data' | 'calc'; formula?: string }): Promise<Metric> {
+  /** 指标类型转换（高危，仅 superadmin）：data ↔ calc、data/calc → display（display 只读不可转出），data→calc 可携带初始公式 */
+  async convertMetric(id: string, data: { dataType: 'data' | 'calc' | 'display'; formula?: string }): Promise<Metric> {
     return this.request({
       method: 'POST',
       url: `/data/metrics/${id}/convert`,
@@ -820,8 +942,8 @@ class ApiClient {
     return this.request({ method: 'GET', url: '/transactions/periods' })
   }
 
-  // 往来余额变动趋势（单类型，按 公司×月份 聚合；支持财年轴）
-  async getTransactionTrend(params: { transactionType: string; companyCodes?: string[]; months?: number; fiscalYear?: string }) {
+  // 往来余额变动趋势（单类型，按 公司×月份 聚合；支持财年轴与自定义期间范围）
+  async getTransactionTrend(params: { transactionType: string; companyCodes?: string[]; months?: number; fiscalYear?: string; periodFrom?: string; periodTo?: string }) {
     return this.request({
       method: 'GET',
       url: '/transactions/trend',
@@ -830,6 +952,8 @@ class ApiClient {
         companyCodes: params.companyCodes?.length ? params.companyCodes.join(',') : undefined,
         months: params.months,
         fiscalYear: params.fiscalYear,
+        periodFrom: params.periodFrom,
+        periodTo: params.periodTo,
       },
     })
   }

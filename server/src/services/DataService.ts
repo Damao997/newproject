@@ -564,18 +564,21 @@ export const DataService = {
   },
 
   /**
-   * 指标类型转换（高危）：data ↔ calc。
+   * 指标类型转换（高危）：data ↔ calc、data/calc → display。
    * data → calc：可同时携带公式（走全图校验，version+1 写历史）；
-   * calc → data：被活跃指标引用时拒绝，清空公式与依赖（原有公式时 version+1 写历史）。
+   * calc → data：被活跃指标引用时拒绝，清空公式与依赖（原有公式时 version+1 写历史）；
+   * data/calc → display：展示类为只读展示用途（calc 源被引用时拒绝，原有公式时清空并写历史）；
+   * display 为转换终点，不支持转出。
    */
   async convertMetricType(id: string, input: { dataType: string; formula?: string }, ctx: AuditCtx): Promise<MetricDto> {
     const found = await prisma.metric.findUnique({ where: { id } })
     if (!found) throw errors.notFound('指标不存在')
     if (found.status !== 'active') throw errors.badRequest('请先恢复启用该指标再转换类型')
     const target = input.dataType
-    if (target !== 'data' && target !== 'calc') throw errors.badRequest('目标类型仅支持 data 或 calc')
+    if (target !== 'data' && target !== 'calc' && target !== 'display') throw errors.badRequest('目标类型仅支持 data、calc 或 display')
     if (found.dataType === target) throw errors.badRequest('指标已是目标类型，无需转换')
-    if (found.dataType === 'display') throw errors.badRequest('展示类指标不支持类型转换')
+    // 展示类为只读展示用途：仅可作为转换终点，不支持转出
+    if (found.dataType === 'display') throw errors.badRequest('展示类指标为只读展示用途，不支持转换为其他类型')
 
     const before = found.formula
     if (target === 'calc') {
@@ -595,7 +598,29 @@ export const DataService = {
           data: { metricId: id, version: updated.version, formula: formula as string, description: '转换为计算类', changedBy: ctx.userId },
         })
       }
-      await recordAudit({ userId: ctx.userId, module: 'data', action: 'metric_change', targetId: found.code, detail: { action: 'convert', from: 'data', to: 'calc', before, after: formula } }, ctx.traceId)
+      await recordAudit({ userId: ctx.userId, module: 'data', action: 'metric_change', targetId: found.code, detail: { action: 'convert', from: found.dataType, to: 'calc', before, after: formula } }, ctx.traceId)
+      return metricDto(updated)
+    }
+
+    if (target === 'display') {
+      // data/calc → display：display 不参与计算，calc 源被活跃公式引用时拒绝
+      if (found.dataType === 'calc') {
+        const referrers = await this.findMetricReferrers(found.code)
+        if (referrers.length > 0) {
+          throw errors.conflict(`该指标被以下指标公式引用，无法转换为展示类：${referrers.map((r) => `${r.name}（${r.code}）`).join('、')}`)
+        }
+      }
+      const versionInc = before ? 1 : 0
+      const updated = await prisma.metric.update({
+        where: { id },
+        data: { dataType: 'display', formula: null, dependsOn: [] as never, version: { increment: versionInc } },
+      })
+      if (versionInc > 0) {
+        await prisma.metricDefinitionHistory.create({
+          data: { metricId: id, version: updated.version, formula: '', description: '转换为展示类（只读展示）', changedBy: ctx.userId },
+        })
+      }
+      await recordAudit({ userId: ctx.userId, module: 'data', action: 'metric_change', targetId: found.code, detail: { action: 'convert', from: found.dataType, to: 'display', before, after: null } }, ctx.traceId)
       return metricDto(updated)
     }
 

@@ -1,17 +1,16 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { MonthPicker } from '@/components/ui/month-picker'
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { MonthPicker } from '@/components/ui/month-picker'
+import { CompanyMultiSelect } from '@/components/filters/company-select'
 import { PageContainer } from '@/components/layout/page-container'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { usePermission } from '@/hooks/usePermission'
@@ -30,6 +29,8 @@ import {
 import { SubjectTreePanel } from '@/components/subject-tree/subject-tree-panel'
 import { CompanyPanel } from '@/components/dimension/company-panel'
 import { AggregationMapPanel } from '@/components/dimension/aggregation-map-panel'
+import { ProductCategoryPanel } from '@/components/dimension/product-category-panel'
+import { SubjectBudgetPanel } from '@/components/dimension/subject-budget-panel'
 import { ReclassifyCompanyDialog } from '@/components/reclassify/reclassify-company-dialog'
 import { ReclassifySubjectDialog } from '@/components/reclassify/reclassify-subject-dialog'
 import { ReclassifyLogsPanel } from '@/components/reclassify/reclassify-logs-panel'
@@ -37,8 +38,54 @@ import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { FormulaMaintenance } from './formula-maintenance'
 import { ImportPanel } from './import-panel'
 
+// 页面子标签（与侧边栏二级菜单 ?tab= 参数对应）
+const DATA_TABS = ['manage', 'reclassify', 'dimensions', 'formulas'] as const
+type DataTab = (typeof DATA_TABS)[number]
+
+// 「维度/科目体系」内部三级子标签（与侧边栏三级菜单 &sub= 参数对应）
+const DIM_SUB_TABS = ['operating', 'static', 'company', 'summary', 'category', 'subject'] as const
+type DimSubTab = (typeof DIM_SUB_TABS)[number]
+
+/** 数据调整入口（科目调整 / 跨公司重分类）：按权限码显隐，两个 Tab 复用 */
+function ReclassifyMenu({ canSubject, canCompany, onSubject, onCompany }: {
+  canSubject: boolean
+  canCompany: boolean
+  onSubject: () => void
+  onCompany: () => void
+}) {
+  if (!canSubject && !canCompany) return null
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" aria-label="数据调整">
+          <ArrowLeftRight className="mr-2 h-4 w-4" />
+          数据调整
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        {canSubject && (
+          <DropdownMenuItem onClick={onSubject}>科目调整</DropdownMenuItem>
+        )}
+        {canCompany && (
+          <DropdownMenuItem onClick={onCompany}>跨公司重分类</DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 export default function DataPage() {
   const { can } = usePermission()
+  // 子标签由 URL ?tab= 驱动（默认数据管理），与侧边栏二级菜单联动
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  // 「维度/科目体系」内部三级子标签由 &sub= 驱动（默认经营分析科目），与侧边栏三级菜单联动；
+  // 从 URL 直接派生而非 useState，保证导航三级菜单点击后页面立即联动
+  const subParam = searchParams.get('sub')
+  const dimSubTab: DimSubTab = DIM_SUB_TABS.includes(subParam as DimSubTab)
+    ? (subParam as DimSubTab)
+    : 'operating'
+
   const canExport = can('data', 'export')
   // 高危操作（仅 superadmin 持有对应权限码）
   const canPurgeMetric = can('data:metric', 'purge')
@@ -47,7 +94,19 @@ export default function DataPage() {
   const canReclassifyCompany = can('data:reclassify', 'company')
   const canReclassifySubject = can('data:reclassify', 'subject')
 
-  const [activeTab, setActiveTab] = useState('manage')
+  // 子标签由 URL ?tab= 直接派生（非 useState：同 pathname 切换 tab 时组件不重挂载，
+  // 派生可保证导航菜单点击后页面立即联动；默认数据管理）
+  const activeTab: DataTab = DATA_TABS.includes(tabParam as DataTab)
+    ? (tabParam as DataTab)
+    : 'manage'
+
+  // URL 归一化：tab=dimensions 但缺 sub 时自动补默认经营分析科目（replace），
+  // 保证 URL 始终反映具体三级子项、导航三级高亮与页面状态一致
+  useEffect(() => {
+    if (activeTab === 'dimensions' && !subParam) {
+      setSearchParams({ tab: 'dimensions', sub: 'operating' }, { replace: true })
+    }
+  }, [activeTab, subParam, setSearchParams])
 
   // 数据编辑入口：复用重分类/科目调整通道（校验、预览影响、二次确认、审计留痕均在对话框内）
   const [adjustSubjectOpen, setAdjustSubjectOpen] = useState(false)
@@ -73,7 +132,6 @@ export default function DataPage() {
   }), [browsePeriod, browseSubjectType])
   const { data: crossTable, isLoading: crossLoading, isFetching: crossFetching } = useCrossTable(crossParams)
 
-  const entityCompanies = useMemo(() => (companies ?? []).filter((c) => c.type === 'entity'), [companies])
   // 全称映射仅用于 Excel 导出（正式文件用全称）；屏幕展示统一走 displayNameMap（跟随「显示简称」开关）
   const companyNameMap = useMemo(() => new Map((companies ?? []).map((c) => [c.code, c.name])), [companies])
   const { displayNameMap } = useCompanyDisplayName()
@@ -84,19 +142,8 @@ export default function DataPage() {
     return browseCompanies.length === 0 ? all : all.filter((c) => browseCompanies.includes(c))
   }, [crossTable, browseCompanies])
 
-  // 公司多选触发按钮文案：全部 / 单选名称 / 首选名称 等 N 家
-  const companyTriggerLabel = useMemo(() => {
-    if (browseCompanies.length === 0) return '全部公司'
-    const firstName = displayNameMap.get(browseCompanies[0]) ?? browseCompanies[0]
-    return browseCompanies.length === 1 ? firstName : `${firstName} 等 ${browseCompanies.length} 家`
-  }, [browseCompanies, displayNameMap])
-
   // 编辑对话框预填：公司多选恰好只选 1 家时预填该公司
   const singleBrowseCompany = browseCompanies.length === 1 ? browseCompanies[0] : undefined
-
-  const toggleBrowseCompany = (code: string, checked: boolean) => {
-    setBrowseCompanies((prev) => (checked ? [...prev, code] : prev.filter((c) => c !== code)))
-  }
 
   type CrossRow = { code: string; name: string; valueType?: 'amount' | 'quantity' | 'ratio'; level: number; parentCode: string | null; isLeaf: boolean; values: Record<string, number> }
   const crossRows = useMemo(() => (crossTable?.rows ?? []) as CrossRow[], [crossTable])
@@ -190,15 +237,9 @@ export default function DataPage() {
 
   return (
     <PageContainer title="数据管理" description="管理Excel导入、数据浏览、维度科目维护">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="animate-fade-in">
-        <TabsList>
-          <TabsTrigger value="manage">数据管理</TabsTrigger>
-          <TabsTrigger value="reclassify">重分类记录</TabsTrigger>
-          <TabsTrigger value="dimensions">维度/科目体系</TabsTrigger>
-          <TabsTrigger value="formulas">公式维护</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="manage" className="space-y-4">
+      <div className="animate-fade-in">
+        {activeTab === 'manage' && (
+          <div className="space-y-4">
           {/* 数据导入 + 导入质量概览（合并紧凑单卡，内部自带权限门禁） */}
           <ImportPanel />
 
@@ -219,39 +260,7 @@ export default function DataPage() {
                       <SelectItem value="static">静态指标</SelectItem>
                     </SelectContent>
                   </Select>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" className="h-9 w-[200px] max-w-full shrink-0 justify-between px-3 font-normal">
-                        <span className="truncate">{companyTriggerLabel}</span>
-                        <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="max-h-[320px] w-[220px] overflow-y-auto">
-                      <DropdownMenuItem
-                        className="text-xs text-muted-foreground"
-                        onSelect={(e) => { e.preventDefault(); setBrowseCompanies(entityCompanies.map((c) => c.code)) }}
-                      >
-                        全选
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="text-xs text-muted-foreground"
-                        onSelect={(e) => { e.preventDefault(); setBrowseCompanies([]) }}
-                      >
-                        清空（全部公司）
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      {entityCompanies.map((company) => (
-                        <DropdownMenuCheckboxItem
-                          key={company.code}
-                          checked={browseCompanies.includes(company.code)}
-                          onCheckedChange={(checked) => toggleBrowseCompany(company.code, checked === true)}
-                          onSelect={(e) => e.preventDefault()}
-                        >
-                          {displayNameMap.get(company.code) ?? company.name}
-                        </DropdownMenuCheckboxItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <CompanyMultiSelect value={browseCompanies} onChange={setBrowseCompanies} entitiesOnly className="w-[200px]" />
                   <div className="flex shrink-0 items-center space-x-2">
                     <span className="text-sm text-muted-foreground">月份:</span>
                     <MonthPicker value={browsePeriod} onChange={setBrowsePeriod} availablePeriods={dynamicPeriods ?? []} />
@@ -266,18 +275,12 @@ export default function DataPage() {
                     )}
                     {isAllRowsExpanded ? '全部折叠' : '全部展开'}
                   </Button>
-                  {canReclassifySubject && (
-                    <Button variant="outline" size="sm" onClick={() => setAdjustSubjectOpen(true)}>
-                      <ArrowLeftRight className="mr-2 h-4 w-4" />
-                      科目调整
-                    </Button>
-                  )}
-                  {canReclassifyCompany && (
-                    <Button variant="outline" size="sm" onClick={() => setReclassifyCompanyOpen(true)}>
-                      <ArrowLeftRight className="mr-2 h-4 w-4" />
-                      跨公司重分类
-                    </Button>
-                  )}
+                  <ReclassifyMenu
+                    canSubject={canReclassifySubject}
+                    canCompany={canReclassifyCompany}
+                    onSubject={() => setAdjustSubjectOpen(true)}
+                    onCompany={() => setReclassifyCompanyOpen(true)}
+                  />
                   {canExport && (
                     <Button variant="outline" size="sm" onClick={handleBrowseExport}>
                       <Download className="mr-2 h-4 w-4" />
@@ -302,88 +305,95 @@ export default function DataPage() {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
+        </div>
+      )}
 
-        <TabsContent value="reclassify" className="space-y-4">
+      {activeTab === 'reclassify' && (
+        <div className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle className="flex flex-wrap items-center justify-between gap-2">
                 <span>重分类记录</span>
-                <span className="flex items-center gap-2">
-                  {canReclassifySubject && (
-                    <Button variant="outline" size="sm" onClick={() => setAdjustSubjectOpen(true)}>
-                      <ArrowLeftRight className="mr-2 h-4 w-4" />
-                      科目调整
-                    </Button>
-                  )}
-                  {canReclassifyCompany && (
-                    <Button variant="outline" size="sm" onClick={() => setReclassifyCompanyOpen(true)}>
-                      <ArrowLeftRight className="mr-2 h-4 w-4" />
-                      跨公司重分类
-                    </Button>
-                  )}
-                </span>
+                <ReclassifyMenu
+                  canSubject={canReclassifySubject}
+                  canCompany={canReclassifyCompany}
+                  onSubject={() => setAdjustSubjectOpen(true)}
+                  onCompany={() => setReclassifyCompanyOpen(true)}
+                />
               </CardTitle>
             </CardHeader>
             <CardContent>
               <ReclassifyLogsPanel canRevert={canReclassifyCompany} />
             </CardContent>
           </Card>
-        </TabsContent>
+        </div>
+      )}
 
-        <TabsContent value="dimensions" className="space-y-4">
+      {activeTab === 'dimensions' && (
+        <div className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>维度/科目体系</CardTitle>
             </CardHeader>
             <CardContent>
-              <Tabs defaultValue="operating" className="space-y-4">
-                <TabsList>
-                  <TabsTrigger value="operating">经营分析科目</TabsTrigger>
-                  <TabsTrigger value="static">静态科目</TabsTrigger>
-                  <TabsTrigger value="company">公司</TabsTrigger>
-                  <TabsTrigger value="summary">汇总主体</TabsTrigger>
-                </TabsList>
-                <TabsContent value="operating">
-                  <SubjectTreePanel
-                    type="operating"
-                    canCreate={can('data:subject', 'create')}
-                    canUpdate={can('data:subject', 'update')}
-                    canDelete={can('data:subject', 'delete')}
-                    canExport={canExport}
-                    exportFileName="经营分析科目"
-                    exportSheet="经营分析科目"
-                    countSuffix="（level0-level4）"
-                  />
-                </TabsContent>
-                <TabsContent value="static">
-                  <SubjectTreePanel
-                    type="static"
-                    canCreate={can('data:subject', 'create')}
-                    canUpdate={can('data:subject', 'update')}
-                    canDelete={can('data:subject', 'delete')}
-                    canExport={canExport}
-                    exportFileName="静态科目"
-                    exportSheet="静态科目"
-                    countSuffix="（level0-level1）"
-                  />
-                </TabsContent>
-                <TabsContent value="company">
-                  <CompanyPanel
-                    canCreate={can('data:company', 'create')}
-                    canUpdate={can('data:company', 'update')}
-                    canDelete={can('data:company', 'delete')}
-                  />
-                </TabsContent>
-                <TabsContent value="summary">
-                  <AggregationMapPanel canUpdate={can('data:company', 'update')} />
-                </TabsContent>
-              </Tabs>
+              {/* 三级子标签由 URL &sub= 驱动，切换完全走侧边栏三级菜单，页面内不再显示任何 tab 标签 */}
+              {dimSubTab === 'operating' && (
+                <SubjectTreePanel
+                  type="operating"
+                  canCreate={can('data:subject', 'create')}
+                  canUpdate={can('data:subject', 'update')}
+                  canDelete={can('data:subject', 'delete')}
+                  canConvert={canConvertMetric}
+                  canExport={canExport}
+                  exportFileName="经营分析科目"
+                  exportSheet="经营分析科目"
+                  countSuffix="（level0-level4）"
+                />
+              )}
+              {dimSubTab === 'static' && (
+                <SubjectTreePanel
+                  type="static"
+                  canCreate={can('data:subject', 'create')}
+                  canUpdate={can('data:subject', 'update')}
+                  canDelete={can('data:subject', 'delete')}
+                  canConvert={canConvertMetric}
+                  canExport={canExport}
+                  exportFileName="静态科目"
+                  exportSheet="静态科目"
+                  countSuffix="（level0-level1）"
+                />
+              )}
+              {dimSubTab === 'company' && (
+                <CompanyPanel
+                  canCreate={can('data:company', 'create')}
+                  canUpdate={can('data:company', 'update')}
+                  canDelete={can('data:company', 'delete')}
+                />
+              )}
+              {dimSubTab === 'summary' && (
+                <AggregationMapPanel canUpdate={can('data:company', 'update')} />
+              )}
+              {dimSubTab === 'category' && (
+                <ProductCategoryPanel
+                  canCreate={can('data:subject', 'create')}
+                  canUpdate={can('data:subject', 'update')}
+                  canDelete={can('data:subject', 'delete')}
+                />
+              )}
+              {dimSubTab === 'subject' && (
+                <SubjectBudgetPanel
+                  canCreate={can('data:subject', 'create')}
+                  canUpdate={can('data:subject', 'update')}
+                  canDelete={can('data:subject', 'delete')}
+                />
+              )}
             </CardContent>
           </Card>
-        </TabsContent>
+        </div>
+      )}
 
-        <TabsContent value="formulas" className="space-y-4">
+      {activeTab === 'formulas' && (
+        <div className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>公式维护</CardTitle>
@@ -399,8 +409,9 @@ export default function DataPage() {
               />
             </CardContent>
           </Card>
-        </TabsContent>
-      </Tabs>
+        </div>
+      )}
+    </div>
 
       {/* 同公司科目间调整（预填当前指标类型与单选公司） */}
       <ReclassifySubjectDialog

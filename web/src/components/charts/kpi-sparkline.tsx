@@ -1,4 +1,5 @@
 import type { EChartsOption } from 'echarts'
+import { CHART_SERIES } from '@/lib/chart-theme'
 import ReactECharts, { echarts } from './echarts-core'
 
 interface KpiSparklineProps {
@@ -7,7 +8,7 @@ interface KpiSparklineProps {
   height?: number
 }
 
-export function KpiSparkline({ data, color = '#F97316', height = 48 }: KpiSparklineProps) {
+export function KpiSparkline({ data, color = CHART_SERIES[0], height = 48 }: KpiSparklineProps) {
   const option: EChartsOption = {
     grid: {
       top: 4,

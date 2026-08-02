@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card'
 /** 单个 KPI 卡片骨架 */
 export function KpiCardSkeleton() {
   return (
-    <Card className="border-0 bg-white shadow-[0_1px_3px_0_rgba(0,0,0,0.06)]">
+    <Card className="border-0 bg-card shadow-[0_1px_3px_0_rgba(0,0,0,0.06)]">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-5 px-5">
         <div className="skeleton h-3 w-16 rounded" />
         <div className="skeleton h-8 w-8 rounded-lg" />
@@ -44,7 +44,7 @@ export function KpiGridSkeleton({ count = 4 }: { count?: number }) {
 /** 图表卡片骨架 */
 export function ChartSkeleton({ className }: { className?: string }) {
   return (
-    <Card className={cn('border-0 bg-white shadow-[0_1px_3px_0_rgba(0,0,0,0.06)]', className)}>
+    <Card className={cn('border-0 bg-card shadow-[0_1px_3px_0_rgba(0,0,0,0.06)]', className)}>
       <CardHeader className="flex flex-row items-center justify-between pb-2 pt-6 px-6">
         <div className="space-y-2">
           <div className="skeleton h-5 w-32 rounded" />
@@ -62,7 +62,7 @@ export function ChartSkeleton({ className }: { className?: string }) {
 /** 列表面板骨架（标题 + 若干行） */
 export function ListSkeleton({ rows = 4, className }: { rows?: number; className?: string }) {
   return (
-    <Card className={cn('border-0 bg-white shadow-[0_1px_3px_0_rgba(0,0,0,0.06)]', className)}>
+    <Card className={cn('border-0 bg-card shadow-[0_1px_3px_0_rgba(0,0,0,0.06)]', className)}>
       <CardHeader className="pb-2 pt-6 px-6">
         <div className="skeleton h-5 w-28 rounded" />
       </CardHeader>

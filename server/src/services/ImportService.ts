@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import ExcelJS from 'exceljs'
 import * as XLSX from 'xlsx'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma'
@@ -6,8 +7,9 @@ import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
 import { parseImportWorkbook, emptySummary, type ImportTemplate, type Resolvers, type SampleRows, type PreviewSummary } from '../lib/excel-import'
 import { parseTransactionWorkbook, type TransactionParseResult, type TransactionResolvers, type TransactionSheetInfo, type TransactionImportIssue, type TransactionParseSummary } from '../lib/transaction-import'
-import { fyLabelOfDate } from '../lib/period'
+import { fyLabelOfDate, parsePeriod, formatPeriod } from '../lib/period'
 import { assertCompaniesInScope, effectiveScope } from '../lib/scope-guard'
+import { latestOperatingPeriod, latestStaticPeriod } from './IndicatorsService'
 
 /**
  * 数据导入服务：文件校验（MIME magic + 大小由 multer 保证）、解析计数、
@@ -34,6 +36,23 @@ function declaredCoverageCompanies(coverageJson: unknown): string[] {
     if (typeof code === 'string' && code) codes.add(code)
   }
   return [...codes]
+}
+
+/** 批次 coverageJson 申报项结构（导入时由汇总 Sheet 产出，含 0 条的空 Sheet） */
+interface DeclaredCoverageItem {
+  companyCode: string
+  period: string
+  transactionType: string
+  recordCount: number
+}
+
+/** 解析批次 coverageJson 申报项（无申报信息返回空数组） */
+function parseDeclaredCoverage(coverageJson: unknown): DeclaredCoverageItem[] {
+  if (!Array.isArray(coverageJson)) return []
+  return coverageJson.filter((x): x is DeclaredCoverageItem =>
+    !!x && typeof x === 'object' && typeof (x as DeclaredCoverageItem).companyCode === 'string'
+    && typeof (x as DeclaredCoverageItem).period === 'string'
+    && typeof (x as DeclaredCoverageItem).transactionType === 'string')
 }
 
 async function buildResolvers(template: ImportTemplate, fiscalYear: string): Promise<Resolvers> {
@@ -274,6 +293,84 @@ function toDto(b: {
 
 export const ImportService = {
   /**
+   * 生成导入模板（转置宽表，与 parseImportWorkbook 转置布局解析对齐）：
+   * 科目行自动取自科目体系的数据类（data）指标，按树前序排列并随层级缩进；
+   * 公司列为全部 active 单体公司；期间列取最新生效期间及其前一月（budget 无月份行）。
+   */
+  async getTemplate(type: ImportTemplate): Promise<Buffer> {
+    // 1) 数据类指标：account_subject 无 dataType 字段，经 metric（code 与科目一一对应）关联筛选
+    const subjectType = type === 'static' ? 'static' : 'operating'
+    const subjects = await prisma.accountSubject.findMany({
+      where: { subjectType, status: 'active' },
+      orderBy: { orderNo: 'asc' },
+      select: { code: true, name: true, level: true, parentCode: true },
+    })
+    const metrics = await prisma.metric.findMany({
+      where: { code: { in: subjects.map((s) => s.code) }, status: 'active' },
+      select: { code: true, dataType: true },
+    })
+    const dtMap = new Map(metrics.map((m) => [m.code, m.dataType]))
+    const dataSubjects = subjects.filter((s) => dtMap.get(s.code) === 'data')
+
+    // 2) 树前序排序（父在前、子紧随其后，与交叉表行序一致）
+    const byCode = new Map(dataSubjects.map((s) => [s.code, s]))
+    const childrenMap = new Map<string, string[]>()
+    const roots: string[] = []
+    for (const s of dataSubjects) {
+      if (s.parentCode && byCode.has(s.parentCode)) {
+        const list = childrenMap.get(s.parentCode) ?? []
+        list.push(s.code)
+        childrenMap.set(s.parentCode, list)
+      } else {
+        roots.push(s.code)
+      }
+    }
+    const ordered: typeof dataSubjects = []
+    const walk = (code: string): void => {
+      ordered.push(byCode.get(code) as (typeof dataSubjects)[number])
+      for (const ch of childrenMap.get(code) ?? []) walk(ch)
+    }
+    roots.forEach(walk)
+
+    // 3) 公司列：active 单体公司（汇总主体由系统聚合，不进填报模板）
+    const companies = await prisma.company.findMany({
+      where: { entityType: 'single', status: 'active' },
+      orderBy: { orderNo: 'asc' },
+      select: { name: true },
+    })
+
+    // 4) 期间列：最新生效期间及其前一月（budget 无月份行）
+    const latest = type === 'static' ? await latestStaticPeriod() : await latestOperatingPeriod()
+    const { year, month } = parsePeriod(latest)
+    const prev = formatPeriod(year, month - 1)
+
+    // 5) 转置宽表：行1=科目名称+公司名，行2=月份（budget 无），行3+=科目行（按层级缩进）
+    const wb = new ExcelJS.Workbook()
+    wb.creator = 'yipinhui-finance'
+    wb.created = new Date()
+    const ws = wb.addWorksheet('导入模板')
+    ws.getColumn(1).width = 28
+    const companyNames = companies.map((c) => c.name)
+    const colCount = 1 + companyNames.length * (type === 'budget' ? 1 : 2)
+    for (let i = 2; i <= colCount; i++) ws.getColumn(i).width = 16
+
+    const subjectRows = ordered.map((s) => [`${'  '.repeat(s.level)}${s.name}`])
+    if (type === 'budget') {
+      ws.addRow(['科目名称', ...companyNames])
+      ws.getRow(1).font = { bold: true }
+      subjectRows.forEach((r) => ws.addRow(r))
+    } else {
+      ws.addRow(['科目名称', ...companyNames, ...companyNames])
+      ws.getRow(1).font = { bold: true }
+      ws.addRow(['', ...companyNames.map(() => latest), ...companyNames.map(() => prev)])
+      ws.getRow(2).font = { bold: true }
+      subjectRows.forEach((r) => ws.addRow(r))
+    }
+    const arrayBuffer = await wb.xlsx.writeBuffer()
+    return Buffer.from(arrayBuffer)
+  },
+
+  /**
    * 导入预览（dry-run）：仅解析不建批次、不写库，返回将入库行数/各类计数/错误明细，
    * 及覆盖摘要、激活影响预告与看板 KPI 覆盖检查，供管理员入库前确认数据质量。
    */
@@ -370,9 +467,22 @@ export const ImportService = {
       return { file, parsed, fatal }
     })
 
-    // 数据范围守卫：预览会回显解析出的公司/期间/余额，越权文件不得回显
+    // 文件申报三元组：实际明细 + 空 Sheet 申报范围（空模板激活时同样按申报替换旧数据，预览预告保持一致）
+    const declaredKeysOf = (p: { parsed: TransactionParseResult | null }): Set<string> => {
+      const keys = new Set<string>()
+      for (const r of p.parsed?.records ?? []) keys.add(`${r.companyCode}|${r.period}|${r.transactionType}`)
+      for (const s of p.parsed?.sheets ?? []) {
+        if (s.declaredCompanyCode && s.cutoffDate) keys.add(`${s.declaredCompanyCode}|${s.cutoffDate.slice(0, 7)}|${s.transactionType}`)
+      }
+      return keys
+    }
+
+    // 数据范围守卫：预览会回显解析出的公司/期间/余额，越权文件不得回显（含空 Sheet 申报公司）
     await assertCompaniesInScope(
-      parsedList.flatMap((p) => (p.parsed?.records ?? []).map((r) => r.companyCode)),
+      parsedList.flatMap((p) => [
+        ...(p.parsed?.records ?? []).map((r) => r.companyCode),
+        ...(p.parsed?.sheets ?? []).filter((s) => s.declaredCompanyCode).map((s) => s.declaredCompanyCode!),
+      ]),
       undefined,
       '预览导入',
     )
@@ -380,7 +490,7 @@ export const ImportService = {
     // 全部文件三元组并集，一次查询现有生效笔数
     const tripleKeys = new Set<string>()
     for (const p of parsedList) {
-      for (const r of p.parsed?.records ?? []) tripleKeys.add(`${r.companyCode}|${r.period}|${r.transactionType}`)
+      for (const k of declaredKeysOf(p)) tripleKeys.add(k)
     }
     const existingCount = new Map<string, number>()
     if (tripleKeys.size > 0) {
@@ -410,8 +520,7 @@ export const ImportService = {
           activationImpact: emptyImpact(),
         }
       }
-      const fileKeys = new Set<string>()
-      for (const r of parsed.records) fileKeys.add(`${r.companyCode}|${r.period}|${r.transactionType}`)
+      const fileKeys = declaredKeysOf({ parsed })
       const impact = emptyImpact()
       for (const k of [...fileKeys].sort()) {
         const [companyCode, period, transactionType] = k.split('|')
@@ -741,20 +850,28 @@ export const ImportService = {
         })
         const oldIds = oldActive.map((x) => x.id)
         if (oldIds.length > 0) {
+          // 实际明细三元组 + 申报覆盖三元组并集：空模板申报"该期确无往来款"，
+          // 激活时同样按申报范围替换（删除）旧生效数据，覆盖矩阵随之显示为 empty
           const keys = await tx.transactionDetail.findMany({
             where: { batchId: id },
             distinct: ['companyCode', 'period', 'transactionType'],
             select: { companyCode: true, period: true, transactionType: true },
           })
-          if (keys.length > 0) {
+          const keySet = new Map<string, { companyCode: string; period: string | null; transactionType: string }>()
+          for (const k of keys) keySet.set(`${k.companyCode}|${k.period ?? ''}|${k.transactionType}`, k)
+          for (const d of parseDeclaredCoverage(b.coverageJson)) {
+            keySet.set(`${d.companyCode}|${d.period}|${d.transactionType}`, { companyCode: d.companyCode, period: d.period, transactionType: d.transactionType })
+          }
+          const mergedKeys = [...keySet.values()]
+          if (mergedKeys.length > 0) {
             const res = await tx.transactionDetail.deleteMany({
               where: {
                 batchId: { in: oldIds },
-                OR: keys.map((k) => ({ companyCode: k.companyCode, period: k.period, transactionType: k.transactionType })),
+                OR: mergedKeys.map((k) => ({ companyCode: k.companyCode, period: k.period, transactionType: k.transactionType })),
               },
             })
             deleted = res.count
-            replaced = keys.map((k) => `${k.companyCode}|${k.period ?? '-'}|${k.transactionType}`).sort()
+            replaced = mergedKeys.map((k) => `${k.companyCode}|${k.period ?? '-'}|${k.transactionType}`).sort()
           }
           for (const oldId of oldIds) {
             const remaining = await tx.transactionDetail.count({ where: { batchId: oldId } })

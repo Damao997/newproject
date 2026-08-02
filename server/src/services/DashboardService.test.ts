@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { changeRate, rateOf, findInCategory, monthlyBudgetSeries, mapAlertRow, alertScopeWhere } from './DashboardService'
+import { changeRate, rateOf, findInCategory, monthlyBudgetSeries, mapAlertRow, alertScopeWhere, productMetric, matchProductCategories } from './DashboardService'
+import { OPERATING_DIMS } from '../lib/metric-values'
 import type { ValueNode } from './AggregationService'
 import { Prisma } from '@prisma/client'
 
@@ -138,6 +139,144 @@ describe('DashboardService 纯函数', () => {
         { businessUnitCode: null },
         { businessUnitCode: { in: ['C001', 'C002'] } },
       ])
+    })
+  })
+
+  describe('productMetric 品类口径取值', () => {
+    const dims = {
+      [OPERATING_DIMS.BUDGET_AMOUNT]: 1200,
+      [OPERATING_DIMS.ACTUAL_MONTH]: 100,
+      [OPERATING_DIMS.SAME_PERIOD_ACTUAL]: 80,
+      [OPERATING_DIMS.YTD_ACTUAL]: 500,
+      [OPERATING_DIMS.SAME_PERIOD_YTD]: 400,
+    }
+    it('本月/累计达成率（月均=年度/12）与单月/累计同比', () => {
+      const m = productMetric(node({ values: dims }))
+      expect(m.budget).toBe(1200)
+      expect(m.monthActual).toBe(100)
+      expect(m.monthSame).toBe(80)
+      expect(m.monthRate).toBe(100) // 100 / (1200/12) × 100
+      expect(m.monthYoy).toBe(0.25) // (100-80)/80
+      expect(m.ytdActual).toBe(500)
+      expect(m.ytdSame).toBe(400)
+      expect(m.ytdRate).toBe(41.67) // 500/1200 × 100 保留两位
+      expect(m.ytdYoy).toBe(0.25) // (500-400)/400
+    })
+    it('无预算（budget=0）时达成率为 null，同比不受影响', () => {
+      const m = productMetric(node({ values: { ...dims, [OPERATING_DIMS.BUDGET_AMOUNT]: 0 } }))
+      expect(m.monthRate).toBeNull()
+      expect(m.ytdRate).toBeNull()
+      expect(m.monthYoy).toBe(0.25)
+    })
+    it('节点缺失返回全 0 / null（前端显示 "–"）', () => {
+      const m = productMetric(undefined)
+      expect(m.budget).toBe(0)
+      expect(m.monthActual).toBe(0)
+      expect(m.monthSame).toBe(0)
+      expect(m.monthRate).toBeNull()
+      expect(m.monthYoy).toBe(0)
+      expect(m.ytdActual).toBe(0)
+      expect(m.ytdSame).toBe(0)
+      expect(m.ytdRate).toBeNull()
+      expect(m.ytdYoy).toBe(0)
+    })
+  })
+
+  describe('matchProductCategories 品类×科目树匹配', () => {
+    const income = (name: string, level: number, actual: number, budgetAmt: number): ValueNode =>
+      node({
+        code: name, name, level, category: '收入',
+        values: {
+          [OPERATING_DIMS.ACTUAL_MONTH]: actual,
+          [OPERATING_DIMS.BUDGET_AMOUNT]: budgetAmt,
+          [OPERATING_DIMS.SAME_PERIOD_ACTUAL]: actual * 0.8,
+          [OPERATING_DIMS.YTD_ACTUAL]: actual * 12,
+          [OPERATING_DIMS.SAME_PERIOD_YTD]: actual * 10,
+        },
+      })
+    const profit = (name: string, actual: number): ValueNode =>
+      node({
+        code: name, name, level: 3, category: '毛利',
+        values: {
+          [OPERATING_DIMS.ACTUAL_MONTH]: actual,
+          [OPERATING_DIMS.BUDGET_AMOUNT]: 0,
+          [OPERATING_DIMS.SAME_PERIOD_ACTUAL]: 0,
+          [OPERATING_DIMS.YTD_ACTUAL]: 0,
+          [OPERATING_DIMS.SAME_PERIOD_YTD]: 0,
+        },
+      })
+
+    it('关键词命中节点并自动配对毛利镜像，已覆盖后代的叶子不列入未覆盖', () => {
+      const cats = [{ code: 'kitchen', name: '厨房产品销售', subjectKeyword: '厨房产品销售' }]
+      const incomeRoots = [
+        node({
+          code: 'K', name: '厨房产品销售收入（不含净水及服务）', level: 3, category: '收入', isLeaf: false,
+          values: {
+            [OPERATING_DIMS.ACTUAL_MONTH]: 100,
+            [OPERATING_DIMS.BUDGET_AMOUNT]: 1200,
+            [OPERATING_DIMS.SAME_PERIOD_ACTUAL]: 80,
+            [OPERATING_DIMS.YTD_ACTUAL]: 1200,
+            [OPERATING_DIMS.SAME_PERIOD_YTD]: 1000,
+          },
+          children: [income('燃气具-灶具收入', 4, 60, 720)],
+        }),
+        income('其他业务收入', 2, 50, 600),
+      ]
+      const profitByName = new Map([['厨房产品销售毛利（不含净水及服务）', profit('厨房产品销售毛利（不含净水及服务）', 40)]])
+      const { rows, covered, uncovered } = matchProductCategories(cats, incomeRoots, profitByName)
+      expect(rows).toHaveLength(1)
+      expect(rows[0].category).toBe('厨房产品销售')
+      expect(rows[0].income.monthActual).toBe(100)
+      expect(rows[0].income.budget).toBe(1200)
+      expect(rows[0].income.monthRate).toBe(100) // 100 / (1200/12) × 100
+      expect(rows[0].profit.monthActual).toBe(40)
+      expect(covered[0].subjects).toEqual(['厨房产品销售收入（不含净水及服务）'])
+      // 被匹配节点的后代叶子（燃气具-灶具收入）视为已覆盖，不列入；未匹配的"其他业务收入"提示
+      expect(uncovered).toEqual(['其他业务收入'])
+    })
+
+    it('关键词命中多个节点时各维度求和（含毛利镜像求和）', () => {
+      const cats = [{ code: 'water', name: '直饮水业务', subjectKeyword: '直饮水' }]
+      const incomeRoots = [
+        income('直饮水安装收入', 3, 30, 360),
+        income('直饮水售水收入', 3, 70, 840),
+      ]
+      const profitByName = new Map([
+        ['直饮水安装毛利', profit('直饮水安装毛利', 10)],
+        ['直饮水售水毛利', profit('直饮水售水毛利', 20)],
+      ])
+      const { rows } = matchProductCategories(cats, incomeRoots, profitByName)
+      expect(rows).toHaveLength(1)
+      expect(rows[0].income.monthActual).toBe(100)
+      expect(rows[0].income.budget).toBe(1200)
+      expect(rows[0].income.monthRate).toBe(100)
+      expect(rows[0].profit.monthActual).toBe(30)
+    })
+
+    it('毛利镜像缺失时毛利组全 0/null', () => {
+      const cats = [{ code: 'new', name: '新产品及其它', subjectKeyword: '新产品' }]
+      const incomeRoots = [income('新产品及其它收入', 3, 10, 120)]
+      const { rows } = matchProductCategories(cats, incomeRoots, new Map())
+      expect(rows).toHaveLength(1)
+      expect(rows[0].profit.monthActual).toBe(0)
+      expect(rows[0].profit.monthRate).toBeNull()
+    })
+
+    it('无匹配科目或无数据的品类被过滤，covered 仍保留全部配置', () => {
+      const cats = [
+        { code: 'a', name: '有数据品类', subjectKeyword: '有数据' },
+        { code: 'b', name: '无匹配品类', subjectKeyword: '不存在' },
+        { code: 'c', name: '零值品类', subjectKeyword: '零值' },
+      ]
+      const incomeRoots = [
+        income('有数据品类收入', 3, 10, 120),
+        income('零值品类收入', 3, 0, 0),
+      ]
+      const { rows, covered } = matchProductCategories(cats, incomeRoots, new Map())
+      expect(rows.map((r) => r.category)).toEqual(['有数据品类'])
+      expect(covered).toHaveLength(3)
+      expect(covered[1].subjects).toEqual([])
+      expect(covered[2].subjects).toEqual(['零值品类收入'])
     })
   })
 })

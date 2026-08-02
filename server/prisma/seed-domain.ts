@@ -21,6 +21,23 @@ const PERIOD_DIMENSIONS = [
   { code: STATIC_DIMS.LAST_YEAR_START, name: '上年年初金额', applicableType: 'static' as const, orderNo: 9 },
 ]
 
+/**
+ * 品类预算达成分析：10 个业务品类配置（品类 ↔ 收入类别科目名关键词）。
+ * 匹配限定 category=收入；毛利按镜像名（"XX收入"→"XX毛利"）自动配对。
+ */
+const PRODUCT_CATEGORIES = [
+  { code: 'kitchen', name: '厨房产品销售（不含净水及服务）', subjectKeyword: '厨房产品销售', sortOrder: 1 },
+  { code: 'security', name: '安防产品销售与服务', subjectKeyword: '安防产品销售与服务', sortOrder: 2 },
+  { code: 'premium', name: '优选产品', subjectKeyword: '优选产品', sortOrder: 3 },
+  { code: 'appliance', name: '家用电器（含净水）', subjectKeyword: '家用电器', sortOrder: 4 },
+  { code: 'livable', name: '宜居产品', subjectKeyword: '宜居产品', sortOrder: 5 },
+  { code: 'promotion', name: '宣传推广', subjectKeyword: '宣传推广', sortOrder: 6 },
+  { code: 'renovation', name: '维修改造业务', subjectKeyword: '维修改造业务', sortOrder: 7 },
+  { code: 'newProducts', name: '新产品及其它', subjectKeyword: '新产品及其它', sortOrder: 8 },
+  { code: 'inspection', name: '安检业务', subjectKeyword: '安检业务', sortOrder: 9 },
+  { code: 'directWater', name: '直饮水业务', subjectKeyword: '直饮水业务', sortOrder: 10 },
+]
+
 function metricDataTypeOf(s: DecoratedSubject): 'data' | 'calc' | 'display' {
   return s.dataType
 }
@@ -94,7 +111,32 @@ export async function seedDomain(prisma: PrismaClient): Promise<void> {
   }
   console.log(`[seed] 期间维度 ${PERIOD_DIMENSIONS.length} 条 完成`)
 
-  // 2) 科目体系
+  // 2) 品类配置（品类预算达成分析，按 code 幂等）
+  for (const pc of PRODUCT_CATEGORIES) {
+    await prisma.productCategory.upsert({
+      where: { code: pc.code },
+      update: { name: pc.name, subjectKeyword: pc.subjectKeyword, sortOrder: pc.sortOrder, status: 'active' },
+      create: pc,
+    })
+  }
+  console.log(`[seed] 品类配置 ${PRODUCT_CATEGORIES.length} 条 完成`)
+
+  // 3) 主体展示配置（主体预算达成分析，按 companyCode 幂等：全量 active 主体默认展示）
+  const activeSubjects = await prisma.company.findMany({
+    where: { status: 'active', entityType: { in: ['single', 'summary'] } },
+    select: { code: true, orderNo: true },
+    orderBy: { orderNo: 'asc' },
+  })
+  for (const s of activeSubjects) {
+    await prisma.subjectBudgetConfig.upsert({
+      where: { companyCode: s.code },
+      update: { sortOrder: s.orderNo, status: 'active' },
+      create: { companyCode: s.code, sortOrder: s.orderNo, status: 'active' },
+    })
+  }
+  console.log(`[seed] 主体展示配置 ${activeSubjects.length} 条 完成`)
+
+  // 4) 科目体系
   const operating = decorateTree(rawOperatingAnalysis, 'OP')
   const staticSubs = decorateTree(rawStaticAnalysis, 'ST')
   const allSubjects = [...operating, ...staticSubs]
@@ -113,7 +155,7 @@ export async function seedDomain(prisma: PrismaClient): Promise<void> {
   }
   console.log(`[seed] 科目体系 ${allSubjects.length} 条（经营 ${operating.length} + 静态 ${staticSubs.length}）完成`)
 
-  // 3) 指标（每个科目一条）
+  // 5) 指标（每个科目一条）
   for (const s of allSubjects) {
     const dataType = metricDataTypeOf(s)
     await prisma.metric.upsert({
@@ -124,10 +166,10 @@ export async function seedDomain(prisma: PrismaClient): Promise<void> {
   }
   console.log(`[seed] 指标 ${allSubjects.length} 条 完成`)
 
-  // 4) 计算类指标展示公式（供聚合层计算层执行，如 毛利 = 收入 - 成本）
+  // 6) 计算类指标展示公式（供聚合层计算层执行，如 毛利 = 收入 - 成本）
   await seedCalcMetricFormulas(prisma)
 
-  // 5) 往来会计科目主数据（集团 ERP 科目表中六大往来相关科目，供往来分析科目筛选器）
+  // 7) 往来会计科目主数据（集团 ERP 科目表中六大往来相关科目，供往来分析科目筛选器）
   for (let i = 0; i < transactionAccounts.length; i++) {
     const a = transactionAccounts[i]
     await prisma.transactionAccount.upsert({
