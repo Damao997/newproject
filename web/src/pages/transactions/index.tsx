@@ -715,7 +715,7 @@ export default function TransactionsPage() {
   return (
     <PageContainer
       title="往来分析"
-      description="六大往来总览、客商明细、账龄分析、内部往来抵消与催收管理"
+      description="六大往来总览"
     >
       <div className="space-y-4">
         {/* 页面头部仅保留导入入口；筛选器已下沉至各 Tab 内部独立控制 */}
