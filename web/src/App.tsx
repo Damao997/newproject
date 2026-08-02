@@ -9,7 +9,9 @@ const LoginPage = lazy(() => import('@/pages/login'))
 const DashboardPage = lazy(() => import('@/pages/dashboard'))
 const IndicatorsPage = lazy(() => import('@/pages/indicators'))
 const DataPage = lazy(() => import('@/pages/data'))
-const AdminPage = lazy(() => import('@/pages/admin'))
+const AdminUsersPage = lazy(() => import('@/pages/admin/users'))
+const AdminRolesPage = lazy(() => import('@/pages/admin/roles'))
+const AdminAuditLogsPage = lazy(() => import('@/pages/admin/audit-logs'))
 const TransactionsPage = lazy(() => import('@/pages/transactions'))
 const InventoryPage = lazy(() => import('@/pages/inventory'))
 const ReportsPage = lazy(() => import('@/pages/reports'))
@@ -41,7 +43,10 @@ function App() {
               <Route path="reports" element={<RequirePermission resource="reports" action="view"><ReportsPage /></RequirePermission>} />
               <Route path="tools" element={<RequirePermission resource="tools" action="view"><ToolsPage /></RequirePermission>} />
               <Route path="data" element={<RequirePermission resource="data:browse" action="view"><DataPage /></RequirePermission>} />
-              <Route path="admin" element={<RequirePermission resource="admin:users" action="view"><AdminPage /></RequirePermission>} />
+              <Route path="admin" element={<Navigate to="/admin/users" replace />} />
+              <Route path="admin/users" element={<RequirePermission resource="admin:users" action="view"><AdminUsersPage /></RequirePermission>} />
+              <Route path="admin/roles" element={<RequirePermission resource="admin:roles" action="view"><AdminRolesPage /></RequirePermission>} />
+              <Route path="admin/audit-logs" element={<RequirePermission resource="admin:users" action="view"><AdminAuditLogsPage /></RequirePermission>} />
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
