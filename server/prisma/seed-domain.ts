@@ -121,7 +121,22 @@ export async function seedDomain(prisma: PrismaClient): Promise<void> {
   }
   console.log(`[seed] 品类配置 ${PRODUCT_CATEGORIES.length} 条 完成`)
 
-  // 3) 科目体系
+  // 3) 主体展示配置（主体预算达成分析，按 companyCode 幂等：全量 active 主体默认展示）
+  const activeSubjects = await prisma.company.findMany({
+    where: { status: 'active', entityType: { in: ['single', 'summary'] } },
+    select: { code: true, orderNo: true },
+    orderBy: { orderNo: 'asc' },
+  })
+  for (const s of activeSubjects) {
+    await prisma.subjectBudgetConfig.upsert({
+      where: { companyCode: s.code },
+      update: { sortOrder: s.orderNo, status: 'active' },
+      create: { companyCode: s.code, sortOrder: s.orderNo, status: 'active' },
+    })
+  }
+  console.log(`[seed] 主体展示配置 ${activeSubjects.length} 条 完成`)
+
+  // 4) 科目体系
   const operating = decorateTree(rawOperatingAnalysis, 'OP')
   const staticSubs = decorateTree(rawStaticAnalysis, 'ST')
   const allSubjects = [...operating, ...staticSubs]
@@ -140,7 +155,7 @@ export async function seedDomain(prisma: PrismaClient): Promise<void> {
   }
   console.log(`[seed] 科目体系 ${allSubjects.length} 条（经营 ${operating.length} + 静态 ${staticSubs.length}）完成`)
 
-  // 4) 指标（每个科目一条）
+  // 5) 指标（每个科目一条）
   for (const s of allSubjects) {
     const dataType = metricDataTypeOf(s)
     await prisma.metric.upsert({
@@ -151,10 +166,10 @@ export async function seedDomain(prisma: PrismaClient): Promise<void> {
   }
   console.log(`[seed] 指标 ${allSubjects.length} 条 完成`)
 
-  // 5) 计算类指标展示公式（供聚合层计算层执行，如 毛利 = 收入 - 成本）
+  // 6) 计算类指标展示公式（供聚合层计算层执行，如 毛利 = 收入 - 成本）
   await seedCalcMetricFormulas(prisma)
 
-  // 6) 往来会计科目主数据（集团 ERP 科目表中六大往来相关科目，供往来分析科目筛选器）
+  // 7) 往来会计科目主数据（集团 ERP 科目表中六大往来相关科目，供往来分析科目筛选器）
   for (let i = 0; i < transactionAccounts.length; i++) {
     const a = transactionAccounts[i]
     await prisma.transactionAccount.upsert({

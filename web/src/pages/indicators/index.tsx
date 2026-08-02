@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Select,
   SelectContent,
@@ -76,7 +75,10 @@ function flattenForExport(rows: Row[], depth = 0): { row: Row; depth: number }[]
 export default function IndicatorsPage() {
   const { can } = usePermission()
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<'operating' | 'static'>('operating')
+  // 子标签由 URL ?tab= 直接派生（非 useState：同 pathname 切换 tab 时组件不重挂载，
+  // 派生可保证导航菜单点击后页面立即联动；?tab=static 定位静态指标）
+  const [searchParams] = useSearchParams()
+  const activeTab: 'operating' | 'static' = searchParams.get('tab') === 'static' ? 'static' : 'operating'
   const [dimFilter, setDimFilter] = useState('all')
   const [periodFilter, setPeriodFilter] = useState('')
   const [excludeReclassify, setExcludeReclassify] = useState(false)
@@ -259,14 +261,7 @@ export default function IndicatorsPage() {
       {/* 筛选栏 */}
       <Card className="animate-fade-in">
         <CardContent className="p-4">
-          <div className="flex flex-col space-y-3 lg:flex-row lg:items-center lg:justify-between lg:space-y-0">
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'operating' | 'static')}>
-              <TabsList className="text-foreground">
-                <TabsTrigger value="operating">经营指标</TabsTrigger>
-                <TabsTrigger value="static">静态指标</TabsTrigger>
-              </TabsList>
-            </Tabs>
-
+          <div className="flex flex-col space-y-3 lg:flex-row lg:items-center lg:justify-end lg:space-y-0">
             <div className="flex flex-col space-y-2 sm:flex-row sm:items-center sm:space-x-2 sm:space-y-0">
               <Select value={dimFilter} onValueChange={setDimFilter}>
                 <SelectTrigger className="w-full sm:w-[220px]">

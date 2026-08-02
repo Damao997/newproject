@@ -12,14 +12,15 @@ import { useCompanies, useDashboardOverview, useAvailablePeriods } from '@/hooks
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { TrendSection } from './trend-section'
 import { ProductBudgetCard } from './product-budget-card'
+import { SubjectBudgetCard } from './subject-budget-card'
 import { ReceivablesCard } from './receivables-card'
 import { InventoryPieCard } from './inventory-pie-card'
 import { AlertTriangle, Inbox, Loader2, RefreshCw } from 'lucide-react'
 
 export default function DashboardPage() {
   const [selectedPeriod, setSelectedPeriod] = useState('')
-  // 主体筛选：all / company:CODE / summary:CODE（与指标页一致的三态格式）
-  const [dimFilter, setDimFilter] = useState('all')
+  // 主体筛选：all / company:CODE / summary:CODE（与指标页一致的三态格式）；默认浙江省公司汇总口径
+  const [dimFilter, setDimFilter] = useState('summary:ET0001')
   const [trendMetric, setTrendMetric] = useState<TrendMetric>('revenue')
   const navigate = useNavigate()
 
@@ -45,6 +46,15 @@ export default function DashboardPage() {
       ? dimFilter.slice('summary:'.length)
       : undefined
 
+  // 当前主体显示名（顶部筛选解析，供各模块标题下说明口径）
+  const currentSubjectName = useMemo(() => {
+    if (dimFilter === 'all') return '全部主体'
+    const code = companyCode
+    if (!code) return '全部主体'
+    const match = (companies ?? []).find((c) => c.code === code)
+    return match?.name ?? code
+  }, [dimFilter, companyCode, companies])
+
   // 真实后端数据（React Query），加载期展示骨架屏
   const { data, isLoading, isError, isFetching, refetch } = useDashboardOverview({
     period: selectedPeriod || (fiscalYear ? periodOptions[periodOptions.length - 1] : undefined),
@@ -61,7 +71,7 @@ export default function DashboardPage() {
   return (
     <PageContainer
       title="首页看板"
-      description={`数据更新时间: ${lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleString('zh-CN') : new Date().toLocaleDateString('zh-CN')}${currentPeriod ? ` · 当前期间: ${currentPeriod}` : ''}`}
+      description={`数据更新时间: ${lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleString('zh-CN') : new Date().toLocaleDateString('zh-CN')}${currentPeriod ? ` · 当前期间: ${currentPeriod}` : ''} · 当前主体: ${currentSubjectName}`}
       actions={
         <div className="flex flex-wrap items-center gap-3">
           <StatusIndicator
@@ -153,19 +163,20 @@ export default function DashboardPage() {
             ))}
           </div>
 
-          {/* 财年趋势（指标可切换 + 主体口径联动顶部筛选） */}
+          {/* 财年趋势（指标可切换，主体口径跟随顶部筛选） */}
           <TrendSection
             data={trendData}
             metric={trendMetric}
             onMetricChange={setTrendMetric}
             fiscalYearLabel={fiscalYear}
-            companies={companies ?? []}
-            dimFilter={dimFilter}
-            onDimFilterChange={setDimFilter}
+            subjectName={currentSubjectName}
           />
 
           {/* 品类预算达成（单期间，主体口径跟随顶部筛选） */}
-          <ProductBudgetCard period={currentPeriod || undefined} companyCode={companyCode} />
+          <ProductBudgetCard period={currentPeriod || undefined} companyCode={companyCode} subjectName={currentSubjectName} />
+
+          {/* 公司预算达成（单期间，主体口径跟随顶部筛选：汇总主体展示成员明细行） */}
+          <SubjectBudgetCard period={currentPeriod || undefined} companyCode={companyCode} subjectName={currentSubjectName} />
 
           {/* 应收分布 + 存货占比（各自独立筛选，期间跟随看板） */}
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">

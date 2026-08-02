@@ -1,7 +1,8 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { ChevronsLeft, ChevronsRight, X } from 'lucide-react'
+import { ChevronsLeft, ChevronsRight, X, ChevronDown } from 'lucide-react'
 import { usePermission } from '@/hooks/usePermission'
-import { navItems } from './nav-items'
+import { navItems, type NavChild, type NavItem } from './nav-items'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -21,18 +22,339 @@ interface SidebarProps {
 interface NavListProps {
   collapsed: boolean
   onNavigate?: () => void
+  /** desktop：折叠态点击弹层 / 展开态内联手风琴；mobile：抽屉内联列表 */
+  variant?: 'desktop' | 'mobile'
 }
 
-function NavList({ collapsed, onNavigate }: NavListProps) {
+/** 一级导航项基础样式（桌面与移动端共用） */
+const linkBase =
+  'relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150'
+const linkActive =
+  'bg-gradient-to-r from-primary/[0.12] to-primary/[0.04] font-semibold text-primary'
+const linkIdle = 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+const linkIcon = 'h-4 w-4 shrink-0'
+
+/** 一级项激活指示条 */
+function ActiveBar() {
+  return <span className="absolute inset-y-1 left-0 w-[3px] rounded-full bg-primary" />
+}
+
+/** 当前 URL（pathname + search），用于子菜单项精确高亮 */
+function useCurrentUrl() {
+  const location = useLocation()
+  return location.pathname + location.search
+}
+
+/**
+ * 公共递归子列表（二级/三级菜单）：点击一级项后直接全部展开显示。
+ * - 目录项（有 children，如「维度/科目体系」）：纯容器标题，不可点击、不可选中，
+ *   仅作层级分组，其三级子列表直接内联显示；
+ * - 叶子项：普通 Link；
+ * - 所有子项不显示展开/收起箭头图标（一级项 ChevronDown 除外）；
+ * - 高亮：叶子项精确匹配（pathname+search），目录项不做任何激活态。
+ */
+function NavSubList({
+  items,
+  depth,
+  onNavigate,
+}: {
+  items: NavChild[]
+  depth: number
+  onNavigate?: () => void
+}) {
+  const currentUrl = useCurrentUrl()
+
+  return (
+    <div className={cn('mt-1 space-y-1', depth >= 2 && 'ml-5 border-l border-border pl-2')}>
+      {items.map((child) => {
+        if (child.children?.length) {
+          return (
+            <div key={child.path}>
+              {/* 目录项：纯容器标题，不可点击、不可选中（仅作层级分组） */}
+              <div
+                className={cn(
+                  'flex select-none items-center rounded-md py-1.5 text-sm font-medium text-muted-foreground',
+                  depth === 1 ? 'pl-9 pr-3' : 'pl-6 pr-3'
+                )}
+              >
+                <span className="pl-1.5">{child.label}</span>
+              </div>
+              {/* 三级直接内联显示，无展开/收起状态与箭头 */}
+              <NavSubList items={child.children} depth={depth + 1} onNavigate={onNavigate} />
+            </div>
+          )
+        }
+
+        const isLeafActive = currentUrl === child.path
+        return (
+          <Link
+            key={child.path}
+            to={child.path}
+            onClick={onNavigate}
+            className={cn(
+              'relative flex items-center rounded-md py-1.5 text-sm transition-colors duration-150',
+              depth === 1 ? 'pl-9 pr-3' : 'pl-6 pr-3',
+              isLeafActive
+                ? 'font-medium text-primary'
+                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+            )}
+          >
+            {isLeafActive && <ActiveBar />}
+            <span className="pl-1.5">{child.label}</span>
+          </Link>
+        )
+      })}
+    </div>
+  )
+}
+
+/**
+ * 桌面端一级导航项（折叠态专用）：点击图标弹出 fixed 面板（手风琴单开，受控）。
+ * 面板内二级/三级直接显示；点击外部 / Escape / 页面滚动 / 路由变化时关闭。
+ */
+function DesktopNavDropdown({
+  item,
+  open,
+  onToggle,
+  onNavigate,
+}: {
+  item: NavItem
+  open: boolean
+  onToggle: () => void
+  onNavigate?: () => void
+}) {
+  const currentUrl = useCurrentUrl()
+  const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null)
+  const triggerRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const Icon = item.icon
+  const isActive = currentUrl.startsWith(item.path)
+
+  // 打开时按 trigger 视口坐标计算面板位置
+  useEffect(() => {
+    if (!open) return
+    const rect = triggerRef.current?.getBoundingClientRect()
+    if (rect) setPanelPos({ top: rect.top, left: rect.right + 4 })
+  }, [open])
+
+  // 点击面板/trigger 外部或按 Escape 时关闭
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (e: PointerEvent) => {
+      if (triggerRef.current?.contains(e.target as Node)) return
+      if (panelRef.current?.contains(e.target as Node)) return
+      onToggle()
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onToggle()
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open, onToggle])
+
+  return (
+    <div ref={triggerRef} className="relative">
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={onToggle}
+        className={cn(linkBase, 'w-full justify-center bg-transparent px-2', isActive ? linkActive : linkIdle)}
+      >
+        {isActive && <ActiveBar />}
+        <Icon className={linkIcon} />
+      </button>
+
+      {/* 二级/三级面板：fixed 定位（nav overflow 裁剪不了），关闭即卸载（无关闭动画） */}
+      {open && panelPos && (
+        <div
+          ref={panelRef}
+          role="menu"
+          style={{ top: panelPos.top, left: panelPos.left }}
+          className="fixed z-50 max-h-[min(480px,calc(100vh-32px))] min-w-[9rem] overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95"
+        >
+          <NavSubList items={item.children!} depth={1} onNavigate={onNavigate} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * 桌面端一级导航项（展开态专用）：点击在手风琴组内联展开二级/三级列表。
+ * 一级项保留 ChevronDown 旋转指示；子项无箭头。
+ */
+function DesktopInlineNavItem({
+  item,
+  expanded,
+  onToggle,
+  onNavigate,
+}: {
+  item: NavItem
+  expanded: boolean
+  onToggle: () => void
+  onNavigate?: () => void
+}) {
+  const currentUrl = useCurrentUrl()
+  const Icon = item.icon
+  const isActive = currentUrl.startsWith(item.path)
+
+  return (
+    <div>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={onToggle}
+        className={cn(linkBase, 'w-full bg-transparent text-left', isActive ? linkActive : linkIdle)}
+      >
+        {isActive && <ActiveBar />}
+        <Icon className={linkIcon} />
+        <span className="truncate">{item.label}</span>
+        <ChevronDown
+          className={cn(
+            'ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-150',
+            expanded && 'rotate-180'
+          )}
+        />
+      </button>
+      {expanded && (
+        <div className="animate-in fade-in slide-in-from-top-1 duration-100">
+          <NavSubList items={item.children!} depth={1} onNavigate={onNavigate} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** 移动端抽屉内一级导航项：有子项时点击展开/收起内联二级/三级列表（三级直接显示），无子项时直接跳转 */
+function MobileNavItem({
+  item,
+  expanded,
+  onToggle,
+  onNavigate,
+}: {
+  item: NavItem
+  expanded: boolean
+  onToggle: () => void
+  onNavigate?: () => void
+}) {
+  const location = useLocation()
+  const Icon = item.icon
+  const isActive = location.pathname.startsWith(item.path)
+
+  if (!item.children?.length) {
+    return (
+      <Link to={item.path} onClick={onNavigate} className={cn(linkBase, isActive ? linkActive : linkIdle)}>
+        {isActive && <ActiveBar />}
+        <Icon className={linkIcon} />
+        <span className="truncate">{item.label}</span>
+      </Link>
+    )
+  }
+
+  return (
+    <div>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={onToggle}
+        className={cn(linkBase, 'w-full text-left', isActive ? linkActive : linkIdle)}
+      >
+        {isActive && <ActiveBar />}
+        <Icon className={linkIcon} />
+        <span className="truncate">{item.label}</span>
+        <ChevronDown
+          className={cn(
+            'ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-150',
+            expanded && 'rotate-180'
+          )}
+        />
+      </button>
+      {expanded && (
+        <div className="animate-in fade-in slide-in-from-top-1 duration-100">
+          <NavSubList items={item.children} depth={1} onNavigate={onNavigate} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function NavList({ collapsed, onNavigate, variant = 'desktop' }: NavListProps) {
   const location = useLocation()
   const { permissions } = usePermission()
 
   // 依据《安全与权限规范》§2.2，仅展示当前角色有 view 权限的模块入口
-  const visibleNavItems = navItems.filter((item) => permissions.includes(item.resource))
+  const visibleNavItems = useMemo(
+    () => navItems.filter((item) => permissions.includes(item.resource)),
+    [permissions]
+  )
+  const currentUrl = location.pathname + location.search
+
+  // 内联手风琴：当前展开的一级项（桌面展开态/移动端共用，单开）
+  const [expandedPath, setExpandedPath] = useState<string | null>(() => {
+    const active = visibleNavItems.find((i) => i.children?.length && currentUrl.startsWith(i.path))
+    return active?.path ?? null
+  })
+  // 折叠态弹出面板：当前打开的一级项（单开）
+  const [openPanelPath, setOpenPanelPath] = useState<string | null>(null)
+
+  // 路由跟随：导航到其他模块时内联展开组自动切换；折叠面板随路由变化关闭
+  useEffect(() => {
+    const active = visibleNavItems.find((i) => i.children?.length && currentUrl.startsWith(i.path))
+    setExpandedPath(active?.path ?? null)
+    setOpenPanelPath(null)
+  }, [currentUrl, visibleNavItems])
+
+  // 折叠态：页面滚动时关闭弹出面板（fixed 面板避免与 trigger 错位）
+  useEffect(() => {
+    if (variant !== 'desktop' || !collapsed) return
+    const onScroll = () => setOpenPanelPath(null)
+    window.addEventListener('scroll', onScroll, true)
+    return () => window.removeEventListener('scroll', onScroll, true)
+  }, [variant, collapsed])
+
+  const toggleInline = (path: string) =>
+    setExpandedPath((prev) => (prev === path ? null : path))
+  const togglePanel = (path: string) =>
+    setOpenPanelPath((prev) => (prev === path ? null : path))
 
   return (
     <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-3">
       {visibleNavItems.map((item) => {
+        if (variant === 'mobile') {
+          return (
+            <MobileNavItem
+              key={item.path}
+              item={item}
+              expanded={expandedPath === item.path}
+              onToggle={() => toggleInline(item.path)}
+              onNavigate={onNavigate}
+            />
+          )
+        }
+        if (item.children?.length) {
+          return collapsed ? (
+            <DesktopNavDropdown
+              key={item.path}
+              item={item}
+              open={openPanelPath === item.path}
+              onToggle={() => togglePanel(item.path)}
+              onNavigate={onNavigate}
+            />
+          ) : (
+            <DesktopInlineNavItem
+              key={item.path}
+              item={item}
+              expanded={expandedPath === item.path}
+              onToggle={() => toggleInline(item.path)}
+              onNavigate={onNavigate}
+            />
+          )
+        }
         const Icon = item.icon
         const isActive = location.pathname.startsWith(item.path)
         const link = (
@@ -41,17 +363,13 @@ function NavList({ collapsed, onNavigate }: NavListProps) {
             to={item.path}
             onClick={onNavigate}
             className={cn(
-              'relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150',
-              isActive
-                ? 'bg-gradient-to-r from-primary/[0.12] to-primary/[0.04] font-semibold text-primary'
-                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+              linkBase,
+              isActive ? linkActive : linkIdle,
               collapsed && 'justify-center px-2'
             )}
           >
-            {isActive && (
-              <span className="absolute inset-y-1 left-0 w-[3px] rounded-full bg-primary" />
-            )}
-            <Icon className="h-4 w-4 shrink-0" />
+            {isActive && <ActiveBar />}
+            <Icon className={linkIcon} />
             {!collapsed && <span className="truncate">{item.label}</span>}
           </Link>
         )
@@ -144,7 +462,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onMobileClose
                 <X className="h-4 w-4" />
               </Button>
             </div>
-            <NavList collapsed={false} onNavigate={onMobileClose} />
+            <NavList collapsed={false} onNavigate={onMobileClose} variant="mobile" />
           </aside>
         </div>
       )}

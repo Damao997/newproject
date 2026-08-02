@@ -1,8 +1,7 @@
 import { Fragment, useMemo, useState, type ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -38,6 +37,9 @@ import { TransactionAnalysisDrawer, type TransactionAnalysisTarget } from './ana
 import type { TransactionDetailItem, AgingAnalysisRow, InternalSummaryRow, InternalMirrorRow } from '@/types'
 
 const TRANSACTION_TYPES = ['应收账款', '其他应收款', '预收账款', '应付账款', '其他应付款', '预付账款']
+// 页面子标签（与侧边栏二级菜单 ?tab= 参数对应）
+const TRANSACTION_TABS = ['overview', 'details', 'aging', 'internal', 'coverage', 'account-filter', 'collections'] as const
+type TransactionTab = (typeof TRANSACTION_TABS)[number]
 // 账龄分析展示分段（后端已由 10 段归集为 5 段）
 const AGING_GROUPS = ['1-3月', '4-6月', '半年以上', '1年至3年', '3年以上']
 
@@ -693,7 +695,13 @@ function InternalTab() {
 
 // ===== 主页面 =====
 export default function TransactionsPage() {
-  const [activeTab, setActiveTab] = useState('overview')
+  // 子标签由 URL ?tab= 直接派生（非 useState：同 pathname 切换 tab 时组件不重挂载，
+  // 派生可保证导航菜单点击后页面立即联动；默认总览）
+  const [searchParams] = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  const activeTab: TransactionTab = TRANSACTION_TABS.includes(tabParam as TransactionTab)
+    ? (tabParam as TransactionTab)
+    : 'overview'
   const [importOpen, setImportOpen] = useState(false)
   const { can } = usePermission()
 
@@ -713,40 +721,14 @@ export default function TransactionsPage() {
           </div>
         )}
 
-        {/* Tab 切换 */}
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList>
-            <TabsTrigger value="overview">总览</TabsTrigger>
-            <TabsTrigger value="details">明细查询</TabsTrigger>
-            <TabsTrigger value="aging">账龄分析</TabsTrigger>
-            <TabsTrigger value="internal">内部往来</TabsTrigger>
-            <TabsTrigger value="coverage">导入覆盖</TabsTrigger>
-            <TabsTrigger value="account-filter">科目过滤</TabsTrigger>
-            <TabsTrigger value="collections">催收管理</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="overview">
-            <OverviewTab />
-          </TabsContent>
-          <TabsContent value="details">
-            <DetailsTab />
-          </TabsContent>
-          <TabsContent value="aging">
-            <AgingTab />
-          </TabsContent>
-          <TabsContent value="internal">
-            <InternalTab />
-          </TabsContent>
-          <TabsContent value="coverage">
-            <CoverageTab />
-          </TabsContent>
-          <TabsContent value="account-filter">
-            <AccountFilterTab />
-          </TabsContent>
-          <TabsContent value="collections">
-            <CollectionsTab />
-          </TabsContent>
-        </Tabs>
+        {/* 子标签内容：由 URL ?tab= 控制渲染 */}
+        {activeTab === 'overview' && <OverviewTab />}
+        {activeTab === 'details' && <DetailsTab />}
+        {activeTab === 'aging' && <AgingTab />}
+        {activeTab === 'internal' && <InternalTab />}
+        {activeTab === 'coverage' && <CoverageTab />}
+        {activeTab === 'account-filter' && <AccountFilterTab />}
+        {activeTab === 'collections' && <CollectionsTab />}
       </div>
 
       <TransactionImportDialog open={importOpen} onOpenChange={setImportOpen} />

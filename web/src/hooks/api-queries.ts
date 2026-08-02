@@ -60,6 +60,21 @@ export function useProductBudget(params: { period?: string; companyCode?: string
   })
 }
 
+/** 主体预算达成表：单期间 + 主体类型（单体/汇总）+ 可选指定主体（跟随看板顶部筛选），period 未定时不发请求 */
+export function useSubjectBudget(params: { period?: string; mode: 'single' | 'summary'; companyCode?: string }) {
+  return useQuery({
+    queryKey: ['dashboard', 'subject-budget', params.period ?? '', params.mode, params.companyCode ?? ''] as const,
+    queryFn: () => api.getSubjectBudget({
+      period: params.period as string,
+      mode: params.mode,
+      ...(params.companyCode ? { companyCode: params.companyCode } : {}),
+    }),
+    enabled: !!params.period,
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
 // ---------------- 品类配置（品类预算达成分析，数据维护） ----------------
 export function useProductCategories() {
   return useQuery({
@@ -94,6 +109,44 @@ export function useProductCategoryMutations() {
     }),
     remove: useMutation({
       mutationFn: (id: string) => api.deleteProductCategory(id),
+      onSuccess: invalidate,
+    }),
+  }
+}
+
+// ---------------- 主体展示配置（主体预算达成分析，数据维护） ----------------
+export function useSubjectBudgetConfigs() {
+  return useQuery({
+    queryKey: ['data', 'subject-budget-configs'] as const,
+    queryFn: () => api.getSubjectBudgetConfigs(),
+    staleTime: 30 * 1000,
+  })
+}
+
+export function useSubjectBudgetConfigCheck() {
+  return useQuery({
+    queryKey: ['data', 'subject-budget-configs', 'check'] as const,
+    queryFn: () => api.checkSubjectBudgetConfigs(),
+    staleTime: 30 * 1000,
+  })
+}
+
+export function useSubjectBudgetConfigMutations() {
+  const queryClient = useQueryClient()
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['data', 'subject-budget-configs'] })
+  }
+  return {
+    create: useMutation({
+      mutationFn: (input: { companyCode: string; sortOrder?: number; status?: string }) => api.createSubjectBudgetConfig(input),
+      onSuccess: invalidate,
+    }),
+    update: useMutation({
+      mutationFn: (input: { id: string; sortOrder?: number; status?: string }) => api.updateSubjectBudgetConfig(input.id, input),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => api.deleteSubjectBudgetConfig(id),
       onSuccess: invalidate,
     }),
   }

@@ -10,6 +10,7 @@ import { recordAudit, clientIp } from '../middleware/audit'
 import { ImportService } from '../services/ImportService'
 import { DataService } from '../services/DataService'
 import { ProductCategoryService } from '../services/ProductCategoryService'
+import { SubjectBudgetConfigService } from '../services/SubjectBudgetConfigService'
 import { IndicatorsService } from '../services/IndicatorsService'
 import { ReclassificationService } from '../services/ReclassificationService'
 import { fyLabelOfDate } from '../lib/period'
@@ -202,6 +203,28 @@ router.put('/product-categories/:id', requirePermission('data:subject:update', '
 
 router.delete('/product-categories/:id', requirePermission('data:subject:delete', 'delete'), asyncHandler(async (req, res) => {
   await ProductCategoryService.remove(req.params.id as string, ctxOf(req))
+  sendOk(res, null)
+}))
+
+// ===== 主体展示配置（主体预算达成分析）=====
+router.get('/subject-budget-configs', requirePermission('data:browse:view', 'view'), asyncHandler(async (_req, res) => {
+  sendOk(res, await SubjectBudgetConfigService.list())
+}))
+
+router.get('/subject-budget-configs/check', requirePermission('data:browse:view', 'view'), asyncHandler(async (_req, res) => {
+  sendOk(res, await SubjectBudgetConfigService.check())
+}))
+
+router.post('/subject-budget-configs', requirePermission('data:subject:create', 'create'), asyncHandler(async (req, res) => {
+  sendOk(res, await SubjectBudgetConfigService.create(req.body ?? {}, ctxOf(req)))
+}))
+
+router.put('/subject-budget-configs/:id', requirePermission('data:subject:update', 'update'), asyncHandler(async (req, res) => {
+  sendOk(res, await SubjectBudgetConfigService.update(req.params.id as string, req.body ?? {}, ctxOf(req)))
+}))
+
+router.delete('/subject-budget-configs/:id', requirePermission('data:subject:delete', 'delete'), asyncHandler(async (req, res) => {
+  await SubjectBudgetConfigService.remove(req.params.id as string, ctxOf(req))
   sendOk(res, null)
 }))
 

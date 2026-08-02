@@ -220,9 +220,13 @@ export interface TrendData {
 export interface ProductBudgetMetric {
   budget: number
   monthActual: number
+  /** 上年同月实际（供合计行同比按 Σ金额重算） */
+  monthSame: number
   monthRate: number | null
   monthYoy: number
   ytdActual: number
+  /** 上年同期累计（供合计行同比按 Σ金额重算） */
+  ytdSame: number
   ytdRate: number | null
   ytdYoy: number
 }
@@ -238,6 +242,22 @@ export interface ProductBudgetRow {
 export interface ProductBudgetResponse {
   period: string
   rows: ProductBudgetRow[]
+}
+
+/** 主体预算达成行：主体（单体公司/汇总主体）+ 收入/毛利/净利润各一组口径值 */
+export interface SubjectBudgetRow {
+  code: string
+  name: string
+  income: ProductBudgetMetric
+  profit: ProductBudgetMetric
+  netProfit: ProductBudgetMetric
+}
+
+/** 主体预算达成接口响应 */
+export interface SubjectBudgetResponse {
+  period: string
+  mode: 'single' | 'summary'
+  rows: SubjectBudgetRow[]
 }
 
 /** 品类配置（品类预算达成分析：品类 ↔ 收入科目名关键词） */
@@ -264,6 +284,24 @@ export interface ProductCategoryCheckResult {
   uncoveredSubjects: string[]
   brokenKeywords: string[]
   missingProfitMirror: string[]
+}
+
+/** 主体展示配置（主体预算达成分析：配置展示的主体/排序/启停） */
+export interface SubjectBudgetConfig {
+  id: string
+  companyCode: string
+  companyName: string
+  entityType: 'single' | 'summary'
+  sortOrder: number
+  status: 'active' | 'inactive'
+  createdAt: string
+  updatedAt: string
+}
+
+/** 主体配置检测结果：已配置列表 + 公司表新增但未配置的主体 */
+export interface SubjectBudgetConfigCheckResult {
+  configs: SubjectBudgetConfig[]
+  unconfiguredSubjects: { code: string; name: string; entityType: 'single' | 'summary' }[]
 }
 
 /** 应收账款主体分布行（横向柱状图） */

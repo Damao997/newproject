@@ -154,9 +154,11 @@ describe('DashboardService 纯函数', () => {
       const m = productMetric(node({ values: dims }))
       expect(m.budget).toBe(1200)
       expect(m.monthActual).toBe(100)
+      expect(m.monthSame).toBe(80)
       expect(m.monthRate).toBe(100) // 100 / (1200/12) × 100
       expect(m.monthYoy).toBe(0.25) // (100-80)/80
       expect(m.ytdActual).toBe(500)
+      expect(m.ytdSame).toBe(400)
       expect(m.ytdRate).toBe(41.67) // 500/1200 × 100 保留两位
       expect(m.ytdYoy).toBe(0.25) // (500-400)/400
     })
@@ -170,9 +172,11 @@ describe('DashboardService 纯函数', () => {
       const m = productMetric(undefined)
       expect(m.budget).toBe(0)
       expect(m.monthActual).toBe(0)
+      expect(m.monthSame).toBe(0)
       expect(m.monthRate).toBeNull()
       expect(m.monthYoy).toBe(0)
       expect(m.ytdActual).toBe(0)
+      expect(m.ytdSame).toBe(0)
       expect(m.ytdRate).toBeNull()
       expect(m.ytdYoy).toBe(0)
     })

@@ -1,7 +1,7 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { MonthPicker } from '@/components/ui/month-picker'
 import {
@@ -30,12 +30,21 @@ import { SubjectTreePanel } from '@/components/subject-tree/subject-tree-panel'
 import { CompanyPanel } from '@/components/dimension/company-panel'
 import { AggregationMapPanel } from '@/components/dimension/aggregation-map-panel'
 import { ProductCategoryPanel } from '@/components/dimension/product-category-panel'
+import { SubjectBudgetPanel } from '@/components/dimension/subject-budget-panel'
 import { ReclassifyCompanyDialog } from '@/components/reclassify/reclassify-company-dialog'
 import { ReclassifySubjectDialog } from '@/components/reclassify/reclassify-subject-dialog'
 import { ReclassifyLogsPanel } from '@/components/reclassify/reclassify-logs-panel'
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { FormulaMaintenance } from './formula-maintenance'
 import { ImportPanel } from './import-panel'
+
+// 页面子标签（与侧边栏二级菜单 ?tab= 参数对应）
+const DATA_TABS = ['manage', 'reclassify', 'dimensions', 'formulas'] as const
+type DataTab = (typeof DATA_TABS)[number]
+
+// 「维度/科目体系」内部三级子标签（与侧边栏三级菜单 &sub= 参数对应）
+const DIM_SUB_TABS = ['operating', 'static', 'company', 'summary', 'category', 'subject'] as const
+type DimSubTab = (typeof DIM_SUB_TABS)[number]
 
 /** 数据调整入口（科目调整 / 跨公司重分类）：按权限码显隐，两个 Tab 复用 */
 function ReclassifyMenu({ canSubject, canCompany, onSubject, onCompany }: {
@@ -67,6 +76,16 @@ function ReclassifyMenu({ canSubject, canCompany, onSubject, onCompany }: {
 
 export default function DataPage() {
   const { can } = usePermission()
+  // 子标签由 URL ?tab= 驱动（默认数据管理），与侧边栏二级菜单联动
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  // 「维度/科目体系」内部三级子标签由 &sub= 驱动（默认经营分析科目），与侧边栏三级菜单联动；
+  // 从 URL 直接派生而非 useState，保证导航三级菜单点击后页面立即联动
+  const subParam = searchParams.get('sub')
+  const dimSubTab: DimSubTab = DIM_SUB_TABS.includes(subParam as DimSubTab)
+    ? (subParam as DimSubTab)
+    : 'operating'
+
   const canExport = can('data', 'export')
   // 高危操作（仅 superadmin 持有对应权限码）
   const canPurgeMetric = can('data:metric', 'purge')
@@ -75,7 +94,19 @@ export default function DataPage() {
   const canReclassifyCompany = can('data:reclassify', 'company')
   const canReclassifySubject = can('data:reclassify', 'subject')
 
-  const [activeTab, setActiveTab] = useState('manage')
+  // 子标签由 URL ?tab= 直接派生（非 useState：同 pathname 切换 tab 时组件不重挂载，
+  // 派生可保证导航菜单点击后页面立即联动；默认数据管理）
+  const activeTab: DataTab = DATA_TABS.includes(tabParam as DataTab)
+    ? (tabParam as DataTab)
+    : 'manage'
+
+  // URL 归一化：tab=dimensions 但缺 sub 时自动补默认经营分析科目（replace），
+  // 保证 URL 始终反映具体三级子项、导航三级高亮与页面状态一致
+  useEffect(() => {
+    if (activeTab === 'dimensions' && !subParam) {
+      setSearchParams({ tab: 'dimensions', sub: 'operating' }, { replace: true })
+    }
+  }, [activeTab, subParam, setSearchParams])
 
   // 数据编辑入口：复用重分类/科目调整通道（校验、预览影响、二次确认、审计留痕均在对话框内）
   const [adjustSubjectOpen, setAdjustSubjectOpen] = useState(false)
@@ -206,15 +237,9 @@ export default function DataPage() {
 
   return (
     <PageContainer title="数据管理" description="管理Excel导入、数据浏览、维度科目维护">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="animate-fade-in">
-        <TabsList>
-          <TabsTrigger value="manage">数据管理</TabsTrigger>
-          <TabsTrigger value="reclassify">重分类记录</TabsTrigger>
-          <TabsTrigger value="dimensions">维度/科目体系</TabsTrigger>
-          <TabsTrigger value="formulas">公式维护</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="manage" className="space-y-4">
+      <div className="animate-fade-in">
+        {activeTab === 'manage' && (
+          <div className="space-y-4">
           {/* 数据导入 + 导入质量概览（合并紧凑单卡，内部自带权限门禁） */}
           <ImportPanel />
 
@@ -280,9 +305,11 @@ export default function DataPage() {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
+        </div>
+      )}
 
-        <TabsContent value="reclassify" className="space-y-4">
+      {activeTab === 'reclassify' && (
+        <div className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle className="flex flex-wrap items-center justify-between gap-2">
@@ -299,69 +326,72 @@ export default function DataPage() {
               <ReclassifyLogsPanel canRevert={canReclassifyCompany} />
             </CardContent>
           </Card>
-        </TabsContent>
+        </div>
+      )}
 
-        <TabsContent value="dimensions" className="space-y-4">
+      {activeTab === 'dimensions' && (
+        <div className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>维度/科目体系</CardTitle>
             </CardHeader>
             <CardContent>
-              <Tabs defaultValue="operating" className="space-y-4">
-                <TabsList>
-                  <TabsTrigger value="operating">经营分析科目</TabsTrigger>
-                  <TabsTrigger value="static">静态科目</TabsTrigger>
-                  <TabsTrigger value="company">公司</TabsTrigger>
-                  <TabsTrigger value="summary">汇总主体</TabsTrigger>
-                  <TabsTrigger value="category">品类配置</TabsTrigger>
-                </TabsList>
-                <TabsContent value="operating">
-                  <SubjectTreePanel
-                    type="operating"
-                    canCreate={can('data:subject', 'create')}
-                    canUpdate={can('data:subject', 'update')}
-                    canDelete={can('data:subject', 'delete')}
-                    canExport={canExport}
-                    exportFileName="经营分析科目"
-                    exportSheet="经营分析科目"
-                    countSuffix="（level0-level4）"
-                  />
-                </TabsContent>
-                <TabsContent value="static">
-                  <SubjectTreePanel
-                    type="static"
-                    canCreate={can('data:subject', 'create')}
-                    canUpdate={can('data:subject', 'update')}
-                    canDelete={can('data:subject', 'delete')}
-                    canExport={canExport}
-                    exportFileName="静态科目"
-                    exportSheet="静态科目"
-                    countSuffix="（level0-level1）"
-                  />
-                </TabsContent>
-                <TabsContent value="company">
-                  <CompanyPanel
-                    canCreate={can('data:company', 'create')}
-                    canUpdate={can('data:company', 'update')}
-                    canDelete={can('data:company', 'delete')}
-                  />
-                </TabsContent>
-                <TabsContent value="summary">
-                  <AggregationMapPanel canUpdate={can('data:company', 'update')} />
-                </TabsContent>
-                <TabsContent value="category">
-                  <ProductCategoryPanel
-                    canCreate={can('data:subject', 'create')}
-                    canUpdate={can('data:subject', 'update')}
-                    canDelete={can('data:subject', 'delete')}
-                  />
-                </TabsContent>
-              </Tabs>
+              {/* 三级子标签由 URL &sub= 驱动，切换完全走侧边栏三级菜单，页面内不再显示任何 tab 标签 */}
+              {dimSubTab === 'operating' && (
+                <SubjectTreePanel
+                  type="operating"
+                  canCreate={can('data:subject', 'create')}
+                  canUpdate={can('data:subject', 'update')}
+                  canDelete={can('data:subject', 'delete')}
+                  canExport={canExport}
+                  exportFileName="经营分析科目"
+                  exportSheet="经营分析科目"
+                  countSuffix="（level0-level4）"
+                />
+              )}
+              {dimSubTab === 'static' && (
+                <SubjectTreePanel
+                  type="static"
+                  canCreate={can('data:subject', 'create')}
+                  canUpdate={can('data:subject', 'update')}
+                  canDelete={can('data:subject', 'delete')}
+                  canExport={canExport}
+                  exportFileName="静态科目"
+                  exportSheet="静态科目"
+                  countSuffix="（level0-level1）"
+                />
+              )}
+              {dimSubTab === 'company' && (
+                <CompanyPanel
+                  canCreate={can('data:company', 'create')}
+                  canUpdate={can('data:company', 'update')}
+                  canDelete={can('data:company', 'delete')}
+                />
+              )}
+              {dimSubTab === 'summary' && (
+                <AggregationMapPanel canUpdate={can('data:company', 'update')} />
+              )}
+              {dimSubTab === 'category' && (
+                <ProductCategoryPanel
+                  canCreate={can('data:subject', 'create')}
+                  canUpdate={can('data:subject', 'update')}
+                  canDelete={can('data:subject', 'delete')}
+                />
+              )}
+              {dimSubTab === 'subject' && (
+                <SubjectBudgetPanel
+                  canCreate={can('data:subject', 'create')}
+                  canUpdate={can('data:subject', 'update')}
+                  canDelete={can('data:subject', 'delete')}
+                />
+              )}
             </CardContent>
           </Card>
-        </TabsContent>
+        </div>
+      )}
 
-        <TabsContent value="formulas" className="space-y-4">
+      {activeTab === 'formulas' && (
+        <div className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>公式维护</CardTitle>
@@ -377,8 +407,9 @@ export default function DataPage() {
               />
             </CardContent>
           </Card>
-        </TabsContent>
-      </Tabs>
+        </div>
+      )}
+    </div>
 
       {/* 同公司科目间调整（预填当前指标类型与单选公司） */}
       <ReclassifySubjectDialog

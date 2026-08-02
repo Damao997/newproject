@@ -1,8 +1,34 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios'
 import { useAuthStore } from '@/stores/authStore'
-import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse, FilterParams, KpiData, TrendData, DashboardAlert, ReceivableRow, ProductBudgetResponse, ProductCategory, ProductCategoryCheckResult, ImportBatch, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData } from '@/types'
+import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse, FilterParams, KpiData, TrendData, DashboardAlert, ReceivableRow, ProductBudgetResponse, SubjectBudgetResponse, ProductCategory, ProductCategoryCheckResult, SubjectBudgetConfig, SubjectBudgetConfigCheckResult, ImportBatch, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData } from '@/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+
+/**
+ * 单飞刷新：并发 401 请求共享同一个 refresh 流程。
+ * 后端 refresh token 为轮转制——同一 token 只可成功使用一次（重复使用返回 401），
+ * 若多个 401 各自独立 refresh，竞态中除首个外全部失败并触发登出跳转。
+ * 该 Promise 在成功后置空，保证下次 401 可重新发起刷新。
+ */
+let refreshPromise: Promise<string> | null = null
+
+async function refreshAccessTokenOnce(): Promise<string> {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      const { refreshToken, setTokens } = useAuthStore.getState()
+      if (!refreshToken) throw new Error('无刷新令牌')
+      const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
+        refreshToken,
+      })
+      const { accessToken, refreshToken: newRefreshToken } = response.data.data
+      setTokens(accessToken, newRefreshToken)
+      return accessToken
+    })().finally(() => {
+      refreshPromise = null
+    })
+  }
+  return refreshPromise
+}
 
 /** 导入预览（dry-run）返回结构：计数 + 错误明细 + 覆盖摘要 + 激活影响预告 + 看板 KPI 覆盖检查 */
 export interface ImportPreviewResult {
@@ -71,18 +97,9 @@ class ApiClient {
           originalRequest._retry = true
           
           try {
-            const { refreshToken, setTokens } = useAuthStore.getState()
-            if (refreshToken) {
-              const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
-                refreshToken,
-              })
-              
-              const { accessToken, refreshToken: newRefreshToken } = response.data.data
-              setTokens(accessToken, newRefreshToken)
-              
-              originalRequest.headers.Authorization = `Bearer ${accessToken}`
-              return this.client(originalRequest)
-            }
+            const accessToken = await refreshAccessTokenOnce()
+            originalRequest.headers.Authorization = `Bearer ${accessToken}`
+            return this.client(originalRequest)
           } catch (refreshError) {
             useAuthStore.getState().logout()
             window.location.href = '/login'
@@ -205,6 +222,15 @@ class ApiClient {
     })
   }
 
+  /** 主体预算达成表（单期间）：全部单体公司或汇总主体的收入/毛利/净利润预算达成；companyCode 传入时仅返回该主体一行 */
+  async getSubjectBudget(params: { period?: string; mode: 'single' | 'summary'; companyCode?: string }): Promise<SubjectBudgetResponse> {
+    return this.request({
+      method: 'GET',
+      url: '/dashboard/subject-budget',
+      params,
+    })
+  }
+
   // ---- 品类配置（品类预算达成分析，数据维护）----
   async getProductCategories(): Promise<ProductCategory[]> {
     return this.request({
@@ -241,6 +267,45 @@ class ApiClient {
     return this.request({
       method: 'DELETE',
       url: `/data/product-categories/${id}`,
+    })
+  }
+
+  // ---- 主体展示配置（主体预算达成分析，数据维护）----
+  async getSubjectBudgetConfigs(): Promise<SubjectBudgetConfig[]> {
+    return this.request({
+      method: 'GET',
+      url: '/data/subject-budget-configs',
+    })
+  }
+
+  /** 主体变化检测：配置状态 + 公司表新增但未配置的主体 */
+  async checkSubjectBudgetConfigs(): Promise<SubjectBudgetConfigCheckResult> {
+    return this.request({
+      method: 'GET',
+      url: '/data/subject-budget-configs/check',
+    })
+  }
+
+  async createSubjectBudgetConfig(input: { companyCode: string; sortOrder?: number; status?: string }): Promise<SubjectBudgetConfig> {
+    return this.request({
+      method: 'POST',
+      url: '/data/subject-budget-configs',
+      data: input,
+    })
+  }
+
+  async updateSubjectBudgetConfig(id: string, input: { sortOrder?: number; status?: string }): Promise<SubjectBudgetConfig> {
+    return this.request({
+      method: 'PUT',
+      url: `/data/subject-budget-configs/${id}`,
+      data: input,
+    })
+  }
+
+  async deleteSubjectBudgetConfig(id: string): Promise<void> {
+    return this.request({
+      method: 'DELETE',
+      url: `/data/subject-budget-configs/${id}`,
     })
   }
 

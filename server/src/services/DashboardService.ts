@@ -45,9 +45,13 @@ interface Trend {
 interface ProductBudgetMetric {
   budget: number
   monthActual: number
+  /** 上年同月实际（供合计行同比按 Σ金额重算） */
+  monthSame: number
   monthRate: number | null
   monthYoy: number
   ytdActual: number
+  /** 上年同期累计（供合计行同比按 Σ金额重算） */
+  ytdSame: number
   ytdRate: number | null
   ytdYoy: number
 }
@@ -57,6 +61,15 @@ interface ProductBudgetRow {
   category: string
   income: ProductBudgetMetric
   profit: ProductBudgetMetric
+}
+
+/** 主体预算达成行：主体（单体公司/汇总主体）+ 收入/毛利/净利润各一组口径值 */
+interface SubjectBudgetRow {
+  code: string
+  name: string
+  income: ProductBudgetMetric
+  profit: ProductBudgetMetric
+  netProfit: ProductBudgetMetric
 }
 
 /** 看板预警（由 alert 表原始行派生的展示结构） */
@@ -241,9 +254,11 @@ export function productMetric(node?: ValueNode): ProductBudgetMetric {
   return {
     budget: round2(budget(node)),
     monthActual: round2(actual(node)),
+    monthSame: round2(samePeriod(node)),
     monthRate: rateOf(actual(node), budget(node), 12),
     monthYoy: changeRate(actual(node), samePeriod(node)),
     ytdActual: round2(ytd(node)),
+    ytdSame: round2(node?.values[OPERATING_DIMS.SAME_PERIOD_YTD] ?? 0),
     ytdRate: rateOf(ytd(node), budget(node)),
     ytdYoy: changeRate(ytd(node), node?.values[OPERATING_DIMS.SAME_PERIOD_YTD] ?? 0),
   }
@@ -451,6 +466,108 @@ export const DashboardService = {
     const profitByName = new Map(flat.filter((n) => n.category === '毛利').map((n) => [n.name, n]))
     const { rows } = matchProductCategories(categories, incomeRoots, profitByName)
     return { period, rows }
+  },
+
+  /**
+   * 主体预算达成表（单期间）：按 mode 列出配置的全部单体公司或汇总主体；传入 companyCode 时
+   * 仅返回该主体一行（单体=自身，汇总=成员合并口径），供看板与顶部主体筛选同步。
+   * 展示主体来自主体展示配置（subject_budget_config，管理员维护），越权主体 403/跳过。
+   */
+  async getSubjectBudget(scope: Scope, params: { period?: string; mode?: 'single' | 'summary'; companyCode?: string } = {}): Promise<{ period: string; mode: 'single' | 'summary'; rows: SubjectBudgetRow[] }> {
+    const [companyCodes, periods] = await Promise.all([resolveCompanyCodes(scope), availablePeriods()])
+    if (companyCodes.length === 0) {
+      const period = (params.period && periods.includes(params.period) ? params.period : periods[periods.length - 1]) ?? (await latestOperatingPeriod())
+      return { period, mode: params.mode === 'summary' ? 'summary' : 'single', rows: [] }
+    }
+    const mode: 'single' | 'summary' = params.mode === 'summary' ? 'summary' : 'single'
+    const period = (params.period && periods.includes(params.period) ? params.period : periods[periods.length - 1]) ?? (await latestOperatingPeriod())
+    // 指定主体：汇总主体展开为成员明细（每成员一行，供公司分析展示）；单体公司返回自身一行
+    if (params.companyCode) {
+      const company = await prisma.company.findUnique({
+        where: { code: params.companyCode },
+        select: { code: true, name: true, shortName: true, entityType: true },
+      })
+      if (company?.entityType === 'summary') {
+        // 汇总主体：展开成员后逐成员构建（越权 403 由 resolveCompanyCodes 透传）
+        const memberCodes = await resolveCompanyCodes(scope, params.companyCode)
+        const members = await prisma.company.findMany({
+          where: { code: { in: memberCodes }, status: 'active' },
+          select: { code: true, name: true, shortName: true },
+        })
+        const rows = (await Promise.all(members.map(async (m): Promise<SubjectBudgetRow | null> => {
+          const tree = await AggregationService.buildOperatingTree([m.code], period)
+          const nodes = metricNodes(tree)
+          const row: SubjectBudgetRow = {
+            code: m.code,
+            name: m.shortName ?? m.name,
+            income: productMetric(nodes.revenue),
+            profit: productMetric(nodes.profit),
+            netProfit: productMetric(nodes.netProfit),
+          }
+          const hasData = row.income.monthActual !== 0 || row.income.ytdActual !== 0 || row.income.budget !== 0
+            || row.profit.monthActual !== 0 || row.profit.ytdActual !== 0 || row.profit.budget !== 0
+            || row.netProfit.monthActual !== 0 || row.netProfit.ytdActual !== 0 || row.netProfit.budget !== 0
+          return hasData ? row : null
+        }))).filter((r): r is SubjectBudgetRow => r !== null)
+        return { period, mode, rows }
+      }
+      // 单体公司：解析后返回该主体一行（越权 403 透传）
+      let codes: string[]
+      try {
+        codes = await resolveCompanyCodes(scope, params.companyCode)
+      } catch (e) {
+        throw e
+      }
+      const tree = await AggregationService.buildOperatingTree(codes, period)
+      const nodes = metricNodes(tree)
+      return {
+        period,
+        mode,
+        rows: [{
+          code: params.companyCode,
+          name: company ? (company.shortName ?? company.name) : params.companyCode,
+          income: productMetric(nodes.revenue),
+          profit: productMetric(nodes.profit),
+          netProfit: productMetric(nodes.netProfit),
+        }],
+      }
+    }
+    // 展示主体来自主体展示配置（subject_budget_config，管理员维护）：仅 active 且类型匹配的主体
+    const configs = await prisma.subjectBudgetConfig.findMany({
+      where: { status: 'active' },
+      orderBy: { sortOrder: 'asc' },
+      select: { companyCode: true },
+    })
+    const subjects = await prisma.company.findMany({
+      where: { code: { in: configs.map((c) => c.companyCode) }, entityType: mode === 'summary' ? 'summary' : 'single', status: 'active' },
+      select: { code: true, name: true, shortName: true },
+    })
+    // 按配置 sortOrder 排序（company.findMany 无序，按配置顺序重排）
+    const order = new Map(configs.map((c, i) => [c.companyCode, i]))
+    subjects.sort((a, b) => (order.get(a.code) ?? 0) - (order.get(b.code) ?? 0))
+    // 逐主体构建树（并行）：汇总主体经映射展开为成员；越权主体跳过（部分授权时只展示有权主体）
+    const rows = (await Promise.all(subjects.map(async (s): Promise<SubjectBudgetRow | null> => {
+      let codes: string[]
+      try {
+        codes = await resolveCompanyCodes(scope, s.code)
+      } catch {
+        return null
+      }
+      const tree = await AggregationService.buildOperatingTree(codes, period)
+      const nodes = metricNodes(tree)
+      const row: SubjectBudgetRow = {
+        code: s.code,
+        name: s.shortName ?? s.name,
+        income: productMetric(nodes.revenue),
+        profit: productMetric(nodes.profit),
+        netProfit: productMetric(nodes.netProfit),
+      }
+      const hasData = row.income.monthActual !== 0 || row.income.ytdActual !== 0 || row.income.budget !== 0
+        || row.profit.monthActual !== 0 || row.profit.ytdActual !== 0 || row.profit.budget !== 0
+        || row.netProfit.monthActual !== 0 || row.netProfit.ytdActual !== 0 || row.netProfit.budget !== 0
+      return hasData ? row : null
+    }))).filter((r): r is SubjectBudgetRow => r !== null)
+    return { period, mode, rows }
   },
 
   /**
