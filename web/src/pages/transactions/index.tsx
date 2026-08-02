@@ -37,6 +37,8 @@ import { TransactionAnalysisDrawer, type TransactionAnalysisTarget } from './ana
 import type { TransactionDetailItem, AgingAnalysisRow, InternalSummaryRow, InternalMirrorRow } from '@/types'
 
 const TRANSACTION_TYPES = ['应收账款', '其他应收款', '预收账款', '应付账款', '其他应付款', '预付账款']
+// 默认展示口径：浙江省公司汇总（汇总主体编码 ET0001，后端按汇总映射展开为成员合并口径）
+const DEFAULT_SUMMARY_CODE = 'ET0001'
 // 页面子标签（与侧边栏二级菜单 ?tab= 参数对应）
 const TRANSACTION_TABS = ['overview', 'details', 'aging', 'internal', 'coverage', 'account-filter', 'collections'] as const
 type TransactionTab = (typeof TRANSACTION_TABS)[number]
@@ -155,8 +157,9 @@ function AccountMultiSelect({ value, onChange, transactionType }: { value: strin
 
 // ===== 总览 Tab =====
 function OverviewTab() {
-  // 共享公司多选：同时驱动趋势图与汇总/分类卡片，空数组语义为「全部公司」
-  const [selectedCompanies, setSelectedCompanies] = useState<string[]>([])
+  // 共享公司多选：同时驱动趋势图与汇总/分类卡片，空数组语义为「全部公司」；
+  // 默认浙江省公司汇总（ET0001，后端按汇总映射展开为成员合并口径）
+  const [selectedCompanies, setSelectedCompanies] = useState<string[]>([DEFAULT_SUMMARY_CODE])
   // 期间筛选（仅作用于卡片）：空串表示跟随最新期间
   const [periodFilter, setPeriodFilter] = useState('')
   const { data: periods } = useTransactionPeriods()
@@ -266,10 +269,12 @@ function OverviewTab() {
 function DetailsTab() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<number>(PAGINATION.DEFAULT_PAGE_SIZE)
-  const [companyFilter, setCompanyFilter] = useState('all')
+  // 默认浙江省公司汇总（ET0001，后端按汇总映射展开为成员合并口径）
+  const [companyFilter, setCompanyFilter] = useState(DEFAULT_SUMMARY_CODE)
   // 空串表示跟随最新期间（默认选中最近一期有数据的期间）；'all' 为全部期间
   const [periodFilter, setPeriodFilter] = useState('')
-  const [typeFilter, setTypeFilter] = useState<string>('')
+  // 默认展示「应收账款」往来类型
+  const [typeFilter, setTypeFilter] = useState<string>('应收账款')
   const [accountFilter, setAccountFilter] = useState<string[]>([])
   const [partyFilter, setPartyFilter] = useState('external')
   const [keyword, setKeyword] = useState('')
@@ -395,10 +400,12 @@ function AgingTab() {
   const { can } = usePermission()
   const navigate = useNavigate()
   const [analysisTarget, setAnalysisTarget] = useState<TransactionAnalysisTarget | null>(null)
-  const [companyFilter, setCompanyFilter] = useState('all')
+  // 默认浙江省公司汇总（ET0001，后端按汇总映射展开为成员合并口径）
+  const [companyFilter, setCompanyFilter] = useState(DEFAULT_SUMMARY_CODE)
   // 空串表示跟随最新期间（默认选中最近一期有数据的期间）；期末余额为时点数，不提供跨期累加
   const [periodFilter, setPeriodFilter] = useState('')
-  const [typeFilter, setTypeFilter] = useState<string>('')
+  // 默认展示「应收账款」往来类型
+  const [typeFilter, setTypeFilter] = useState<string>('应收账款')
   const [accountFilter, setAccountFilter] = useState<string[]>([])
   const [partyFilter, setPartyFilter] = useState('external')
   const [groupBy, setGroupBy] = useState<string>('type')
@@ -708,7 +715,7 @@ export default function TransactionsPage() {
   return (
     <PageContainer
       title="往来分析"
-      description="六大往来总览、客商明细、账龄分析、内部往来抵消与催收管理"
+      description="六大往来总览"
     >
       <div className="space-y-4">
         {/* 页面头部仅保留导入入口；筛选器已下沉至各 Tab 内部独立控制 */}

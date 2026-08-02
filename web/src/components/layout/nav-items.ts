@@ -88,5 +88,15 @@ export const navItems: NavItem[] = [
       { path: '/data?tab=formulas', label: '公式维护' },
     ],
   },
-  { path: '/admin', label: '权限管理', icon: Shield, resource: 'admin:users:view' },
+  {
+    path: '/admin',
+    label: '权限管理',
+    icon: Shield,
+    resource: 'admin:users:view',
+    children: [
+      { path: '/admin/roles', label: '角色管理' },
+      { path: '/admin/users', label: '用户管理' },
+      { path: '/admin/audit-logs', label: '审计日志' },
+    ],
+  },
 ]

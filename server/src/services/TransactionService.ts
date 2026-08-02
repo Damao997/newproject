@@ -595,12 +595,13 @@ export const TransactionService = {
 
   /**
    * 往来余额变动趋势：单一往来类型，按 公司×期间(月) 聚合期末余额（DB 侧 groupBy 求和）。
-   * 期间轴两种模式：
+   * 期间轴三种模式（优先级依次递减）：
+   *  - periodFrom + periodTo（形如 2026-04）：自定义期间范围，闭区间连续补全，跨度上限 60 个月；
    *  - fiscalYear（形如 FY2026）：完整财年轴（起始月~次年起始月前一月，共 12 个月），未来无数据月补 null；
    *  - 否则按 months：以该类型最新期间为终点回溯 months 个月（默认 12，上限 36），连续补全，缺数据月补 null。
    * companyCodes 为空时返回全部公司逐公司曲线（不再合并为「全部公司」合计线）；非空时每公司一条线。
    */
-  async getTrend(params: { transactionType: string; companyCodes?: string[]; months?: number; fiscalYear?: string }): Promise<TransactionTrendResult> {
+  async getTrend(params: { transactionType: string; companyCodes?: string[]; months?: number; fiscalYear?: string; periodFrom?: string; periodTo?: string }): Promise<TransactionTrendResult> {
     const companyWhere: Record<string, unknown> = { transactionType: params.transactionType }
     // undefined = 不加显式过滤（交由 scopeContext 扩展兜底）；空数组 = 归一化后无可见公司，应返回空集
     if (params.companyCodes) companyWhere.companyCode = { in: params.companyCodes.filter(Boolean) }
@@ -608,7 +609,19 @@ export const TransactionService = {
     let periods: string[]
     let dataWhere: Record<string, unknown>
 
-    if (params.fiscalYear) {
+    if (params.periodFrom && params.periodTo) {
+      // 自定义期间范围：闭区间 [from, to] 连续补全，缺数据月补 null
+      const from = params.periodFrom
+      const to = params.periodTo
+      if (!/^\d{4}-\d{2}$/.test(from) || !/^\d{4}-\d{2}$/.test(to)) throw errors.badRequest('期间格式不合法，应形如 YYYY-MM')
+      if (from > to) throw errors.badRequest('开始期间不能晚于结束期间')
+      const [fy, fm] = from.split('-').map(Number)
+      const [ty, tm] = to.split('-').map(Number)
+      const span = ty * 12 + (tm - 1) - (fy * 12 + (fm - 1)) + 1
+      if (span > 60) throw errors.badRequest('自定义期间跨度不能超过 60 个月')
+      periods = periodsInRange(from, to)
+      dataWhere = { ...companyWhere, period: { gte: from, lte: to } }
+    } else if (params.fiscalYear) {
       // 完整财年轴：起始月 ~ 次年起始月前一月（共 12 个月）
       const startYear = Number(String(params.fiscalYear).replace(/^FY/i, ''))
       if (!Number.isInteger(startYear)) throw errors.badRequest('财年格式不合法，应形如 FY2026')

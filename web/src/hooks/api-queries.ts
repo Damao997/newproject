@@ -539,11 +539,11 @@ export function useRestoreMetric() {
   })
 }
 
-/** 指标类型转换（高危，仅 superadmin）：data ↔ calc */
+/** 指标类型转换（高危，仅 superadmin）：data ↔ calc、data/calc → display（display 只读不可转出） */
 export function useConvertMetric() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (vars: { id: string; dataType: 'data' | 'calc'; formula?: string }) => api.convertMetric(vars.id, { dataType: vars.dataType, formula: vars.formula }),
+    mutationFn: (vars: { id: string; dataType: 'data' | 'calc' | 'display'; formula?: string }) => api.convertMetric(vars.id, { dataType: vars.dataType, formula: vars.formula }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['data', 'metrics'] }),
   })
 }
@@ -971,11 +971,12 @@ export function useTransactionPeriods() {
   })
 }
 
-/** 往来余额变动趋势（单类型，按 公司×月份 聚合） */
-export function useTransactionTrend(params: { transactionType: string; companyCodes?: string[]; months?: number; fiscalYear?: string }) {
+/** 往来余额变动趋势（单类型，按 公司×月份 聚合；支持财年轴与自定义期间范围，未选完自定义期间时 enabled 禁用） */
+export function useTransactionTrend(params: { transactionType: string; companyCodes?: string[]; months?: number; fiscalYear?: string; periodFrom?: string; periodTo?: string }, options: { enabled?: boolean } = {}) {
   return useQuery({
-    queryKey: ['transactions', 'trend', params.transactionType, params.companyCodes ?? [], params.months ?? 12, params.fiscalYear ?? ''] as const,
+    queryKey: ['transactions', 'trend', params.transactionType, params.companyCodes ?? [], params.months ?? 12, params.fiscalYear ?? '', params.periodFrom ?? '', params.periodTo ?? ''] as const,
     queryFn: () => api.getTransactionTrend(params) as Promise<TransactionTrendResult>,
+    enabled: options.enabled ?? true,
     placeholderData: keepPreviousData,
   })
 }

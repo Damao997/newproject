@@ -156,7 +156,10 @@ router.get('/trend', requirePermission('transactions:view', 'view'), asyncHandle
   const months = req.query.months ? Number(req.query.months) : undefined
   const fiscalYear = req.query.fiscalYear ? String(req.query.fiscalYear) : undefined
   if (fiscalYear && !/^FY\d{4}$/i.test(fiscalYear)) throw errors.badRequest('财年格式不合法，应形如 FY2026')
-  const data = await TransactionService.getTrend({ transactionType, companyCodes, months, fiscalYear })
+  const periodFrom = req.query.periodFrom ? String(req.query.periodFrom) : undefined
+  const periodTo = req.query.periodTo ? String(req.query.periodTo) : undefined
+  if ((periodFrom && !periodTo) || (!periodFrom && periodTo)) throw errors.badRequest('自定义期间需同时提供开始与结束期间')
+  const data = await TransactionService.getTrend({ transactionType, companyCodes, months, fiscalYear, periodFrom, periodTo })
   sendOk(res, data)
 }))
 

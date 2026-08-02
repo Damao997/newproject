@@ -325,7 +325,11 @@ export function ImportPanel() {
                   <SelectItem value="budget">年度预算</SelectItem>
                 </SelectContent>
               </Select>
-              <Button variant="outline" size="sm" className="shrink-0" onClick={() => downloadImportTemplate(templateType as 'operating' | 'static' | 'budget')}>
+              <Button variant="outline" size="sm" className="shrink-0" onClick={() => {
+                downloadImportTemplate(templateType as 'operating' | 'static' | 'budget').catch((e) => {
+                  setFileError(e instanceof Error ? e.message : '模板下载失败')
+                })
+              }}>
                 <Download className="mr-2 h-4 w-4" />
                 下载模板
               </Button>
