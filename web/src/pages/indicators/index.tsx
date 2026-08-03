@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -19,6 +19,7 @@ import { Label } from '@/components/ui/label'
 import { usePermission } from '@/hooks/usePermission'
 import { useCompanies, useOperatingIndicators, useStaticIndicators, useAvailablePeriods, type OperatingRow, type StaticRow } from '@/hooks/api-queries'
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
+import { usePageStore } from '@/stores/pageStateStore'
 import { exportToExcel } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import type { MetricValue } from '@/lib/metric-values'
@@ -79,11 +80,22 @@ export default function IndicatorsPage() {
   // 派生可保证导航菜单点击后页面立即联动；?tab=static 定位静态指标）
   const [searchParams] = useSearchParams()
   const activeTab: 'operating' | 'static' = searchParams.get('tab') === 'static' ? 'static' : 'operating'
-  const [dimFilter, setDimFilter] = useState('all')
-  const [periodFilter, setPeriodFilter] = useState('')
-  const [excludeReclassify, setExcludeReclassify] = useState(false)
-  const [expandedCodes, setExpandedCodes] = useState<Set<string>>(new Set())
+  // 查询条件与展开状态持久化到 pageStateStore（路由切换/刷新后恢复）；analysisTarget 为瞬时抽屉状态
+  const setIndicators = usePageStore((s) => s.setIndicators)
+  const dimFilter = usePageStore((s) => s.indicators.dimFilter)
+  const periodFilter = usePageStore((s) => s.indicators.periodFilter)
+  const excludeReclassify = usePageStore((s) => s.indicators.excludeReclassify)
+  const expandedCodes = usePageStore((s) => s.indicators.expandedCodes)
   const [analysisTarget, setAnalysisTarget] = useState<AnalysisTarget | null>(null)
+  const setDimFilter = useCallback((v: string) => setIndicators({ dimFilter: v }), [setIndicators])
+  const setPeriodFilter = useCallback((v: string) => setIndicators({ periodFilter: v }), [setIndicators])
+  const setExcludeReclassify = useCallback((v: boolean) => setIndicators({ excludeReclassify: v }), [setIndicators])
+  // 展开集合由持久化数组派生（Set 不可序列化，store 以数组存储）
+  const expandedSet = useMemo(() => new Set(expandedCodes), [expandedCodes])
+  const setExpandedCodes = useCallback((updater: (prev: Set<string>) => Set<string>) => {
+    const prev = new Set(usePageStore.getState().indicators.expandedCodes)
+    usePageStore.getState().setIndicators({ expandedCodes: [...updater(prev)] })
+  }, [])
 
   const isOperating = activeTab === 'operating'
 
@@ -112,6 +124,15 @@ export default function IndicatorsPage() {
   const period = periodFilter === 'all' ? undefined : periodFilter
 
   const { data: companies } = useCompanies()
+  // 持久化主体校验：编码已删除/超出数据权限时回退全部主体（候选加载后生效一次，用户手动切换后不再覆盖）
+  useEffect(() => {
+    if (!companies || companies.length === 0) return
+    const valid = new Set(companies.map((c) => c.code))
+    const cur = usePageStore.getState().indicators.dimFilter
+    if (cur === 'all') return
+    const code = cur.startsWith('company:') || cur.startsWith('summary:') ? cur.slice('company:'.length) : undefined
+    if (!code || !valid.has(code)) setDimFilter('all')
+  }, [companies, setDimFilter])
   const operatingQuery = useOperatingIndicators({ companyCode, period, excludeReclassify: excludeReclassify || undefined })
   const staticQuery = useStaticIndicators({ companyCode, excludeReclassify: excludeReclassify || undefined })
 
@@ -153,7 +174,7 @@ export default function IndicatorsPage() {
   }
 
   // 是否已全部展开：用于展开/折叠切换按钮的状态判断
-  const isAllExpanded = activeExpandable.length > 0 && activeExpandable.every((code) => expandedCodes.has(code))
+  const isAllExpanded = activeExpandable.length > 0 && activeExpandable.every((code) => expandedSet.has(code))
 
   const toggleExpandAll = () =>
     setExpandedCodes((prev) => {
@@ -349,7 +370,7 @@ export default function IndicatorsPage() {
                 valueMap={activeValueMap}
                 variant={activeTab}
                 categoryColumn={isOperating}
-                expandedCodes={expandedCodes}
+                expandedCodes={expandedSet}
                 onToggle={handleToggle}
                 onAnalyze={can('reports', 'create') ? handleAnalyze : undefined}
               />

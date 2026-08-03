@@ -220,12 +220,16 @@ export const TransactionService = {
    * 六大往来总览：按往来类型汇总期末余额、账龄分布、内部/外部笔数。
    * 期末余额为时点数，跨期间求和会重复累加，因此支持 period 单期过滤（前端默认传最新期间）；
    * companyCodes 多选 IN 过滤；空/未传 = 数据范围内全部公司（由 scopeContext 扩展兜底过滤）。
+   * 科目过滤规则管控：强制剔除科目过滤 Tab 中标记 inactive 的科目（与明细/账龄/趋势口径一致）。
    */
   async getOverview(params: { companyCodes?: string[]; period?: string } = {}): Promise<TransactionOverviewItem[]> {
     const where: Record<string, unknown> = {}
     // undefined = 不加显式过滤（交由 scopeContext 扩展兜底）；空数组 = 归一化后无可见公司，应返回空集
     if (params.companyCodes) where.companyCode = { in: params.companyCodes.filter(Boolean) }
     if (params.period) where.period = params.period
+    // 科目过滤规则管控：强制剔除科目过滤 Tab 中标记 inactive 的科目
+    const overviewInactiveCodes = await getInactiveAccountCodes()
+    if (overviewInactiveCodes.length) where.accountCode = { notIn: overviewInactiveCodes }
 
     const rows = await prisma.transactionDetail.groupBy({
       by: ['transactionType', 'direction'],
@@ -605,6 +609,10 @@ export const TransactionService = {
     const companyWhere: Record<string, unknown> = { transactionType: params.transactionType }
     // undefined = 不加显式过滤（交由 scopeContext 扩展兜底）；空数组 = 归一化后无可见公司，应返回空集
     if (params.companyCodes) companyWhere.companyCode = { in: params.companyCodes.filter(Boolean) }
+    // 科目过滤规则管控：排除科目过滤 Tab 中标记 inactive 的科目（与明细/账龄/总览口径一致）；
+    // dataWhere 与最新期间查询均派生自 companyWhere，源头排除即可全局生效
+    const trendInactiveCodes = await getInactiveAccountCodes()
+    if (trendInactiveCodes.length) companyWhere.accountCode = { notIn: trendInactiveCodes }
 
     let periods: string[]
     let dataWhere: Record<string, unknown>

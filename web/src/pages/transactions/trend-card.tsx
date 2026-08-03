@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo } from 'react'
 import type { EChartsOption } from 'echarts'
 import ReactECharts, { echarts } from '@/components/charts/echarts-core'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/select'
 import { useTransactionTrend, useTransactionFiscalYears, useTransactionPeriods } from '@/hooks/api-queries'
 import { usePeriodStore } from '@/stores/periodStore'
+import { usePageStore, type TransactionOverviewState } from '@/stores/pageStateStore'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { formatMoneyWan } from '@/lib/utils'
 import { CHART_FONT, CHART_INK, CHART_SERIES, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
@@ -30,11 +31,20 @@ const TRANSACTION_TYPES = ['应收账款', '其他应收款', '预收账款', '�
 const LINE_COLORS = CHART_SERIES
 
 export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] }) {
-  const [transactionType, setTransactionType] = useState('应收账款')
+  // 图表筛选持久化到 pageStateStore（跟随 OverviewTab 生命周期，切 tab/切路由/刷新后恢复）
+  const transactionType = usePageStore((s) => s.transactions.overview.trend.type)
   // 期间模式：'fiscal' = 跟随全局 Header 财年（默认）；'custom' = 自定义期间范围；'FYxxxx' = 指定财年
-  const [rangeMode, setRangeMode] = useState<'fiscal' | 'custom' | string>('fiscal')
-  const [customFrom, setCustomFrom] = useState('')
-  const [customTo, setCustomTo] = useState('')
+  const rangeMode = usePageStore((s) => s.transactions.overview.trend.rangeMode)
+  const customFrom = usePageStore((s) => s.transactions.overview.trend.customFrom)
+  const customTo = usePageStore((s) => s.transactions.overview.trend.customTo)
+  const setTrend = useCallback((patch: Partial<TransactionOverviewState['trend']>) => {
+    const cur = usePageStore.getState().transactions.overview.trend
+    usePageStore.getState().setTransactionsTab('overview', { trend: { ...cur, ...patch } })
+  }, [])
+  const setTransactionType = useCallback((v: string) => setTrend({ type: v }), [setTrend])
+  const setRangeMode = useCallback((v: string) => setTrend({ rangeMode: v }), [setTrend])
+  const setCustomFrom = useCallback((v: string) => setTrend({ customFrom: v }), [setTrend])
+  const setCustomTo = useCallback((v: string) => setTrend({ customTo: v }), [setTrend])
   const { getDisplayName } = useCompanyDisplayName()
   const { data: fiscalYears } = useTransactionFiscalYears()
   const { data: periods } = useTransactionPeriods()

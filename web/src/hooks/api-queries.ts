@@ -884,7 +884,7 @@ import type { TransactionTrendResult } from '@/types'
 import type { TransactionCoverageResult, BatchCoverageRow } from '@/types'
 import type { TransactionAccountOption, ManageAccountItem } from '@/types'
 
-/** 往来总览：公司多选 + 单期间；period 未定（期间列表加载中）时不发请求，避免跨期重复累加的首次查询 */
+/** 往来总览：公司多选 + 单期间（inactive 科目后端强制剔除）；period 未定（期间列表加载中）时不发请求，避免跨期重复累加的首次查询 */
 export function useTransactionOverview(params: { companyCodes?: string[]; period?: string }) {
   return useQuery({
     queryKey: ['transactions', 'overview', params.companyCodes ?? [], params.period] as const,

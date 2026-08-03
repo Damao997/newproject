@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
@@ -11,6 +11,7 @@ import {
 import { cn } from '@/lib/utils'
 import { usePermission } from '@/hooks/usePermission'
 import { useTransactionImportCoverage, useActivateImport } from '@/hooks/api-queries'
+import { usePageStore } from '@/stores/pageStateStore'
 import { useBatchActivate, buildActivateConflictDescription } from '@/hooks/use-batch-activate'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
@@ -34,7 +35,10 @@ function cellKey(companyCode: string, period: string, type: string): string {
 }
 
 export function CoverageTab() {
-  const [months, setMonths] = useState(6)
+  // 覆盖窗口月份持久化到 pageStateStore（切 tab/切路由/刷新后恢复）
+  const setTransactionsTab = usePageStore((s) => s.setTransactionsTab)
+  const months = usePageStore((s) => s.transactions.coverage.months)
+  const setMonths = useCallback((v: number) => setTransactionsTab('coverage', { months: v }), [setTransactionsTab])
   const { can } = usePermission()
   const canImport = can('transactions', 'import')
 

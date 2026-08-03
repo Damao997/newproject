@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,9 +13,9 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { Pagination } from '@/components/data-table/pagination'
-import { PAGINATION } from '@/lib/constants'
 import { usePermission } from '@/hooks/usePermission'
 import { useCollections, useGenerateCollections, useUpdateCollection, useCollectionLogs, useAddCollectionLog } from '@/hooks/api-queries'
+import { usePageStore } from '@/stores/pageStateStore'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { CompanySelect } from '@/components/filters/company-select'
 import { Loader2, PhoneCall, History } from 'lucide-react'
@@ -283,11 +283,18 @@ function GenerateDialog({ open, companyCode, onClose }: { open: boolean; company
 
 // ===== 催收管理 Tab =====
 export function CollectionsTab() {
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState<number>(PAGINATION.DEFAULT_PAGE_SIZE)
-  const [companyFilter, setCompanyFilter] = useState('all')
-  const [statusFilter, setStatusFilter] = useState('')
-  const [keyword, setKeyword] = useState('')
+  // 筛选与分页持久化到 pageStateStore（切 tab/切路由/刷新后恢复）；对话框开关为瞬时状态
+  const setTransactionsTab = usePageStore((s) => s.setTransactionsTab)
+  const page = usePageStore((s) => s.transactions.collections.page)
+  const pageSize = usePageStore((s) => s.transactions.collections.pageSize)
+  const companyFilter = usePageStore((s) => s.transactions.collections.company)
+  const statusFilter = usePageStore((s) => s.transactions.collections.status)
+  const keyword = usePageStore((s) => s.transactions.collections.keyword)
+  const setPage = useCallback((v: number) => setTransactionsTab('collections', { page: v }), [setTransactionsTab])
+  const setPageSize = useCallback((v: number) => setTransactionsTab('collections', { pageSize: v }), [setTransactionsTab])
+  const setCompanyFilter = useCallback((v: string) => setTransactionsTab('collections', { company: v }), [setTransactionsTab])
+  const setStatusFilter = useCallback((v: string) => setTransactionsTab('collections', { status: v }), [setTransactionsTab])
+  const setKeyword = useCallback((v: string) => setTransactionsTab('collections', { keyword: v }), [setTransactionsTab])
   const [generateOpen, setGenerateOpen] = useState(false)
   const [updatingPlan, setUpdatingPlan] = useState<CollectionPlanItem | null>(null)
   const [logsPlan, setLogsPlan] = useState<CollectionPlanItem | null>(null)

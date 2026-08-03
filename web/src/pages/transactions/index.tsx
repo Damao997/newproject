@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -21,9 +21,9 @@ import {
 import { Input } from '@/components/ui/input'
 import { PageContainer } from '@/components/layout/page-container'
 import { Pagination } from '@/components/data-table/pagination'
-import { PAGINATION } from '@/lib/constants'
 import { useTransactionOverview, useTransactionDetails, useTransactionAging, useInternalSummary, useInternalMirrorCheck, useTransactionPeriods, useTransactionAccounts, useCompanies } from '@/hooks/api-queries'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
+import { usePageStore } from '@/stores/pageStateStore'
 import { CompanySelect, CompanyMultiSelect } from '@/components/filters/company-select'
 import { usePermission } from '@/hooks/usePermission'
 import { cn, formatMoneyWan } from '@/lib/utils'
@@ -176,19 +176,54 @@ function AccountMultiSelect({ value, onChange, transactionType }: { value: strin
 // ===== 总览 Tab =====
 function OverviewTab() {
   // 共享公司多选：同时驱动趋势图与汇总/分类卡片，空数组语义为「全部公司」；
-  // 默认浙江省公司汇总（ET0001，后端按汇总映射展开为成员合并口径）
-  const [selectedCompanies, setSelectedCompanies] = useState<string[]>([DEFAULT_SUMMARY_CODE])
+  // 默认浙江省公司汇总（ET0001，后端按汇总映射展开为成员合并口径）；查询条件持久化到 pageStateStore
+  const setTransactionsTab = usePageStore((s) => s.setTransactionsTab)
+  const selectedCompanies = usePageStore((s) => s.transactions.overview.companies)
+  const periodFilter = usePageStore((s) => s.transactions.overview.period)
+  const setSelectedCompanies = useCallback((v: string[]) => setTransactionsTab('overview', { companies: v }), [setTransactionsTab])
+  const setPeriodFilter = useCallback((v: string) => setTransactionsTab('overview', { period: v }), [setTransactionsTab])
+  const { data: companies } = useCompanies()
   const defaultCode = useDefaultCompanyCode()
-  const alignedRef = useRef(false)
-  // ET0001 无权限时对齐到有权主体（仅挂载后一次，用户手动切换后不再覆盖）
+  // 主体互斥业务规则：单体公司与汇总主体不能同时筛选；新增勾选某一类时自动取消另一类并提示
+  const handleCompaniesChange = useCallback((next: string[]) => {
+    const prev = usePageStore.getState().transactions.overview.companies
+    const typeOf = (code: string) => companies?.find((c) => c.code === code)?.type
+    const added = next.filter((c) => !prev.includes(c))
+    if (added.length > 0) {
+      const addedType = typeOf(added[added.length - 1])
+      if (addedType === 'entity' && next.some((c) => typeOf(c) === 'summary')) {
+        window.alert('单体公司与汇总主体不能同时筛选，已自动取消已选汇总主体。')
+        setSelectedCompanies(next.filter((c) => typeOf(c) !== 'summary'))
+        return
+      }
+      if (addedType === 'summary' && next.some((c) => typeOf(c) === 'entity')) {
+        window.alert('单体公司与汇总主体不能同时筛选，已自动取消已选单体公司。')
+        setSelectedCompanies(next.filter((c) => typeOf(c) !== 'entity'))
+        return
+      }
+    }
+    setSelectedCompanies(next)
+  }, [companies, setSelectedCompanies])
+  // 持久化公司多选校验：编码已删除/越权时过滤，全部失效则回退默认主体（候选加载后生效，用户手动切换后不再覆盖）
   useEffect(() => {
-    if (alignedRef.current || !defaultCode) return
-    alignedRef.current = true
-    setSelectedCompanies((cur) => (cur.length === 1 && cur[0] === DEFAULT_SUMMARY_CODE && cur[0] !== defaultCode ? [defaultCode] : cur))
-  }, [defaultCode])
-  // 期间筛选（仅作用于卡片）：空串表示跟随最新期间
-  const [periodFilter, setPeriodFilter] = useState('')
+    if (!companies || companies.length === 0) return
+    const valid = new Set(companies.map((c) => c.code))
+    const cur = usePageStore.getState().transactions.overview.companies
+    if (cur.length === 0) return
+    const filtered = cur.filter((c) => valid.has(c))
+    if (filtered.length > 0) {
+      if (filtered.length !== cur.length) setSelectedCompanies(filtered)
+    } else if (defaultCode) {
+      setSelectedCompanies([defaultCode])
+    }
+  }, [companies, defaultCode, setSelectedCompanies])
+  // 期间筛选（仅作用于卡片）：空串表示跟随最新期间；已选期间不在候选（如财年切换）时回退跟随最新
   const { data: periods } = useTransactionPeriods()
+  useEffect(() => {
+    if (!periods || periods.length === 0) return
+    const cur = usePageStore.getState().transactions.overview.period
+    if (cur !== '' && !periods.includes(cur)) setPeriodFilter('')
+  }, [periods, setPeriodFilter])
   // 期末余额为时点数，默认取最新期间（列表倒序首项），不提供跨期累加
   const period = periodFilter || periods?.[0]
   const { data: overview, isLoading } = useTransactionOverview({ companyCodes: selectedCompanies, period })
@@ -201,9 +236,9 @@ function OverviewTab() {
 
   return (
     <div className="space-y-6">
-      {/* 筛选行：公司多选（图表与卡片共享）+ 期间单选（仅作用于卡片） */}
+      {/* 筛选行：公司多选（图表与卡片共享，单体/汇总互斥）+ 期间单选（仅作用于卡片） */}
       <div className="flex flex-wrap items-center gap-3">
-        <CompanyMultiSelect value={selectedCompanies} onChange={setSelectedCompanies} />
+        <CompanyMultiSelect value={selectedCompanies} onChange={handleCompaniesChange} selectAllType="entity" />
         <Select value={period ?? ''} onValueChange={setPeriodFilter}>
           <SelectTrigger className="w-[140px]">
             <SelectValue placeholder="期间" />
@@ -214,7 +249,7 @@ function OverviewTab() {
             ))}
           </SelectContent>
         </Select>
-        <span className="text-xs text-muted-foreground">期间仅作用于卡片，趋势图展示全期间序列</span>
+        <span className="text-xs text-muted-foreground">单体公司与汇总主体不可同时筛选；期间仅作用于卡片，趋势图展示全期间序列</span>
       </div>
 
       {/* 往来变动趋势（与卡片共享公司筛选） */}
@@ -293,26 +328,43 @@ function OverviewTab() {
 
 // ===== 明细 Tab =====
 function DetailsTab() {
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState<number>(PAGINATION.DEFAULT_PAGE_SIZE)
+  // 筛选与分页持久化到 pageStateStore（切 tab/切路由/刷新后恢复）
+  const setTransactionsTab = usePageStore((s) => s.setTransactionsTab)
+  const page = usePageStore((s) => s.transactions.details.page)
+  const pageSize = usePageStore((s) => s.transactions.details.pageSize)
   // 默认浙江省公司汇总（ET0001，后端按汇总映射展开为成员合并口径）
-  const [companyFilter, setCompanyFilter] = useState(DEFAULT_SUMMARY_CODE)
-  const defaultCode = useDefaultCompanyCode()
-  const alignedRef = useRef(false)
-  // ET0001 无权限时对齐到有权主体（仅挂载后一次，用户手动切换后不再覆盖）
-  useEffect(() => {
-    if (alignedRef.current || !defaultCode) return
-    alignedRef.current = true
-    setCompanyFilter((cur) => (cur === DEFAULT_SUMMARY_CODE && cur !== defaultCode ? defaultCode : cur))
-  }, [defaultCode])
+  const companyFilter = usePageStore((s) => s.transactions.details.company)
   // 空串表示跟随最新期间（默认选中最近一期有数据的期间）；'all' 为全部期间
-  const [periodFilter, setPeriodFilter] = useState('')
+  const periodFilter = usePageStore((s) => s.transactions.details.period)
   // 默认展示「应收账款」往来类型
-  const [typeFilter, setTypeFilter] = useState<string>('应收账款')
-  const [accountFilter, setAccountFilter] = useState<string[]>([])
-  const [partyFilter, setPartyFilter] = useState('external')
-  const [keyword, setKeyword] = useState('')
+  const typeFilter = usePageStore((s) => s.transactions.details.type)
+  const accountFilter = usePageStore((s) => s.transactions.details.accounts)
+  const partyFilter = usePageStore((s) => s.transactions.details.party)
+  const keyword = usePageStore((s) => s.transactions.details.keyword)
+  const setPage = useCallback((v: number) => setTransactionsTab('details', { page: v }), [setTransactionsTab])
+  const setPageSize = useCallback((v: number) => setTransactionsTab('details', { pageSize: v }), [setTransactionsTab])
+  const setCompanyFilter = useCallback((v: string) => setTransactionsTab('details', { company: v }), [setTransactionsTab])
+  const setPeriodFilter = useCallback((v: string) => setTransactionsTab('details', { period: v }), [setTransactionsTab])
+  const setTypeFilter = useCallback((v: string) => setTransactionsTab('details', { type: v }), [setTransactionsTab])
+  const setAccountFilter = useCallback((v: string[]) => setTransactionsTab('details', { accounts: v }), [setTransactionsTab])
+  const setPartyFilter = useCallback((v: string) => setTransactionsTab('details', { party: v }), [setTransactionsTab])
+  const setKeyword = useCallback((v: string) => setTransactionsTab('details', { keyword: v }), [setTransactionsTab])
+  const { data: companies } = useCompanies()
+  const defaultCode = useDefaultCompanyCode()
+  // 持久化公司校验：编码已删除/越权时回退默认主体（候选加载后生效，用户手动切换后不再覆盖）
+  useEffect(() => {
+    if (!companies || companies.length === 0) return
+    const valid = new Set(companies.map((c) => c.code))
+    const cur = usePageStore.getState().transactions.details.company
+    if (cur !== 'all' && !valid.has(cur)) setCompanyFilter(defaultCode ?? 'all')
+  }, [companies, defaultCode, setCompanyFilter])
+  // 持久化期间校验：''/'all'/候选内保留，否则回退跟随最新
   const { data: periods } = useTransactionPeriods()
+  useEffect(() => {
+    if (!periods || periods.length === 0) return
+    const cur = usePageStore.getState().transactions.details.period
+    if (cur !== '' && cur !== 'all' && !periods.includes(cur)) setPeriodFilter('')
+  }, [periods, setPeriodFilter])
   const { getDisplayName } = useCompanyDisplayName()
   const effectivePeriod = periodFilter || periods?.[0] || ''
 
@@ -433,25 +485,41 @@ function DetailsTab() {
 function AgingTab() {
   const { can } = usePermission()
   const navigate = useNavigate()
+  // 抽屉目标为瞬时状态
   const [analysisTarget, setAnalysisTarget] = useState<TransactionAnalysisTarget | null>(null)
+  // 筛选与分组持久化到 pageStateStore（切 tab/切路由/刷新后恢复）
+  const setTransactionsTab = usePageStore((s) => s.setTransactionsTab)
   // 默认浙江省公司汇总（ET0001，后端按汇总映射展开为成员合并口径）
-  const [companyFilter, setCompanyFilter] = useState(DEFAULT_SUMMARY_CODE)
+  const companyFilter = usePageStore((s) => s.transactions.aging.company)
   const defaultCode = useDefaultCompanyCode()
-  const alignedRef = useRef(false)
-  // ET0001 无权限时对齐到有权主体（仅挂载后一次，用户手动切换后不再覆盖）
+  const setCompanyFilter = useCallback((v: string) => setTransactionsTab('aging', { company: v }), [setTransactionsTab])
+  const setPeriodFilter = useCallback((v: string) => setTransactionsTab('aging', { period: v }), [setTransactionsTab])
+  const setTypeFilter = useCallback((v: string) => setTransactionsTab('aging', { type: v }), [setTransactionsTab])
+  const setAccountFilter = useCallback((v: string[]) => setTransactionsTab('aging', { accounts: v }), [setTransactionsTab])
+  const setPartyFilter = useCallback((v: string) => setTransactionsTab('aging', { party: v }), [setTransactionsTab])
+  const setGroupBy = useCallback((v: string) => setTransactionsTab('aging', { groupBy: v }), [setTransactionsTab])
+  // 持久化公司校验：编码已删除/越权时回退默认主体（候选加载后生效，用户手动切换后不再覆盖）
+  const { data: companies } = useCompanies()
   useEffect(() => {
-    if (alignedRef.current || !defaultCode) return
-    alignedRef.current = true
-    setCompanyFilter((cur) => (cur === DEFAULT_SUMMARY_CODE && cur !== defaultCode ? defaultCode : cur))
-  }, [defaultCode])
+    if (!companies || companies.length === 0) return
+    const valid = new Set(companies.map((c) => c.code))
+    const cur = usePageStore.getState().transactions.aging.company
+    if (cur !== 'all' && !valid.has(cur)) setCompanyFilter(defaultCode ?? 'all')
+  }, [companies, defaultCode, setCompanyFilter])
   // 空串表示跟随最新期间（默认选中最近一期有数据的期间）；期末余额为时点数，不提供跨期累加
-  const [periodFilter, setPeriodFilter] = useState('')
+  const periodFilter = usePageStore((s) => s.transactions.aging.period)
   // 默认展示「应收账款」往来类型
-  const [typeFilter, setTypeFilter] = useState<string>('应收账款')
-  const [accountFilter, setAccountFilter] = useState<string[]>([])
-  const [partyFilter, setPartyFilter] = useState('external')
-  const [groupBy, setGroupBy] = useState<string>('type')
+  const typeFilter = usePageStore((s) => s.transactions.aging.type)
+  const accountFilter = usePageStore((s) => s.transactions.aging.accounts)
+  const partyFilter = usePageStore((s) => s.transactions.aging.party)
+  const groupBy = usePageStore((s) => s.transactions.aging.groupBy)
+  // 持久化期间校验：已选期间不在候选（如财年切换）时回退跟随最新
   const { data: periods } = useTransactionPeriods()
+  useEffect(() => {
+    if (!periods || periods.length === 0) return
+    const cur = usePageStore.getState().transactions.aging.period
+    if (cur !== '' && !periods.includes(cur)) setPeriodFilter('')
+  }, [periods, setPeriodFilter])
   const { getDisplayName } = useCompanyDisplayName()
   const period = periodFilter || periods?.[0]
   // 科目维度统一由「科目筛选」承载：选中具体科目时自动按科目展开（显示科目列），
@@ -633,7 +701,18 @@ function AgingTab() {
 
 // ===== 内部往来 Tab =====
 function InternalTab() {
-  const [companyFilter, setCompanyFilter] = useState('all')
+  // 公司筛选持久化到 pageStateStore（切 tab/切路由/刷新后恢复）
+  const setTransactionsTab = usePageStore((s) => s.setTransactionsTab)
+  const companyFilter = usePageStore((s) => s.transactions.internal.company)
+  const setCompanyFilter = useCallback((v: string) => setTransactionsTab('internal', { company: v }), [setTransactionsTab])
+  const { data: companies } = useCompanies()
+  // 持久化公司校验：编码已删除/越权时回退全部
+  useEffect(() => {
+    if (!companies || companies.length === 0) return
+    const valid = new Set(companies.map((c) => c.code))
+    const cur = usePageStore.getState().transactions.internal.company
+    if (cur !== 'all' && !valid.has(cur)) setCompanyFilter('all')
+  }, [companies, setCompanyFilter])
   const companyCode = companyFilter === 'all' ? undefined : companyFilter
   const { data: summaryData, isLoading: summaryLoading } = useInternalSummary(companyCode)
   const { data: mirrorData, isLoading: mirrorLoading } = useInternalMirrorCheck(companyCode)

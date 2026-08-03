@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -10,6 +10,7 @@ import { StatusIndicator } from '@/components/ui/status-indicator'
 import { KpiGridSkeleton, ChartSkeleton, ListSkeleton } from '@/components/ui/skeleton-blocks'
 import { useCompanies, useDashboardOverview, useAvailablePeriods } from '@/hooks/api-queries'
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
+import { usePageStore } from '@/stores/pageStateStore'
 import { TrendSection } from './trend-section'
 import { ProductBudgetCard } from './product-budget-card'
 import { SubjectBudgetCard } from './subject-budget-card'
@@ -18,11 +19,16 @@ import { InventoryPieCard } from './inventory-pie-card'
 import { AlertTriangle, Inbox, Loader2, RefreshCw } from 'lucide-react'
 
 export default function DashboardPage() {
-  const [selectedPeriod, setSelectedPeriod] = useState('')
+  // 查询条件与图表指标持久化到 pageStateStore（路由切换/刷新后恢复）
+  const setDashboard = usePageStore((s) => s.setDashboard)
+  const selectedPeriod = usePageStore((s) => s.dashboard.period)
   // 主体筛选：all / company:CODE / summary:CODE（与指标页一致的三态格式）；
   // 默认自动模式（''）：由后端按权限选择 ET0001 → 授权汇总 → 授权单体，前端在候选加载后对齐回显
-  const [dimFilter, setDimFilter] = useState('')
-  const [trendMetric, setTrendMetric] = useState<TrendMetric>('revenue')
+  const dimFilter = usePageStore((s) => s.dashboard.dim)
+  const trendMetric = usePageStore((s) => s.dashboard.trendMetric) as TrendMetric
+  const setSelectedPeriod = useCallback((v: string) => setDashboard({ period: v }), [setDashboard])
+  const setDimFilter = useCallback((v: string) => setDashboard({ dim: v }), [setDashboard])
+  const setTrendMetric = useCallback((v: TrendMetric) => setDashboard({ trendMetric: v }), [setDashboard])
   const navigate = useNavigate()
 
   // 期间候选：可用期间按全局选中财年过滤；未选时后端默认取最新期
@@ -47,15 +53,27 @@ export default function DashboardPage() {
       ? dimFilter.slice('summary:'.length)
       : undefined
 
-  // 自动模式主体对齐：useCompanies 已按数据权限过滤（与后端同源：ET0001 → 首个汇总 → 首个单体），
-  // 无 ET0001 权限时自动选中首个有权主体，避免以越权主体发起请求
+  // 自动模式主体对齐 + 持久化主体校验：无选或编码已删除/越权时回退默认主体；
+  // useCompanies 已按数据权限过滤（与后端同源：ET0001 → 首个汇总 → 首个单体），避免以越权主体发起请求
   useEffect(() => {
-    if (dimFilter !== '' || !companies || companies.length === 0) return
-    const et0001 = summaryEntities.find((c) => c.code === 'ET0001')
-    if (et0001) setDimFilter(`summary:${et0001.code}`)
-    else if (summaryEntities[0]) setDimFilter(`summary:${summaryEntities[0].code}`)
-    else if (entityCompanies[0]) setDimFilter(`company:${entityCompanies[0].code}`)
-  }, [dimFilter, companies, summaryEntities, entityCompanies])
+    if (!companies || companies.length === 0) return
+    const valid = new Set(companies.map((c) => c.code))
+    const fallback = () => {
+      const et0001 = summaryEntities.find((c) => c.code === 'ET0001')
+      if (et0001) return `summary:${et0001.code}`
+      if (summaryEntities[0]) return `summary:${summaryEntities[0].code}`
+      if (entityCompanies[0]) return `company:${entityCompanies[0].code}`
+      return 'all'
+    }
+    const cur = usePageStore.getState().dashboard.dim
+    if (cur === '') {
+      setDimFilter(fallback())
+      return
+    }
+    if (cur === 'all') return
+    const code = cur.startsWith('company:') || cur.startsWith('summary:') ? cur.slice('company:'.length) : undefined
+    if (!code || !valid.has(code)) setDimFilter(fallback())
+  }, [dimFilter, companies, summaryEntities, entityCompanies, setDimFilter])
 
   // 真实后端数据（React Query），加载期展示骨架屏
   const { data, isLoading, isError, isFetching, refetch } = useDashboardOverview({

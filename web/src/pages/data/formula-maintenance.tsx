@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -35,6 +35,7 @@ import {
   useDependencies,
 } from '@/hooks/api-queries'
 import { Pencil, Sparkles, History, Trash2, MoreHorizontal, Plus, Calculator, Download, ShieldAlert, RotateCcw, ArrowRightLeft } from 'lucide-react'
+import { usePageStore } from '@/stores/pageStateStore'
 import { HistoryDialog } from './formula-history-dialog'
 import { FormulaText } from './formula-text'
 import { useConfirm } from '@/components/ui/confirm-dialog'
@@ -83,7 +84,18 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
   const effectiveUpdate = canUpdate || !!canManage
   const effectiveApprove = canApprove ?? effectiveUpdate
 
-  const [subjectType, setSubjectType] = useState<'operating' | 'static'>('operating')
+  // 列表筛选与分页持久化到 pageStateStore（路由切换/刷新后恢复）；编辑/新建/转换等对话框草稿为瞬时状态
+  const setFormulas = usePageStore((s) => s.setFormulas)
+  const subjectType = usePageStore((s) => s.formulas.subjectType)
+  const keyword = usePageStore((s) => s.formulas.keyword)
+  const categoryFilter = usePageStore((s) => s.formulas.category)
+  const statusFilter = usePageStore((s) => s.formulas.status)
+  const page = usePageStore((s) => s.formulas.page)
+  const setSubjectType = useCallback((v: 'operating' | 'static') => setFormulas({ subjectType: v }), [setFormulas])
+  const setKeyword = useCallback((v: string) => setFormulas({ keyword: v }), [setFormulas])
+  const setCategoryFilter = useCallback((v: string) => setFormulas({ category: v }), [setFormulas])
+  const setStatusFilter = useCallback((v: string) => setFormulas({ status: v }), [setFormulas])
+  const setPage = useCallback((v: number) => setFormulas({ page: v }), [setFormulas])
   // includeInactive：列表需包含已停用指标（状态筛选/恢复启用/彻底删除入口依赖），后端默认被软删除过滤
   const { data, isLoading } = useMetrics({ page: 1, pageSize: 1000, includeInactive: 'true' })
   const { data: subjectsData } = useSubjects({ page: 1, pageSize: 1000, type: subjectType } as never)
@@ -98,10 +110,6 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
   const convertMetric = useConvertMetric()
   const trialCalc = useTrialCalc()
 
-  const [keyword, setKeyword] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('all')
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [page, setPage] = useState(1)
   // 编辑
   const [editing, setEditing] = useState<CalcMetricRow | null>(null)
   const [draftFormula, setDraftFormula] = useState('')

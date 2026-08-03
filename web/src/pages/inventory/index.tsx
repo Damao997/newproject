@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
@@ -13,6 +13,7 @@ import { PageContainer } from '@/components/layout/page-container'
 import { AnalysisDrawer, type AnalysisTarget } from '@/components/indicators/analysis-drawer'
 import {
   useAvailablePeriods,
+  useCompanies,
   useInventoryDetails,
   useInventoryOverview,
   type InventoryDetailRow,
@@ -20,6 +21,7 @@ import {
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { usePermission } from '@/hooks/usePermission'
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
+import { usePageStore } from '@/stores/pageStateStore'
 import { cn, formatMoneyWan, getChangeColor, getChangePrefix } from '@/lib/utils'
 import { Package, Boxes, CalendarClock, TrendingUp, FileText } from 'lucide-react'
 import { CategoryPieCard } from './category-pie-card'
@@ -84,9 +86,12 @@ function formatDays(v: number): string {
 
 export default function InventoryPage() {
   const { can } = usePermission()
-  // 公司多选（空数组 = 全部公司）与期间单选（空串 = 跟随最新期间）
-  const [selectedCompanies, setSelectedCompanies] = useState<string[]>([])
-  const [periodFilter, setPeriodFilter] = useState('')
+  // 公司多选（空数组 = 全部公司）与期间单选（空串 = 跟随最新期间）；查询条件持久化到 pageStateStore（路由切换/刷新后恢复）
+  const setInventory = usePageStore((s) => s.setInventory)
+  const selectedCompanies = usePageStore((s) => s.inventory.companies)
+  const periodFilter = usePageStore((s) => s.inventory.period)
+  const setSelectedCompanies = useCallback((v: string[]) => setInventory({ companies: v }), [setInventory])
+  const setPeriodFilter = useCallback((v: string) => setInventory({ period: v }), [setInventory])
   const [analysisTarget, setAnalysisTarget] = useState<AnalysisTarget | null>(null)
 
   const fiscalYear = usePeriodStore((s) => s.fiscalYear)
@@ -106,6 +111,17 @@ export default function InventoryPage() {
   }, [periods, periodFilter])
 
   const period = periodFilter || periods[periods.length - 1]
+
+  // 持久化公司多选校验：编码已删除/越权时过滤，全部失效则回退全部公司（候选加载后生效，用户手动切换后不再覆盖）
+  const { data: companies } = useCompanies()
+  useEffect(() => {
+    if (!companies || companies.length === 0) return
+    const valid = new Set(companies.map((c) => c.code))
+    const cur = usePageStore.getState().inventory.companies
+    if (cur.length === 0) return
+    const filtered = cur.filter((c) => valid.has(c))
+    if (filtered.length !== cur.length) setSelectedCompanies(filtered)
+  }, [companies, setSelectedCompanies])
 
   const overviewQuery = useInventoryOverview({ period, companyCodes: selectedCompanies })
   const detailsQuery = useInventoryDetails({ period, companyCodes: selectedCompanies })

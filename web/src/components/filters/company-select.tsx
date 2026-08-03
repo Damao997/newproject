@@ -58,6 +58,8 @@ interface CompanyMultiSelectProps {
   onChange: (value: string[]) => void
   /** 仅列出单体公司（type === 'entity'），缺省列出全部公司 */
   entitiesOnly?: boolean
+  /** "全选"范围：默认全选全部公司；'entity' 时仅全选单体公司（主体互斥场景避免全选带入汇总主体） */
+  selectAllType?: 'all' | 'entity'
   className?: string
 }
 
@@ -65,7 +67,7 @@ interface CompanyMultiSelectProps {
  * 公司多选筛选器（共享实现）：DropdownMenu 复选框式，内置"全选/清空（全部公司）"，
  * 触发器文案"全部公司 / 首选名称 / 首选名称 等 N 家"，名称跟随全局"显示简称"开关。
  */
-export function CompanyMultiSelect({ value, onChange, entitiesOnly = false, className }: CompanyMultiSelectProps) {
+export function CompanyMultiSelect({ value, onChange, entitiesOnly = false, selectAllType = 'all', className }: CompanyMultiSelectProps) {
   const { data: companies } = useCompanies()
   const { displayNameMap } = useCompanyDisplayName()
   const options = useMemo(
@@ -97,7 +99,7 @@ export function CompanyMultiSelect({ value, onChange, entitiesOnly = false, clas
       <DropdownMenuContent className="max-h-[320px] w-[240px] overflow-y-auto">
         <DropdownMenuItem
           className="text-xs text-muted-foreground"
-          onSelect={(e) => { e.preventDefault(); onChange(options.map((c) => c.code)) }}
+          onSelect={(e) => { e.preventDefault(); onChange(options.filter((c) => selectAllType === 'all' || c.type === selectAllType).map((c) => c.code)) }}
         >
           全选
         </DropdownMenuItem>

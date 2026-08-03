@@ -6,19 +6,23 @@ import { TransactionService } from './TransactionService'
  * 往来变动趋势聚合集成测试（真实 DB，无 DB 时整组跳过）。
  * 覆盖：同公司同期间求和聚合、月份轴连续补全（缺月补 null）、
  * 空 companyCodes 合计线、months 范围截断、无数据返回空；
- * 另复用同一组种子验证 getOverview 的 companyCodes IN 与 period 单期过滤。
- * 使用独立测试公司编码 EN999902/EN999903 隔离，afterAll 清理。
+ * 另复用同一组种子验证 getOverview 的 companyCodes IN 与 period 单期过滤、
+ * 以及 inactive 科目在总览/趋势中被强制剔除。
+ * 使用独立测试公司编码 EN999902/EN999903 与测试科目 __TREND_OFF__ 隔离，afterAll 清理。
  */
 
 const CO_A = 'EN999902'
 const CO_B = 'EN999903'
 // 用预付账款类型隔离：避免与 coverage 测试（2099 期间的应收/应付种子）并行时干扰“全库最新期间”推导
 const TYPE = '预付账款'
+const ACC_ACTIVE = '__TREND_1122__'
+// inactive 科目种子：验证总览/趋势的科目过滤规则管控（与明细/账龄口径一致）
+const ACC_INACTIVE = '__TREND_OFF__'
 
 let dbReady = false
 const createdIds: string[] = []
 
-async function seedDetail(companyCode: string, companyName: string, period: string, closing: number, aging: Record<string, number> = {}) {
+async function seedDetail(companyCode: string, companyName: string, period: string, closing: number, aging: Record<string, number> = {}, accountCode: string = ACC_ACTIVE) {
   const row = await basePrisma.transactionDetail.create({
     data: {
       companyCode,
@@ -26,7 +30,7 @@ async function seedDetail(companyCode: string, companyName: string, period: stri
       transactionType: TYPE,
       direction: 'AP',
       counterpartyCode: '__TREND_CP__',
-      accountCode: '__TREND_1122__',
+      accountCode,
       closingBalance: closing,
       period,
       ...aging,
@@ -49,6 +53,14 @@ beforeAll(async () => {
     })
     // B 公司：仅 2097-03
     await seedDetail(CO_B, '趋势测试B', '2097-03', 700)
+    // inactive 科目数据：总览/趋势应强制剔除（金额远大于其他种子，一旦未剔除断言必失败）
+    await seedDetail(CO_B, '趋势测试B', '2097-03', 99999, {}, ACC_INACTIVE)
+    // 科目过滤规则种子：确保状态正确（若旧数据已存在）
+    await basePrisma.transactionAccount.upsert({
+      where: { code: ACC_INACTIVE },
+      create: { code: ACC_INACTIVE, name: '趋势测试-排除科目', transactionType: TYPE, direction: 'AP', status: 'inactive' },
+      update: { status: 'inactive' },
+    })
     dbReady = true
   } catch {
     dbReady = false
@@ -58,6 +70,7 @@ beforeAll(async () => {
 afterAll(async () => {
   if (!dbReady) return
   await basePrisma.transactionDetail.deleteMany({ where: { id: { in: createdIds } } }).catch(() => undefined)
+  await basePrisma.transactionAccount.deleteMany({ where: { code: ACC_INACTIVE } }).catch(() => undefined)
 })
 
 describe('TransactionService.getTrend（真实 DB）', () => {
@@ -116,6 +129,14 @@ describe('TransactionService.getTrend（真实 DB）', () => {
     expect(r.periods).toEqual([])
     expect(r.series).toEqual([])
   })
+
+  it('inactive 科目数据不入趋势序列', async () => {
+    if (!dbReady) return
+    const r = await TransactionService.getTrend({ transactionType: TYPE, companyCodes: [CO_A, CO_B], months: 3 })
+    // CO_B 2097-03 仅 700，inactive 科目的 99999 被规则剔除
+    const b = r.series.find((s) => s.companyCode === CO_B)!
+    expect(b.points).toEqual([null, null, 700])
+  })
 })
 
 describe('TransactionService.getOverview 过滤（真实 DB）', () => {
@@ -138,6 +159,15 @@ describe('TransactionService.getOverview 过滤（真实 DB）', () => {
     expect(r2).toHaveLength(1)
     expect(r2[0].totalClosingBalance).toBe(150) // 同期两条求和
     expect(r2[0].recordCount).toBe(2)
+  })
+
+  it('inactive 科目自动剔除（与明细/账龄口径一致）', async () => {
+    if (!dbReady) return
+    const r = await TransactionService.getOverview({ companyCodes: [CO_B], period: '2097-03' })
+    expect(r).toHaveLength(1)
+    // 不含 inactive 科目的 99999，仅 700
+    expect(r[0].totalClosingBalance).toBe(700)
+    expect(r[0].recordCount).toBe(1)
   })
 })
 

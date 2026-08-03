@@ -35,6 +35,7 @@ import { ReclassifyCompanyDialog } from '@/components/reclassify/reclassify-comp
 import { ReclassifySubjectDialog } from '@/components/reclassify/reclassify-subject-dialog'
 import { ReclassifyLogsPanel } from '@/components/reclassify/reclassify-logs-panel'
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
+import { usePageStore } from '@/stores/pageStateStore'
 import { FormulaMaintenance } from './formula-maintenance'
 import { ImportPanel } from './import-panel'
 
@@ -113,19 +114,43 @@ export default function DataPage() {
   const [reclassifyCompanyOpen, setReclassifyCompanyOpen] = useState(false)
 
   // ---- 数据浏览（交叉表：指标 × 公司，支持多层级展开）----
-  // 公司多选：空数组语义为「全部公司」
-  const [browseCompanies, setBrowseCompanies] = useState<string[]>([])
-  const [browsePeriod, setBrowsePeriod] = useState('')
-  const [browseSubjectType, setBrowseSubjectType] = useState<'operating' | 'static'>('operating')
-  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
+  // 公司多选：空数组语义为「全部公司」；查询条件与展开状态持久化到 pageStateStore（路由切换/刷新后恢复）
+  const setDataBrowse = usePageStore((s) => s.setDataBrowse)
+  const browseCompanies = usePageStore((s) => s.dataBrowse.companies)
+  const browsePeriod = usePageStore((s) => s.dataBrowse.period)
+  const browseSubjectType = usePageStore((s) => s.dataBrowse.subjectType)
+  const expandedRows = usePageStore((s) => s.dataBrowse.expandedRows)
+  const setBrowseCompanies = useCallback((v: string[]) => setDataBrowse({ companies: v }), [setDataBrowse])
+  const setBrowsePeriod = useCallback((v: string) => setDataBrowse({ period: v }), [setDataBrowse])
+  const setBrowseSubjectType = useCallback((v: 'operating' | 'static') => setDataBrowse({ subjectType: v }), [setDataBrowse])
+  // 展开集合由持久化数组派生（Set 不可序列化，store 以数组存储）
+  const expandedRowSet = useMemo(() => new Set(expandedRows), [expandedRows])
+  const setExpandedRows = useCallback((updater: (prev: Set<string>) => Set<string>) => {
+    const prev = new Set(usePageStore.getState().dataBrowse.expandedRows)
+    usePageStore.getState().setDataBrowse({ expandedRows: [...updater(prev)] })
+  }, [])
   const fiscalYear = usePeriodStore((s) => s.fiscalYear)
   const { data: companies } = useCompanies()
+  // 持久化公司多选校验：编码已删除/越权时过滤，全部失效则回退全部公司（候选加载后生效，用户手动切换后不再覆盖）
+  useEffect(() => {
+    if (!companies || companies.length === 0) return
+    const valid = new Set(companies.map((c) => c.code))
+    const cur = usePageStore.getState().dataBrowse.companies
+    if (cur.length === 0) return
+    const filtered = cur.filter((c) => valid.has(c))
+    if (filtered.length !== cur.length) setBrowseCompanies(filtered)
+  }, [companies, setBrowseCompanies])
   const { data: periodsData } = useAvailablePeriods()
   // 期间候选按全局选中财年过滤
   const dynamicPeriods = useMemo(
     () => filterPeriodsByFiscalYear(periodsData?.periods ?? [], fiscalYear, periodsData?.fiscalStartMonth ?? 1),
     [periodsData, fiscalYear],
   )
+  // 持久化期间校验：已选期间不在候选（如财年切换）时回退跟随最新
+  useEffect(() => {
+    if (dynamicPeriods.length === 0) return
+    if (browsePeriod && !dynamicPeriods.includes(browsePeriod)) setBrowsePeriod('')
+  }, [dynamicPeriods, browsePeriod, setBrowsePeriod])
   const crossParams = useMemo(() => ({
     ...(browsePeriod ? { period: browsePeriod } : {}),
     subjectType: browseSubjectType,
@@ -160,7 +185,7 @@ export default function DataPage() {
       let p = r.parentCode
       let guard = 0
       while (p && guard < 20) {
-        if (!expandedRows.has(p)) return false
+        if (!expandedRowSet.has(p)) return false
         p = byCode.get(p)?.parentCode ?? null
         guard++
       }
@@ -177,10 +202,10 @@ export default function DataPage() {
   }, [])
 
   // 是否已全部展开：用于展开/折叠切换按钮的状态判断
-  const isAllRowsExpanded = hasChildrenSet.size > 0 && [...hasChildrenSet].every((code) => expandedRows.has(code))
+  const isAllRowsExpanded = hasChildrenSet.size > 0 && [...hasChildrenSet].every((code) => expandedRowSet.has(code))
 
   const toggleExpandAllRows = () =>
-    setExpandedRows(isAllRowsExpanded ? new Set() : new Set(hasChildrenSet))
+    setExpandedRows(() => (isAllRowsExpanded ? new Set() : new Set(hasChildrenSet)))
 
   const browseColumns: DataTableColumn<CrossRow>[] = useMemo(() => {
     const cols: DataTableColumn<CrossRow>[] = [
@@ -192,10 +217,10 @@ export default function DataPage() {
               <button
                 type="button"
                 className="mr-1 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                title={expandedRows.has(r.code) ? '收起下级科目' : '展开下级科目'}
+                title={expandedRowSet.has(r.code) ? '收起下级科目' : '展开下级科目'}
                 onClick={(e) => { e.stopPropagation(); toggleRowExpand(r.code) }}
               >
-                {expandedRows.has(r.code) ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                {expandedRowSet.has(r.code) ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
               </button>
             ) : (
               <span className="mr-1 inline-block w-[18px]" />
@@ -216,7 +241,7 @@ export default function DataPage() {
       })
     }
     return cols
-  }, [visibleCompanyCodes, displayNameMap, hasChildrenSet, expandedRows, toggleRowExpand])
+  }, [visibleCompanyCodes, displayNameMap, hasChildrenSet, expandedRowSet, toggleRowExpand])
 
   const handleBrowseExport = async () => {
     const rows = (crossTable?.rows ?? []).map((r) => {
@@ -251,7 +276,7 @@ export default function DataPage() {
             <CardContent>
               <div className="mb-4 flex flex-wrap items-center gap-3">
                 <div className="flex flex-wrap items-center gap-3">
-                  <Select value={browseSubjectType} onValueChange={(v) => { setBrowseSubjectType(v as 'operating' | 'static'); setExpandedRows(new Set()) }}>
+                  <Select value={browseSubjectType} onValueChange={(v) => { setBrowseSubjectType(v as 'operating' | 'static'); setExpandedRows(() => new Set()) }}>
                     <SelectTrigger className="w-[140px] max-w-full shrink-0">
                       <SelectValue placeholder="指标类型" />
                     </SelectTrigger>

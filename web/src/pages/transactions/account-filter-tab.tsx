@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { usePermission } from '@/hooks/usePermission'
 import { useManageAccounts, useUpdateAccountStatus } from '@/hooks/api-queries'
+import { usePageStore } from '@/stores/pageStateStore'
 import { Loader2, FilterX } from 'lucide-react'
 import type { ManageAccountItem } from '@/types'
 
@@ -22,11 +23,14 @@ function displayName(a: ManageAccountItem): string {
 }
 
 export function AccountFilterTab() {
+  // 展开开关持久化到 pageStateStore（切 tab/切路由/刷新后恢复）
+  const setTransactionsTab = usePageStore((s) => s.setTransactionsTab)
+  const showAll = usePageStore((s) => s.transactions['account-filter'].showAll)
+  const setShowAll = useCallback((v: boolean) => setTransactionsTab('account-filter', { showAll: v }), [setTransactionsTab])
   const { data: accounts, isLoading } = useManageAccounts()
   const updateStatus = useUpdateAccountStatus()
   const { can } = usePermission()
   const canUpdate = can('transactions', 'update')
-  const [showAll, setShowAll] = useState(false)
 
   const list = accounts ?? []
   const activeCount = list.filter((a) => a.status === 'active').length
@@ -112,7 +116,7 @@ export function AccountFilterTab() {
               ))}
               {(hasHidden || showAll) && (
                 <div className="flex justify-center border-t pt-3">
-                  <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => setShowAll((v) => !v)}>
+                  <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => setShowAll(!showAll)}>
                     {showAll ? '收起无数据科目' : `显示全部 ${list.length} 个科目`}
                   </Button>
                 </div>
