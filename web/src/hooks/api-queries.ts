@@ -291,7 +291,7 @@ export function useCrossTable(params: { period?: string; subjectType?: 'operatin
 export function useUploadImport() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (vars: { file: File; templateType: string }) => api.uploadImport(vars.file, vars.templateType),
+    mutationFn: (vars: { file: File; templateType: string; valueUnit: string }) => api.uploadImport(vars.file, vars.templateType, vars.valueUnit),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['data', 'imports'] }),
   })
 }
@@ -320,7 +320,7 @@ export function useBatchActivateCheck() {
 /** 导入预览（dry-run）：不建批次不写库 */
 export function usePreviewImport() {
   return useMutation({
-    mutationFn: (vars: { file: File; templateType: string }) => api.previewImport(vars.file, vars.templateType),
+    mutationFn: (vars: { file: File; templateType: string; valueUnit: string }) => api.previewImport(vars.file, vars.templateType, vars.valueUnit),
   })
 }
 
@@ -1076,14 +1076,14 @@ export function useInventoryTrend(params: { fiscalYear?: string | null; companyC
 
 export function usePreviewTransactionImport() {
   return useMutation({
-    mutationFn: (files: File[]) => api.previewTransactionImport(files) as Promise<TransactionImportPreview[]>,
+    mutationFn: (vars: { files: File[]; valueUnit: string }) => api.previewTransactionImport(vars.files, vars.valueUnit) as Promise<TransactionImportPreview[]>,
   })
 }
 
 export function useImportTransactions() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (files: File[]) => api.importTransactions(files) as Promise<TransactionImportUploadResult[]>,
+    mutationFn: (vars: { files: File[]; valueUnit: string }) => api.importTransactions(vars.files, vars.valueUnit) as Promise<TransactionImportUploadResult[]>,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['data', 'imports'] }),
   })
 }

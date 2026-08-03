@@ -18,6 +18,9 @@ import { fyLabelOfDate, getFiscalStartMonth } from './period'
 
 export type ImportTemplate = 'operating' | 'static' | 'budget'
 
+/** 导入文件数值单位：yuan=元（解析期 ÷10000 归一为万元存储）；wan=万元（原样存储） */
+export type ValueUnit = 'yuan' | 'wan'
+
 export interface ImportError {
   row: number
   column: string
@@ -331,9 +334,11 @@ function parseValue(cell: unknown): { value: number | null; empty: boolean } {
   return { value: n, empty: false }
 }
 
-export function parseImportWorkbook(buffer: Buffer, template: ImportTemplate, resolvers: Resolvers): ParseResult {
+export function parseImportWorkbook(buffer: Buffer, template: ImportTemplate, resolvers: Resolvers, valueUnit: ValueUnit = 'wan'): ParseResult {
   const result: ParseResult = { template, operating: [], static: [], budget: [], errors: [], dataRowCount: 0, sampleRows: { headers: [], rows: [] }, summary: emptySummary() }
   const fiscalStartMonth = getFiscalStartMonth()
+  // 单位归一化：系统存储口径为万元，元单位文件解析期 ÷10000（保留 4 位小数，配合 fact 表 Decimal(18,4) 无损存储）
+  const unitFactor = valueUnit === 'yuan' ? 0.0001 : 1
   let grid: unknown[][]
   try {
     grid = readGrid(buffer)
@@ -349,9 +354,9 @@ export function parseImportWorkbook(buffer: Buffer, template: ImportTemplate, re
   // 布局检测：标准布局（仅 operating）优先于转置布局
   const useStandard = template === 'operating' && !isTransposedLayout(grid) && detectStandardLayout(grid)
   if (useStandard) {
-    parseStandardLayout(grid, resolvers, fiscalStartMonth, result)
+    parseStandardLayout(grid, resolvers, fiscalStartMonth, unitFactor, result)
   } else {
-    parseTransposedLayout(grid, template, resolvers, fiscalStartMonth, result)
+    parseTransposedLayout(grid, template, resolvers, fiscalStartMonth, unitFactor, result)
   }
 
   finalizeResult(result, resolvers)
@@ -367,7 +372,7 @@ function mergeDuplicates(result: ParseResult): void {
     for (const r of rows) {
       const key = keyOf(r)
       const prev = byKey.get(key)
-      if (prev) prev.value = Number((prev.value + r.value).toFixed(2))
+      if (prev) prev.value = Number((prev.value + r.value).toFixed(4))
       else byKey.set(key, { ...r })
     }
     return [...byKey.values()]
@@ -433,7 +438,7 @@ function finalizeResult(result: ParseResult, resolvers: Resolvers): void {
     subjectCount: subjects.size,
     periodRange: { min: sortedPeriods[0] ?? null, max: sortedPeriods[sortedPeriods.length - 1] ?? null },
     periods: sortedPeriods,
-    totalValue: Number(totalValue.toFixed(2)),
+    totalValue: Number(totalValue.toFixed(4)),
     zeroValueCount,
     duplicateCount,
     duplicateSamples,
@@ -452,7 +457,7 @@ function finalizeResult(result: ParseResult, resolvers: Resolvers): void {
 }
 
 /** 标准布局解析（operating 专用）：行=公司×月份，列=科目 */
-function parseStandardLayout(grid: unknown[][], resolvers: Resolvers, fiscalStartMonth: number, result: ParseResult): void {
+function parseStandardLayout(grid: unknown[][], resolvers: Resolvers, fiscalStartMonth: number, unitFactor: number, result: ParseResult): void {
   const headerRow = (grid[0] ?? []) as unknown[]
   const headers = headerRow.map((h) => (h == null ? '' : String(h).trim()))
 
@@ -502,14 +507,14 @@ function parseStandardLayout(grid: unknown[][], resolvers: Resolvers, fiscalStar
         result.errors.push({ row: r + 1, column: excelColLabel(vc.colIdx + 1), message: `值非数字：'${String(row[vc.colIdx])}'` })
         continue
       }
-      const value = Number(parsed.value.toFixed(2))
+      const value = Number((parsed.value * unitFactor).toFixed(4))
       result.operating.push({ companyCode, accountCode: vc.accountCode, period, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: effFy, value })
     }
   }
 }
 
 /** 转置布局解析（原有逻辑） */
-function parseTransposedLayout(grid: unknown[][], template: ImportTemplate, resolvers: Resolvers, fiscalStartMonth: number, result: ParseResult): void {
+function parseTransposedLayout(grid: unknown[][], template: ImportTemplate, resolvers: Resolvers, fiscalStartMonth: number, unitFactor: number, result: ParseResult): void {
   const companyRow = (grid[0] ?? []) as unknown[]
   const monthRow = template === 'budget' ? [] : ((grid[1] ?? []) as unknown[])
   const dataStart = template === 'budget' ? 1 : 2
@@ -569,7 +574,7 @@ function parseTransposedLayout(grid: unknown[][], template: ImportTemplate, reso
         result.errors.push({ row: r + 1, column: meta.label, message: `公司名未匹配：'${meta.companyName}'` })
         continue
       }
-      const value = Number(parsed.value.toFixed(2))
+      const value = Number((parsed.value * unitFactor).toFixed(4))
       if (template === 'operating') {
         if (!meta.periodDimCode || !meta.effPeriod || !meta.effFy) continue
         result.operating.push({ companyCode: meta.companyCode, accountCode, period: meta.effPeriod, periodDimCode: meta.periodDimCode, fiscalYear: meta.effFy, value })

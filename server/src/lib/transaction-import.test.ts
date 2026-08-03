@@ -343,3 +343,35 @@ describe('SpreadsheetML XML 单文件（ERP 伪 .xls）', () => {
     expect(r.errors.length).toBeGreaterThan(0)
   })
 })
+
+describe('parseTransactionWorkbook 数值单位归一化（valueUnit）', () => {
+  const arBuf = () => makeWorkbook([{
+    name: 'AR-账龄汇总表',
+    aoa: [...AR_TITLE_ROWS, AR_HEADER, AR_SUB, arRow('330058', 'C001', '客户甲', '112201', 80, 100, [60, 40, 0, 0, 0, 0, 0, 0, 0, 0])],
+  }])
+
+  it('yuan（默认）：原样存储元口径，rawJson 保持文件原值', () => {
+    const r = parseTransactionWorkbook(arBuf(), 'test.xls', resolvers())
+    expect(r.records[0].closingBalance).toBe(100)
+    expect(r.records[0].aging1m).toBe(60)
+    expect(r.records[0].rawJson.rawClosingBalance).toBe(100)
+    // 显式传 yuan 与默认一致
+    const r2 = parseTransactionWorkbook(arBuf(), 'test.xls', resolvers(), 'yuan')
+    expect(r2.records[0].closingBalance).toBe(100)
+  })
+
+  it('wan：×10000 归一为元存储，rawJson 仍为文件原值', () => {
+    const r = parseTransactionWorkbook(arBuf(), 'test.xls', resolvers(), 'wan')
+    const rec = r.records[0]
+    expect(rec.openingBalance).toBe(800000)
+    expect(rec.closingBalance).toBe(1000000)
+    expect(rec.aging1m).toBe(600000)
+    expect(rec.aging2m).toBe(400000)
+    expect(rec.agingTotal).toBe(1000000)
+    expect(r.summary.totalClosingBalance).toBe(1000000)
+    // 原始快照不转换，供追溯对账
+    expect(rec.rawJson.rawClosingBalance).toBe(100)
+    expect(r.errors).toHaveLength(0)
+    expect(r.warnings).toHaveLength(0)
+  })
+})

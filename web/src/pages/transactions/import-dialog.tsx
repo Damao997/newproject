@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn, formatMoneyWan } from '@/lib/utils'
 import { usePreviewTransactionImport, useImportTransactions, useActivateImport } from '@/hooks/api-queries'
 import { useBatchActivate, buildActivateConflictDescription } from '@/hooks/use-batch-activate'
@@ -27,6 +28,8 @@ function formatAmount(v: number): string {
 export function TransactionImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const [step, setStep] = useState<Step>('select')
   const [files, setFiles] = useState<File[]>([])
+  // 文件金额单位：往来模块存储口径为元，ERP 账龄报表默认元；选万元时后端 ×10000 归一为元存储
+  const [valueUnit, setValueUnit] = useState('yuan')
   const [previews, setPreviews] = useState<TransactionImportPreview[]>([])
   const [results, setResults] = useState<TransactionImportUploadResult[]>([])
   const [activatedIds, setActivatedIds] = useState<Set<string>>(new Set())
@@ -42,6 +45,7 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
   const reset = () => {
     setStep('select')
     setFiles([])
+    setValueUnit('yuan')
     setPreviews([])
     setResults([])
     setActivatedIds(new Set())
@@ -77,7 +81,7 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
   const handlePreview = async () => {
     setErrorMsg('')
     try {
-      const data = await previewMutation.mutateAsync(files)
+      const data = await previewMutation.mutateAsync({ files, valueUnit })
       setPreviews(data)
       setStep('preview')
     } catch (e) {
@@ -88,7 +92,7 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
   const handleImport = async () => {
     setErrorMsg('')
     try {
-      const data = await importMutation.mutateAsync(files)
+      const data = await importMutation.mutateAsync({ files, valueUnit })
       setResults(data)
       setStep('result')
     } catch (e) {
@@ -157,6 +161,19 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
                 className="hidden"
                 onChange={(e) => handleFilesSelected(e.target.files)}
               />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium">文件金额单位:</span>
+              <Select value={valueUnit} onValueChange={setValueUnit}>
+                <SelectTrigger className="h-8 w-[110px] shrink-0">
+                  <SelectValue placeholder="单位" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="yuan">元</SelectItem>
+                  <SelectItem value="wan">万元</SelectItem>
+                </SelectContent>
+              </Select>
+              <span className="text-xs text-muted-foreground">ERP 账龄报表默认元；选万元将 ×10000 归一为元存储</span>
             </div>
             {files.length > 0 && (
               <ul className="max-h-40 space-y-1 overflow-y-auto text-sm">

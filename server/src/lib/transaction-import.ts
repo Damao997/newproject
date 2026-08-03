@@ -259,7 +259,7 @@ function buildColumnMap(rows: unknown[][], sheetName: string, errors: Transactio
   return { headerRowIdx, map }
 }
 
-/** 解析单个账龄汇总 Sheet，产出清洗后的入库记录 */
+/** 解析单个账龄汇总 Sheet，产出清洗后的入库记录（unitFactor：文件单位归一为元的乘数，yuan=1 / wan=10000） */
 function parseSummarySheet(
   rows: unknown[][],
   sheetName: string,
@@ -267,6 +267,7 @@ function parseSummarySheet(
   sourceFile: string,
   resolvers: TransactionResolvers,
   result: TransactionParseResult,
+  unitFactor: number,
 ): TransactionSheetInfo {
   const info: TransactionSheetInfo = { sheetName, transactionType: typeInfo.transactionType, direction: typeInfo.direction, cutoffDate: null, recordCount: 0, declaredCompanyCode: null }
   const located = buildColumnMap(rows, sheetName, result.errors)
@@ -351,13 +352,13 @@ function parseSummarySheet(
       accountDesc: map.accountDesc >= 0 ? cellText(row[map.accountDesc]) || null : null,
       subCode: map.subCode >= 0 ? cellText(row[map.subCode]) || null : null,
       subName: map.subName >= 0 ? cellText(row[map.subName]) || null : null,
-      openingBalance: round2(openingBalance * sign),
+      openingBalance: round2(openingBalance * sign * unitFactor),
       debitAmount: 0,
       creditAmount: 0,
-      closingBalance: round2(closingBalance * sign),
-      aging1m: round2(aging[0] * sign), aging2m: round2(aging[1] * sign), aging3m: round2(aging[2] * sign), aging4m: round2(aging[3] * sign), aging5m: round2(aging[4] * sign),
-      aging6m: round2(aging[5] * sign), aging6mTo1y: round2(aging[6] * sign), aging1yTo2y: round2(aging[7] * sign), aging2yTo3y: round2(aging[8] * sign), aging3yPlus: round2(aging[9] * sign),
-      agingTotal: round2(agingTotal * sign),
+      closingBalance: round2(closingBalance * sign * unitFactor),
+      aging1m: round2(aging[0] * sign * unitFactor), aging2m: round2(aging[1] * sign * unitFactor), aging3m: round2(aging[2] * sign * unitFactor), aging4m: round2(aging[3] * sign * unitFactor), aging5m: round2(aging[4] * sign * unitFactor),
+      aging6m: round2(aging[5] * sign * unitFactor), aging6mTo1y: round2(aging[6] * sign * unitFactor), aging1yTo2y: round2(aging[7] * sign * unitFactor), aging2yTo3y: round2(aging[8] * sign * unitFactor), aging3yPlus: round2(aging[9] * sign * unitFactor),
+      agingTotal: round2(agingTotal * sign * unitFactor),
       isInternal,
       internalType: isInternal ? '内部关联' : '外部',
       internalPeerCode,
@@ -365,7 +366,7 @@ function parseSummarySheet(
       sourceFile,
       rawJson: {
         sheet: sheetName,
-        // 原始口径快照（未翻转），供追溯对账
+        // 原始口径快照（未翻转、未做单位转换），供追溯对账
         rawClosingBalance: closingBalance,
         naturalYearOpening: map.naturalYearOpening >= 0 ? parseAmount(row[map.naturalYearOpening]) ?? 0 : 0,
         monthlyAmount: map.monthlyAmount >= 0 ? parseAmount(row[map.monthlyAmount]) ?? 0 : 0,
@@ -467,7 +468,9 @@ export function extractSummarySheetsXml(xml: string): string | null {
   return xml.slice(0, headEnd) + parts.join('') + xml.slice(lastWsEnd)
 }
 
-export function parseTransactionWorkbook(buffer: Buffer, sourceFile: string, resolvers: TransactionResolvers): TransactionParseResult {
+export function parseTransactionWorkbook(buffer: Buffer, sourceFile: string, resolvers: TransactionResolvers, valueUnit: 'yuan' | 'wan' = 'yuan'): TransactionParseResult {
+  // 单位归一化：往来模块存储口径为元（展示层统一 ÷10000 转万元），万元文件 ×10000 归一；元文件原样
+  const unitFactor = valueUnit === 'wan' ? 10000 : 1
   const result: TransactionParseResult = {
     records: [],
     sheets: [],
@@ -526,7 +529,7 @@ export function parseTransactionWorkbook(buffer: Buffer, sourceFile: string, res
   for (const sheetName of selectedNames) {
     const typeInfo = matchSummarySheet(sheetName)!
     const rows = XLSX.utils.sheet_to_json(wb!.Sheets[sheetName], { header: 1, blankrows: false, defval: null }) as unknown[][]
-    const info = parseSummarySheet(rows, sheetName, typeInfo, sourceFile, resolvers, result)
+    const info = parseSummarySheet(rows, sheetName, typeInfo, sourceFile, resolvers, result, unitFactor)
     result.sheets.push(info)
   }
 

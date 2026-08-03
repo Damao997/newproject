@@ -89,6 +89,8 @@ export function ImportPanel() {
 
   // ---- 导入 ----
   const [templateType, setTemplateType] = useState('operating')
+  // 文件金额单位：系统存储口径为万元，选「元」时后端解析期自动 ÷10000 转换（默认元）
+  const [valueUnit, setValueUnit] = useState('yuan')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
   const [uploadedInfo, setUploadedInfo] = useState<{ filename: string; detailCount: number; rowCount: number } | null>(null)
@@ -180,7 +182,7 @@ export function ImportPanel() {
     if (!selectedFile) return
     setFileError(null)
     try {
-      const batch = await uploadMutation.mutateAsync({ file: selectedFile, templateType })
+      const batch = await uploadMutation.mutateAsync({ file: selectedFile, templateType, valueUnit })
       setUploadedInfo({ filename: batch.filename, detailCount: batch.detailCount ?? batch.successCount, rowCount: batch.rowCount ?? batch.successCount })
       setSelectedFile(null)
     } catch (err) {
@@ -200,7 +202,7 @@ export function ImportPanel() {
     setFileError(null)
     setPreviewResult(null)
     try {
-      const res = await previewMutation.mutateAsync({ file: selectedFile, templateType })
+      const res = await previewMutation.mutateAsync({ file: selectedFile, templateType, valueUnit })
       setPreviewResult(res)
     } catch (err) {
       setFileError(err instanceof Error ? err.message : '预览失败')
@@ -394,6 +396,16 @@ export function ImportPanel() {
                   <SelectItem value="budget">年度预算</SelectItem>
                 </SelectContent>
               </Select>
+              <span className="text-sm font-medium">数值单位:</span>
+              <Select value={valueUnit} onValueChange={(v) => { setValueUnit(v); setPreviewResult(null) }}>
+                <SelectTrigger className="h-8 w-[110px] max-w-full shrink-0">
+                  <SelectValue placeholder="数值单位" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="yuan">元</SelectItem>
+                  <SelectItem value="wan">万元</SelectItem>
+                </SelectContent>
+              </Select>
               <Button variant="outline" size="sm" className="shrink-0" onClick={() => {
                 downloadImportTemplate(templateType as 'operating' | 'static' | 'budget').catch((e) => {
                   setFileError(e instanceof Error ? e.message : '模板下载失败')
@@ -425,7 +437,7 @@ export function ImportPanel() {
 
           {/* 模块边界：往来导入入口在往来分析页（就近维护），批次生命周期统一在下方列表管理 */}
           <p className="text-xs text-muted-foreground">
-            往来数据（六大往来账龄报表）请在「往来分析」页的导入入口上传，批次统一在此列表管理。
+            文件金额单位为「元」时入库自动 ÷10000 转换为万元存储；往来数据（六大往来账龄报表）请在「往来分析」页的导入入口上传，批次统一在此列表管理。
           </p>
 
           {fileError && (

@@ -323,7 +323,7 @@ model FactOperating {
   period        String
   periodDimCode String   @map("period_dim_code")
   fiscalYear    String   @map("fiscal_year")
-  value         Decimal  @db.Decimal(18, 2)
+  value         Decimal  @db.Decimal(18, 4)
   rawJson       Json?    @map("raw_json") @db.JsonB
   createdAt     DateTime @default(now()) @map("created_at")
 
@@ -342,7 +342,7 @@ model FactStatic {
   snapshotDate  DateTime @map("snapshot_date") @db.Date
   periodDimCode String   @map("period_dim_code")
   fiscalYear    String   @map("fiscal_year")
-  value         Decimal  @db.Decimal(18, 2)
+  value         Decimal  @db.Decimal(18, 4)
   rawJson       Json?    @map("raw_json") @db.JsonB
   createdAt     DateTime @default(now()) @map("created_at")
 
@@ -359,7 +359,7 @@ model FactBudget {
   accountCode String   @map("account_code")
   fiscalYear  String   @map("fiscal_year")
   period      String
-  value       Decimal  @db.Decimal(18, 2)
+  value       Decimal  @db.Decimal(18, 4)
   rawJson     Json?    @map("raw_json") @db.JsonB
   createdAt   DateTime @default(now()) @map("created_at")
 

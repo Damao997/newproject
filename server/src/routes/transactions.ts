@@ -192,10 +192,17 @@ function pickUploadFiles(req: { files?: unknown }): Array<{ originalname: string
   })
 }
 
+/** 数值单位：元/万元（解析期归一为元存储）；未传默认元（ERP 报表存量口径） */
+function pickValueUnit(body: Record<string, unknown> | undefined): 'yuan' | 'wan' {
+  const v = body?.valueUnit ? String(body.valueUnit) : 'yuan'
+  if (v !== 'yuan' && v !== 'wan') throw errors.badRequest('非法的数值单位')
+  return v
+}
+
 // 导入预览（dry-run，不建批次不写库）
 router.post('/import/preview', requirePermission('transactions:import', 'import'), upload.array('files', 12), asyncHandler(async (req, res) => {
   const files = pickUploadFiles(req)
-  const data = await ImportService.previewTransactions(files)
+  const data = await ImportService.previewTransactions(files, pickValueUnit(req.body as Record<string, unknown>))
   sendOk(res, data)
 }))
 
@@ -217,7 +224,7 @@ router.get('/import/batches/:id/coverage', requirePermission('transactions:view'
 router.post('/import', requirePermission('transactions:import', 'import'), upload.array('files', 12), asyncHandler(async (req, res) => {
   const files = pickUploadFiles(req)
   const authUser = req.authUser as AuthUserContext
-  const data = await ImportService.uploadTransactions(files, authUser.userId, req.traceId)
+  const data = await ImportService.uploadTransactions(files, authUser.userId, req.traceId, pickValueUnit(req.body as Record<string, unknown>))
   sendOk(res, data)
 }))
 

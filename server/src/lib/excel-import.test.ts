@@ -265,3 +265,44 @@ describe('excel-import 覆盖摘要 summary', () => {
     expect(res.summary.totalValue).toBe(3000)
   })
 })
+
+describe('excel-import 数值单位归一化（valueUnit）', () => {
+  const bufOf = (v1: number, v2: number) => makeXlsx([
+    ['单体维度', '杭州公司', '宁波公司'],
+    ['月份', new Date(2026, 3, 15), new Date(2026, 3, 15)],
+    ['灶具收入', v1, v2],
+  ])
+
+  it('yuan 单位：解析期 ÷10000 归一为万元，保留 4 位小数', () => {
+    const res = parseImportWorkbook(bufOf(12345, 678901.23), 'operating', resolvers, 'yuan')
+    expect(res.errors.length).toBe(0)
+    const hz = res.operating.find((r) => r.companyCode === 'EN330059')!
+    expect(hz.value).toBe(1.2345)
+    const nb = res.operating.find((r) => r.companyCode === 'EN330058')!
+    expect(nb.value).toBe(67.8901)
+    expect(res.summary.totalValue).toBe(69.1246)
+  })
+
+  it('wan 单位：原样存储（存量口径）', () => {
+    const res = parseImportWorkbook(bufOf(12345, 200), 'operating', resolvers, 'wan')
+    expect(res.operating.find((r) => r.companyCode === 'EN330059')!.value).toBe(12345)
+    expect(res.summary.totalValue).toBe(12545)
+  })
+
+  it('默认（不传）与 wan 一致，存量行为不变', () => {
+    const res = parseImportWorkbook(bufOf(100, 200), 'operating', resolvers)
+    expect(res.operating.find((r) => r.companyCode === 'EN330059')!.value).toBe(100)
+  })
+
+  it('yuan 单位同样作用于标准布局与重复合并', () => {
+    const buf = makeXlsx([
+      ['公司名', '月份', '灶具收入'],
+      ['杭州公司', new Date(2026, 3, 1), 5000],
+      ['杭州公司', new Date(2026, 3, 1), 5500],
+    ])
+    const res = parseImportWorkbook(buf, 'operating', resolvers, 'yuan')
+    // 重复键合并：(5000+5500)/10000 = 1.05
+    expect(res.operating.length).toBe(1)
+    expect(res.operating[0].value).toBe(1.05)
+  })
+})

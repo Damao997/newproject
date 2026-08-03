@@ -56,12 +56,16 @@ router.post('/imports', requirePermission('data:import:upload', 'import'), uploa
   const templateType = String(req.body?.templateType ?? 'operating')
   if (!VALID_TEMPLATES.has(templateType)) throw errors.badRequest('非法的模板类型')
   const fiscalYear = req.body?.fiscalYear ? String(req.body.fiscalYear) : fyLabelOfDate(new Date())
+  // 数值单位：元/万元（解析期归一为万元存储）；未传默认万元（存量兼容）
+  const valueUnit = req.body?.valueUnit ? String(req.body.valueUnit) : undefined
+  if (valueUnit !== undefined && valueUnit !== 'yuan' && valueUnit !== 'wan') throw errors.badRequest('非法的数值单位')
   const dto = await ImportService.upload(
     { originalname, buffer: req.file.buffer, size: req.file.size },
     templateType as 'operating',
     (req.authUser as AuthUserContext).userId,
     req.traceId,
     fiscalYear,
+    valueUnit as 'yuan' | 'wan' | undefined,
   )
   sendOk(res, dto)
 }))
@@ -73,7 +77,9 @@ router.post('/imports/preview', requirePermission('data:import:upload', 'import'
   const templateType = String(req.body?.templateType ?? 'operating')
   if (!VALID_TEMPLATES.has(templateType)) throw errors.badRequest('非法的模板类型')
   const fiscalYear = req.body?.fiscalYear ? String(req.body.fiscalYear) : fyLabelOfDate(new Date())
-  const data = await ImportService.preview({ buffer: req.file.buffer }, templateType as 'operating', fiscalYear)
+  const valueUnit = req.body?.valueUnit ? String(req.body.valueUnit) : undefined
+  if (valueUnit !== undefined && valueUnit !== 'yuan' && valueUnit !== 'wan') throw errors.badRequest('非法的数值单位')
+  const data = await ImportService.preview({ buffer: req.file.buffer }, templateType as 'operating', fiscalYear, valueUnit as 'yuan' | 'wan' | undefined)
   sendOk(res, data)
 }))
 

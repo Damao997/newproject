@@ -401,10 +401,11 @@ class ApiClient {
   }
 
   // Data Management API
-  async uploadImport(file: File, templateType: string): Promise<ImportBatch> {
+  async uploadImport(file: File, templateType: string, valueUnit: string): Promise<ImportBatch> {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('templateType', templateType)
+    formData.append('valueUnit', valueUnit)
     
     return this.request({
       method: 'POST',
@@ -618,10 +619,11 @@ class ApiClient {
     return this.request({ method: 'POST', url: `/data/subjects/${id}/reclassify`, data: { parentCode } })
   }
 
-  async previewImport(file: File, templateType: string): Promise<ImportPreviewResult> {
+  async previewImport(file: File, templateType: string, valueUnit: string): Promise<ImportPreviewResult> {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('templateType', templateType)
+    formData.append('valueUnit', valueUnit)
     return this.request({
       method: 'POST',
       url: '/data/imports/preview',
@@ -1044,10 +1046,11 @@ class ApiClient {
     })
   }
 
-  // 往来导入（六大往来账龄汇总表，多文件）
-  async previewTransactionImport(files: File[]) {
+  // 往来导入（六大往来账龄汇总表，多文件）；valueUnit：文件金额单位（yuan/wan），后端归一为元存储
+  async previewTransactionImport(files: File[], valueUnit: string) {
     const formData = new FormData()
     for (const f of files) formData.append('files', f)
+    formData.append('valueUnit', valueUnit)
     return this.request({
       method: 'POST',
       url: '/transactions/import/preview',
@@ -1058,9 +1061,10 @@ class ApiClient {
     })
   }
 
-  async importTransactions(files: File[]) {
+  async importTransactions(files: File[], valueUnit: string) {
     const formData = new FormData()
     for (const f of files) formData.append('files', f)
+    formData.append('valueUnit', valueUnit)
     return this.request({
       method: 'POST',
       url: '/transactions/import',

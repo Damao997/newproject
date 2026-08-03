@@ -5,7 +5,7 @@ import type { Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
-import { parseImportWorkbook, emptySummary, type ImportTemplate, type Resolvers, type SampleRows, type PreviewSummary } from '../lib/excel-import'
+import { parseImportWorkbook, emptySummary, type ImportTemplate, type Resolvers, type SampleRows, type PreviewSummary, type ValueUnit } from '../lib/excel-import'
 import { parseTransactionWorkbook, type TransactionParseResult, type TransactionResolvers, type TransactionSheetInfo, type TransactionImportIssue, type TransactionParseSummary } from '../lib/transaction-import'
 import { fyLabelOfDate, parsePeriod, formatPeriod } from '../lib/period'
 import { assertCompaniesInScope, effectiveScope } from '../lib/scope-guard'
@@ -379,11 +379,11 @@ export const ImportService = {
 
     const subjectRows = ordered.map((s) => [`${'  '.repeat(s.level)}${s.name}`])
     if (type === 'budget') {
-      ws.addRow(['科目名称', ...companyNames])
+      ws.addRow(['科目名称（金额单位导入时可选：元/万元）', ...companyNames])
       ws.getRow(1).font = { bold: true }
       subjectRows.forEach((r) => ws.addRow(r))
     } else {
-      ws.addRow(['科目名称', ...companyNames, ...companyNames])
+      ws.addRow(['科目名称（金额单位导入时可选：元/万元）', ...companyNames, ...companyNames])
       ws.getRow(1).font = { bold: true }
       ws.addRow(['', ...companyNames.map(() => latest), ...companyNames.map(() => prev)])
       ws.getRow(2).font = { bold: true }
@@ -396,14 +396,16 @@ export const ImportService = {
   /**
    * 导入预览（dry-run）：仅解析不建批次、不写库，返回将入库行数/各类计数/错误明细，
    * 及覆盖摘要、激活影响预告与看板 KPI 覆盖检查，供管理员入库前确认数据质量。
+   * valueUnit 未传时按分支存量兼容默认：unpivot（operating/static/budget）归一目标为万元→默认 wan；
+   * transaction 归一目标为元→默认 yuan。
    */
-  async preview(file: { buffer: Buffer }, templateType: TemplateType, fiscalYear = fyLabelOfDate(new Date())): Promise<{ dataRowCount: number; errorCount: number; operatingCount: number; staticCount: number; budgetCount: number; errors: ImportErrorItem[]; sampleRows: SampleRows; summary: PreviewSummaryDto; activationImpact: ActivationImpact | null; kpiCoverage: KpiCoverage | null }> {
+  async preview(file: { buffer: Buffer }, templateType: TemplateType, fiscalYear = fyLabelOfDate(new Date()), valueUnit?: ValueUnit): Promise<{ dataRowCount: number; errorCount: number; operatingCount: number; staticCount: number; budgetCount: number; errors: ImportErrorItem[]; sampleRows: SampleRows; summary: PreviewSummaryDto; activationImpact: ActivationImpact | null; kpiCoverage: KpiCoverage | null }> {
     assertExcelMagic(file.buffer)
     if (!UNPIVOT_TEMPLATES.has(templateType)) {
       if (templateType === 'transaction') {
         // 往来汇总表：真实解析并映射为通用预览结构（专用结构见 previewTransaction）
         const resolvers = await buildTransactionResolvers()
-        const parsed = parseTransactionWorkbook(file.buffer, 'preview.xls', resolvers)
+        const parsed = parseTransactionWorkbook(file.buffer, 'preview.xls', resolvers, valueUnit ?? 'yuan')
         // 数据范围守卫：预览会回显公司/期间/余额，越权文件不得回显
         await assertCompaniesInScope(parsed.records.map((r) => r.companyCode), undefined, '预览导入')
         const accountCodes = new Set(parsed.records.map((r) => r.accountCode))
@@ -441,7 +443,7 @@ export const ImportService = {
     let parsed
     try {
       const resolvers = await buildResolvers(template, fiscalYear)
-      parsed = parseImportWorkbook(file.buffer, template, resolvers)
+      parsed = parseImportWorkbook(file.buffer, template, resolvers, valueUnit ?? 'wan')
     } catch {
       throw errors.badRequest('Excel 解析失败，请检查文件内容与模板类型')
     }
@@ -475,7 +477,7 @@ export const ImportService = {
    * 往来汇总表导入预览（dry-run，多文件）：仅解析不建批次、不写库；
    * 附激活影响预告：解析出的 (公司,期间,类型) 与当前生效数据对比（overlapping = 激活后被替换）。
    */
-  async previewTransactions(files: Array<{ originalname: string; buffer: Buffer }>): Promise<TransactionPreviewDto[]> {
+  async previewTransactions(files: Array<{ originalname: string; buffer: Buffer }>, valueUnit: ValueUnit = 'yuan'): Promise<TransactionPreviewDto[]> {
     const resolvers = await buildTransactionResolvers()
     const emptyImpact = (): TransactionActivationImpact => ({ newKeys: [], overlappingKeys: [] })
     const parsedList = files.map((file) => {
@@ -483,7 +485,7 @@ export const ImportService = {
       let fatal: string | null = null
       try {
         assertExcelMagic(file.buffer)
-        parsed = parseTransactionWorkbook(file.buffer, file.originalname, resolvers)
+        parsed = parseTransactionWorkbook(file.buffer, file.originalname, resolvers, valueUnit)
       } catch (e) {
         fatal = e instanceof Error ? e.message : '文件解析失败'
       }
@@ -569,11 +571,11 @@ export const ImportService = {
   /**
    * 往来汇总表多文件上传：每文件独立批次，单文件失败不影响其余。
    */
-  async uploadTransactions(files: Array<{ originalname: string; buffer: Buffer; size: number }>, userId: string, traceId?: string): Promise<TransactionUploadResult[]> {
+  async uploadTransactions(files: Array<{ originalname: string; buffer: Buffer; size: number }>, userId: string, traceId?: string, valueUnit: ValueUnit = 'yuan'): Promise<TransactionUploadResult[]> {
     const results: TransactionUploadResult[] = []
     for (const file of files) {
       try {
-        const batch = await this.uploadTransactionOne(file, userId, traceId)
+        const batch = await this.uploadTransactionOne(file, userId, traceId, valueUnit)
         results.push({ filename: file.originalname, batch, error: null })
       } catch (e) {
         results.push({ filename: file.originalname, batch: null, error: e instanceof Error ? e.message : '导入失败' })
@@ -586,7 +588,7 @@ export const ImportService = {
    * 往来汇总表单文件入库：解析 → transaction_detail 分块写入 + 客商同步（同事务）。
    * 批次创建为 draft，需激活后生效（激活时按 公司×期间×往来类型 合并替换）。
    */
-  async uploadTransactionOne(file: { originalname: string; buffer: Buffer; size: number }, userId: string, traceId?: string): Promise<ImportBatchDto> {
+  async uploadTransactionOne(file: { originalname: string; buffer: Buffer; size: number }, userId: string, traceId?: string, valueUnit: ValueUnit = 'yuan'): Promise<ImportBatchDto> {
     assertExcelMagic(file.buffer)
 
     const fileHash = createHash('sha256').update(file.buffer).digest('hex')
@@ -608,7 +610,7 @@ export const ImportService = {
     let parsed: TransactionParseResult
     try {
       const resolvers = await buildTransactionResolvers()
-      parsed = parseTransactionWorkbook(file.buffer, file.originalname, resolvers)
+      parsed = parseTransactionWorkbook(file.buffer, file.originalname, resolvers, valueUnit)
     } catch {
       await prisma.importBatch.update({ where: { id: batch.id }, data: { status: 'failed' } })
       throw errors.badRequest('Excel 解析失败，请检查文件内容与模板类型')
@@ -663,10 +665,10 @@ export const ImportService = {
     return toDto(updated)
   },
 
-  async upload(file: { originalname: string; buffer: Buffer; size: number }, templateType: TemplateType, userId: string, traceId?: string, fiscalYear = fyLabelOfDate(new Date())): Promise<ImportBatchDto> {
+  async upload(file: { originalname: string; buffer: Buffer; size: number }, templateType: TemplateType, userId: string, traceId?: string, fiscalYear = fyLabelOfDate(new Date()), valueUnit?: ValueUnit): Promise<ImportBatchDto> {
     if (templateType === 'transaction') {
-      // 往来汇总表走专用解析入库链路（通用入口与 /transactions/import 行为一致）
-      return this.uploadTransactionOne(file, userId, traceId)
+      // 往来汇总表走专用解析入库链路（通用入口与 /transactions/import 行为一致；归一目标为元，默认 yuan）
+      return this.uploadTransactionOne(file, userId, traceId, valueUnit ?? 'yuan')
     }
     assertExcelMagic(file.buffer)
 
@@ -704,7 +706,8 @@ export const ImportService = {
       if (UNPIVOT_TEMPLATES.has(templateType)) {
         const template = templateType as ImportTemplate
         const resolvers = await buildResolvers(template, fiscalYear)
-        const parsed = parseImportWorkbook(file.buffer, template, resolvers)
+        // 归一目标为万元，默认 wan（存量兼容；前端显式传 yuan 时解析期 ÷10000）
+        const parsed = parseImportWorkbook(file.buffer, template, resolvers, valueUnit ?? 'wan')
         rowCount = parsed.dataRowCount
         detailCount = parsed.operating.length + parsed.static.length + parsed.budget.length
         errorList = parsed.errors
@@ -769,7 +772,7 @@ export const ImportService = {
         },
       })
     })
-    await recordAudit({ userId, module: 'data', action: 'import', targetId: batch.id, detail: { templateType, rowCount, errorCount } }, traceId)
+    await recordAudit({ userId, module: 'data', action: 'import', targetId: batch.id, detail: { templateType, rowCount, errorCount, valueUnit: valueUnit ?? 'wan' } }, traceId)
     return toDto(updated)
   },
 
