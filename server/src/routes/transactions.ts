@@ -5,11 +5,11 @@ import { attachScope } from '../middleware/attach-scope'
 import { requirePermission } from '../middleware/permission'
 import { asyncHandler } from '../lib/async-handler'
 import { sendOk } from '../lib/response'
-import { errors } from '../lib/errors'
+import { errors, AppError } from '../lib/errors'
 import { TransactionService } from '../services/TransactionService'
 import { ImportService } from '../services/ImportService'
 import { CollectionService } from '../services/CollectionService'
-import { resolveCompanyCodes } from '../services/AggregationService'
+import { resolveCompanyCodes, resolveDashboardCompany } from '../services/AggregationService'
 import { fixUploadFilename } from '../lib/sanitize'
 import type { AuthUserContext } from '../types/express'
 
@@ -34,15 +34,27 @@ function scopeOf(authUser: AuthUserContext) {
 /**
  * 公司筛选参数归一化（单值或逗号分隔多值）。
  * - 未传 → undefined：不加显式过滤，由 scopeContext 扩展按数据范围兜底
- * - 汇总主体 → 展开为成员单体；未被完整授权则 403
- * - 单体 → 校验在数据范围内，越权 403
+ * - 汇总主体 → 展开为成员单体；未被完整授权则降级为有权默认主体（不抛 403）
+ * - 单体 → 校验在数据范围内，越权降级为有权默认主体
+ * 降级顺序与看板一致：ET0001 → 任一授权汇总主体 → 任一授权单体（「全有或全无」授权，口径不得失真）。
  */
 async function normalizeCompanies(authUser: AuthUserContext, raw: unknown): Promise<string[] | undefined> {
   const codes = raw ? String(raw).split(',').map((s) => s.trim()).filter(Boolean) : []
   if (codes.length === 0) return undefined
   const out = new Set<string>()
+  let degradedOnce = false
   for (const c of codes) {
-    for (const r of await resolveCompanyCodes(scopeOf(authUser), c)) out.add(r)
+    try {
+      for (const r of await resolveCompanyCodes(scopeOf(authUser), c)) out.add(r)
+    } catch (e) {
+      // 越权 403 / 主体不存在 404 → 用有权默认主体替换该编码；其它异常（如 DB 故障）照常上抛
+      if (!(e instanceof AppError)) throw e
+      if (!degradedOnce) {
+        degradedOnce = true
+        const eff = await resolveDashboardCompany(scopeOf(authUser))
+        for (const r of eff.codes) out.add(r)
+      }
+    }
   }
   return [...out]
 }

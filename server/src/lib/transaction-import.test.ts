@@ -213,6 +213,19 @@ describe('parseTransactionWorkbook', () => {
     expect(r.summary.typeCounts).toEqual({ 应收账款: 1, 预收账款: 1 })
   })
 
+  it('无关 Sheet 穿插不影响匹配 Sheet 的解析顺序', () => {
+    const buf = makeWorkbook([
+      { name: 'PER_AR-账龄汇总表', aoa: [...AR_TITLE_ROWS, AR_HEADER, AR_SUB, arRow('330058', 'C002', '客户乙', '2203', 0, 20, [20, 0, 0, 0, 0, 0, 0, 0, 0, 0])] },
+      { name: '报表参数', aoa: [['报表名称：', '应收款账龄分析明细表']] },
+      { name: 'AR-账龄汇总表', aoa: [...AR_TITLE_ROWS, AR_HEADER, AR_SUB, arRow('330058', 'C001', '客户甲', '112201', 0, 10, [10, 0, 0, 0, 0, 0, 0, 0, 0, 0])] },
+    ])
+    const r = parseTransactionWorkbook(buf, 'test.xls', resolvers())
+    // 两阶段读取按 Sheet 名筛选：无关 Sheet 不产生记录，匹配 Sheet 保持工作簿原始顺序
+    expect(r.sheets.map((s) => s.sheetName)).toEqual(['PER_AR-账龄汇总表', 'AR-账龄汇总表'])
+    expect(r.records).toHaveLength(2)
+    expect(r.errors).toHaveLength(0)
+  })
+
   it('无汇总表 Sheet 报错', () => {
     const buf = makeWorkbook([{ name: 'Sheet1', aoa: [['a', 'b']] }])
     const r = parseTransactionWorkbook(buf, 'bad.xls', resolvers())

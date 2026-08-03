@@ -113,6 +113,8 @@ export const AdminService = {
     const created = await prisma.user.create({
       data: {
         username: input.username, displayName: input.name ?? input.username, passwordHash, roleId: role.id,
+        // 新用户首次登录须修改初始密码
+        mustChangePassword: true,
         // 提供多选范围时由新字段全权接管，companyCode 置空；否则保留旧单值路径
         companyCode: scopeCodes !== undefined ? null : (input.companyCode ?? null),
         dataScopeCodes: scopeCodes !== undefined ? scopeCodes : undefined,
@@ -192,7 +194,7 @@ export const AdminService = {
     if (!found) throw errors.notFound('用户不存在')
     await assertRoleAssignable(ctx.actorRoleId, found.roleId)
     const passwordHash = await hashPassword(newPassword)
-    await prisma.user.update({ where: { id }, data: { passwordHash, refreshTokenJti: null } })
+    await prisma.user.update({ where: { id }, data: { passwordHash, mustChangePassword: true, refreshTokenJti: null } })
     await recordAudit({ userId: ctx.userId, module: 'admin', action: 'update', targetId: id, detail: { action: 'reset_password' } }, ctx.traceId)
   },
 

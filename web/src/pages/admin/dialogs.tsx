@@ -193,7 +193,7 @@ export function UserDialog({ open, mode, user, roles, onClose }: UserDialogProps
           </div>
           {mode === 'create' && (
             <div className="space-y-1">
-              <Label htmlFor="user-password">初始密码</Label>
+              <Label htmlFor="user-password">初始密码（首次登录后须修改）</Label>
               <Input id="user-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="至少 8 位，含字母与数字" />
             </div>
           )}
@@ -468,7 +468,7 @@ export function ResetPasswordDialog({ open, user, onClose }: ResetPasswordDialog
     try {
       await resetPassword.mutateAsync({ id: user.id, newPassword: password })
       onClose()
-      window.alert(`用户「${user.name}」的密码已重置`)
+      window.alert(`用户「${user.name}」的密码已重置，首次登录须修改密码`)
     } catch (e) {
       setError(e instanceof Error ? e.message : '重置失败')
     }
@@ -479,7 +479,7 @@ export function ResetPasswordDialog({ open, user, onClose }: ResetPasswordDialog
       <DialogContent>
         <DialogHeader>
           <DialogTitle>重置密码 · {user?.name}</DialogTitle>
-          <DialogDescription>为用户 {user?.username} 设置新密码，重置后请告知其重新登录</DialogDescription>
+          <DialogDescription>为用户 {user?.username} 设置新密码，重置后其首次登录须修改密码</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1">

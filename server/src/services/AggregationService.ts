@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma'
-import { errors } from '../lib/errors'
-import { resolveScope } from '../middleware/scope'
+import { errors, AppError } from '../lib/errors'
+import { resolveScope, type DataScope } from '../middleware/scope'
 import { currentScope } from '../middleware/scope-context'
 import type { AuthUserContext } from '../types/express'
 import { OPERATING_DIMS, STATIC_DIMS } from '../lib/metric-values'
@@ -123,6 +123,90 @@ export async function resolveCompanyCodes(
     return [requestedCompany]
   }
   return base
+}
+
+/** ET0001 汇总主体编码（浙江省公司汇总，默认展示口径；无权限时降级到其他授权主体） */
+export const ET0001 = 'ET0001'
+
+/** 实际生效主体（含降级标记）：codes 为展开后的单体编码，companyCode 为实际生效主体 */
+export interface EffectiveCompany {
+  codes: string[]
+  companyCode: string | null
+  companyName: string | null
+  companyType: 'single' | 'summary' | null
+  /** 显式请求的主体越权/不存在而被替换 */
+  degraded: boolean
+}
+
+/** 主体候选行（pickDefaultCompany 的返回载体） */
+interface CompanyPick {
+  code: string
+  name: string
+  shortName: string | null
+  entityType: string
+}
+
+/**
+ * 默认主体选择：ET0001 → 首个授权汇总主体 → 首个授权单体（均按 orderNo，与前端主体下拉一致）。
+ * 汇总主体集合来自 scope.summaryCodes —— 已按「全有或全无」原则收敛，仅含成员被完整授权的汇总主体。
+ */
+export async function pickDefaultCompany(scope: DataScope): Promise<CompanyPick | null> {
+  if (scope.type === 'none') return null
+  const select = { code: true, name: true, shortName: true, entityType: true } as const
+  if (scope.type === 'all') {
+    const summaries = await prisma.company.findMany({ where: { entityType: 'summary', status: 'active' }, orderBy: { orderNo: 'asc' }, select })
+    const singles = await prisma.company.findMany({ where: { entityType: 'single', status: 'active' }, orderBy: { orderNo: 'asc' }, select })
+    return summaries.find((s) => s.code === ET0001) ?? summaries[0] ?? singles[0] ?? null
+  }
+  const summaries = await prisma.company.findMany({ where: { code: { in: scope.summaryCodes }, entityType: 'summary', status: 'active' }, orderBy: { orderNo: 'asc' }, select })
+  const et0001 = summaries.find((s) => s.code === ET0001)
+  if (et0001) return et0001
+  if (summaries[0]) return summaries[0]
+  const singles = await prisma.company.findMany({ where: { code: { in: scope.companyCodes }, entityType: 'single', status: 'active' }, orderBy: { orderNo: 'asc' }, select })
+  return singles[0] ?? null
+}
+
+/**
+ * 主体解析（看板/往来分析等默认主体降级共用）：显式请求的主体越权/不存在时优雅降级（不抛 403），
+ * 降级顺序 ET0001 → 任一授权汇总主体 → 任一授权单体；无任何授权返回空范围（前端展示空态）。
+ * 权限校验与汇总主体展开复用 resolveCompanyCodes（遵循「全有或全无」授权原则，口径不得失真）。
+ */
+export async function resolveDashboardCompany(
+  scope: Pick<AuthUserContext, 'companyCode' | 'scopeValue'> & { dataScopeCodes?: string[] | null },
+  requestedCompany?: string,
+): Promise<EffectiveCompany> {
+  if (requestedCompany) {
+    try {
+      const codes = await resolveCompanyCodes(scope, requestedCompany)
+      const company = await prisma.company.findUnique({
+        where: { code: requestedCompany },
+        select: { code: true, name: true, shortName: true, entityType: true },
+      })
+      return {
+        codes,
+        companyCode: requestedCompany,
+        companyName: company ? (company.shortName ?? company.name) : requestedCompany,
+        companyType: company?.entityType === 'summary' ? 'summary' : 'single',
+        degraded: false,
+      }
+    } catch (e) {
+      // 越权 403 / 主体不存在 404 → 降级到有权主体；其它异常（如 DB 故障）照常上抛
+      if (!(e instanceof AppError)) throw e
+    }
+  }
+  const scopeResolved = currentScope() ?? (await resolveScope(prisma, scope))
+  const picked = await pickDefaultCompany(scopeResolved)
+  if (!picked) {
+    return { codes: [], companyCode: null, companyName: null, companyType: null, degraded: !!requestedCompany }
+  }
+  const codes = await resolveCompanyCodes(scope, picked.code)
+  return {
+    codes,
+    companyCode: picked.code,
+    companyName: picked.shortName ?? picked.name,
+    companyType: picked.entityType === 'summary' ? 'summary' : 'single',
+    degraded: !!requestedCompany,
+  }
 }
 
 async function activeBatchIds(dataType: 'operating' | 'static' | 'budget'): Promise<string[]> {

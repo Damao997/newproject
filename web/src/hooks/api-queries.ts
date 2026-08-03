@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { AnalysisInput, AnalysisItem, AvailablePeriodsResult, ReportDetail, ReportListItem, ReportSectionInput, ReportVersionItem, ReportExportData } from '@/lib/api'
-import type { FilterParams } from '@/types'
+import type { FilterParams, BatchActivateCheckResult } from '@/types'
 
 /**
  * React Query hook 层：集中封装对 @/lib/api 的调用与缓存键，
@@ -307,6 +307,13 @@ export function useActivateImport() {
       // 往来批次激活后同步刷新往来分析页（批次操作与分析消费跨页联动约定）
       qc.invalidateQueries({ queryKey: ['transactions'] })
     },
+  })
+}
+
+/** 批量激活预检（只读）：返回各批次激活后将替换的已生效组合，供批量激活前确认覆盖风险 */
+export function useBatchActivateCheck() {
+  return useMutation({
+    mutationFn: (ids: string[]) => api.batchActivateCheck(ids) as Promise<BatchActivateCheckResult>,
   })
 }
 

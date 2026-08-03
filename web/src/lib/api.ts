@@ -16,13 +16,25 @@ async function refreshAccessTokenOnce(): Promise<string> {
   if (!refreshPromise) {
     refreshPromise = (async () => {
       const { refreshToken, setTokens } = useAuthStore.getState()
-      if (!refreshToken) throw new Error('无刷新令牌')
-      const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
-        refreshToken,
-      })
-      const { accessToken, refreshToken: newRefreshToken } = response.data.data
-      setTokens(accessToken, newRefreshToken)
-      return accessToken
+      if (!refreshToken) throw new Error('登录状态已失效，请重新登录')
+      try {
+        // refresh 为轮转制且后端耗时 <300ms，10s 超时仅防网络黑洞导致永久挂起
+        const response = await axios.post(
+          `${API_BASE_URL}/auth/refresh`,
+          { refreshToken },
+          { timeout: 10000 },
+        )
+        const { accessToken, refreshToken: newRefreshToken } = response.data.data
+        setTokens(accessToken, newRefreshToken)
+        return accessToken
+      } catch (e) {
+        // 提取后端统一响应中的业务消息（如“刷新令牌已失效”），无响应时区分超时与网络层错误
+        const axiosErr = e as { response?: { data?: { message?: string } }; code?: string }
+        const message = axiosErr.response?.data?.message
+        if (message) throw new Error(message)
+        if (axiosErr.code === 'ECONNABORTED') throw new Error('刷新令牌请求超时，请重新登录')
+        throw new Error('网络连接异常，请检查网络后重试')
+      }
     })().finally(() => {
       refreshPromise = null
     })
@@ -71,7 +83,7 @@ class ApiClient {
   constructor() {
     this.client = axios.create({
       baseURL: API_BASE_URL,
-      timeout: 30000,
+      timeout: 60000,
       headers: {
         'Content-Type': 'application/json',
       },
@@ -103,7 +115,8 @@ class ApiClient {
           } catch (refreshError) {
             useAuthStore.getState().logout()
             window.location.href = '/login'
-            return Promise.reject(refreshError)
+            // refreshAccessTokenOnce 已统一抛中文 Error；兜底非 Error 值
+            return Promise.reject(refreshError instanceof Error ? refreshError : new Error('登录状态已失效，请重新登录'))
           }
         }
         
@@ -120,12 +133,21 @@ class ApiClient {
       }
       return response.data.data
     } catch (err) {
-      // 优先提取后端统一响应中的业务错误信息（HTTP 非 2xx 时）
-      const message = (err as { response?: { data?: { message?: string } } }).response?.data?.message
+      const axiosErr = err as { response?: { status?: number; data?: { message?: string } }; code?: string }
+      // 优先提取后端统一响应中的业务错误信息（HTTP 非 2xx 且响应为 JSON 时）
+      const message = axiosErr.response?.data?.message
       if (message) {
         throw new Error(message)
       }
-      throw err
+      // 有响应但无 message（如 nginx 413 HTML 错误页）：按状态码给出友好提示
+      const status = axiosErr.response?.status
+      if (status) {
+        if (status === 413) throw new Error('文件过大，超过 50MB 上限')
+        throw new Error(`请求失败（HTTP ${status}）`)
+      }
+      // 无响应：区分超时与网络层错误，避免暴露 axios 裸文案 "Network Error"
+      if (axiosErr.code === 'ECONNABORTED') throw new Error('请求超时，请重试')
+      throw new Error('网络连接异常，请检查网络后重试')
     }
   }
 
@@ -168,6 +190,10 @@ class ApiClient {
     lastUpdatedAt: string
     period: string
     availablePeriods: string[]
+    companyCode: string | null
+    companyName: string | null
+    companyType: 'single' | 'summary' | null
+    degraded: boolean
   }> {
     return this.request({
       method: 'GET',
@@ -194,6 +220,10 @@ class ApiClient {
   }): Promise<{
     kpiData: KpiData[]
     trendData: TrendData[]
+    companyCode: string | null
+    companyName: string | null
+    companyType: 'single' | 'summary' | null
+    degraded: boolean
   }> {
     return this.request({
       method: 'GET',
@@ -383,6 +413,8 @@ class ApiClient {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      // 大文件上传 + 后端解析耗时长，放宽至 120s
+      timeout: 120000,
     })
   }
 
@@ -414,6 +446,15 @@ class ApiClient {
     return this.request({
       method: 'POST',
       url: `/data/imports/${id}/activate`,
+    })
+  }
+
+  /** 批量激活预检（只读）：返回各批次激活后将替换的已生效组合，供批量激活前确认覆盖风险 */
+  async batchActivateCheck(ids: string[]): Promise<BatchActivateCheckResult> {
+    return this.request({
+      method: 'POST',
+      url: '/data/imports/batch-activate-check',
+      data: { ids },
     })
   }
 
@@ -586,6 +627,8 @@ class ApiClient {
       url: '/data/imports/preview',
       data: formData,
       headers: { 'Content-Type': 'multipart/form-data' },
+      // 大文件解析耗时长，放宽至 120s
+      timeout: 120000,
     })
   }
 
@@ -1010,6 +1053,8 @@ class ApiClient {
       url: '/transactions/import/preview',
       data: formData,
       headers: { 'Content-Type': 'multipart/form-data' },
+      // 多文件批量上传 + 解析耗时长，放宽至 120s
+      timeout: 120000,
     })
   }
 
@@ -1021,6 +1066,8 @@ class ApiClient {
       url: '/transactions/import',
       data: formData,
       headers: { 'Content-Type': 'multipart/form-data' },
+      // 多文件批量上传 + 解析耗时长，放宽至 120s
+      timeout: 120000,
     })
   }
 

@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -22,7 +22,7 @@ import { Input } from '@/components/ui/input'
 import { PageContainer } from '@/components/layout/page-container'
 import { Pagination } from '@/components/data-table/pagination'
 import { PAGINATION } from '@/lib/constants'
-import { useTransactionOverview, useTransactionDetails, useTransactionAging, useInternalSummary, useInternalMirrorCheck, useTransactionPeriods, useTransactionAccounts } from '@/hooks/api-queries'
+import { useTransactionOverview, useTransactionDetails, useTransactionAging, useInternalSummary, useInternalMirrorCheck, useTransactionPeriods, useTransactionAccounts, useCompanies } from '@/hooks/api-queries'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { CompanySelect, CompanyMultiSelect } from '@/components/filters/company-select'
 import { usePermission } from '@/hooks/usePermission'
@@ -39,6 +39,24 @@ import type { TransactionDetailItem, AgingAnalysisRow, InternalSummaryRow, Inter
 const TRANSACTION_TYPES = ['应收账款', '其他应收款', '预收账款', '应付账款', '其他应付款', '预付账款']
 // 默认展示口径：浙江省公司汇总（汇总主体编码 ET0001，后端按汇总映射展开为成员合并口径）
 const DEFAULT_SUMMARY_CODE = 'ET0001'
+
+/**
+ * 默认展示主体：ET0001 → 首个授权汇总主体 → 首个授权单体。
+ * useCompanies 已按数据权限过滤（与后端 pickDefaultCompany 同源，均按 orderNo），
+ * 无 ET0001 权限时返回首个有权主体；无任何权限返回 null。
+ */
+function useDefaultCompanyCode(): string | null {
+  const { data: companies } = useCompanies()
+  return useMemo(() => {
+    const list = companies ?? []
+    const et0001 = list.find((c) => c.code === DEFAULT_SUMMARY_CODE)
+    if (et0001) return et0001.code
+    const summary = list.find((c) => c.type === 'summary')
+    if (summary) return summary.code
+    const entity = list.find((c) => c.type === 'entity')
+    return entity?.code ?? null
+  }, [companies])
+}
 // 页面子标签（与侧边栏二级菜单 ?tab= 参数对应）
 const TRANSACTION_TABS = ['overview', 'details', 'aging', 'internal', 'coverage', 'account-filter', 'collections'] as const
 type TransactionTab = (typeof TRANSACTION_TABS)[number]
@@ -160,6 +178,14 @@ function OverviewTab() {
   // 共享公司多选：同时驱动趋势图与汇总/分类卡片，空数组语义为「全部公司」；
   // 默认浙江省公司汇总（ET0001，后端按汇总映射展开为成员合并口径）
   const [selectedCompanies, setSelectedCompanies] = useState<string[]>([DEFAULT_SUMMARY_CODE])
+  const defaultCode = useDefaultCompanyCode()
+  const alignedRef = useRef(false)
+  // ET0001 无权限时对齐到有权主体（仅挂载后一次，用户手动切换后不再覆盖）
+  useEffect(() => {
+    if (alignedRef.current || !defaultCode) return
+    alignedRef.current = true
+    setSelectedCompanies((cur) => (cur.length === 1 && cur[0] === DEFAULT_SUMMARY_CODE && cur[0] !== defaultCode ? [defaultCode] : cur))
+  }, [defaultCode])
   // 期间筛选（仅作用于卡片）：空串表示跟随最新期间
   const [periodFilter, setPeriodFilter] = useState('')
   const { data: periods } = useTransactionPeriods()
@@ -271,6 +297,14 @@ function DetailsTab() {
   const [pageSize, setPageSize] = useState<number>(PAGINATION.DEFAULT_PAGE_SIZE)
   // 默认浙江省公司汇总（ET0001，后端按汇总映射展开为成员合并口径）
   const [companyFilter, setCompanyFilter] = useState(DEFAULT_SUMMARY_CODE)
+  const defaultCode = useDefaultCompanyCode()
+  const alignedRef = useRef(false)
+  // ET0001 无权限时对齐到有权主体（仅挂载后一次，用户手动切换后不再覆盖）
+  useEffect(() => {
+    if (alignedRef.current || !defaultCode) return
+    alignedRef.current = true
+    setCompanyFilter((cur) => (cur === DEFAULT_SUMMARY_CODE && cur !== defaultCode ? defaultCode : cur))
+  }, [defaultCode])
   // 空串表示跟随最新期间（默认选中最近一期有数据的期间）；'all' 为全部期间
   const [periodFilter, setPeriodFilter] = useState('')
   // 默认展示「应收账款」往来类型
@@ -402,6 +436,14 @@ function AgingTab() {
   const [analysisTarget, setAnalysisTarget] = useState<TransactionAnalysisTarget | null>(null)
   // 默认浙江省公司汇总（ET0001，后端按汇总映射展开为成员合并口径）
   const [companyFilter, setCompanyFilter] = useState(DEFAULT_SUMMARY_CODE)
+  const defaultCode = useDefaultCompanyCode()
+  const alignedRef = useRef(false)
+  // ET0001 无权限时对齐到有权主体（仅挂载后一次，用户手动切换后不再覆盖）
+  useEffect(() => {
+    if (alignedRef.current || !defaultCode) return
+    alignedRef.current = true
+    setCompanyFilter((cur) => (cur === DEFAULT_SUMMARY_CODE && cur !== defaultCode ? defaultCode : cur))
+  }, [defaultCode])
   // 空串表示跟随最新期间（默认选中最近一期有数据的期间）；期末余额为时点数，不提供跨期累加
   const [periodFilter, setPeriodFilter] = useState('')
   // 默认展示「应收账款」往来类型

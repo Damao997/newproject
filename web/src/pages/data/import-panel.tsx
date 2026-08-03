@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { usePermission } from '@/hooks/usePermission'
 import { useImports, useImport, useUploadImport, useActivateImport, usePreviewImport, useArchiveImport, usePurgeImport } from '@/hooks/api-queries'
+import { useBatchActivate, buildActivateConflictDescription } from '@/hooks/use-batch-activate'
 import { validateExcelFile } from '@/lib/file-validation'
 import { downloadImportTemplate } from '@/lib/import-template'
 import { type ImportPreviewResult } from '@/lib/api'
@@ -25,6 +26,7 @@ import {
   ShieldAlert,
   ChevronDown,
   ChevronRight,
+  Loader2,
 } from 'lucide-react'
 
 /** 批次生命周期状态中文标签 */
@@ -105,12 +107,26 @@ export function ImportPanel() {
   const archiveMutation = useArchiveImport()
   const purgeMutation = usePurgeImport()
   const [activateMsg, setActivateMsg] = useState<string | null>(null)
+  const batchActivate = useBatchActivate()
 
   const recentBatches = useMemo(() => importsData?.items ?? [], [importsData])
   const selectedBatch = useMemo(
     () => recentBatches.find((b) => b.id === selectedBatchId) ?? null,
     [recentBatches, selectedBatchId],
   )
+
+  // ---- 批次多选（仅 draft 可勾选，用于批量激活） ----
+  const [selectedBatchIds, setSelectedBatchIds] = useState<Set<string>>(new Set())
+  const selectableIds = useMemo(() => recentBatches.filter((b) => b.status === 'draft').map((b) => b.id), [recentBatches])
+  const selectedCount = useMemo(() => selectableIds.filter((id) => selectedBatchIds.has(id)).length, [selectableIds, selectedBatchIds])
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedBatchIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
 
   // 导入质量概览：跨批次聚合关键指标（按入库明细数统计）
   const qualityStats = useMemo(() => {
@@ -213,6 +229,30 @@ export function ImportPanel() {
     }
   }
 
+  /** 批量激活：预检冲突 → 确认覆盖风险 → 串行逐个激活（单批失败不中断，失败项保留勾选便于重试） */
+  const handleBatchActivate = async () => {
+    const targets = recentBatches.filter((b) => selectedBatchIds.has(b.id) && b.status === 'draft')
+    if (targets.length === 0) return
+    const batches = targets.map((b) => ({ id: b.id, filename: b.filename }))
+    setActivateMsg(null)
+    try {
+      const check = await batchActivate.checkConflicts(batches.map((b) => b.id))
+      const desc = buildActivateConflictDescription(check)
+      if (desc && !(await confirm({ title: '批量激活确认', description: desc, danger: true, confirmText: '继续激活' }))) return
+      const summary = await batchActivate.run(batches)
+      const failIds = new Set(summary.failItems.map((f) => f.id))
+      // 成功项移出勾选（失败项保留便于重试）
+      setSelectedBatchIds((prev) => new Set([...prev].filter((id) => failIds.has(id))))
+      setActivateMsg(
+        summary.failCount === 0
+          ? `批量激活完成：${summary.successCount} 个批次已全部激活生效。`
+          : `批量激活完成：成功 ${summary.successCount} 个，失败 ${summary.failCount} 个。失败批次已保留勾选，可处理后重试。`,
+      )
+    } catch (err) {
+      setActivateMsg(err instanceof Error ? err.message : '批量激活失败')
+    }
+  }
+
   const handleArchive = async (b: ImportBatch) => {
     const isActive = b.status === 'active'
     if (!(await confirm({
@@ -251,7 +291,36 @@ export function ImportPanel() {
 
   // 批次管理表列（带权限门禁的行操作）
   const batchColumns: DataTableColumn<ImportBatch>[] = useMemo(() => {
-    const cols: DataTableColumn<ImportBatch>[] = [
+    const cols: DataTableColumn<ImportBatch>[] = []
+    // 多选列（仅 draft 可勾选，供批量激活；无导入权限不展示）
+    if (canImport) {
+      cols.push({
+        key: 'select',
+        header: (
+          <input
+            type="checkbox"
+            aria-label="全选批次"
+            className="accent-primary"
+            checked={selectedCount > 0 && selectedCount === selectableIds.length}
+            ref={(el) => { if (el) el.indeterminate = selectedCount > 0 && selectedCount < selectableIds.length }}
+            disabled={selectableIds.length === 0 || batchActivate.isBusy}
+            onChange={(e) => setSelectedBatchIds(e.target.checked ? new Set(selectableIds) : new Set())}
+          />
+        ),
+        align: 'center',
+        render: (b) => (
+          <input
+            type="checkbox"
+            aria-label={`选择批次 ${b.filename}`}
+            className="accent-primary"
+            checked={selectedBatchIds.has(b.id)}
+            disabled={b.status !== 'draft' || batchActivate.isBusy}
+            onChange={() => toggleSelect(b.id)}
+          />
+        ),
+      })
+    }
+    cols.push(
       { key: 'filename', header: '文件名', cellClassName: 'font-medium' },
       { key: 'templateType', header: '模板类型', render: (b) => templateTypeLabel[b.templateType] ?? b.templateType },
       {
@@ -274,14 +343,14 @@ export function ImportPanel() {
         ),
       },
       { key: 'createdAt', header: '导入时间', render: (b) => new Date(b.createdAt).toLocaleString('zh-CN') },
-    ]
+    )
     if (canImport || canArchive || canPurgeBatch) {
       cols.push({
         key: 'actions', header: '操作', align: 'right',
         render: (b) => (
           <div className="flex items-center justify-end gap-1">
             {canImport && b.status !== 'active' && b.status !== 'purged' && (
-              <Button variant="ghost" size="sm" title="激活生效" disabled={activateMutation.isPending} onClick={() => handleRowActivate(b)}>
+              <Button variant="ghost" size="sm" title="激活生效" disabled={activateMutation.isPending || batchActivate.isBusy} onClick={() => handleRowActivate(b)}>
                 <CheckCircle className="h-4 w-4" />
               </Button>
             )}
@@ -301,7 +370,7 @@ export function ImportPanel() {
     }
     return cols
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canImport, canArchive, canPurgeBatch, activateMutation.isPending, archiveMutation.isPending, purgeMutation.isPending])
+  }, [canImport, canArchive, canPurgeBatch, activateMutation.isPending, archiveMutation.isPending, purgeMutation.isPending, selectedBatchIds, selectableIds, selectedCount, batchActivate.isBusy])
 
   return (
     <Card>
@@ -629,7 +698,25 @@ export function ImportPanel() {
 
             {/* 批次管理表：全部批次 + 激活/归档/清除（高危操作按权限显示） */}
             <div className="space-y-2">
-              <p className="text-sm font-medium">批次管理</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm font-medium">批次管理</p>
+                {canImport && selectedCount > 0 && (
+                  <Button size="sm" className="shrink-0" disabled={batchActivate.isBusy || activateMutation.isPending} onClick={handleBatchActivate}>
+                    {batchActivate.isBusy ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <CheckCircle className="mr-1 h-3 w-3" />}
+                    批量激活（{selectedCount}）
+                  </Button>
+                )}
+                {batchActivate.progress && (
+                  <span className="text-xs text-muted-foreground">
+                    正在激活 {batchActivate.progress.done}/{batchActivate.progress.total}：{batchActivate.progress.currentFilename || '-'}
+                  </span>
+                )}
+                {!batchActivate.isBusy && batchActivate.results.size > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    完成：成功 {[...batchActivate.results.values()].filter((r) => r.status === 'success').length} 个，失败 {[...batchActivate.results.values()].filter((r) => r.status === 'failed').length} 个
+                  </span>
+                )}
+              </div>
               <DataTable
                 columns={batchColumns}
                 data={recentBatches}
@@ -637,6 +724,14 @@ export function ImportPanel() {
                 dense
                 emptyText="暂无导入批次"
               />
+              {/* 批量激活失败明细（成功项随列表刷新消失，失败项保留展示原因） */}
+              {!batchActivate.isBusy && [...batchActivate.results.entries()].some(([, r]) => r.status === 'failed') && (
+                <ul className="space-y-0.5 rounded-lg border border-destructive/25 bg-destructive/[0.06] p-2 text-xs text-destructive">
+                  {[...batchActivate.results.entries()].filter(([, r]) => r.status === 'failed').map(([id, r]) => (
+                    <li key={id}>{recentBatches.find((b) => b.id === id)?.filename ?? id}：{r.error}</li>
+                  ))}
+                </ul>
+              )}
             </div>
 
             {selectedBatch && (

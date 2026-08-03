@@ -15,6 +15,11 @@ async function bootstrap(): Promise<void> {
     logger.info(undefined, `后端服务已启动：http://localhost:${config.port}（env=${config.nodeEnv}）`)
   })
 
+  // 与 nginx keepalive_timeout 65s 对齐：Node 默认 keepAliveTimeout 仅 5s，
+  // 浏览器/代理复用闲置超 5s 的连接会收到 RST，表现为网络层错误
+  server.keepAliveTimeout = 65000
+  server.headersTimeout = 70000 // 必须大于 keepAliveTimeout
+
   const shutdown = async (signal: string): Promise<void> => {
     logger.info(undefined, `收到 ${signal}，开始优雅关闭...`)
     server.close(() => logger.info(undefined, 'HTTP 服务器已关闭'))

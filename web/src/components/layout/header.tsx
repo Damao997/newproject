@@ -5,7 +5,7 @@ import { useAvailablePeriods } from '@/hooks/api-queries'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Menu, LogOut, User, CalendarRange } from 'lucide-react'
+import { Menu, LogOut, User, Key, CalendarRange } from 'lucide-react'
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -19,11 +19,11 @@ interface HeaderProps {
 }
 
 export function Header({ onMenuClick }: HeaderProps) {
-  const { user, logout } = useAuthStore()
+  const { user, logout, openPasswordDialog } = useAuthStore()
   // 全局财年选择：看板/指标/数据浏览的期间候选按此过滤；未选/失效时自动归一化为最新财年
   const fiscalYear = usePeriodStore((s) => s.fiscalYear)
   const setFiscalYear = usePeriodStore((s) => s.setFiscalYear)
-  const { data: periodsData } = useAvailablePeriods()
+  const { data: periodsData, isPending, isError } = useAvailablePeriods()
   const fiscalYears = useMemo(() => periodsData?.fiscalYears ?? [], [periodsData])
 
   // 归一化：未选（localStorage 遗留 null）或已选财年不在候选内（批次替换后失效）时，
@@ -69,9 +69,10 @@ export function Header({ onMenuClick }: HeaderProps) {
         </div>
 
         <div className="flex flex-1 shrink-0 items-center justify-end space-x-2">
-          {fiscalYears.length > 0 && (
-            <div className="flex items-center gap-1.5">
-              <CalendarRange className="hidden h-4 w-4 text-muted-foreground sm:block" />
+          {/* 全局财年选择：有候选时渲染下拉；无数据/失败时显示占位提示而非静默隐藏（避免「功能不见了」的困惑） */}
+          <div className="flex items-center gap-1.5">
+            <CalendarRange className="hidden h-4 w-4 text-muted-foreground sm:block" />
+            {fiscalYears.length > 0 ? (
               <Select
                 value={fiscalYear && fiscalYears.includes(fiscalYear) ? fiscalYear : ''}
                 onValueChange={(v) => setFiscalYear(v)}
@@ -85,8 +86,14 @@ export function Header({ onMenuClick }: HeaderProps) {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-          )}
+            ) : isPending ? (
+              <div className="h-8 w-[120px] animate-pulse rounded-md bg-muted" />
+            ) : isError ? (
+              <span className="text-xs text-muted-foreground" title="财年列表加载失败，请稍后重试">财年加载失败</span>
+            ) : (
+              <span className="text-xs text-muted-foreground" title="导入并激活经营数据后，此处可切换财年">暂无经营数据</span>
+            )}
+          </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-8 w-8 rounded-full">
@@ -110,6 +117,10 @@ export function Header({ onMenuClick }: HeaderProps) {
               <DropdownMenuItem>
                 <User className="mr-2 h-4 w-4" />
                 <span>个人资料</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => openPasswordDialog(!!user?.mustChangePassword)}>
+                <Key className="mr-2 h-4 w-4" />
+                <span>修改密码</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={logout}>

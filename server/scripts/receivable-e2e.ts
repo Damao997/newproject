@@ -33,7 +33,7 @@ async function req(method: string, url: string, body?: unknown, form?: FormData)
 
 async function main() {
   // 1) 登录
-  const login = (await req('POST', '/auth/login', { username: 'superadmin', password: process.env.SEED_DEFAULT_PASSWORD || 'Yipinhui@2026' })) as { accessToken: string }
+  const login = (await req('POST', '/auth/login', { username: 'superadmin', password: 'Superadmin@2026' })) as { accessToken: string }
   token = login.accessToken
   console.log('✔ 登录成功')
 

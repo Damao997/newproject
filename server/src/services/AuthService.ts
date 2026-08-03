@@ -26,6 +26,8 @@ export interface FrontendUser {
   permissions: string[]
   dataScope: string
   status: 'active' | 'inactive'
+  /** 首次登录强制改密：true 时业务接口被拦截，须先改密 */
+  mustChangePassword: boolean
   lastLoginAt?: string
   createdAt: string
   updatedAt: string
@@ -83,6 +85,7 @@ function toFrontendUser(user: UserWithRole): FrontendUser {
     permissions,
     dataScope,
     status: user.status,
+    mustChangePassword: user.mustChangePassword,
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
   }
@@ -232,7 +235,8 @@ export const AuthService = {
     const passwordHash = await hashPassword(newPassword)
     await prisma.user.update({
       where: { id: user.id },
-      data: { passwordHash, refreshTokenJti: null },
+      // 改密成功后清除强制改密标志，并吊销 refresh token 强制重新登录
+      data: { passwordHash, mustChangePassword: false, refreshTokenJti: null },
     })
     await recordAudit(
       { userId, module: 'auth', action: 'update', targetId: userId, detail: { field: 'password' }, ip: meta.ip ?? null, userAgent: meta.userAgent ?? null },

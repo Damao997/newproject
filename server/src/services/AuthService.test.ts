@@ -34,6 +34,7 @@ function makeUser(overrides: Record<string, unknown> = {}) {
     roleId: 'r-admin',
     companyCode: null,
     status: 'active',
+    mustChangePassword: false,
     refreshTokenJti: null,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-02T00:00:00Z'),
@@ -113,6 +114,20 @@ describe('AuthService.login', () => {
     const passwordHash = await hashPassword('Yipinhui@2026')
     mocks.prisma.user.findUnique.mockResolvedValue(makeUser({ passwordHash, status: 'inactive' }))
     await expect(AuthService.login('alice', 'Yipinhui@2026')).rejects.toMatchObject({ code: 401 })
+  })
+
+  it('mustChangePassword=true 时登录返回标志，供前端强制改密', async () => {
+    const passwordHash = await hashPassword('Yipinhui@2026')
+    mocks.prisma.user.findUnique.mockResolvedValue(makeUser({ passwordHash, mustChangePassword: true }))
+    const result = await AuthService.login('alice', 'Yipinhui@2026')
+    expect(result.user.mustChangePassword).toBe(true)
+  })
+
+  it('mustChangePassword=false 时登录返回 false 标志', async () => {
+    const passwordHash = await hashPassword('Yipinhui@2026')
+    mocks.prisma.user.findUnique.mockResolvedValue(makeUser({ passwordHash, mustChangePassword: false }))
+    const result = await AuthService.login('alice', 'Yipinhui@2026')
+    expect(result.user.mustChangePassword).toBe(false)
   })
 })
 
@@ -197,14 +212,14 @@ describe('AuthService.getProfile', () => {
 })
 
 describe('AuthService.changePassword', () => {
-  it('原密码正确 → 更新哈希并清空 refresh jti', async () => {
+  it('原密码正确 → 更新哈希并清除强制改密标志、清空 refresh jti', async () => {
     const passwordHash = await hashPassword('old-pass-123')
-    mocks.prisma.user.findUnique.mockResolvedValue({ id: 'u1', status: 'active', passwordHash })
+    mocks.prisma.user.findUnique.mockResolvedValue({ id: 'u1', status: 'active', mustChangePassword: true, passwordHash })
     await AuthService.changePassword('u1', 'old-pass-123', 'new-pass-456')
     expect(mocks.prisma.user.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'u1' },
-        data: expect.objectContaining({ refreshTokenJti: null }),
+        data: expect.objectContaining({ mustChangePassword: false, refreshTokenJti: null }),
       }),
     )
   })

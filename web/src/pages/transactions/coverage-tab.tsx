@@ -11,6 +11,8 @@ import {
 import { cn } from '@/lib/utils'
 import { usePermission } from '@/hooks/usePermission'
 import { useTransactionImportCoverage, useActivateImport } from '@/hooks/api-queries'
+import { useBatchActivate, buildActivateConflictDescription } from '@/hooks/use-batch-activate'
+import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { AlertTriangle, CheckCircle2, Grid3X3, Loader2, RefreshCw } from 'lucide-react'
 import type { TransactionCoverageCell } from '@/types'
@@ -41,6 +43,41 @@ export function CoverageTab() {
   const { getDisplayName } = useCompanyDisplayName()
   const [activatingId, setActivatingId] = useState<string | null>(null)
   const [activateError, setActivateError] = useState('')
+  const { confirm, element: confirmElement } = useConfirm()
+  const batchActivate = useBatchActivate()
+  // 待激活批次多选（用于批量激活）
+  const [selectedDraftIds, setSelectedDraftIds] = useState<Set<string>>(new Set())
+
+  const toggleDraftSelect = (id: string) => {
+    setSelectedDraftIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  /** 批量激活：预检冲突 → 确认覆盖风险 → 串行逐个激活（单批失败不中断，失败项保留勾选便于重试） */
+  const handleBatchActivate = async () => {
+    const targets = draftBatches.filter((b) => selectedDraftIds.has(b.id))
+    if (targets.length === 0) return
+    const batches = targets.map((b) => ({ id: b.id, filename: b.filename }))
+    setActivateError('')
+    try {
+      const check = await batchActivate.checkConflicts(batches.map((b) => b.id))
+      const desc = buildActivateConflictDescription(check)
+      if (desc && !(await confirm({ title: '批量激活确认', description: desc, danger: true, confirmText: '继续激活' }))) return
+      const summary = await batchActivate.run(batches)
+      const failIds = new Set(summary.failItems.map((f) => f.id))
+      // 成功项移出勾选（失败项保留便于重试）；激活后覆盖矩阵自动刷新（激活 mutation 已失效 transactions 查询）
+      setSelectedDraftIds((prev) => new Set([...prev].filter((id) => failIds.has(id))))
+      if (summary.failCount > 0) {
+        setActivateError(`激活完成：成功 ${summary.successCount} 个，失败 ${summary.failCount} 个。失败批次已保留勾选，可处理后重试。`)
+      }
+    } catch (e) {
+      setActivateError(e instanceof Error ? e.message : '批量激活失败')
+    }
+  }
 
   const cellMap = useMemo(() => {
     const m = new Map<string, TransactionCoverageCell>()
@@ -87,27 +124,75 @@ export function CoverageTab() {
           <div className="flex items-center gap-2 text-sm font-medium text-warning-strong">
             <AlertTriangle className="h-4 w-4" />
             有 {draftBatches.length} 个往来批次已上传未激活，未激活数据不参与分析
+            {canImport && (
+              <span className="ml-auto flex shrink-0 items-center gap-2">
+                <label className="flex cursor-pointer items-center gap-1.5 text-xs font-normal">
+                  <input
+                    type="checkbox"
+                    className="accent-primary"
+                    checked={draftBatches.length > 0 && draftBatches.every((b) => selectedDraftIds.has(b.id))}
+                    disabled={batchActivate.isBusy}
+                    onChange={(e) => setSelectedDraftIds(e.target.checked ? new Set(draftBatches.map((b) => b.id)) : new Set())}
+                  />
+                  全选
+                </label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 border-warning/50 px-2 text-xs"
+                  disabled={selectedDraftIds.size === 0 || batchActivate.isBusy || activatingId !== null}
+                  onClick={handleBatchActivate}
+                >
+                  {batchActivate.isBusy ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <CheckCircle2 className="mr-1 h-3 w-3" />}
+                  批量激活（{selectedDraftIds.size}）
+                </Button>
+              </span>
+            )}
           </div>
+          {batchActivate.progress && (
+            <p className="mt-1 text-xs text-warning-strong/70">
+              正在激活 {batchActivate.progress.done}/{batchActivate.progress.total}：{batchActivate.progress.currentFilename || '-'}
+            </p>
+          )}
           <ul className="mt-2 space-y-1.5">
-            {draftBatches.map((b) => (
-              <li key={b.id} className="flex items-center gap-3 text-sm text-warning-strong">
-                <span className="truncate">{b.filename}</span>
-                <span className="shrink-0 text-xs text-warning-strong/70">
-                  {b.detailCount} 条 · {new Date(b.createdAt).toLocaleDateString('zh-CN')}
-                </span>
-                {canImport && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="ml-auto h-6 shrink-0 border-warning/50 px-2 text-xs"
-                    disabled={activatingId !== null}
-                    onClick={() => handleActivate(b.id)}
-                  >
-                    {activatingId === b.id ? <Loader2 className="h-3 w-3 animate-spin" /> : '激活'}
-                  </Button>
-                )}
-              </li>
-            ))}
+            {draftBatches.map((b) => {
+              const batchResult = batchActivate.results.get(b.id)
+              const batchActivating = batchActivate.isBusy && batchActivate.progress?.currentId === b.id
+              return (
+                <li key={b.id} className="flex items-center gap-3 text-sm text-warning-strong">
+                  {canImport && (
+                    <input
+                      type="checkbox"
+                      className="shrink-0 accent-primary"
+                      checked={selectedDraftIds.has(b.id)}
+                      disabled={batchActivate.isBusy}
+                      onChange={() => toggleDraftSelect(b.id)}
+                    />
+                  )}
+                  <span className="truncate">{b.filename}</span>
+                  <span className="shrink-0 text-xs text-warning-strong/70">
+                    {b.detailCount} 条 · {new Date(b.createdAt).toLocaleDateString('zh-CN')}
+                  </span>
+                  {canImport && (batchResult?.status === 'success' ? (
+                    <span className="ml-auto flex shrink-0 items-center gap-1 text-xs text-success-strong">
+                      <CheckCircle2 className="h-3 w-3" />已激活
+                    </span>
+                  ) : batchResult?.status === 'failed' ? (
+                    <span className="ml-auto shrink-0 max-w-[220px] truncate text-xs text-destructive" title={batchResult.error}>激活失败：{batchResult.error}</span>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="ml-auto h-6 shrink-0 border-warning/50 px-2 text-xs"
+                      disabled={activatingId !== null || batchActivate.isBusy}
+                      onClick={() => handleActivate(b.id)}
+                    >
+                      {batchActivating || activatingId === b.id ? <Loader2 className="h-3 w-3 animate-spin" /> : '激活'}
+                    </Button>
+                  ))}
+                </li>
+              )
+            })}
           </ul>
           {activateError && <p className="mt-1 text-xs text-destructive">{activateError}</p>}
         </div>
@@ -212,6 +297,7 @@ export function CoverageTab() {
           </div>
         </CardContent>
       </Card>
+      {confirmElement}
     </div>
   )
 }

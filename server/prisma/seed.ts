@@ -157,25 +157,26 @@ const ROLES: RoleSeed[] = [
 
 // ---- 公司主数据：由 seed-companies.ts 从《分析主体及汇总映射.xlsx》导入（EN 单体 + ET 汇总 + 聚合映射）----
 
-// ---- 演示用户（每角色一个）----
+// ---- 演示用户（每角色一个，密码为各自独立的初始口令，仅本地开发）----
 interface UserSeed {
   username: string
   displayName: string
   roleCode: string
+  /** 独立初始口令（至少 8 位且含字母与数字） */
+  password: string
   companyCode?: string
 }
 
 const USERS: UserSeed[] = [
-  { username: 'superadmin', displayName: '超级管理员', roleCode: 'superadmin' },
-  { username: 'admin', displayName: '系统管理员', roleCode: 'admin' },
-  { username: 'finance.manager', displayName: '财务主管-张三', roleCode: 'finance_manager', companyCode: 'EN330059' },
-  { username: 'dept.manager', displayName: '部门经理-李四', roleCode: 'department_manager', companyCode: 'EN330059' },
-  { username: 'viewer', displayName: '查看者-王五', roleCode: 'viewer', companyCode: 'EN330058' },
-  { username: 'analyst.it', displayName: '财务分析师-赵六', roleCode: 'finance_analyst_it' },
+  { username: 'superadmin', displayName: '超级管理员', roleCode: 'superadmin', password: 'Superadmin@2026' },
+  { username: 'admin', displayName: '系统管理员', roleCode: 'admin', password: 'Admin@2026' },
+  { username: 'finance.manager', displayName: '财务主管-张三', roleCode: 'finance_manager', companyCode: 'EN330059', password: 'Finance2026@' },
+  { username: 'dept.manager', displayName: '部门经理-李四', roleCode: 'department_manager', companyCode: 'EN330059', password: 'Dept2026@' },
+  { username: 'viewer', displayName: '查看者-王五', roleCode: 'viewer', companyCode: 'EN330058', password: 'Viewer2026@' },
+  { username: 'analyst.it', displayName: '财务分析师-赵六', roleCode: 'finance_analyst_it', password: 'Analyst2026@' },
 ]
 
 async function main(): Promise<void> {
-  const defaultPassword = process.env.SEED_DEFAULT_PASSWORD || 'Yipinhui@2026'
   const bcryptCost = Number(process.env.BCRYPT_COST || 12)
 
   console.log('[seed] 开始种子数据写入...')
@@ -217,17 +218,18 @@ async function main(): Promise<void> {
     console.log(`[seed] 角色 ${r.code} 权限 ${r.grants.length} 条 完成`)
   }
 
-  // 3) 演示用户（密码 bcrypt 哈希）
-  const passwordHash = await bcrypt.hash(defaultPassword, bcryptCost)
+  // 3) 演示用户（每用户独立密码 bcrypt 哈希，禁止共享同一哈希）
   for (const u of USERS) {
     const role = await prisma.role.findUnique({ where: { code: u.roleCode } })
     if (!role) throw new Error(`角色不存在：${u.roleCode}`)
+    const passwordHash = await bcrypt.hash(u.password, bcryptCost)
     await prisma.user.upsert({
       where: { username: u.username },
       update: {
         displayName: u.displayName,
         roleId: role.id,
         companyCode: u.companyCode ?? null,
+        // 不更新密码：保护已通过界面重置过密码的用户
       },
       create: {
         username: u.username,
@@ -237,9 +239,9 @@ async function main(): Promise<void> {
         companyCode: u.companyCode ?? null,
       },
     })
+    console.log(`[seed] 演示用户 ${u.username} 初始口令（仅本地开发）：${u.password}`)
   }
   console.log(`[seed] 演示用户 ${USERS.length} 个 完成`)
-  console.log(`[seed] 演示用户初始口令（仅本地开发）：${defaultPassword}`)
 
   // 4) 领域数据：期间维度 / 科目 / 指标 / 事实
   await seedDomain(prisma)

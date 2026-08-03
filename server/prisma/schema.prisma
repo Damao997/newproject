@@ -650,6 +650,8 @@ model User {
   // 多选数据范围：公司编码数组（可混合 EN 单体与 ET 汇总），优先于 companyCode 生效
   dataScopeCodes  Json?        @map("data_scope_codes") @db.JsonB
   status          RecordStatus @default(active)
+  // 首次登录强制改密：管理员创建/重置密码后置 true，改密成功后置 false
+  mustChangePassword Boolean     @default(false) @map("must_change_password")
   refreshTokenJti String?      @map("refresh_token_jti")
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")

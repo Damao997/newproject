@@ -9,6 +9,8 @@ export interface User {
   /** 多选数据范围编码数组（可混合单体与汇总主体），管理列表接口下发 */
   dataScopeCodes?: string[]
   status: 'active' | 'inactive'
+  /** 首次登录强制改密：true 时业务接口被拦截，须先修改密码 */
+  mustChangePassword?: boolean
   lastLoginAt?: string
   createdAt: string
   updatedAt: string
@@ -238,10 +240,14 @@ export interface ProductBudgetRow {
   profit: ProductBudgetMetric
 }
 
-/** 品类预算达成接口响应 */
+/** 品类预算达成接口响应（companyCode/companyName/companyType/degraded 为看板实际生效主体，越权时自动降级） */
 export interface ProductBudgetResponse {
   period: string
   rows: ProductBudgetRow[]
+  companyCode: string | null
+  companyName: string | null
+  companyType: 'single' | 'summary' | null
+  degraded: boolean
 }
 
 /** 主体预算达成行：主体（单体公司/汇总主体）+ 收入/毛利/净利润各一组口径值 */
@@ -596,6 +602,35 @@ export interface TransactionImportUploadResult {
   filename: string
   batch: ImportBatch | null
   error: string | null
+}
+
+// ===== 批量激活预检（激活冲突检测） =====
+
+/** 激活冲突项：transaction 为 (公司, 期间, 往来类型) 三元组；operating/static 为期间；budget/inventory 为整体替换文案 */
+export interface ActivateConflict {
+  companyCode?: string
+  period?: string
+  transactionType?: string
+  /** 已生效数据中的现有笔数（transaction 类型） */
+  existingCount?: number
+  /** 整体替换场景的展示文案（budget 财年 / inventory 存货数据） */
+  label?: string
+}
+
+/** 批量激活预检结果：单批次激活后将替换的已生效组合 */
+export interface BatchActivateCheckItem {
+  id: string
+  filename: string
+  /** draft=可激活；active/archived/purged=不可激活；不存在时为空字符串 */
+  status: string
+  conflictCount: number
+  conflicts: ActivateConflict[]
+  /** 选中批次之间互相重叠的三元组数（激活顺序靠后的覆盖靠前的） */
+  crossBatchConflictCount: number
+}
+
+export interface BatchActivateCheckResult {
+  results: BatchActivateCheckItem[]
 }
 
 // ===== 催收管理 =====

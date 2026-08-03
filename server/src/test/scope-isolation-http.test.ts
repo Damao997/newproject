@@ -123,10 +123,13 @@ describe('数据范围隔离 HTTP 端到端（真实 DB）', () => {
     expect(item?.totalClosingBalance).toBe(1000)
   })
 
-  it('往来明细：显式请求范围外公司 → 403', async () => {
+  it('往来明细：显式请求范围外公司 → 降级为授权主体（不报错、不返回越权数据）', async () => {
     if (!dbReady) return
     const res = await auth(request(app).get(`/api/v1/transactions/details?companyCode=${CO_OUT}&period=${PERIOD}`))
-    expect(res.status).toBe(403)
+    expect(res.status).toBe(200)
+    const codes = new Set((res.body.data.items as Array<{ companyCode: string }>).map((r) => r.companyCode))
+    expect(codes.has(CO_OUT)).toBe(false)
+    expect(codes.has(CO_IN)).toBe(true)
   })
 
   it('往来明细：不传公司时不返回范围外公司的行', async () => {

@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma'
-import { AggregationService, flattenValueTree, resolveCompanyCodes } from './AggregationService'
+import { AggregationService, flattenValueTree, resolveCompanyCodes, resolveDashboardCompany } from './AggregationService'
 import { latestOperatingPeriod } from './IndicatorsService'
 import { OPERATING_DIMS } from '../lib/metric-values'
 import { fiscalYearStartPeriod, fiscalYearLabel, periodsInRange, formatPeriod, parsePeriod } from '../lib/period'
@@ -416,25 +416,52 @@ async function unacknowledgedAlerts(companyCodes: string[]): Promise<DashboardAl
 const AR_TYPE = '应收账款'
 
 export const DashboardService = {
-  async getOverview(scope: Scope, params: { period?: string; companyCode?: string } = {}): Promise<{ kpiData: Kpi[]; trendData: Trend[]; alerts: DashboardAlert[]; lastUpdatedAt: string; period: string; availablePeriods: string[] }> {
-    // companyCode 支持单体/汇总主体：resolveCompanyCodes 内做展开与越权 403
-    const [companyCodes, periods] = await Promise.all([resolveCompanyCodes(scope, params.companyCode), availablePeriods()])
+  async getOverview(scope: Scope, params: { period?: string; companyCode?: string } = {}): Promise<{
+    kpiData: Kpi[]
+    trendData: Trend[]
+    alerts: DashboardAlert[]
+    lastUpdatedAt: string
+    period: string
+    availablePeriods: string[]
+    companyCode: string | null
+    companyName: string | null
+    companyType: 'single' | 'summary' | null
+    degraded: boolean
+  }> {
+    // companyCode 支持单体/汇总主体：resolveDashboardCompany 内做展开与越权降级（不抛 403）
+    const [eff, periods] = await Promise.all([resolveDashboardCompany(scope, params.companyCode), availablePeriods()])
     // 选定期仅接受可用期间内的值，缺省取最新期
     const period = (params.period && periods.includes(params.period) ? params.period : periods[periods.length - 1]) ?? (await latestOperatingPeriod())
-    const { kpiData, trendData } = await buildDashboardData(companyCodes, period, periods)
+    const subject = { companyCode: eff.companyCode, companyName: eff.companyName, companyType: eff.companyType, degraded: eff.degraded }
+    // 无任何数据权限：返回空数据（前端展示空态），而非全 0 卡片
+    if (eff.codes.length === 0) {
+      return { kpiData: [], trendData: [], alerts: [], lastUpdatedAt: new Date().toISOString(), period, availablePeriods: periods, ...subject }
+    }
+    const { kpiData, trendData } = await buildDashboardData(eff.codes, period, periods)
 
     const [alerts, lastBatch] = await Promise.all([
-      unacknowledgedAlerts(companyCodes),
+      unacknowledgedAlerts(eff.codes),
       prisma.importBatch.findFirst({ where: { lifecycleStatus: 'active' }, orderBy: { updatedAt: 'desc' }, select: { updatedAt: true } }),
     ])
 
-    return { kpiData, trendData, alerts, lastUpdatedAt: (lastBatch?.updatedAt ?? new Date()).toISOString(), period, availablePeriods: periods }
+    return { kpiData, trendData, alerts, lastUpdatedAt: (lastBatch?.updatedAt ?? new Date()).toISOString(), period, availablePeriods: periods, ...subject }
   },
 
-  async getDrill(scope: Scope, params: { companyCode?: string; period?: string }): Promise<{ kpiData: Kpi[]; trendData: Trend[] }> {
-    const [companyCodes, periods] = await Promise.all([resolveCompanyCodes(scope, params.companyCode), availablePeriods()])
+  async getDrill(scope: Scope, params: { companyCode?: string; period?: string }): Promise<{
+    kpiData: Kpi[]
+    trendData: Trend[]
+    companyCode: string | null
+    companyName: string | null
+    companyType: 'single' | 'summary' | null
+    degraded: boolean
+  }> {
+    const [eff, periods] = await Promise.all([resolveDashboardCompany(scope, params.companyCode), availablePeriods()])
     const period = params.period || periods[periods.length - 1] || (await latestOperatingPeriod())
-    return buildDashboardData(companyCodes, period, periods)
+    if (eff.codes.length === 0) {
+      return { kpiData: [], trendData: [], companyCode: null, companyName: null, companyType: null, degraded: eff.degraded }
+    }
+    const { kpiData, trendData } = await buildDashboardData(eff.codes, period, periods)
+    return { kpiData, trendData, companyCode: eff.companyCode, companyName: eff.companyName, companyType: eff.companyType, degraded: eff.degraded }
   },
 
   /** 最新期所属财年的趋势（months 传入时截取末尾 N 个月） */
@@ -450,11 +477,22 @@ export const DashboardService = {
    * 毛利列取名称镜像科目（"XX收入"→"XX毛利"，公式层已计算）；未配置的科目不展示。
    * 月度/累计、月度预算/年度预算两对口径由前端按模式组合展示（后端一次返回全字段）。
    */
-  async getProductBudget(scope: Scope, params: { period?: string; companyCode?: string } = {}): Promise<{ period: string; rows: ProductBudgetRow[] }> {
-    const [companyCodes, periods] = await Promise.all([resolveCompanyCodes(scope, params.companyCode), availablePeriods()])
+  async getProductBudget(scope: Scope, params: { period?: string; companyCode?: string } = {}): Promise<{
+    period: string
+    rows: ProductBudgetRow[]
+    companyCode: string | null
+    companyName: string | null
+    companyType: 'single' | 'summary' | null
+    degraded: boolean
+  }> {
+    // 越权主体自动降级到有权主体（与 getOverview 同源策略）
+    const [eff, periods] = await Promise.all([resolveDashboardCompany(scope, params.companyCode), availablePeriods()])
     const period = (params.period && periods.includes(params.period) ? params.period : periods[periods.length - 1]) ?? (await latestOperatingPeriod())
+    if (eff.codes.length === 0) {
+      return { period, rows: [], companyCode: null, companyName: null, companyType: null, degraded: eff.degraded }
+    }
     const [tree, categories] = await Promise.all([
-      AggregationService.buildOperatingTree(companyCodes, period),
+      AggregationService.buildOperatingTree(eff.codes, period),
       prisma.productCategory.findMany({
         where: { status: 'active' },
         orderBy: { sortOrder: 'asc' },
@@ -465,7 +503,7 @@ export const DashboardService = {
     const incomeRoots = tree.filter((n) => n.category === '收入')
     const profitByName = new Map(flat.filter((n) => n.category === '毛利').map((n) => [n.name, n]))
     const { rows } = matchProductCategories(categories, incomeRoots, profitByName)
-    return { period, rows }
+    return { period, rows, companyCode: eff.companyCode, companyName: eff.companyName, companyType: eff.companyType, degraded: eff.degraded }
   },
 
   /**
@@ -481,17 +519,17 @@ export const DashboardService = {
     }
     const mode: 'single' | 'summary' = params.mode === 'summary' ? 'summary' : 'single'
     const period = (params.period && periods.includes(params.period) ? params.period : periods[periods.length - 1]) ?? (await latestOperatingPeriod())
-    // 指定主体：汇总主体展开为成员明细（每成员一行，供公司分析展示）；单体公司返回自身一行
+    // 指定主体：汇总主体展开为成员明细（每成员一行，供公司分析展示）；单体公司返回自身一行；
+    // 越权主体自动降级到有权主体（不抛 403）
     if (params.companyCode) {
-      const company = await prisma.company.findUnique({
-        where: { code: params.companyCode },
-        select: { code: true, name: true, shortName: true, entityType: true },
-      })
-      if (company?.entityType === 'summary') {
-        // 汇总主体：展开成员后逐成员构建（越权 403 由 resolveCompanyCodes 透传）
-        const memberCodes = await resolveCompanyCodes(scope, params.companyCode)
+      const eff = await resolveDashboardCompany(scope, params.companyCode)
+      if (eff.codes.length === 0 || eff.companyCode === null) {
+        return { period, mode, rows: [] }
+      }
+      if (eff.companyType === 'summary') {
+        // 汇总主体：eff.codes 即展开后的成员单体，逐成员构建
         const members = await prisma.company.findMany({
-          where: { code: { in: memberCodes }, status: 'active' },
+          where: { code: { in: eff.codes }, status: 'active' },
           select: { code: true, name: true, shortName: true },
         })
         const rows = (await Promise.all(members.map(async (m): Promise<SubjectBudgetRow | null> => {
@@ -511,21 +549,15 @@ export const DashboardService = {
         }))).filter((r): r is SubjectBudgetRow => r !== null)
         return { period, mode, rows }
       }
-      // 单体公司：解析后返回该主体一行（越权 403 透传）
-      let codes: string[]
-      try {
-        codes = await resolveCompanyCodes(scope, params.companyCode)
-      } catch (e) {
-        throw e
-      }
-      const tree = await AggregationService.buildOperatingTree(codes, period)
+      // 单体公司：直接返回该主体一行
+      const tree = await AggregationService.buildOperatingTree(eff.codes, period)
       const nodes = metricNodes(tree)
       return {
         period,
         mode,
         rows: [{
-          code: params.companyCode,
-          name: company ? (company.shortName ?? company.name) : params.companyCode,
+          code: eff.companyCode,
+          name: eff.companyName ?? eff.companyCode,
           income: productMetric(nodes.revenue),
           profit: productMetric(nodes.profit),
           netProfit: productMetric(nodes.netProfit),

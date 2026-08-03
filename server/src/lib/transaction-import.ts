@@ -446,26 +446,37 @@ export function parseTransactionWorkbook(buffer: Buffer, sourceFile: string, res
     dataRowCount: 0,
     summary: { typeCounts: {}, companies: [], periods: [], totalClosingBalance: 0, duplicateCount: 0, duplicateSamples: [], counterpartyCount: 0, internalCount: 0 },
   }
+
+  // 阶段一：仅读取 Sheet 名目录（bookSheets 不解数据，毫秒级、内存极小），
+  // 先按名称筛选目标 Sheet，避免大型工作簿（大量无关 Sheet）被全量解析驻留内存
+  let selectedNames: string[]
+  try {
+    const meta = XLSX.read(buffer, { type: 'buffer', bookSheets: true })
+    selectedNames = meta.SheetNames.filter((n) => matchSummarySheet(n) !== null)
+  } catch {
+    result.errors.push({ sheet: '-', row: 0, column: '-', message: '文件解析失败，请检查文件格式' })
+    return result
+  }
+  if (selectedNames.length === 0) {
+    result.errors.push({ sheet: '-', row: 0, column: '-', message: '未找到账龄汇总表 Sheet（如「AR-账龄汇总表」），请确认文件为六大往来账龄报表' })
+    return result
+  }
+
+  // 阶段二：仅解析选中的 Sheet（sheets 选项），未匹配 Sheet 的数据不驻留内存
   let wb: XLSX.WorkBook
   try {
-    wb = XLSX.read(buffer, { type: 'buffer', cellDates: true })
+    wb = XLSX.read(buffer, { type: 'buffer', cellDates: true, sheets: selectedNames })
   } catch {
     result.errors.push({ sheet: '-', row: 0, column: '-', message: '文件解析失败，请检查文件格式' })
     return result
   }
 
-  let matched = 0
-  for (const sheetName of wb.SheetNames) {
-    const typeInfo = matchSummarySheet(sheetName)
-    if (!typeInfo) continue
-    matched++
+  // selectedNames 由 SheetNames.filter 生成，保持工作簿原始顺序
+  for (const sheetName of selectedNames) {
+    const typeInfo = matchSummarySheet(sheetName)!
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, blankrows: false, defval: null }) as unknown[][]
     const info = parseSummarySheet(rows, sheetName, typeInfo, sourceFile, resolvers, result)
     result.sheets.push(info)
-  }
-  if (matched === 0) {
-    result.errors.push({ sheet: '-', row: 0, column: '-', message: '未找到账龄汇总表 Sheet（如「AR-账龄汇总表」），请确认文件为六大往来账龄报表' })
-    return result
   }
 
   mergeDuplicates(result)

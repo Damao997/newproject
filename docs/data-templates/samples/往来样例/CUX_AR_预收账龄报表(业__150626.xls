@@ -1,0 +1,463 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+<DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
+<Version>14.00</Version>
+</DocumentProperties>
+<OfficeDocumentSettings xmlns="urn:schemas-microsoft-com:office:office">
+<AllowPNG/>
+</OfficeDocumentSettings>
+<ExcelWorkbook xmlns="urn:schemas-microsoft-com:office:excel">
+<WindowHeight>9375</WindowHeight>
+<WindowWidth>9705</WindowWidth>
+<WindowTopX>270</WindowTopX>
+<WindowTopY>615</WindowTopY>
+<ActiveSheet>0</ActiveSheet>
+<ProtectStructure>False</ProtectStructure>
+<ProtectWindows>False</ProtectWindows>
+</ExcelWorkbook>
+<Styles>
+<Style ss:ID="normal">
+             <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+              <Borders>
+              <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+              <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+              <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+              <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+             </Borders>
+             <NumberFormat ss:Format="#,##0.00_ "/>
+             <Font ss:FontName="宋体" x:CharSet="134" ss:Size="11" ss:Color="#000000"/>
+             <Protection ss:Protected="0"/>
+            </Style>
+            <Style ss:ID="title">
+             <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+              <Borders>
+              <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+              <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+              <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+              <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+             </Borders>
+             <Font ss:FontName="宋体" x:CharSet="134" ss:Size="9" ss:Color="#000000"/>
+             <Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/>
+            </Style>
+           
+<Style ss:ID="s44">
+              <Alignment ss:Vertical="Top"/>
+               <Font ss:FontName="宋体" x:CharSet="134" ss:Color="#000000" ss:Bold="1"/>
+               </Style>
+            <Style ss:ID="s42">
+               <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+               <Font ss:FontName="宋体" x:CharSet="134" ss:Color="#000000"/>
+               </Style>
+<Style ss:ID="s16" ss:Name="千位分隔">
+             <NumberFormat ss:Format="_ * #,##0.00_ ;_ * \-#,##0.00_ ;_ * &quot;-&quot;??_ ;_ @_ "/>
+            </Style>
+            <Style ss:ID="lstr" ss:Name="行字符">
+             <Alignment ss:Horizontal="Left" ss:Vertical="Bottom"/>
+              <Borders>
+              <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+              <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+              <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+              <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+              </Borders>
+              <Font ss:FontName="宋体" x:CharSet="134" ss:Size="9" ss:Color="#000000"/>
+             </Style>
+            <Style ss:ID="lamt" ss:Parent="s16" ss:Name="行金额">
+              <Alignment ss:Vertical="Bottom"/>
+               <Borders>
+               <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+               <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+               <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+               <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+               </Borders>
+               <Font ss:FontName="宋体" x:CharSet="134" ss:Size="9" ss:Color="#000000"/>
+               <NumberFormat ss:Format="#,##0.00"/>
+             </Style>
+              <Style ss:ID="lother" ss:Name="行明细科目其他">
+              <Borders>
+              <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+              <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+              <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+              <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+              </Borders>
+              <Font ss:FontName="宋体" x:CharSet="134" ss:Size="9" ss:Color="#FF0000"/>
+            </Style>
+           <Style ss:ID="lsum_1" ss:Name="明细科目小计">
+              <Borders>
+              <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+              <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+              <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+              <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+              </Borders>
+              <Font ss:FontName="宋体" x:CharSet="134" ss:Size="9" ss:Color="#000000"
+              ss:Bold="1"/>
+            </Style>
+            <Style ss:ID="tage" ss:Name="标题账龄段">
+            <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+             <Borders>
+             <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+             <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+             <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+             <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+             </Borders>
+             <Font ss:FontName="微软雅黑" x:CharSet="134" x:Family="Swiss" ss:Size="9"
+              ss:Color="#000000" ss:Bold="1"/>
+             <Interior ss:Color="#8DB4E2" ss:Pattern="Solid"/>
+             </Style>
+             <Style ss:ID="tcve" ss:Name="标题">
+              <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+               <Borders>
+               <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+               <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+               <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+               </Borders>
+               <Font ss:FontName="微软雅黑" x:CharSet="134" x:Family="Swiss" ss:Size="9"
+               ss:Color="#000000" ss:Bold="1"/>
+               <Interior ss:Color="#8DB4E2" ss:Pattern="Solid"/>
+               </Style>
+               <Style ss:ID="pcmpperson" ss:Name="公司及制表人">
+                 <Alignment ss:Horizontal="Left" ss:Vertical="Bottom"/>
+                 <Borders>
+                 <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+                 <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+                 <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+                 </Borders>
+                 <Font ss:FontName="宋体" x:CharSet="134" ss:Size="9" ss:Color="#000000"/>
+               </Style>
+               <Style ss:ID="ptime" ss:Name="截止日期及打印时间">
+                <Alignment ss:Horizontal="Right" ss:Vertical="Bottom"/>
+                 <Borders>
+                 <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+                 <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+                 <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+                 </Borders>
+                 <Font ss:FontName="宋体" x:CharSet="134" ss:Size="9" ss:Color="#000000"/>
+                </Style>
+                <Style ss:ID="ptitle" ss:Name="报表名称">
+                  <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+                  <Font ss:FontName="微软雅黑" x:CharSet="134" x:Family="Swiss" ss:Size="12"
+                  ss:Color="#000000" ss:Bold="1"/>
+                 </Style>
+                 <Style ss:ID="pbottom" ss:Name="报表底部">
+                  <Alignment ss:Horizontal="Center" ss:Vertical="Bottom"/>
+                  <Font ss:FontName="宋体" x:CharSet="134" ss:Size="12" ss:Color="#000000"
+                   ss:Bold="1"/>
+                  </Style>
+                  <Style ss:ID="lsum_2" ss:Name="一级科目合计">
+                    <Alignment ss:Horizontal="Center" ss:Vertical="Bottom"/>
+                    <Borders>
+                    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+                    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+                    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+                    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+                    </Borders>
+                    <Font ss:FontName="宋体" x:CharSet="134" ss:Size="9" ss:Color="#000000"
+                    ss:Bold="1"/>
+                    </Style>
+                    <Style ss:ID="pname" ss:Name="报表参数名称">
+                     <Alignment ss:Horizontal="Right" ss:Vertical="Top"/>
+                     <Borders>
+                     <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+                     <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+                     <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+                     <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+                     </Borders>
+                     <Font ss:FontName="微软雅黑" x:CharSet="134" x:Family="Swiss" ss:Color="#000000"
+                     ss:Bold="1"/>
+                     </Style>
+                     <Style ss:ID="pvalue" ss:Name="报表参数值">
+                       <Alignment ss:Horizontal="Left" ss:Vertical="Bottom"/>
+                       <Borders>
+                       <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+                       <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+                       <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+                       <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+                       </Borders>
+                       <Font ss:FontName="微软雅黑" x:CharSet="134" x:Family="Swiss" ss:Color="#000000"/>
+                     </Style>
+                     <Style ss:ID="ptitle_detail" ss:Name="明细页标题">
+                     <Alignment ss:Vertical="Center"/>
+                      <Borders>
+                      <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+                      <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+                      <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+                      <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+                      </Borders>
+                      <Font ss:FontName="微软雅黑" x:CharSet="134" x:Family="Swiss" ss:Size="12"
+                      ss:Color="#000000" ss:Bold="1"/>
+                      </Style>
+</Styles>
+<Worksheet ss:Name="报表参数" ss:Protected="1">
+           <Table ss:ExpandedColumnCount="50" ss:ExpandedRowCount="50" x:FullColumns="1"
+            x:FullRows="1" ss:DefaultColumnWidth="62" ss:DefaultRowHeight="15.5">
+<Column ss:AutoFitWidth="0" ss:Width="70"/>
+<Column ss:StyleID="s44" ss:AutoFitWidth="0"  ss:Width="92"/>
+             <Column ss:StyleID="s42" ss:AutoFitWidth="0" ss:Width="200"/>
+<Row ss:Index="2" ss:Height="16">
+    <Cell ss:StyleID="pname"><Data ss:Type="String">报表名称：</Data></Cell>
+    <Cell ss:StyleID="pvalue"><Data ss:Type="String">预收帐款账龄分析明细表</Data></Cell>
+   </Row>
+   <Row ss:Height="16">
+    <Cell ss:StyleID="pname"><Data ss:Type="String">请求ID：</Data></Cell>
+    <Cell ss:StyleID="pvalue"><Data ss:Type="String">258789685</Data></Cell>
+   </Row>
+   <Row ss:Height="16">
+    <Cell ss:StyleID="pname"><Data ss:Type="String">请求提交时间：</Data></Cell>
+    <Cell ss:StyleID="pvalue"><Data ss:Type="String">2026-06-15 17:11:34</Data></Cell>
+   </Row>
+   <Row ss:Height="16">
+    <Cell ss:StyleID="pname"><Data ss:Type="String">提交人</Data></Cell>
+    <Cell ss:StyleID="pvalue"><Data ss:Type="String">JINLJC</Data></Cell>
+   </Row>
+   <Row ss:Height="16">
+    <Cell ss:StyleID="pname"><Data ss:Type="String">公司段 自:</Data></Cell>
+    <Cell ss:StyleID="pvalue"><Data ss:Type="String">330058</Data></Cell>
+   </Row>
+   <Row ss:Height="16">
+    <Cell ss:StyleID="pname"><Data ss:Type="String"> 至:</Data></Cell>
+    <Cell ss:StyleID="pvalue"><Data ss:Type="String">330058</Data></Cell>
+   </Row>
+   <Row ss:Height="16">
+    <Cell ss:StyleID="pname"><Data ss:Type="String">主科目 自:</Data></Cell>
+    <Cell ss:StyleID="pvalue"><Data ss:Type="String"></Data></Cell>
+   </Row>
+   <Row ss:Height="16">
+    <Cell ss:StyleID="pname"><Data ss:Type="String">至:</Data></Cell>
+    <Cell ss:StyleID="pvalue"><Data ss:Type="String"></Data></Cell>
+   </Row>
+   <Row ss:Height="16">
+    <Cell ss:StyleID="pname"><Data ss:Type="String">子科目 自:</Data></Cell>
+    <Cell ss:StyleID="pvalue"><Data ss:Type="String"></Data></Cell>
+   </Row>
+   <Row ss:Height="16">
+    <Cell ss:StyleID="pname"><Data ss:Type="String">至:</Data></Cell>
+    <Cell ss:StyleID="pvalue"><Data ss:Type="String"></Data></Cell>
+   </Row>
+   <Row  ss:Height="16">
+    <Cell ss:StyleID="pname"><Data ss:Type="String">客商名称:</Data></Cell>
+    <Cell ss:StyleID="pvalue"><Data ss:Type="String"> </Data></Cell>
+   </Row>
+      <Row ss:Height="16">
+    <Cell ss:StyleID="pname"><Data ss:Type="String">汇总层级:</Data></Cell>
+    <Cell ss:StyleID="pvalue"><Data ss:Type="String">四级科目</Data></Cell>
+   </Row>
+   <Row ss:Height="16">
+    <Cell ss:StyleID="pname"><Data ss:Type="String">账龄计算日期:</Data></Cell>
+    <Cell ss:StyleID="pvalue"><Data ss:Type="String">BUSINESS</Data></Cell>
+   </Row>
+   <Row ss:Height="16">
+    <Cell ss:StyleID="pname"><Data ss:Type="String">截止日期:</Data></Cell>
+    <Cell ss:StyleID="pvalue"><Data ss:Type="String">2026/05/31 00:00:00</Data></Cell>
+   </Row>
+   <Row ss:Height="16">
+    <Cell ss:StyleID="pname"><Data ss:Type="String">报表类型:</Data></Cell>
+    <Cell ss:StyleID="pvalue"><Data ss:Type="String">PER_AR</Data></Cell>
+   </Row>
+   <Row ss:Height="16">
+    <Cell ss:StyleID="pname"><Data ss:Type="String">是否传输HYP:</Data></Cell>
+    <Cell ss:StyleID="pvalue"><Data ss:Type="String">Y</Data></Cell>
+   </Row>
+   <Row ss:Height="16">
+    <Cell ss:StyleID="pname"><Data ss:Type="String">是否覆盖:</Data></Cell>
+    <Cell ss:StyleID="pvalue"><Data ss:Type="String">Y</Data></Cell>
+   </Row>
+   <Row ss:Height="16">
+    <Cell ss:StyleID="pname"><Data ss:Type="String">运行批次号:</Data></Cell>
+    <Cell ss:StyleID="pvalue"><Data ss:Type="String">20260615171030</Data></Cell>
+   </Row>
+</Table>
+<WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+<Panes>
+<Pane>
+<Number>3</Number>
+<ActiveRow>0</ActiveRow>
+</Pane>
+</Panes>
+<ProtectObjects>False</ProtectObjects>
+<ProtectScenarios>False</ProtectScenarios>
+<AllowInsertRows/>
+<AllowDeleteRows/>
+<AllowFormatCells/>
+<AllowSizeCols/>
+<AllowSizeRows/>
+<AllowFormatCells/>
+<AllowInsertHyperlinks/>
+<AllowDeleteCols/>
+<AllowDeleteRows/>
+<AllowSort/>
+<AllowFilter/>
+<AllowUsePivotTables/>
+</WorksheetOptions>
+</Worksheet>
+<Worksheet ss:Name="PER_AR-账龄汇总表" ss:Protected="0">
+           <Table ss:ExpandedColumnCount="256" ss:ExpandedRowCount="20000" x:FullColumns="1"
+            x:FullRows="1" ss:DefaultColumnWidth="90" ss:DefaultRowHeight="15.5">
+<Column ss:AutoFitWidth="0" ss:Width="40"/>
+<Column ss:AutoFitWidth="0" ss:Width="84"/>
+<Column ss:Width="156"/>
+<Column ss:Index="12" ss:AutoFitWidth="0" ss:Width="95"/>
+<Row ss:AutoFitHeight="0" ss:Height="50">
+    <Cell ss:MergeAcross="26" ss:StyleID="ptitle"><Data ss:Type="String">预收帐款账龄分析明细表</Data></Cell>
+   </Row>
+<Row>
+    <Cell ss:MergeAcross="15" ss:StyleID="pcmpperson"><Data ss:Type="String">公司:浙江壹品慧科技有限公司</Data></Cell>
+    <Cell ss:MergeAcross="10" ss:StyleID="ptime"><Data ss:Type="String">截止日期:2026-05-31</Data></Cell>
+   </Row>
+<Row>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">序号</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">公司编码</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">公司名称</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">客户编码</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">客户名称</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">客户性质</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">会计科目编码</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">会计科目说明</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">子目编码</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">子目说明</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">自然年年初余额</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">变化率</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">财年年初余额</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">变化率</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">期末余额</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">本月收款额</Data></Cell>
+<Cell ss:MergeAcross="10" ss:StyleID="tcve"><Data ss:Type="String">期末余额账龄分析</Data></Cell>
+</Row>
+<Row>
+<Cell ss:Index="17" ss:StyleID="tage"><Data ss:Type="String">1个月</Data></Cell>
+<Cell ss:StyleID="tage"><Data ss:Type="String">2个月</Data></Cell>
+<Cell ss:StyleID="tage"><Data ss:Type="String">3个月</Data></Cell>
+<Cell ss:StyleID="tage"><Data ss:Type="String">4个月</Data></Cell>
+<Cell ss:StyleID="tage"><Data ss:Type="String">5个月</Data></Cell>
+<Cell ss:StyleID="tage"><Data ss:Type="String">6个月</Data></Cell>
+<Cell ss:StyleID="tage"><Data ss:Type="String">半年到1年</Data></Cell>
+<Cell ss:StyleID="tage"><Data ss:Type="String">1年到2年</Data></Cell>
+<Cell ss:StyleID="tage"><Data ss:Type="String">2年到3年</Data></Cell>
+<Cell ss:StyleID="tage"><Data ss:Type="String">3年以上</Data></Cell>
+<Cell ss:StyleID="tage"><Data ss:Type="String">合计</Data></Cell>
+</Row>
+<Row>
+    <Cell ss:MergeAcross="15" ss:StyleID="pcmpperson"><Data ss:Type="String">制单人:JINLJC</Data></Cell>
+    <Cell ss:MergeAcross="10" ss:StyleID="ptime"><Data ss:Type="String">打印时间:2026-06-15 17:11:34</Data></Cell>
+   </Row>
+<Row>
+<Cell><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell><Data ss:Type="String"></Data></Cell>
+</Row>
+</Table>
+<WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+<Panes>
+<Pane>
+<Number>3</Number>
+<ActiveRow>0</ActiveRow>
+</Pane>
+</Panes>
+<ProtectObjects>False</ProtectObjects>
+<ProtectScenarios>False</ProtectScenarios>
+<AllowInsertRows/>
+<AllowDeleteRows/>
+<AllowFormatCells/>
+<AllowSizeCols/>
+<AllowSizeRows/>
+<AllowFormatCells/>
+<AllowInsertHyperlinks/>
+<AllowDeleteCols/>
+<AllowDeleteRows/>
+<AllowSort/>
+<AllowFilter/>
+<AllowUsePivotTables/>
+</WorksheetOptions>
+</Worksheet>
+<Worksheet ss:Name="PER_AR-账龄明细表" ss:Protected="0">
+           <Table ss:ExpandedColumnCount="256" ss:ExpandedRowCount="3000000" x:FullColumns="1"
+            x:FullRows="1" ss:DefaultColumnWidth="50" ss:DefaultRowHeight="15">
+<Column ss:Index="1" ss:AutoFitWidth="0" ss:Width="44"/>
+   <Column ss:Index="2" ss:AutoFitWidth="0" ss:Width="150"/>
+   <Column ss:Index="3" ss:AutoFitWidth="0" ss:Width="60"/>
+   <Column ss:Index="4" ss:AutoFitWidth="0" ss:Width="100"/>
+   <Column ss:Index="5" ss:AutoFitWidth="0" ss:Width="200"/>
+   <Column ss:Index="6" ss:AutoFitWidth="0" ss:Width="80"/>
+   <Column ss:Index="7" ss:AutoFitWidth="0" ss:Width="202"/>
+   <Column ss:Index="8" ss:AutoFitWidth="0" ss:Width="80"/>
+   <Column ss:Index="9" ss:AutoFitWidth="0" ss:Width="100"/>
+   <Column ss:Index="10" ss:AutoFitWidth="0" ss:Width="80"/>
+   <Column ss:Index="11" ss:AutoFitWidth="0" ss:Width="115"/>
+   <Column ss:Index="12" ss:AutoFitWidth="0" ss:Width="115"/>
+   <Column ss:AutoFitWidth="0" ss:Width="72" ss:Span="12"/>
+<Row ss:AutoFitHeight="0" ss:Height="50">
+    <Cell ss:MergeAcross="35" ss:StyleID="ptitle"><Data ss:Type="String">预收帐款账龄分析明细表</Data></Cell>
+   </Row>
+<Row ss:AutoFitHeight="0" ss:Height="50">
+    <Cell ss:MergeAcross="35" ss:StyleID="ptitle_detail"><Data ss:Type="String">预收帐款账龄分析明细表</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">公司段</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">公司名称</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">截止日期</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">客户编码</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">客户名称</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">内部往来公司所属区域</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">产品</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">产品说明</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">项目</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">项目说明</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">会计科目编码</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">会计科目描述</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">子目编码</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">子目名称</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">来源类型</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">来源单据编号/日记账名称</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">来源单据行号/日记账行号</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">备注</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">记账日期</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">到期日</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">账龄天数</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">期初余额</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">借方金额</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">贷方金额</Data></Cell>
+    <Cell ss:MergeDown="1" ss:StyleID="tcve"><Data ss:Type="String">期末余额</Data></Cell>
+<Cell ss:MergeAcross="10" ss:StyleID="tcve"><Data ss:Type="String">账龄时段</Data></Cell>
+</Row>
+<Row>
+<Cell ss:Index="26" ss:StyleID="tage"><Data ss:Type="String">1个月</Data></Cell>
+<Cell ss:StyleID="tage"><Data ss:Type="String">2个月</Data></Cell>
+<Cell ss:StyleID="tage"><Data ss:Type="String">3个月</Data></Cell>
+<Cell ss:StyleID="tage"><Data ss:Type="String">4个月</Data></Cell>
+<Cell ss:StyleID="tage"><Data ss:Type="String">5个月</Data></Cell>
+<Cell ss:StyleID="tage"><Data ss:Type="String">6个月</Data></Cell>
+<Cell ss:StyleID="tage"><Data ss:Type="String">半年到1年</Data></Cell>
+<Cell ss:StyleID="tage"><Data ss:Type="String">1年到2年</Data></Cell>
+<Cell ss:StyleID="tage"><Data ss:Type="String">2年到3年</Data></Cell>
+<Cell ss:StyleID="tage"><Data ss:Type="String">3年以上</Data></Cell>
+<Cell ss:StyleID="tage"><Data ss:Type="String">合计</Data></Cell>
+</Row>
+</Table>
+<WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+<Panes>
+<Pane>
+<Number>3</Number>
+<ActiveRow>0</ActiveRow>
+</Pane>
+</Panes>
+<ProtectObjects>False</ProtectObjects>
+<ProtectScenarios>False</ProtectScenarios>
+<AllowInsertRows/>
+<AllowDeleteRows/>
+<AllowFormatCells/>
+<AllowSizeCols/>
+<AllowSizeRows/>
+<AllowFormatCells/>
+<AllowInsertHyperlinks/>
+<AllowDeleteCols/>
+<AllowDeleteRows/>
+<AllowSort/>
+<AllowFilter/>
+<AllowUsePivotTables/>
+</WorksheetOptions>
+</Worksheet>
+</Workbook>

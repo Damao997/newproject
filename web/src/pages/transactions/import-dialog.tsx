@@ -3,6 +3,9 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogD
 import { Button } from '@/components/ui/button'
 import { cn, formatMoneyWan } from '@/lib/utils'
 import { usePreviewTransactionImport, useImportTransactions, useActivateImport } from '@/hooks/api-queries'
+import { useBatchActivate, buildActivateConflictDescription } from '@/hooks/use-batch-activate'
+import { useConfirm } from '@/components/ui/confirm-dialog'
+import { validateExcelFile } from '@/lib/file-validation'
 import { Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, XCircle, Loader2 } from 'lucide-react'
 import type { TransactionImportPreview, TransactionImportUploadResult } from '@/types'
 
@@ -29,6 +32,8 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
   const [activatedIds, setActivatedIds] = useState<Set<string>>(new Set())
   const [errorMsg, setErrorMsg] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const { confirm, element: confirmElement } = useConfirm()
+  const batchActivate = useBatchActivate()
 
   const previewMutation = usePreviewTransactionImport()
   const importMutation = useImportTransactions()
@@ -41,6 +46,7 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
     setResults([])
     setActivatedIds(new Set())
     setErrorMsg('')
+    batchActivate.clear()
   }
 
   const handleOpenChange = (v: boolean) => {
@@ -50,9 +56,22 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
 
   const handleFilesSelected = (list: FileList | null) => {
     if (!list) return
-    const picked = Array.from(list).filter((f) => /\.(xlsx|xls)$/i.test(f.name))
-    setFiles(picked.slice(0, 12))
-    setErrorMsg(picked.length === 0 ? '请选择 .xls/.xlsx 文件' : '')
+    // 逐文件校验扩展名与大小（>50MB 过滤），与数据导入面板口径一致
+    const valid: File[] = []
+    const invalidMessages: string[] = []
+    for (const f of Array.from(list)) {
+      const result = validateExcelFile(f)
+      if (result.valid) valid.push(f)
+      else invalidMessages.push(`${f.name}：${result.message}`)
+    }
+    setFiles(valid.slice(0, 12))
+    setErrorMsg(
+      invalidMessages.length > 0
+        ? `${invalidMessages.length} 个文件未通过校验（${invalidMessages.join('；')}）`
+        : valid.length === 0
+          ? '请选择 .xls/.xlsx 文件'
+          : '',
+    )
   }
 
   const handlePreview = async () => {
@@ -84,6 +103,29 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
       setActivatedIds((prev) => new Set(prev).add(batchId))
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : '激活失败')
+    }
+  }
+
+  /** 全部激活：预检冲突 → 确认覆盖风险 → 串行逐个激活（单批失败不中断） */
+  const handleActivateAll = async () => {
+    const pending = results.filter((r) => r.batch && !activatedIds.has(r.batch.id))
+    const batches = pending.map((r) => ({ id: r.batch!.id, filename: r.filename }))
+    if (batches.length === 0) return
+    setErrorMsg('')
+    try {
+      const check = await batchActivate.checkConflicts(batches.map((b) => b.id))
+      const desc = buildActivateConflictDescription(check)
+      if (desc && !(await confirm({ title: '全部激活确认', description: desc, danger: true, confirmText: '全部激活' }))) return
+      const summary = await batchActivate.run(batches)
+      // 成功批次计入已激活；失败批次保留待用户重试
+      const failIds = new Set(summary.failItems.map((f) => f.id))
+      const successIds = batches.filter((b) => !failIds.has(b.id)).map((b) => b.id)
+      if (successIds.length > 0) setActivatedIds((prev) => new Set([...prev, ...successIds]))
+      if (summary.failCount > 0) {
+        setErrorMsg(`激活完成：成功 ${summary.successCount} 个，失败 ${summary.failCount} 个（${summary.failItems.map((f) => `${f.filename}：${f.error}`).join('；')}）`)
+      }
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : '批量激活失败')
     }
   }
 
@@ -199,6 +241,27 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
         {/* Step 3: 上传结果 + 激活 */}
         {step === 'result' && (
           <div className="space-y-2">
+            {(() => {
+              const pendingCount = results.filter((r) => r.batch && !activatedIds.has(r.batch.id)).length
+              const doneCount = [...batchActivate.results.values()].filter((r) => r.status === 'success').length
+              const failCount = batchActivate.results.size - doneCount
+              return (pendingCount > 0 || batchActivate.isBusy || batchActivate.results.size > 0) && (
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
+                  <Button size="sm" className="shrink-0" disabled={batchActivate.isBusy || activateMutation.isPending || pendingCount === 0} onClick={handleActivateAll}>
+                    {batchActivate.isBusy ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <CheckCircle2 className="mr-1 h-3 w-3" />}
+                    全部激活{pendingCount > 0 ? `（${pendingCount}）` : ''}
+                  </Button>
+                  {batchActivate.progress && (
+                    <span className="text-xs text-muted-foreground">
+                      正在激活 {batchActivate.progress.done}/{batchActivate.progress.total}：{batchActivate.progress.currentFilename || '-'}
+                    </span>
+                  )}
+                  {!batchActivate.isBusy && batchActivate.results.size > 0 && (
+                    <span className="text-xs text-muted-foreground">完成：成功 {doneCount} 个，失败 {failCount} 个</span>
+                  )}
+                </div>
+              )
+            })()}
             {results.map((r) => (
               <div key={r.filename} className="flex items-center gap-2 rounded-lg border p-3 text-sm">
                 {r.error ? <XCircle className="h-4 w-4 shrink-0 text-destructive" /> : <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />}
@@ -210,15 +273,21 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
                     <p className="text-xs text-muted-foreground">入库 {r.batch?.detailCount ?? 0} 条{(r.batch?.errorCount ?? 0) > 0 ? `，错误 ${r.batch?.errorCount} 条` : ''}</p>
                   )}
                 </div>
-                {r.batch && (
-                  activatedIds.has(r.batch.id) ? (
-                    <span className="shrink-0 rounded bg-success/10 px-2 py-0.5 text-xs text-success-strong">已激活</span>
-                  ) : (
-                    <Button size="sm" variant="outline" className="shrink-0" disabled={activateMutation.isPending} onClick={() => handleActivate(r.batch!.id)}>
-                      {activateMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : '激活'}
+                {r.batch && (() => {
+                  const batchResult = batchActivate.results.get(r.batch!.id)
+                  const batchActivating = batchActivate.isBusy && batchActivate.progress?.currentId === r.batch!.id
+                  if (activatedIds.has(r.batch!.id) || batchResult?.status === 'success') {
+                    return <span className="shrink-0 rounded bg-success/10 px-2 py-0.5 text-xs text-success-strong">已激活</span>
+                  }
+                  if (batchResult?.status === 'failed') {
+                    return <span className="shrink-0 max-w-[200px] truncate text-xs text-destructive" title={batchResult.error}>激活失败：{batchResult.error}</span>
+                  }
+                  return (
+                    <Button size="sm" variant="outline" className="shrink-0" disabled={batchActivate.isBusy || activateMutation.isPending} onClick={() => handleActivate(r.batch!.id)}>
+                      {batchActivating || (activateMutation.isPending && !batchActivate.isBusy) ? <Loader2 className="h-3 w-3 animate-spin" /> : '激活'}
                     </Button>
                   )
-                )}
+                })()}
               </div>
             ))}
             <p className="text-xs text-muted-foreground">激活后按 公司 × 期间 × 往来类型 替换旧生效数据；未激活批次不参与分析，可稍后在「导入覆盖」Tab 中查看并激活。</p>
@@ -226,6 +295,8 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
         )}
 
         {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
+
+        {confirmElement}
 
         <DialogFooter>
           {step === 'select' && (

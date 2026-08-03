@@ -90,6 +90,13 @@ router.get('/imports/template', requirePermission('data:import:upload', 'import'
   sendXlsx(res, buffer, `import-template-${type}.xlsx`)
 }))
 
+// 批量激活预检（只读）：计算各批次激活后将替换的已生效组合，供前端批量激活前确认覆盖风险；须在 /imports/:id 之前注册
+router.post('/imports/batch-activate-check', requirePermission('data:import:upload', 'import'), asyncHandler(async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter((x: unknown): x is string => typeof x === 'string') : []
+  if (ids.length === 0) throw errors.badRequest('缺少批次 ID')
+  sendOk(res, { results: await ImportService.checkBatchActivateConflicts(ids) })
+}))
+
 router.get('/imports/:id', requirePermission('data:browse:view', 'view'), asyncHandler(async (req, res) => {
   sendOk(res, await ImportService.getById(req.params.id as string))
 }))

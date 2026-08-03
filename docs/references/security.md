@@ -4,7 +4,7 @@
 
 - **Web 安全**：CORS（仅 `FRONTEND_ORIGIN`，credentials: true）+ helmet（CSP/HSTS/X-Frame-Options/X-Content-Type-Options）
 - **认证安全**：JWT（access 15min + refresh 7day + 轮转 + token_blacklist 持久化）
-- **密码哈希**：bcryptjs（cost >= 12）
+- **密码哈希**：bcryptjs（cost >= 12）；管理员新建/重置密码的用户，首次登录**必须修改密码**（`user.must_change_password`，未改密前业务接口一律 403）
 - **XSS 防护**：富文本存储前 DOMPurify + sanitize-html 净化 → 白名单标签（p/h1-h6/strong/em/ul/ol/li/table/img/a），移除 script/iframe/on*；前端展示前二次 DOMPurify 净化
 - **文件上传**：multer — fileFilter 仅 .xlsx/.xls + 50MB 上限 + MIME magic number 校验 + 前端单任务限制
 - **数据安全**：传输加密（生产 TLS 1.3）/ 存储无明文敏感字段

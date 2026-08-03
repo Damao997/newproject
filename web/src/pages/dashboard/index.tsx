@@ -19,8 +19,9 @@ import { AlertTriangle, Inbox, Loader2, RefreshCw } from 'lucide-react'
 
 export default function DashboardPage() {
   const [selectedPeriod, setSelectedPeriod] = useState('')
-  // 主体筛选：all / company:CODE / summary:CODE（与指标页一致的三态格式）；默认浙江省公司汇总口径
-  const [dimFilter, setDimFilter] = useState('summary:ET0001')
+  // 主体筛选：all / company:CODE / summary:CODE（与指标页一致的三态格式）；
+  // 默认自动模式（''）：由后端按权限选择 ET0001 → 授权汇总 → 授权单体，前端在候选加载后对齐回显
+  const [dimFilter, setDimFilter] = useState('')
   const [trendMetric, setTrendMetric] = useState<TrendMetric>('revenue')
   const navigate = useNavigate()
 
@@ -46,14 +47,15 @@ export default function DashboardPage() {
       ? dimFilter.slice('summary:'.length)
       : undefined
 
-  // 当前主体显示名（顶部筛选解析，供各模块标题下说明口径）
-  const currentSubjectName = useMemo(() => {
-    if (dimFilter === 'all') return '全部主体'
-    const code = companyCode
-    if (!code) return '全部主体'
-    const match = (companies ?? []).find((c) => c.code === code)
-    return match?.name ?? code
-  }, [dimFilter, companyCode, companies])
+  // 自动模式主体对齐：useCompanies 已按数据权限过滤（与后端同源：ET0001 → 首个汇总 → 首个单体），
+  // 无 ET0001 权限时自动选中首个有权主体，避免以越权主体发起请求
+  useEffect(() => {
+    if (dimFilter !== '' || !companies || companies.length === 0) return
+    const et0001 = summaryEntities.find((c) => c.code === 'ET0001')
+    if (et0001) setDimFilter(`summary:${et0001.code}`)
+    else if (summaryEntities[0]) setDimFilter(`summary:${summaryEntities[0].code}`)
+    else if (entityCompanies[0]) setDimFilter(`company:${entityCompanies[0].code}`)
+  }, [dimFilter, companies, summaryEntities, entityCompanies])
 
   // 真实后端数据（React Query），加载期展示骨架屏
   const { data, isLoading, isError, isFetching, refetch } = useDashboardOverview({
@@ -67,6 +69,22 @@ export default function DashboardPage() {
   // keepPreviousData 下期间/主体切换的后台刷新态（非首屏加载）
   const isRefreshing = isFetching && !isLoading
   const isEmpty = !isLoading && !isError && kpiData.length === 0
+
+  // 后端降级（请求主体越权/不存在而被替换）时同步实际生效主体，防止下拉空白
+  useEffect(() => {
+    if (data?.degraded && data.companyCode) {
+      setDimFilter(`${data.companyType === 'summary' ? 'summary' : 'company'}:${data.companyCode}`)
+    }
+  }, [data?.degraded, data?.companyCode, data?.companyType])
+
+  // 当前主体显示名（顶部筛选解析，供各模块标题下说明口径；自动模式下用后端返回的实际生效主体）
+  const currentSubjectName = useMemo(() => {
+    if (dimFilter === '') return data?.companyName ?? '全部主体'
+    const code = companyCode
+    if (!code) return '全部主体'
+    const match = (companies ?? []).find((c) => c.code === code)
+    return match?.name ?? code
+  }, [dimFilter, companyCode, companies, data?.companyName])
 
   return (
     <PageContainer
@@ -150,8 +168,8 @@ export default function DashboardPage() {
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted">
               <Inbox className="h-6 w-6 text-muted-foreground" />
             </div>
-            <p className="text-sm font-medium text-foreground">暂无经营数据</p>
-            <p className="text-xs text-muted-foreground">导入并激活经营数据批次后，看板将自动展示核心指标</p>
+            <p className="text-sm font-medium text-foreground">暂无可用数据</p>
+            <p className="text-xs text-muted-foreground">当前账户可能无任何数据权限，或尚未导入经营数据批次</p>
           </CardContent>
         </Card>
       ) : (

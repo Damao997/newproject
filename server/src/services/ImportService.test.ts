@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx'
 import { basePrisma } from '../lib/prisma'
 import { OPERATING_DIMS } from '../lib/metric-values'
 import { ImportService } from './ImportService'
+import { TransactionService } from './TransactionService'
 
 /** 用 aoa 构造 xlsx Buffer */
 function makeXlsx(aoa: unknown[][]): Buffer {
@@ -236,5 +237,190 @@ describe('activate 按期间合并（真实 DB）', () => {
     const activeBatches = await basePrisma.importBatch.findMany({ where: { dataType: 'operating', lifecycleStatus: 'active', id: { in: createdBatchIds } }, select: { id: true } })
     const periods = await basePrisma.factOperating.findMany({ where: { batchId: { in: activeBatches.map((x) => x.id) } }, distinct: ['period'], select: { period: true } })
     expect(periods.map((r) => r.period).sort()).toEqual([P1, P2, P3])
+  })
+})
+
+describe('checkBatchActivateConflicts 批量激活预检（真实 DB）', () => {
+  // 独立测试公司与远期期间，避免与并行测试及真实数据干扰
+  const CO = 'EN999905'
+  const CO_NAME = '__预检测试公司__'
+  const P_ACT = '2099-07'
+  const P_NEW = '2099-08'
+  const P_OTHER = '2099-09'
+  const TYPE_AR = '应收账款'
+  const TYPE_AP = '应付账款'
+  let activeBatchId = ''
+  let draftOverlapId = ''
+  let draftNewId = ''
+  let draftSharedId = ''
+  let draftArchivedId = ''
+  const cleanupDetailIds: string[] = []
+
+  const seedDetail = async (batchId: string, period: string, transactionType: string) => {
+    const row = await basePrisma.transactionDetail.create({
+      data: {
+        batchId, companyCode: CO, companyName: CO_NAME, transactionType,
+        direction: transactionType === TYPE_AR ? 'AR' : 'AP',
+        counterpartyCode: '__CHK_CP__', accountCode: '__CHK_ACC__', closingBalance: 100, period,
+      },
+    })
+    cleanupDetailIds.push(row.id)
+  }
+
+  const makeTxnBatch = (fileName: string, lifecycleStatus: 'draft' | 'active' | 'archived') =>
+    basePrisma.importBatch.create({
+      data: { fileName, status: 'success', dataType: 'transaction', lifecycleStatus, sourceType: 'upload' },
+    })
+
+  beforeAll(async () => {
+    if (!dbReady) return
+    await basePrisma.company.upsert({
+      where: { code: CO },
+      update: { name: CO_NAME, entityType: 'single', status: 'active' },
+      create: { code: CO, name: CO_NAME, entityType: 'single', status: 'active' },
+    })
+    const activeBatch = await makeTxnBatch('__chk_active__.xls', 'active')
+    const draftOverlap = await makeTxnBatch('__chk_draft_overlap__.xls', 'draft')
+    const draftNew = await makeTxnBatch('__chk_draft_new__.xls', 'draft')
+    const draftShared = await makeTxnBatch('__chk_draft_shared__.xls', 'draft')
+    const draftArchived = await makeTxnBatch('__chk_draft_archived__.xls', 'archived')
+    activeBatchId = activeBatch.id
+    draftOverlapId = draftOverlap.id
+    draftNewId = draftNew.id
+    draftSharedId = draftShared.id
+    draftArchivedId = draftArchived.id
+    // active：P_ACT 应收账款 × 2 条（重叠计数应 2）
+    await seedDetail(activeBatchId, P_ACT, TYPE_AR)
+    await seedDetail(activeBatchId, P_ACT, TYPE_AR)
+    // draftOverlap：与 active 重叠（P_ACT 应收账款）+ 新组合（P_NEW 应付账款）
+    await seedDetail(draftOverlapId, P_ACT, TYPE_AR)
+    await seedDetail(draftOverlapId, P_NEW, TYPE_AP)
+    // draftShared：与 draftOverlap 共享三元组（P_ACT 应收账款），用于批次间重叠
+    await seedDetail(draftSharedId, P_ACT, TYPE_AR)
+    // draftNew：全新组合
+    await seedDetail(draftNewId, P_OTHER, TYPE_AP)
+  })
+
+  afterAll(async () => {
+    if (!dbReady) return
+    await basePrisma.transactionDetail.deleteMany({ where: { id: { in: cleanupDetailIds } } }).catch(() => undefined)
+    await basePrisma.importBatch.deleteMany({ where: { id: { in: [activeBatchId, draftOverlapId, draftNewId, draftSharedId, draftArchivedId] } } }).catch(() => undefined)
+    await basePrisma.company.delete({ where: { code: CO } }).catch(() => undefined)
+  })
+
+  it('transaction 草稿批次与已生效数据重叠时 conflicts 含现有笔数', async () => {
+    if (!dbReady) return
+    const [r] = await ImportService.checkBatchActivateConflicts([draftOverlapId])
+    expect(r.status).toBe('draft')
+    expect(r.conflictCount).toBe(1)
+    expect(r.conflicts[0]).toMatchObject({ companyCode: CO, period: P_ACT, transactionType: TYPE_AR, existingCount: 2 })
+    expect(r.crossBatchConflictCount).toBe(0)
+  })
+
+  it('无重叠批次 conflictCount 为 0', async () => {
+    if (!dbReady) return
+    const [r] = await ImportService.checkBatchActivateConflicts([draftNewId])
+    expect(r.status).toBe('draft')
+    expect(r.conflictCount).toBe(0)
+    expect(r.conflicts).toEqual([])
+  })
+
+  it('非 draft 批次返回其状态且不计算冲突；不存在批次 status 为空', async () => {
+    if (!dbReady) return
+    const [r] = await ImportService.checkBatchActivateConflicts([draftArchivedId])
+    expect(r.status).toBe('archived')
+    expect(r.conflictCount).toBe(0)
+    const [missing] = await ImportService.checkBatchActivateConflicts(['__no_such_batch_id__'])
+    expect(missing.status).toBe('')
+    expect(missing.filename).toBe('')
+  })
+
+  it('选中批次间三元组重叠计入 crossBatchConflictCount（重复 id 去重不计）', async () => {
+    if (!dbReady) return
+    const results = await ImportService.checkBatchActivateConflicts([draftOverlapId, draftSharedId])
+    const overlap = results.find((r) => r.id === draftOverlapId)!
+    const shared = results.find((r) => r.id === draftSharedId)!
+    expect(overlap.crossBatchConflictCount).toBe(1)
+    expect(shared.crossBatchConflictCount).toBe(1)
+    // 同一 id 重复提交被去重，不产生批次间冲突
+    const dup = await ImportService.checkBatchActivateConflicts([draftOverlapId, draftOverlapId])
+    expect(dup).toHaveLength(1)
+    expect(dup[0].crossBatchConflictCount).toBe(0)
+  })
+})
+
+describe('空模板批次激活后 empty 状态保持（真实 DB）', () => {
+  // 独立测试公司与期间，避开并行测试干扰
+  const CO = 'EN999906'
+  const CO_NAME = '__空模板测试公司__'
+  const P = '2099-09'
+  const TYPE_EMPTY = '预收账款'
+  const TYPE_NEW = '应付账款'
+  let emptyBatchId = ''
+  let newBatchId = ''
+  let coverBatchId = ''
+  const cleanupDetailIds: string[] = []
+
+  const seedDetail = async (batchId: string, period: string, transactionType: string) => {
+    const row = await basePrisma.transactionDetail.create({
+      data: {
+        batchId, companyCode: CO, companyName: CO_NAME, transactionType,
+        direction: transactionType === '应收账款' || transactionType === '预收账款' ? 'AR' : 'AP',
+        counterpartyCode: '__EMPTY_CP__', accountCode: '__EMPTY_ACC__', closingBalance: 100, period,
+      },
+    })
+    cleanupDetailIds.push(row.id)
+  }
+
+  const makeBatch = (fileName: string, coverage: unknown[] = []) =>
+    basePrisma.importBatch.create({
+      data: { fileName, status: 'success', dataType: 'transaction', lifecycleStatus: 'draft', sourceType: 'upload', coverageJson: coverage as never },
+    })
+
+  beforeAll(async () => {
+    if (!dbReady) return
+    await basePrisma.company.upsert({
+      where: { code: CO },
+      update: { name: CO_NAME, entityType: 'single', status: 'active' },
+      create: { code: CO, name: CO_NAME, entityType: 'single', status: 'active' },
+    })
+    // 空模板批次：仅申报"该期确无往来款"，无明细
+    const eb = await makeBatch('__empty_template__.xls', [{ companyCode: CO, period: P, transactionType: TYPE_EMPTY, recordCount: 0 }])
+    emptyBatchId = eb.id
+    await ImportService.activate(eb.id, 'test-user', 'trace')
+    // 新批次：其他类型明细（不覆盖空模板申报）
+    const nb = await makeBatch('__empty_new__.xls')
+    newBatchId = nb.id
+    await seedDetail(newBatchId, P, TYPE_NEW)
+    // 覆盖批次：申报与空模板相同三元组（验证被覆盖后归档且 empty 由新申报承接）
+    const cb = await makeBatch('__empty_cover__.xls', [{ companyCode: CO, period: P, transactionType: TYPE_EMPTY, recordCount: 0 }])
+    coverBatchId = cb.id
+  })
+
+  afterAll(async () => {
+    if (!dbReady) return
+    await basePrisma.transactionDetail.deleteMany({ where: { id: { in: cleanupDetailIds } } }).catch(() => undefined)
+    await basePrisma.importBatch.deleteMany({ where: { id: { in: [emptyBatchId, newBatchId, coverBatchId] } } }).catch(() => undefined)
+    await basePrisma.company.delete({ where: { code: CO } }).catch(() => undefined)
+  })
+
+  it('激活不重叠的新批次后，空模板批次保持 active，申报单元格仍为 empty', async () => {
+    if (!dbReady) return
+    await ImportService.activate(newBatchId, 'test-user', 'trace')
+    const eb = await basePrisma.importBatch.findUnique({ where: { id: emptyBatchId } })
+    expect(eb?.lifecycleStatus).toBe('active')
+    const cov = await TransactionService.getImportCoverage({ months: 3, companyCodes: [CO] })
+    const cell = cov.cells.find((c) => c.companyCode === CO && c.period === P && c.transactionType === TYPE_EMPTY)
+    expect(cell?.status).toBe('empty')
+  })
+
+  it('新批次覆盖空模板申报三元组时归档，empty 状态由新批次申报承接', async () => {
+    if (!dbReady) return
+    await ImportService.activate(coverBatchId, 'test-user', 'trace')
+    const eb = await basePrisma.importBatch.findUnique({ where: { id: emptyBatchId } })
+    expect(eb?.lifecycleStatus).toBe('archived')
+    const cov = await TransactionService.getImportCoverage({ months: 3, companyCodes: [CO] })
+    const cell = cov.cells.find((c) => c.companyCode === CO && c.period === P && c.transactionType === TYPE_EMPTY)
+    expect(cell?.status).toBe('empty')
   })
 })

@@ -267,6 +267,29 @@ export interface ImportBatchDto {
   errors?: ImportErrorItem[]
 }
 
+/** 激活冲突项：transaction 为 (公司, 期间, 往来类型) 三元组；operating/static 为期间；budget/inventory 为整体替换文案 */
+export interface ActivateConflict {
+  companyCode?: string
+  period?: string
+  transactionType?: string
+  /** 已生效数据中的现有笔数（transaction 类型） */
+  existingCount?: number
+  /** 整体替换场景的展示文案（budget 财年 / inventory 存货数据） */
+  label?: string
+}
+
+/** 批量激活预检结果：单批次激活后将替换的已生效组合 */
+export interface BatchActivateCheckItem {
+  id: string
+  filename: string
+  /** draft=可激活；active/archived/purged=不可激活（skipped）；不存在时为空字符串 */
+  status: string
+  conflictCount: number
+  conflicts: ActivateConflict[]
+  /** 选中批次之间互相重叠的三元组数（激活顺序靠后的覆盖靠前的） */
+  crossBatchConflictCount: number
+}
+
 function toDto(b: {
   id: string; fileName: string; dataType: string; lifecycleStatus: string; status: string
   rowCount: number; detailCount: number; errorCount: number; uploadedById: string | null; createdAt: Date; updatedAt: Date
@@ -846,7 +869,7 @@ export const ImportService = {
         // 按 (公司, 期间, 往来类型) 三元组合并替换
         const oldActive = await tx.importBatch.findMany({
           where: { dataType: 'transaction', lifecycleStatus: 'active' },
-          select: { id: true },
+          select: { id: true, coverageJson: true },
         })
         const oldIds = oldActive.map((x) => x.id)
         if (oldIds.length > 0) {
@@ -872,11 +895,21 @@ export const ImportService = {
             })
             deleted = res.count
             replaced = mergedKeys.map((k) => `${k.companyCode}|${k.period ?? '-'}|${k.transactionType}`).sort()
+            const replacedKeySet = new Set(mergedKeys.map((k) => `${k.companyCode}|${k.period ?? ''}|${k.transactionType}`))
+            for (const oldBatch of oldActive) {
+              const remaining = await tx.transactionDetail.count({ where: { batchId: oldBatch.id } })
+              if (remaining > 0) continue
+              // 空模板（无明细）但申报范围未被本次激活全部替换 → 保持 active，
+              // 维持"该期确无往来款"的 empty 状态（否则矩阵将退化为 missing）
+              const stillDeclared = parseDeclaredCoverage(oldBatch.coverageJson).some(
+                (d) => !replacedKeySet.has(`${d.companyCode}|${d.period}|${d.transactionType}`),
+              )
+              if (!stillDeclared) {
+                await tx.importBatch.update({ where: { id: oldBatch.id }, data: { lifecycleStatus: 'archived' } })
+              }
+            }
           }
-          for (const oldId of oldIds) {
-            const remaining = await tx.transactionDetail.count({ where: { batchId: oldId } })
-            if (remaining === 0) await tx.importBatch.update({ where: { id: oldId }, data: { lifecycleStatus: 'archived' } })
-          }
+          // mergedKeys 为空（新批次无任何明细与申报）时不执行替换与归档
         }
       } else {
         // budget 按财年隔离；其余类型整体替换
@@ -897,6 +930,120 @@ export const ImportService = {
     })
     await recordAudit({ userId, module: 'data', action: 'update', targetId: id, detail: { action: 'activate', replacedPeriods, deletedRows } }, traceId)
     return toDto(updated)
+  },
+
+  /**
+   * 批量激活预检（只读，不写库不记审计）：计算各批次激活后将替换的已生效组合，供前端批量激活前确认覆盖风险。
+   * - transaction：申报三元组（明细 distinct ∪ coverageJson）与 active 批次明细重叠（含现有笔数）；
+   * - operating/static：本批次期间/快照月与 active 批次重叠；
+   * - budget：同财年 active 批次整体替换；inventory：同类型 active 整体替换。
+   * 另统计所选批次之间的三元组重叠（激活顺序靠后的覆盖靠前的）。批次不存在时返回 status=''。
+   */
+  async checkBatchActivateConflicts(ids: string[]): Promise<BatchActivateCheckItem[]> {
+    const uniqueIds = [...new Set(ids)]
+    const batches = await prisma.importBatch.findMany({ where: { id: { in: uniqueIds } } })
+    const byId = new Map(batches.map((b) => [b.id, b]))
+
+    // 全部选中 transaction 草稿批次的三元组并集（一次查询 active 重叠计数）
+    const txnBatchKeys = new Map<string, Set<string>>()
+    const txnTriples: { companyCode: string; period: string; transactionType: string }[] = []
+    for (const b of batches) {
+      if (b.dataType !== 'transaction' || b.lifecycleStatus !== 'draft') continue
+      const keys = new Set<string>()
+      const rows = await prisma.transactionDetail.findMany({
+        where: { batchId: b.id },
+        distinct: ['companyCode', 'period', 'transactionType'],
+        select: { companyCode: true, period: true, transactionType: true },
+      })
+      for (const r of rows) {
+        if (!r.period) continue
+        keys.add(`${r.companyCode}|${r.period}|${r.transactionType}`)
+      }
+      for (const d of parseDeclaredCoverage(b.coverageJson)) keys.add(`${d.companyCode}|${d.period}|${d.transactionType}`)
+      txnBatchKeys.set(b.id, keys)
+      for (const k of keys) {
+        const [companyCode, period, transactionType] = k.split('|')
+        txnTriples.push({ companyCode, period, transactionType })
+      }
+    }
+    const existingCount = new Map<string, number>()
+    const activeTxnIds = (await prisma.importBatch.findMany({ where: { dataType: 'transaction', lifecycleStatus: 'active' }, select: { id: true } })).map((x) => x.id)
+    if (activeTxnIds.length > 0 && txnTriples.length > 0) {
+      const rows = await prisma.transactionDetail.groupBy({
+        by: ['companyCode', 'period', 'transactionType'],
+        where: { batchId: { in: activeTxnIds }, OR: txnTriples },
+        _count: { id: true },
+      })
+      for (const r of rows) {
+        if (r.period) existingCount.set(`${r.companyCode}|${r.period}|${r.transactionType}`, r._count.id)
+      }
+    }
+
+    // 批次间重叠：同一三元组出现在多个选中批次中
+    const keyFrequency = new Map<string, number>()
+    for (const keys of txnBatchKeys.values()) {
+      for (const k of keys) keyFrequency.set(k, (keyFrequency.get(k) ?? 0) + 1)
+    }
+
+    const results: BatchActivateCheckItem[] = []
+    for (const id of uniqueIds) {
+      const b = byId.get(id)
+      if (!b) {
+        results.push({ id, filename: '', status: '', conflictCount: 0, conflicts: [], crossBatchConflictCount: 0 })
+        continue
+      }
+      if (b.lifecycleStatus !== 'draft') {
+        results.push({ id, filename: b.fileName, status: b.lifecycleStatus, conflictCount: 0, conflicts: [], crossBatchConflictCount: 0 })
+        continue
+      }
+      const conflicts: ActivateConflict[] = []
+      if (b.dataType === 'transaction') {
+        for (const k of txnBatchKeys.get(id) ?? []) {
+          const [companyCode, period, transactionType] = k.split('|')
+          const existing = existingCount.get(k)
+          if (existing) conflicts.push({ companyCode, period, transactionType, existingCount: existing })
+        }
+      } else if (b.dataType === 'operating') {
+        const periods = await prisma.factOperating.findMany({ where: { batchId: id }, distinct: ['period'], select: { period: true } })
+        const fileSet = new Set(periods.map((p) => p.period))
+        if (fileSet.size > 0) {
+          const oldIds = (await prisma.importBatch.findMany({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true } })).map((x) => x.id)
+          if (oldIds.length > 0) {
+            const overlap = await prisma.factOperating.findMany({
+              where: { batchId: { in: oldIds }, period: { in: [...fileSet] } },
+              distinct: ['period'],
+              select: { period: true },
+            })
+            for (const p of overlap) conflicts.push({ period: p.period })
+          }
+        }
+      } else if (b.dataType === 'static') {
+        const snaps = await prisma.factStatic.findMany({ where: { batchId: id }, distinct: ['snapshotDate'], select: { snapshotDate: true } })
+        const fileMonths = new Set(snaps.map((s) => ymOfDate(s.snapshotDate)))
+        if (fileMonths.size > 0) {
+          const oldIds = (await prisma.importBatch.findMany({ where: { dataType: 'static', lifecycleStatus: 'active' }, select: { id: true } })).map((x) => x.id)
+          if (oldIds.length > 0) {
+            const oldSnaps = await prisma.factStatic.findMany({ where: { batchId: { in: oldIds } }, distinct: ['snapshotDate'], select: { snapshotDate: true } })
+            const months = new Set(oldSnaps.map((s) => ymOfDate(s.snapshotDate)))
+            for (const m of months) {
+              if (fileMonths.has(m)) conflicts.push({ period: m })
+            }
+          }
+        }
+      } else if (b.dataType === 'budget') {
+        const old = await prisma.importBatch.findMany({ where: { dataType: 'budget', lifecycleStatus: 'active', fiscalYear: b.fiscalYear }, select: { fileName: true } })
+        for (const x of old) conflicts.push({ label: `替换《${x.fileName}》的 ${b.fiscalYear} 财年预算` })
+      } else {
+        const old = await prisma.importBatch.findMany({ where: { dataType: b.dataType, lifecycleStatus: 'active' }, select: { fileName: true } })
+        for (const x of old) conflicts.push({ label: `替换当前生效的数据《${x.fileName}》` })
+      }
+      let crossBatchConflictCount = 0
+      for (const k of txnBatchKeys.get(id) ?? []) {
+        if ((keyFrequency.get(k) ?? 0) > 1) crossBatchConflictCount++
+      }
+      results.push({ id, filename: b.fileName, status: 'draft', conflictCount: conflicts.length, conflicts, crossBatchConflictCount })
+    }
+    return results
   },
 
   /** 手动归档批次（高危，仅 superadmin）：置 archived，已归档则幂等返回 */

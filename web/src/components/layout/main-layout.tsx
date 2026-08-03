@@ -3,11 +3,12 @@ import { Outlet, Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
 import { Header } from './header'
 import { Sidebar } from './sidebar'
+import { ChangePasswordDialog } from './change-password-dialog'
 
 const SIDEBAR_COLLAPSED_KEY = 'sidebar-collapsed'
 
 export function MainLayout() {
-  const { isAuthenticated } = useAuthStore()
+  const { isAuthenticated, user, openPasswordDialog } = useAuthStore()
   const location = useLocation()
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true'
@@ -18,6 +19,11 @@ export function MainLayout() {
   useEffect(() => {
     setMobileOpen(false)
   }, [location.pathname])
+
+  // 首次登录强制改密：未改密前自动弹出强制对话框（后端业务接口已被 403 拦截）
+  useEffect(() => {
+    if (user?.mustChangePassword) openPasswordDialog(true)
+  }, [user?.mustChangePassword, openPasswordDialog])
 
   const toggleCollapse = () => {
     setCollapsed((prev) => {
@@ -47,6 +53,8 @@ export function MainLayout() {
           </div>
         </main>
       </div>
+      {/* 修改密码对话框（全局唯一实例：用户菜单主动改密 + 强制改密） */}
+      <ChangePasswordDialog />
     </div>
   )
 }

@@ -36,6 +36,9 @@ Thumbs.db
 # 模板文件必须入库（不含真实密钥）
 !.env.example
 
+# 临时排查截图（不入库）
+login-attempt.png
+
 # Coverage
 coverage
 

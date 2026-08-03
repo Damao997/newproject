@@ -6,6 +6,20 @@ import { errors } from '../lib/errors'
 import type { AuthUserContext } from '../types/express'
 
 /**
+ * 强制改密豁免路径：首次登录须改密的用户仅可访问这些接口（改密/登出/资料），
+ * 其余业务接口一律 403（配合 user.must_change_password 标志）。
+ */
+const EXEMPT_AUTH_PATHS = [
+  { method: 'PUT', path: '/api/v1/auth/password' },
+  { method: 'POST', path: '/api/v1/auth/logout' },
+  { method: 'GET', path: '/api/v1/auth/profile' },
+]
+
+function isExemptPath(req: Request): boolean {
+  return EXEMPT_AUTH_PATHS.some((e) => e.method === req.method && req.originalUrl.startsWith(e.path))
+}
+
+/**
  * 鉴权中间件：校验 access JWT → 加载用户与角色 → 注入 req.authUser。
  * 失败一律 401。
  * 说明：access token 短期（15min），刷新流程在 refresh 端校验 token_blacklist 与轮转。
@@ -42,6 +56,11 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
     }
     if (user.role.status !== 'active') {
       throw errors.forbidden('所属角色已停用')
+    }
+
+    // 首次登录强制改密：未改密前仅放行改密/登出/资料接口，其余业务接口一律 403
+    if (user.mustChangePassword && !isExemptPath(req)) {
+      throw errors.forbidden('首次登录须修改密码后才能继续使用')
     }
 
     const context: AuthUserContext = {

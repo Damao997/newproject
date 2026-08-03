@@ -14,9 +14,11 @@ vi.mock('../lib/prisma', () => ({
 
 import { authenticate } from './auth'
 
-function makeReq(headers: Record<string, string>): Request {
+function makeReq(headers: Record<string, string>, opts: { method?: string; originalUrl?: string } = {}): Request {
   return {
     header: (name: string) => headers[name] ?? headers[name.toLowerCase()],
+    method: opts.method ?? 'GET',
+    originalUrl: opts.originalUrl ?? '/api/v1/dashboard/overview',
   } as unknown as Request
 }
 
@@ -27,6 +29,7 @@ function activeUser(overrides: Record<string, unknown> = {}) {
     roleId: 'r-admin',
     companyCode: null,
     status: 'active',
+    mustChangePassword: false,
     role: { code: 'admin', scopeValue: '*', status: 'active' },
     ...overrides,
   }
@@ -79,5 +82,33 @@ describe('authenticate 中间件', () => {
     const next = vi.fn() as unknown as NextFunction
     await authenticate(req, {} as Response, next)
     expect(next).toHaveBeenCalledWith(expect.objectContaining({ code: 403 }))
+  })
+
+  it('强制改密中：业务接口 → 403（首次登录须修改密码）', async () => {
+    mocks.prisma.user.findUnique.mockResolvedValue(activeUser({ mustChangePassword: true }))
+    const token = signAccessToken({ userId: 'u1', username: 'alice', roleCode: 'admin' })
+    const req = makeReq({ Authorization: `Bearer ${token}` }, { method: 'GET', originalUrl: '/api/v1/dashboard/overview' })
+    const next = vi.fn() as unknown as NextFunction
+    await authenticate(req, {} as Response, next)
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ code: 403, message: '首次登录须修改密码后才能继续使用' }))
+  })
+
+  it('强制改密中：改密接口（PUT /auth/password）放行', async () => {
+    mocks.prisma.user.findUnique.mockResolvedValue(activeUser({ mustChangePassword: true }))
+    const token = signAccessToken({ userId: 'u1', username: 'alice', roleCode: 'admin' })
+    const req = makeReq({ Authorization: `Bearer ${token}` }, { method: 'PUT', originalUrl: '/api/v1/auth/password' })
+    const next = vi.fn() as unknown as NextFunction
+    await authenticate(req, {} as Response, next)
+    expect(next).toHaveBeenCalledWith()
+    expect(req.authUser).toMatchObject({ userId: 'u1' })
+  })
+
+  it('强制改密中：登出接口（POST /auth/logout）放行', async () => {
+    mocks.prisma.user.findUnique.mockResolvedValue(activeUser({ mustChangePassword: true }))
+    const token = signAccessToken({ userId: 'u1', username: 'alice', roleCode: 'admin' })
+    const req = makeReq({ Authorization: `Bearer ${token}` }, { method: 'POST', originalUrl: '/api/v1/auth/logout' })
+    const next = vi.fn() as unknown as NextFunction
+    await authenticate(req, {} as Response, next)
+    expect(next).toHaveBeenCalledWith()
   })
 })
