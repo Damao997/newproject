@@ -3,3 +3,7 @@
 *.sh text eol=lf
 *.sql text eol=lf
 Dockerfile text eol=lf
+
+# Excel 样例为二进制，禁止行尾转换（避免 CRLF 替换损坏文件）
+*.xls binary
+*.xlsx binary
