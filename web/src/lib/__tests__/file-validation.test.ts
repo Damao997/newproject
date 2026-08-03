@@ -23,13 +23,13 @@ describe('validateExcelFile', () => {
     expect(result.message).toContain('.xlsx')
   })
 
-  it('拒绝超过 50MB 的文件', () => {
+  it('拒绝超过 200MB 的文件', () => {
     const result = validateExcelFile(makeFile('big.xlsx', MAX_UPLOAD_SIZE + 1))
     expect(result.valid).toBe(false)
-    expect(result.message).toContain('50MB')
+    expect(result.message).toContain('200MB')
   })
 
-  it('接受恰好 50MB 的文件', () => {
+  it('接受恰好 200MB 的文件', () => {
     expect(validateExcelFile(makeFile('edge.xlsx', MAX_UPLOAD_SIZE)).valid).toBe(true)
   })
 })

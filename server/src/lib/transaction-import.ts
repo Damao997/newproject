@@ -437,6 +437,36 @@ export function matchSummarySheet(sheetName: string): { transactionType: string;
   return entry ? { transactionType: entry.transactionType, direction: entry.direction } : null
 }
 
+/**
+ * SpreadsheetML XML 单文件预处理（ERP 伪 .xls 实测格式）：
+ * 按 <Worksheet> 段切分，仅保留名称匹配的目标段，重组精简 XML 后再解析。
+ * sheetjs 的 bookSheets/sheets 选项对 XML 单文件格式失效（实测全量 DOM 解析），
+ * 100MB+ 文件直接交给 XLSX.read 有 OOM 风险，须先在此按段筛选。
+ * 共享头（Styles/Names 等）与尾部原样保留；无目标段返回 null。
+ */
+export function extractSummarySheetsXml(xml: string): string | null {
+  const wsRe = /<Worksheet\b[^>]*>[\s\S]*?<\/Worksheet>/g
+  const nameRe = /(?:ss:)?Name="([^"]*)"/
+  const parts: string[] = []
+  let firstWsStart = -1
+  let lastWsEnd = -1
+  let headEnd = -1
+  for (const m of xml.matchAll(wsRe)) {
+    if (firstWsStart < 0) firstWsStart = m.index
+    lastWsEnd = m.index + m[0].length
+    const openTag = m[0].slice(0, m[0].indexOf('>') + 1)
+    const nameMatch = openTag.match(nameRe)
+    const name = nameMatch ? nameMatch[1] : ''
+    if (!matchSummarySheet(name)) continue
+    // 头部截止到第一个 Worksheet 段之前（共享 Styles/Names 等），首个 Worksheet 之前的非目标段一并丢弃
+    if (headEnd < 0) headEnd = firstWsStart
+    parts.push(m[0])
+  }
+  if (parts.length === 0) return null
+  // 尾部从最后一个 Worksheet 段之后开始（通常仅剩 </Workbook>），目标段之间的非目标段一并丢弃
+  return xml.slice(0, headEnd) + parts.join('') + xml.slice(lastWsEnd)
+}
+
 export function parseTransactionWorkbook(buffer: Buffer, sourceFile: string, resolvers: TransactionResolvers): TransactionParseResult {
   const result: TransactionParseResult = {
     records: [],
@@ -447,34 +477,55 @@ export function parseTransactionWorkbook(buffer: Buffer, sourceFile: string, res
     summary: { typeCounts: {}, companies: [], periods: [], totalClosingBalance: 0, duplicateCount: 0, duplicateSamples: [], counterpartyCount: 0, internalCount: 0 },
   }
 
-  // 阶段一：仅读取 Sheet 名目录（bookSheets 不解数据，毫秒级、内存极小），
-  // 先按名称筛选目标 Sheet，避免大型工作簿（大量无关 Sheet）被全量解析驻留内存
-  let selectedNames: string[]
-  try {
-    const meta = XLSX.read(buffer, { type: 'buffer', bookSheets: true })
-    selectedNames = meta.SheetNames.filter((n) => matchSummarySheet(n) !== null)
-  } catch {
-    result.errors.push({ sheet: '-', row: 0, column: '-', message: '文件解析失败，请检查文件格式' })
-    return result
+  // 格式自适应：SpreadsheetML XML 单文件（ERP 伪 .xls 实测格式）走分段预处理；
+  // 其余（xlsx zip / BIFF）走两阶段读取（bookSheets 只读目录 + sheets 仅解析目标 Sheet）
+  const head = buffer.subarray(0, 512).toString('utf8').replace(/^\uFEFF/, '').trimStart()
+  let wb: XLSX.WorkBook | null = null
+  let selectedNames: string[] = []
+  if (head.startsWith('<?xml')) {
+    // XML 单文件：sheetjs 的 sheets 选项失效（实测全量 DOM 解析），先按段切分筛选目标 Sheet
+    const slim = extractSummarySheetsXml(buffer.toString('utf8').replace(/^\uFEFF/, ''))
+    if (slim === null) {
+      result.errors.push({ sheet: '-', row: 0, column: '-', message: '未找到账龄汇总表 Sheet（如「AR-账龄汇总表」），请确认文件为六大往来账龄报表' })
+      return result
+    }
+    try {
+      wb = XLSX.read(slim, { type: 'string', cellDates: true })
+    } catch {
+      result.errors.push({ sheet: '-', row: 0, column: '-', message: '文件解析失败，请检查文件格式' })
+      return result
+    }
+    selectedNames = wb.SheetNames.filter((n) => matchSummarySheet(n) !== null)
+  } else {
+    // 阶段一：仅读取 Sheet 名目录（bookSheets 不解数据，毫秒级、内存极小），先按名称筛选目标 Sheet
+    try {
+      const meta = XLSX.read(buffer, { type: 'buffer', bookSheets: true })
+      selectedNames = meta.SheetNames.filter((n) => matchSummarySheet(n) !== null)
+    } catch {
+      result.errors.push({ sheet: '-', row: 0, column: '-', message: '文件解析失败，请检查文件格式' })
+      return result
+    }
+    if (selectedNames.length === 0) {
+      result.errors.push({ sheet: '-', row: 0, column: '-', message: '未找到账龄汇总表 Sheet（如「AR-账龄汇总表」），请确认文件为六大往来账龄报表' })
+      return result
+    }
+    // 阶段二：仅解析选中的 Sheet（sheets 选项），未匹配 Sheet 的数据不驻留内存
+    try {
+      wb = XLSX.read(buffer, { type: 'buffer', cellDates: true, sheets: selectedNames })
+    } catch {
+      result.errors.push({ sheet: '-', row: 0, column: '-', message: '文件解析失败，请检查文件格式' })
+      return result
+    }
   }
   if (selectedNames.length === 0) {
     result.errors.push({ sheet: '-', row: 0, column: '-', message: '未找到账龄汇总表 Sheet（如「AR-账龄汇总表」），请确认文件为六大往来账龄报表' })
     return result
   }
 
-  // 阶段二：仅解析选中的 Sheet（sheets 选项），未匹配 Sheet 的数据不驻留内存
-  let wb: XLSX.WorkBook
-  try {
-    wb = XLSX.read(buffer, { type: 'buffer', cellDates: true, sheets: selectedNames })
-  } catch {
-    result.errors.push({ sheet: '-', row: 0, column: '-', message: '文件解析失败，请检查文件格式' })
-    return result
-  }
-
   // selectedNames 由 SheetNames.filter 生成，保持工作簿原始顺序
   for (const sheetName of selectedNames) {
     const typeInfo = matchSummarySheet(sheetName)!
-    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, blankrows: false, defval: null }) as unknown[][]
+    const rows = XLSX.utils.sheet_to_json(wb!.Sheets[sheetName], { header: 1, blankrows: false, defval: null }) as unknown[][]
     const info = parseSummarySheet(rows, sheetName, typeInfo, sourceFile, resolvers, result)
     result.sheets.push(info)
   }

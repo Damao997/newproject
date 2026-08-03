@@ -1,8 +1,8 @@
 /** 允许的 Excel 扩展名，对齐《安全与权限规范》§十 */
 export const ALLOWED_EXCEL_EXTENSIONS = ['.xlsx', '.xls'] as const
 
-/** 最大文件大小 50MB，对齐《安全与权限规范》§十 */
-export const MAX_UPLOAD_SIZE = 50 * 1024 * 1024
+/** 最大文件大小 200MB，对齐《安全与权限规范》§十（ERP 大账龄报表可达 100MB+） */
+export const MAX_UPLOAD_SIZE = 200 * 1024 * 1024
 
 export interface FileValidationResult {
   valid: boolean
@@ -23,7 +23,7 @@ export function validateExcelFile(file: File): FileValidationResult {
   }
 
   if (file.size > MAX_UPLOAD_SIZE) {
-    return { valid: false, message: '文件大小超过 50MB 限制' }
+    return { valid: false, message: '文件大小超过 200MB 限制' }
   }
 
   return { valid: true }

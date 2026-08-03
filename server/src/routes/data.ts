@@ -25,7 +25,7 @@ import type { AuthUserContext } from '../types/express'
  */
 const router = Router()
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } })
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } })
 
 const VALID_TEMPLATES = new Set(['operating', 'static', 'budget', 'transaction', 'inventory'])
 

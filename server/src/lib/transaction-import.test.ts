@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import * as XLSX from 'xlsx'
-import { parseTransactionWorkbook, matchSummarySheet, type TransactionResolvers } from './transaction-import'
+import { parseTransactionWorkbook, matchSummarySheet, extractSummarySheetsXml, type TransactionResolvers } from './transaction-import'
 
 /**
  * 六大往来账龄汇总表解析器单测。
@@ -270,5 +270,76 @@ describe('parseTransactionWorkbook', () => {
     }])
     const r = parseTransactionWorkbook(buf, 'test.xls', resolvers())
     expect(r.sheets[0].declaredCompanyCode).toBe('EN330058')
+  })
+})
+
+// ===== SpreadsheetML XML 单文件（ERP 伪 .xls 实测格式） =====
+
+/** 单元格转 SpreadsheetML XML：空值输出自闭合 Cell，其余按 String 类型 */
+function xmlCell(v: unknown): string {
+  if (v === null || v === undefined || v === '') return '<Cell/>'
+  return `<Cell><Data ss:Type="String">${String(v)}</Data></Cell>`
+}
+
+function xmlRow(aoa: unknown[]): string {
+  return `<Row>${aoa.map(xmlCell).join('')}</Row>`
+}
+
+/** 构造与真实 ERP 导出同构的 SpreadsheetML XML 单文件（共享 Styles 头 + 多 Worksheet 段，含 ss:Protected 属性） */
+function makeXmlWorkbook(sheets: Array<{ name: string; aoa: unknown[][] }>): string {
+  const body = sheets
+    .map((s) => `<Worksheet ss:Name="${s.name}" ss:Protected="0"><Table>${s.aoa.map(xmlRow).join('')}</Table></Worksheet>`)
+    .join('\n')
+  return (
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<?mso-application progid="Excel.Sheet"?>\n' +
+    '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n' +
+    '<Styles><Style ss:ID="ptime"/></Styles>\n' +
+    `${body}\n` +
+    '</Workbook>'
+  )
+}
+
+describe('SpreadsheetML XML 单文件（ERP 伪 .xls）', () => {
+  const AR_SHEET = { name: 'AR-账龄汇总表', aoa: [...AR_TITLE_ROWS, AR_HEADER, AR_SUB, arRow('330058', 'C001', '客户甲', '112201', 0, 100, [60, 40, 0, 0, 0, 0, 0, 0, 0, 0])] }
+  const PER_SHEET = { name: 'PER_AR-账龄汇总表', aoa: [...AR_TITLE_ROWS, AR_HEADER, AR_SUB, arRow('330058', 'C002', '客户乙', '2203', 0, 20, [20, 0, 0, 0, 0, 0, 0, 0, 0, 0])] }
+  const IRRELEVANT = { name: '报表参数', aoa: [['报表名称：', '应收款账龄分析明细表']] }
+
+  it('extractSummarySheetsXml 仅保留目标段且保留共享头', () => {
+    // 非目标段分别位于首个段（隐藏表）与末尾（报表参数），均须被丢弃
+    const xml = makeXmlWorkbook([{ name: '隐藏表', aoa: [['x']] }, AR_SHEET, PER_SHEET, IRRELEVANT])
+    const slim = extractSummarySheetsXml(xml)
+    expect(slim).not.toBeNull()
+    expect(slim).toContain('<Styles><Style ss:ID="ptime"/></Styles>')
+    expect(slim).toContain('AR-账龄汇总表')
+    expect(slim).toContain('PER_AR-账龄汇总表')
+    expect(slim).not.toContain('报表参数')
+    expect(slim).not.toContain('隐藏表')
+  })
+
+  it('无目标 Worksheet 返回 null', () => {
+    expect(extractSummarySheetsXml(makeXmlWorkbook([IRRELEVANT, { name: 'Sheet1', aoa: [['a']] }]))).toBeNull()
+  })
+
+  it('XML 单文件解析：无关 Sheet 不产生记录，目标 Sheet 顺序保持', () => {
+    const xml = makeXmlWorkbook([PER_SHEET, IRRELEVANT, AR_SHEET])
+    const r = parseTransactionWorkbook(Buffer.from(xml, 'utf8'), 'CUX_AR_样例.xls', resolvers())
+    expect(r.errors).toHaveLength(0)
+    expect(r.sheets.map((s) => s.sheetName)).toEqual(['PER_AR-账龄汇总表', 'AR-账龄汇总表'])
+    expect(r.records).toHaveLength(2)
+    expect(r.summary.typeCounts).toEqual({ 预收账款: 1, 应收账款: 1 })
+  })
+
+  it('XML 单文件无匹配 Worksheet 报「未找到账龄汇总表」', () => {
+    const xml = makeXmlWorkbook([{ name: 'Sheet1', aoa: [['a', 'b']] }, IRRELEVANT])
+    const r = parseTransactionWorkbook(Buffer.from(xml, 'utf8'), 'bad.xls', resolvers())
+    expect(r.errors).toHaveLength(1)
+    expect(r.errors[0].message).toContain('未找到账龄汇总表')
+  })
+
+  it('XML 单文件 Worksheet 段未闭合（损坏文件）报错', () => {
+    const broken = '<?xml version="1.0"?><Workbook><Worksheet ss:Name="AR-账龄汇总表"><Table><Row><Cell/></Row>'
+    const r = parseTransactionWorkbook(Buffer.from(broken, 'utf8'), 'broken.xls', resolvers())
+    expect(r.errors.length).toBeGreaterThan(0)
   })
 })
