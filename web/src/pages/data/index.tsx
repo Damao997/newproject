@@ -40,12 +40,16 @@ import { FormulaMaintenance } from './formula-maintenance'
 import { ImportPanel } from './import-panel'
 
 // 页面子标签（与侧边栏二级菜单 ?tab= 参数对应）
-const DATA_TABS = ['manage', 'reclassify', 'dimensions', 'formulas'] as const
+const DATA_TABS = ['manage', 'reclassify', 'dimensions', 'board', 'formulas'] as const
 type DataTab = (typeof DATA_TABS)[number]
 
 // 「维度/科目体系」内部三级子标签（与侧边栏三级菜单 &sub= 参数对应）
-const DIM_SUB_TABS = ['operating', 'static', 'company', 'summary', 'category', 'subject'] as const
+const DIM_SUB_TABS = ['operating', 'static', 'company', 'summary'] as const
 type DimSubTab = (typeof DIM_SUB_TABS)[number]
+
+// 「看板管理」内部三级子标签（品类配置 / 主体配置，从科目体系拆出）
+const BOARD_SUB_TABS = ['category', 'subject'] as const
+type BoardSubTab = (typeof BOARD_SUB_TABS)[number]
 
 /** 数据调整入口（科目调整 / 跨公司重分类）：按权限码显隐，两个 Tab 复用 */
 function ReclassifyMenu({ canSubject, canCompany, onSubject, onCompany }: {
@@ -86,6 +90,10 @@ export default function DataPage() {
   const dimSubTab: DimSubTab = DIM_SUB_TABS.includes(subParam as DimSubTab)
     ? (subParam as DimSubTab)
     : 'operating'
+  // 「看板管理」三级子标签同样由 &sub= 派生（非法/缺失回退品类配置）
+  const boardSubTab: BoardSubTab = BOARD_SUB_TABS.includes(subParam as BoardSubTab)
+    ? (subParam as BoardSubTab)
+    : 'category'
 
   const canExport = can('data', 'export')
   // 高危操作（仅 superadmin 持有对应权限码）
@@ -101,13 +109,18 @@ export default function DataPage() {
     ? (tabParam as DataTab)
     : 'manage'
 
-  // URL 归一化：tab=dimensions 但缺 sub 时自动补默认经营分析科目（replace），
-  // 保证 URL 始终反映具体三级子项、导航三级高亮与页面状态一致
+  // URL 归一化（replace，不产生历史记录）：
+  // 1. tab=dimensions/board 缺 sub 或 sub 非法 → 补/改为各自默认值，保证 URL 始终反映具体三级子项、导航高亮与页面状态一致；
+  // 2. 冗余的 ?tab=manage（默认值）→ 清除 query，保证侧边栏「导入与浏览」叶子（path=/data）精确高亮。
   useEffect(() => {
-    if (activeTab === 'dimensions' && !subParam) {
+    if (activeTab === 'dimensions' && !DIM_SUB_TABS.includes(subParam as DimSubTab)) {
       setSearchParams({ tab: 'dimensions', sub: 'operating' }, { replace: true })
+    } else if (activeTab === 'board' && !BOARD_SUB_TABS.includes(subParam as BoardSubTab)) {
+      setSearchParams({ tab: 'board', sub: 'category' }, { replace: true })
+    } else if (tabParam === 'manage') {
+      setSearchParams({}, { replace: true })
     }
-  }, [activeTab, subParam, setSearchParams])
+  }, [activeTab, subParam, tabParam, setSearchParams])
 
   // 数据编辑入口：复用重分类/科目调整通道（校验、预览影响、二次确认、审计留痕均在对话框内）
   const [adjustSubjectOpen, setAdjustSubjectOpen] = useState(false)
@@ -140,6 +153,13 @@ export default function DataPage() {
     const filtered = cur.filter((c) => valid.has(c))
     if (filtered.length !== cur.length) setBrowseCompanies(filtered)
   }, [companies, setBrowseCompanies])
+  // 持久化展开行防护：科目集合本页不加载，无法按有效编码过滤，仅做长度上限保护避免无限增长
+  useEffect(() => {
+    const cur = usePageStore.getState().dataBrowse.expandedRows
+    if (cur.length > 500) {
+      usePageStore.getState().setDataBrowse({ expandedRows: cur.slice(-500) })
+    }
+  }, [])
   const { data: periodsData } = useAvailablePeriods()
   // 期间候选按全局选中财年过滤
   const dynamicPeriods = useMemo(
@@ -287,8 +307,7 @@ export default function DataPage() {
                   </Select>
                   <CompanyMultiSelect value={browseCompanies} onChange={setBrowseCompanies} entitiesOnly className="w-[200px]" />
                   <div className="flex shrink-0 items-center space-x-2">
-                    <span className="text-sm text-muted-foreground">月份:</span>
-                    <MonthPicker value={browsePeriod} onChange={setBrowsePeriod} availablePeriods={dynamicPeriods ?? []} />
+                    <MonthPicker value={browsePeriod} onChange={setBrowsePeriod} availablePeriods={dynamicPeriods ?? []} placeholder="最新期间" />
                   </div>
                 </div>
                 <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">
@@ -398,14 +417,27 @@ export default function DataPage() {
               {dimSubTab === 'summary' && (
                 <AggregationMapPanel canUpdate={can('data:company', 'update')} />
               )}
-              {dimSubTab === 'category' && (
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {activeTab === 'board' && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>看板管理</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {/* 三级子标签由 URL &sub= 驱动，切完全走侧边栏三级菜单，页面内不再显示任何 tab 标签 */}
+              {boardSubTab === 'category' && (
                 <ProductCategoryPanel
                   canCreate={can('data:subject', 'create')}
                   canUpdate={can('data:subject', 'update')}
                   canDelete={can('data:subject', 'delete')}
                 />
               )}
-              {dimSubTab === 'subject' && (
+              {boardSubTab === 'subject' && (
                 <SubjectBudgetPanel
                   canCreate={can('data:subject', 'create')}
                   canUpdate={can('data:subject', 'update')}

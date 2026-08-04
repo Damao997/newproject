@@ -71,7 +71,7 @@ export const navItems: NavItem[] = [
     icon: Database,
     resource: 'data:browse:view',
     children: [
-      { path: '/data', label: '数据管理' },
+      { path: '/data', label: '导入与浏览' },
       { path: '/data?tab=reclassify', label: '重分类记录' },
       {
         path: '/data?tab=dimensions',
@@ -81,8 +81,14 @@ export const navItems: NavItem[] = [
           { path: '/data?tab=dimensions&sub=static', label: '静态科目' },
           { path: '/data?tab=dimensions&sub=company', label: '公司' },
           { path: '/data?tab=dimensions&sub=summary', label: '汇总主体' },
-          { path: '/data?tab=dimensions&sub=category', label: '品类配置' },
-          { path: '/data?tab=dimensions&sub=subject', label: '主体配置' },
+        ],
+      },
+      {
+        path: '/data?tab=board',
+        label: '看板管理',
+        children: [
+          { path: '/data?tab=board&sub=category', label: '品类配置' },
+          { path: '/data?tab=board&sub=subject', label: '主体配置' },
         ],
       },
       { path: '/data?tab=formulas', label: '公式维护' },
