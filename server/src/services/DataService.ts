@@ -4,7 +4,7 @@ import { recordAudit } from '../middleware/audit'
 import { validateFormulaChange, extractCodes, extractOperandRefs, PSEUDO_OPERANDS } from './FormulaRuleService'
 import { evaluateFormula, topoSortMetrics } from '../lib/formula'
 import { OPERATING_DIMS } from '../lib/metric-values'
-import { fiscalYearStartPeriod, periodMinusYears, fiscalYtdDays } from '../lib/period'
+import { fiscalYearStartPeriod, fiscalYearOpeningSnapshotPeriod, periodMinusYears, fiscalYtdDays } from '../lib/period'
 import { buildExcel } from '../lib/excel'
 import { effectiveScope } from '../lib/scope-guard'
 import { withoutScope } from '../middleware/scope-context'
@@ -780,12 +780,13 @@ export const DataService = {
       const grouped = await prisma.factOperating.groupBy({ by: ['accountCode'], where: dimWhere, _sum: { value: true } })
       for (const g of grouped) evalValues[`${g.accountCode}@${dim}`] = Number(g._sum.value ?? 0)
     }
-    // 静态维度复合键目标快照月
+    // 静态维度复合键目标快照月（年初/上年年初 = 财年起始月前一月，即上年期末余额时点）
+    const opening = fiscalYearOpeningSnapshotPeriod(period)
     const stDimMonths: Record<string, string> = {
       CURRENT_AMOUNT: period,
-      YEAR_START: fyStart,
+      YEAR_START: opening,
       SAME_PERIOD_AMOUNT: prevPeriod,
-      LAST_YEAR_START: prevFyStart,
+      LAST_YEAR_START: periodMinusYears(opening, 1),
     }
     const stCodes = allCodeList.filter((c) => c.startsWith('ST_'))
     if (stCodes.length > 0) {

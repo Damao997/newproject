@@ -45,6 +45,16 @@ export function fiscalYearStartPeriod(period: string, startMonth = getFiscalStar
   return `${fiscalYearStartYear(period, startMonth)}-${pad2(startMonth)}`
 }
 
+/**
+ * 期所属财年的年初快照月：财年起始月的前一月（= 上年期末余额时点）。
+ * 静态快照为资产负债表日（月末）余额，故年初数取起始月前一月快照：
+ * S=4 且期属 FY2026 → `2026-03`；S=1 → 上年 `12` 月（formatPeriod 自动进位）。
+ */
+export function fiscalYearOpeningSnapshotPeriod(period: string, startMonth = getFiscalStartMonth()): string {
+  const { year, month } = parsePeriod(fiscalYearStartPeriod(period, startMonth))
+  return formatPeriod(year, month - 1)
+}
+
 /** 期向前推 n 年（同月） */
 export function periodMinusYears(period: string, n: number): string {
   const { year, month } = parsePeriod(period)

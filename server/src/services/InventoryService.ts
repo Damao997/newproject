@@ -2,7 +2,7 @@ import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { AggregationService, resolveCompanyCodes, flattenValueTree } from './AggregationService'
 import { STATIC_DIMS, calcYoy } from '../lib/metric-values'
-import { fiscalYearStartPeriod, periodMinusYears, formatPeriod, getFiscalStartMonth } from '../lib/period'
+import { fiscalYearOpeningSnapshotPeriod, periodMinusYears, formatPeriod, getFiscalStartMonth } from '../lib/period'
 import type { AuthUserContext } from '../types/express'
 
 /**
@@ -166,11 +166,13 @@ export const InventoryService = {
     const batchIds = await activeStaticBatchIds()
     if (batchIds.length === 0) return { period: params.period, rows: [] }
 
+    // 年初/上年年初 = 财年起始月前一月（上年期末余额时点，与快照月末余额语义对齐）
+    const opening = fiscalYearOpeningSnapshotPeriod(params.period)
     const targetMonths = {
       current: params.period,
-      yearStart: fiscalYearStartPeriod(params.period),
+      yearStart: opening,
       samePeriod: periodMinusYears(params.period, 1),
-      lastYearStart: fiscalYearStartPeriod(periodMinusYears(params.period, 1)),
+      lastYearStart: periodMinusYears(opening, 1),
     }
     const grouped = await prisma.factStatic.groupBy({
       by: ['companyCode', 'accountCode', 'snapshotDate'],

@@ -5,6 +5,7 @@ import {
   fiscalYearStartYear,
   fiscalYearLabel,
   fiscalYearStartPeriod,
+  fiscalYearOpeningSnapshotPeriod,
   periodMinusYears,
   periodsInRange,
   fyLabelOfDate,
@@ -40,6 +41,12 @@ describe('财年口径：自定义起始月（S=4）', () => {
 })
 
 describe('同期与区间', () => {
+  it('fiscalYearOpeningSnapshotPeriod 年初快照月 = 财年起始月前一月（上年期末）', () => {
+    expect(fiscalYearOpeningSnapshotPeriod('2026-05', 4)).toBe('2026-03') // FY2026 年初 = 2026-03 期末
+    expect(fiscalYearOpeningSnapshotPeriod('2026-03', 4)).toBe('2025-03') // 2026-03 属 FY2025
+    expect(fiscalYearOpeningSnapshotPeriod('2027-01', 4)).toBe('2026-03') // FY2026 内任意月同口径
+    expect(fiscalYearOpeningSnapshotPeriod('2026-05', 1)).toBe('2025-12') // S=1 借位到上年 12 月
+  })
   it('periodMinusYears 同月往前一年', () => {
     expect(periodMinusYears('2026-04', 1)).toBe('2025-04')
   })

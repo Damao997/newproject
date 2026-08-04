@@ -42,13 +42,13 @@ beforeAll(async () => {
       batchId, companyCode, accountCode: leafCode, snapshotDate: utcDate(period),
       periodDimCode: STATIC_DIMS.CURRENT_AMOUNT, fiscalYear: fy, value,
     })
-    // S=4: P='2099-05' → 年初='2099-04', 同期='2098-05', 上年年初='2098-04'
+    // S=4: P='2099-05' → 年初='2099-03'（财年起始月前一月=上年期末）, 同期='2098-05', 上年年初='2098-03'
     await basePrisma.factStatic.createMany({
       data: [
         row('2099-05', 5000, 'FY2099'), // 本期
-        row('2099-04', 4800, 'FY2099'), // 年初（S=4 财年起始月）
+        row('2099-03', 4800, 'FY2098'), // 年初（FY2099 起始月 2099-04 的前一月期末）
         row('2098-05', 4500, 'FY2098'), // 同期
-        row('2098-04', 4300, 'FY2098'), // 上年年初
+        row('2098-03', 4300, 'FY2098'), // 上年年初
       ],
     })
   } catch {
@@ -69,8 +69,8 @@ describe('AggregationService 静态四维派生（真实 DB）', () => {
     const leaf = flattenValueTree(tree).find((n) => n.code === leafCode)
     expect(leaf).toBeTruthy()
     expect(leaf!.values[STATIC_DIMS.CURRENT_AMOUNT]).toBe(5000) // 2099-05
-    expect(leaf!.values[STATIC_DIMS.YEAR_START]).toBe(4800) // 2099-04（S=4 财年起始）
+    expect(leaf!.values[STATIC_DIMS.YEAR_START]).toBe(4800) // 2099-03（财年起始月前一月=上年期末）
     expect(leaf!.values[STATIC_DIMS.SAME_PERIOD_AMOUNT]).toBe(4500) // 2098-05
-    expect(leaf!.values[STATIC_DIMS.LAST_YEAR_START]).toBe(4300) // 2098-04
+    expect(leaf!.values[STATIC_DIMS.LAST_YEAR_START]).toBe(4300) // 2098-03
   })
 })

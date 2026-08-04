@@ -6,7 +6,7 @@ import type { AuthUserContext } from '../types/express'
 import { OPERATING_DIMS, STATIC_DIMS } from '../lib/metric-values'
 import { evaluateFormula, topoSortMetrics } from '../lib/formula'
 import { extractCodes, extractOperandRefs, PSEUDO_OPERANDS } from './FormulaRuleService'
-import { periodMinusYears, fiscalYearStartPeriod, fiscalYearLabel, fiscalYtdDays } from '../lib/period'
+import { periodMinusYears, fiscalYearStartPeriod, fiscalYearOpeningSnapshotPeriod, fiscalYearLabel, fiscalYtdDays } from '../lib/period'
 import { ReclassifyReversalService } from './ReclassifyReversalService'
 
 /**
@@ -513,6 +513,7 @@ export const AggregationService = {
 
   /**
    * 静态指标聚合树：以原始快照为基础，按选定期的快照月份派生本期/年初/同期/上年年初。
+   * 年初/上年年初取财年起始月前一月（上年期末）快照，与资产负债表日（月末余额）语义对齐。
    * @param opts.skipExternal 为另一棵树构建外部值时置 true，跳过本树的跨树取数，防止互引递归。
    */
   async buildStaticTree(companyCodes: string[], period: string, opts?: BuildTreeOpts): Promise<ValueNode[]> {
@@ -532,12 +533,14 @@ export const AggregationService = {
       const batchIds = await activeBatchIds('static')
       if (batchIds.length > 0) {
         const prev = periodMinusYears(period, 1)
+        // 年初快照月 = 财年起始月前一月（上年期末余额时点，如 S=4 且 FY2026 → 2026-03）
+        const opening = fiscalYearOpeningSnapshotPeriod(period)
         // 输出维度 → 目标快照月份
         const dimTargets: [string, string][] = [
           [STATIC_DIMS.CURRENT_AMOUNT, period],
-          [STATIC_DIMS.YEAR_START, fiscalYearStartPeriod(period)],
+          [STATIC_DIMS.YEAR_START, opening],
           [STATIC_DIMS.SAME_PERIOD_AMOUNT, prev],
-          [STATIC_DIMS.LAST_YEAR_START, fiscalYearStartPeriod(prev)],
+          [STATIC_DIMS.LAST_YEAR_START, periodMinusYears(opening, 1)],
         ]
         const grouped = await prisma.factStatic.groupBy({
           by: ['accountCode', 'snapshotDate'],
