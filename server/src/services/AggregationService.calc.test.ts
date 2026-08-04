@@ -79,6 +79,26 @@ describe('applyCalcLayer 计算层', () => {
     expect(target.values.ACTUAL_MONTH).toBe(42)
   })
 
+  it('毛利计算类叶子公式缺失：预算等全维度坍缩为 0（异常回归基线）', () => {
+    // 对应排查结论：seed 镜像配对失败时 formula=NULL，buildTree 叶子无事实值 → 毛利预算恒 0
+    const revenue = node('OP_REV', { BUDGET_AMOUNT: 320, ACTUAL_MONTH: 300 })
+    const cost = node('OP_COST', { BUDGET_AMOUNT: 210, ACTUAL_MONTH: 200 })
+    const gross = node('OP_GROSS', { BUDGET_AMOUNT: 0, ACTUAL_MONTH: 0 })
+    applyCalcLayer([revenue, cost, gross], [], DIMS)
+    expect(gross.values.BUDGET_AMOUNT).toBe(0)
+    expect(gross.values.ACTUAL_MONTH).toBe(0)
+  })
+
+  it('毛利计算类科目的导入预算值被公式覆写（预算口径 = 收入预算 - 成本预算）', () => {
+    // 对应排查结论：fact_budget 中计算类毛利科目的导入行不生效，展示值恒为公式结果
+    const revenue = node('OP_REV', { BUDGET_AMOUNT: 320 })
+    const cost = node('OP_COST', { BUDGET_AMOUNT: 210 })
+    const gross = node('OP_GROSS', { BUDGET_AMOUNT: 999 })
+    const calc: CalcFormula[] = [{ code: 'OP_GROSS', formula: '{OP_REV} - {OP_COST}', dependsOn: ['OP_REV', 'OP_COST'] }]
+    applyCalcLayer([revenue, cost, gross], calc, ['BUDGET_AMOUNT'])
+    expect(gross.values.BUDGET_AMOUNT).toBe(110)
+  })
+
   it('计算节点在树深处也能被定位并覆盖', () => {
     const revLeaf = node('OP_REV', { ACTUAL_MONTH: 300 })
     const costLeaf = node('OP_COST', { ACTUAL_MONTH: 200 })

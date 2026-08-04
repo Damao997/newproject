@@ -92,6 +92,13 @@ async function seedCalcMetricFormulas(prisma: PrismaClient): Promise<void> {
   // 叠加显式比率定义（覆盖同 code）
   for (const def of CALC_METRIC_FORMULA_DEFS) tryPair(def.name, def.refs, def.template)
 
+  // 配对失败警告：毛利计算类科目未写入公式时，聚合层叶子计算值（含预算）将塌缩为 0，
+  // 静默失败是毛利数据异常高危点，显式告警便于定位（通常是同名收入/成本科目缺失或改名）
+  for (const s of subjects) {
+    if (s.category !== '毛利' || !calcCodes.has(s.code) || plans.has(s.code)) continue
+    console.warn(`[seed] 警告：毛利计算类科目镜像配对失败，未写入公式：${s.code} ${s.name}（请检查同名收入/成本科目是否存在）`)
+  }
+
   let count = 0
   for (const [selfCode, plan] of plans) {
     await prisma.metric.update({ where: { code: selfCode }, data: { formula: plan.formula, dependsOn: plan.deps as never } })

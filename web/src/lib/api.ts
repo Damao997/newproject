@@ -68,6 +68,12 @@ export interface ImportPreviewResult {
     retainedPeriods: string[]
   } | null
   kpiCoverage?: { covered: string[]; missing: string[] } | null
+  /** 预算模板口径告警：计算类/父级科目行将被重算或忽略、毛利直导叶子缺行将为 0 */
+  budgetWarnings?: {
+    recalcSubjects: string[]
+    parentSubjects: string[]
+    missingProfitLeaves: string[]
+  } | null
 }
 
 /** 可用期间与财年列表（财年降序，由 active 批次期间派生） */
@@ -401,11 +407,13 @@ class ApiClient {
   }
 
   // Data Management API
-  async uploadImport(file: File, templateType: string, valueUnit: string): Promise<ImportBatch> {
+  async uploadImport(file: File, templateType: string, valueUnit: string, fiscalYear?: string): Promise<ImportBatch> {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('templateType', templateType)
     formData.append('valueUnit', valueUnit)
+    // 目标财年（仅 budget 需要：预算按财年归属入库与激活隔离；缺省时后端回退当前财年）
+    if (fiscalYear) formData.append('fiscalYear', fiscalYear)
     
     return this.request({
       method: 'POST',
@@ -619,11 +627,12 @@ class ApiClient {
     return this.request({ method: 'POST', url: `/data/subjects/${id}/reclassify`, data: { parentCode } })
   }
 
-  async previewImport(file: File, templateType: string, valueUnit: string): Promise<ImportPreviewResult> {
+  async previewImport(file: File, templateType: string, valueUnit: string, fiscalYear?: string): Promise<ImportPreviewResult> {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('templateType', templateType)
     formData.append('valueUnit', valueUnit)
+    if (fiscalYear) formData.append('fiscalYear', fiscalYear)
     return this.request({
       method: 'POST',
       url: '/data/imports/preview',

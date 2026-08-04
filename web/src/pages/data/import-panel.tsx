@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { usePermission } from '@/hooks/usePermission'
-import { useImports, useImport, useUploadImport, useActivateImport, usePreviewImport, useArchiveImport, usePurgeImport } from '@/hooks/api-queries'
+import { useImports, useImport, useUploadImport, useActivateImport, usePreviewImport, useArchiveImport, usePurgeImport, useAvailablePeriods } from '@/hooks/api-queries'
 import { useBatchActivate, buildActivateConflictDescription } from '@/hooks/use-batch-activate'
+import { usePeriodStore } from '@/stores/periodStore'
 import { validateExcelFile } from '@/lib/file-validation'
 import { downloadImportTemplate } from '@/lib/import-template'
 import { type ImportPreviewResult } from '@/lib/api'
@@ -91,9 +92,31 @@ export function ImportPanel() {
   const [templateType, setTemplateType] = useState('operating')
   // 文件金额单位：系统存储口径为万元，选「元」时后端解析期自动 ÷10000 转换（默认元）
   const [valueUnit, setValueUnit] = useState('yuan')
+  // ---- 目标财年（仅 budget：预算文件归属单一财年，导入时指定而非读文件内财年；operating/static 财年逐期推导无需指定）----
+  const { data: periodsData } = useAvailablePeriods()
+  const globalFiscalYear = usePeriodStore((s) => s.fiscalYear)
+  const [budgetFyOverride, setBudgetFyOverride] = useState<string | null>(null)
+  // 当前财年按当前日期与财年起始月推导（与后端 fyLabelOfDate 同口径，避免缺省时被动回退服务器当前财年）
+  const currentFy = useMemo(() => {
+    const startMonth = periodsData?.fiscalStartMonth ?? 1
+    const now = new Date()
+    const y = now.getFullYear()
+    const m = now.getMonth() + 1
+    return `FY${m >= startMonth ? y : y - 1}`
+  }, [periodsData?.fiscalStartMonth])
+  // 候选财年：上一年至后三年共 5 个（降序），全局选中财年超出范围时一并纳入
+  const fyOptions = useMemo(() => {
+    const base = Number(currentFy.replace(/^FY/, ''))
+    const years = new Set([base + 1, base, base - 1, base - 2, base - 3])
+    const g = globalFiscalYear ? Number(globalFiscalYear.replace(/^FY/, '')) : NaN
+    if (Number.isFinite(g)) years.add(g)
+    return [...years].sort((a, b) => b - a).map((y) => `FY${y}`)
+  }, [currentFy, globalFiscalYear])
+  // 生效目标财年：用户显式选择 > 全局财年选择器 > 当前财年
+  const budgetFiscalYear = budgetFyOverride ?? globalFiscalYear ?? currentFy
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
-  const [uploadedInfo, setUploadedInfo] = useState<{ filename: string; detailCount: number; rowCount: number } | null>(null)
+  const [uploadedInfo, setUploadedInfo] = useState<{ batchId: string; filename: string; detailCount: number; rowCount: number } | null>(null)
   const uploadMutation = useUploadImport()
   const previewMutation = usePreviewImport()
   const [previewResult, setPreviewResult] = useState<ImportPreviewResult | null>(null)
@@ -182,9 +205,13 @@ export function ImportPanel() {
     if (!selectedFile) return
     setFileError(null)
     try {
-      const batch = await uploadMutation.mutateAsync({ file: selectedFile, templateType, valueUnit })
-      setUploadedInfo({ filename: batch.filename, detailCount: batch.detailCount ?? batch.successCount, rowCount: batch.rowCount ?? batch.successCount })
+      const batch = await uploadMutation.mutateAsync({ file: selectedFile, templateType, valueUnit, ...(templateType === 'budget' ? { fiscalYear: budgetFiscalYear } : {}) })
+      setUploadedInfo({ batchId: batch.id, filename: batch.filename, detailCount: batch.detailCount ?? batch.successCount, rowCount: batch.rowCount ?? batch.successCount })
       setSelectedFile(null)
+      // 导入→激活闭环：强制展开质量概览并自动选中新批次，完整性校验/异常明细直接就绪
+      handleQualityOpenChange(true)
+      setSelectedBatchId(batch.id)
+      setActivateMsg(null)
     } catch (err) {
       setFileError(err instanceof Error ? err.message : '导入失败')
     }
@@ -202,7 +229,7 @@ export function ImportPanel() {
     setFileError(null)
     setPreviewResult(null)
     try {
-      const res = await previewMutation.mutateAsync({ file: selectedFile, templateType, valueUnit })
+      const res = await previewMutation.mutateAsync({ file: selectedFile, templateType, valueUnit, ...(templateType === 'budget' ? { fiscalYear: budgetFiscalYear } : {}) })
       setPreviewResult(res)
     } catch (err) {
       setFileError(err instanceof Error ? err.message : '预览失败')
@@ -406,6 +433,21 @@ export function ImportPanel() {
                   <SelectItem value="wan">万元</SelectItem>
                 </SelectContent>
               </Select>
+              {templateType === 'budget' && (
+                <>
+                  <span className="text-sm font-medium">目标财年:</span>
+                  <Select value={budgetFiscalYear} onValueChange={(v) => { setBudgetFyOverride(v); setPreviewResult(null) }}>
+                    <SelectTrigger className="h-8 w-[110px] max-w-full shrink-0">
+                      <SelectValue placeholder="选择财年" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {fyOptions.map((fy) => (
+                        <SelectItem key={fy} value={fy}>{fy}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
               <Button variant="outline" size="sm" className="shrink-0" onClick={() => {
                 downloadImportTemplate(templateType as 'operating' | 'static' | 'budget').catch((e) => {
                   setFileError(e instanceof Error ? e.message : '模板下载失败')
@@ -473,6 +515,11 @@ export function ImportPanel() {
           {previewResult && (
             <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
               <p className="text-sm font-medium">预览校验结果（未写入）</p>
+              {templateType === 'budget' && (
+                <p className="text-xs text-muted-foreground">
+                  本文件年度预算将按「{budgetFiscalYear}」财年入库，激活后将替换该财年已生效预算。
+                </p>
+              )}
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <div className="rounded-lg border bg-background p-2">
                   <p className="text-xs text-muted-foreground">数据行数</p>
@@ -538,6 +585,36 @@ export function ImportPanel() {
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
                   <p className="text-sm font-medium text-warning-strong">
                     以下看板 KPI 类别无科目数据：{previewResult.kpiCoverage.missing.join('、')}，激活后对应卡片将显示 0。
+                  </p>
+                </div>
+              )}
+              {previewResult.budgetWarnings && previewResult.budgetWarnings.missingProfitLeaves.length > 0 && (
+                <div className="rounded-lg border border-warning/30 bg-warning/[0.08] p-3">
+                  <div className="flex items-start space-x-2">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-warning-strong">
+                        预算文件未包含以下毛利直导科目的预算行，激活后其预算金额为 0（品类预算达成分析毛利列将出现无预算）：
+                      </p>
+                      <ul className="list-inside list-disc text-xs text-warning-strong">
+                        {previewResult.budgetWarnings.missingProfitLeaves.map((s, i) => <li key={i}>{s}</li>)}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {previewResult.budgetWarnings && (previewResult.budgetWarnings.recalcSubjects.length > 0 || previewResult.budgetWarnings.parentSubjects.length > 0) && (
+                <div className="flex items-start space-x-2 rounded-lg border border-info/25 bg-info/10 p-3">
+                  <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-info" />
+                  <p className="text-sm text-info">
+                    {[
+                      previewResult.budgetWarnings.recalcSubjects.length > 0
+                        ? `计算类科目（${previewResult.budgetWarnings.recalcSubjects.join('、')}）的导入值将被公式重算（毛利=收入-成本）`
+                        : '',
+                      previewResult.budgetWarnings.parentSubjects.length > 0
+                        ? `父级科目（${previewResult.budgetWarnings.parentSubjects.join('、')}）的导入值将被子级求和覆盖`
+                        : '',
+                    ].filter(Boolean).join('；')}。
                   </p>
                 </div>
               )}
@@ -623,9 +700,19 @@ export function ImportPanel() {
                   <span className="text-sm font-medium text-success-strong">
                     导入成功：《{uploadedInfo.filename}》，入库 {uploadedInfo.detailCount} 条明细（解析 {uploadedInfo.rowCount} 行）。
                   </span>
-                  <p className="text-xs text-success-strong">
-                    批次已创建为草稿状态。请在下方「批次管理」中选择该批次并点击「激活」，数据将按期间合并生效于看板与指标。
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {selectedBatch && selectedBatch.id === uploadedInfo.batchId && selectedBatch.status !== 'active' ? (
+                      <Button size="sm" onClick={handleActivate} disabled={activateMutation.isPending}>
+                        {activateMutation.isPending ? '激活中...' : '立即激活该批次'}
+                      </Button>
+                    ) : selectedBatch && selectedBatch.id === uploadedInfo.batchId && selectedBatch.status === 'active' ? (
+                      <span className="text-xs text-success-strong">该批次已激活生效，数据已合并应用于看板与指标。</span>
+                    ) : (
+                      <p className="text-xs text-success-strong">
+                        批次已创建为草稿状态。请在下方「批次管理」中点击该批次行并「激活」，数据将按期间合并生效于看板与指标。
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -683,20 +770,8 @@ export function ImportPanel() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium">选择批次:</span>
-              <Select value={selectedBatchId ?? 'none'} onValueChange={(v) => { setSelectedBatchId(v === 'none' ? null : v); setActivateMsg(null) }}>
-                <SelectTrigger className="w-[300px] max-w-full shrink-0">
-                  <SelectValue placeholder="选择批次查看质量明细" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">请选择批次</SelectItem>
-                  {recentBatches.map((batch) => (
-                    <SelectItem key={batch.id} value={batch.id}>
-                      {batch.filename}（{batchStatusLabel[batch.status] ?? batch.status}）
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <p className="text-sm font-medium">批次管理</p>
+              <span className="text-xs text-muted-foreground">点击批次行查看质量明细{canImport && selectedBatch && selectedBatch.status !== 'active' ? '，可直接激活' : ''}</span>
               {canImport && selectedBatch && selectedBatch.status !== 'active' && (
                 <Button size="sm" className="shrink-0" onClick={handleActivate} disabled={activateMutation.isPending}>
                   {activateMutation.isPending ? '激活中...' : '激活批次'}
@@ -705,46 +780,43 @@ export function ImportPanel() {
               {canImport && selectedBatch && selectedBatch.status === 'active' && (
                 <span className="text-xs text-success-strong">当前批次已生效</span>
               )}
+              {canImport && selectedCount > 0 && (
+                <Button size="sm" className="shrink-0" disabled={batchActivate.isBusy || activateMutation.isPending} onClick={handleBatchActivate}>
+                  {batchActivate.isBusy ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <CheckCircle className="mr-1 h-3 w-3" />}
+                  批量激活（{selectedCount}）
+                </Button>
+              )}
+              {batchActivate.progress && (
+                <span className="text-xs text-muted-foreground">
+                  正在激活 {batchActivate.progress.done}/{batchActivate.progress.total}：{batchActivate.progress.currentFilename || '-'}
+                </span>
+              )}
+              {!batchActivate.isBusy && batchActivate.results.size > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  完成：成功 {[...batchActivate.results.values()].filter((r) => r.status === 'success').length} 个，失败 {[...batchActivate.results.values()].filter((r) => r.status === 'failed').length} 个
+                </span>
+              )}
             </div>
             {activateMsg && <p className="text-xs text-muted-foreground">{activateMsg}</p>}
 
-            {/* 批次管理表：全部批次 + 激活/归档/清除（高危操作按权限显示） */}
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="text-sm font-medium">批次管理</p>
-                {canImport && selectedCount > 0 && (
-                  <Button size="sm" className="shrink-0" disabled={batchActivate.isBusy || activateMutation.isPending} onClick={handleBatchActivate}>
-                    {batchActivate.isBusy ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <CheckCircle className="mr-1 h-3 w-3" />}
-                    批量激活（{selectedCount}）
-                  </Button>
-                )}
-                {batchActivate.progress && (
-                  <span className="text-xs text-muted-foreground">
-                    正在激活 {batchActivate.progress.done}/{batchActivate.progress.total}：{batchActivate.progress.currentFilename || '-'}
-                  </span>
-                )}
-                {!batchActivate.isBusy && batchActivate.results.size > 0 && (
-                  <span className="text-xs text-muted-foreground">
-                    完成：成功 {[...batchActivate.results.values()].filter((r) => r.status === 'success').length} 个，失败 {[...batchActivate.results.values()].filter((r) => r.status === 'failed').length} 个
-                  </span>
-                )}
-              </div>
-              <DataTable
-                columns={batchColumns}
-                data={recentBatches}
-                rowKey={(b) => b.id}
-                dense
-                emptyText="暂无导入批次"
-              />
-              {/* 批量激活失败明细（成功项随列表刷新消失，失败项保留展示原因） */}
-              {!batchActivate.isBusy && [...batchActivate.results.entries()].some(([, r]) => r.status === 'failed') && (
-                <ul className="space-y-0.5 rounded-lg border border-destructive/25 bg-destructive/[0.06] p-2 text-xs text-destructive">
-                  {[...batchActivate.results.entries()].filter(([, r]) => r.status === 'failed').map(([id, r]) => (
-                    <li key={id}>{recentBatches.find((b) => b.id === id)?.filename ?? id}：{r.error}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            <DataTable
+              columns={batchColumns}
+              data={recentBatches}
+              rowKey={(b) => b.id}
+              dense
+              maxHeight="320px"
+              emptyText="暂无导入批次"
+              onRowClick={(b) => { setSelectedBatchId((prev) => (prev === b.id ? null : b.id)); setActivateMsg(null) }}
+              rowClassName={(b) => (b.id === selectedBatchId ? 'bg-muted/60' : undefined)}
+            />
+            {/* 批量激活失败明细（成功项随列表刷新消失，失败项保留展示原因） */}
+            {!batchActivate.isBusy && [...batchActivate.results.entries()].some(([, r]) => r.status === 'failed') && (
+              <ul className="space-y-0.5 rounded-lg border border-destructive/25 bg-destructive/[0.06] p-2 text-xs text-destructive">
+                {[...batchActivate.results.entries()].filter(([, r]) => r.status === 'failed').map(([id, r]) => (
+                  <li key={id}>{recentBatches.find((b) => b.id === id)?.filename ?? id}：{r.error}</li>
+                ))}
+              </ul>
+            )}
 
             {selectedBatch && (
               selectedBatch.errorCount === 0 ? (
@@ -778,6 +850,7 @@ export function ImportPanel() {
                   data={batchErrors}
                   rowKey={(e, i) => `${e.row}-${e.column}-${i}`}
                   dense
+                  maxHeight="280px"
                   emptyText={detailFetching ? '加载中...' : '该批次无解析异常'}
                 />
               </div>

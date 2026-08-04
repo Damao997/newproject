@@ -189,7 +189,7 @@ export function useOperatingIndicators(params: { companyCode?: string; period?: 
   })
 }
 
-export function useStaticIndicators(params: { companyCode?: string; excludeReclassify?: boolean }) {
+export function useStaticIndicators(params: { companyCode?: string; period?: string; excludeReclassify?: boolean }) {
   return useQuery({
     queryKey: queryKeys.indicatorsStatic(params),
     queryFn: () => api.getStaticIndicators(params as FilterParams) as unknown as Promise<StaticResult>,
@@ -291,7 +291,7 @@ export function useCrossTable(params: { period?: string; subjectType?: 'operatin
 export function useUploadImport() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (vars: { file: File; templateType: string; valueUnit: string }) => api.uploadImport(vars.file, vars.templateType, vars.valueUnit),
+    mutationFn: (vars: { file: File; templateType: string; valueUnit: string; fiscalYear?: string }) => api.uploadImport(vars.file, vars.templateType, vars.valueUnit, vars.fiscalYear),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['data', 'imports'] }),
   })
 }
@@ -320,7 +320,7 @@ export function useBatchActivateCheck() {
 /** 导入预览（dry-run）：不建批次不写库 */
 export function usePreviewImport() {
   return useMutation({
-    mutationFn: (vars: { file: File; templateType: string; valueUnit: string }) => api.previewImport(vars.file, vars.templateType, vars.valueUnit),
+    mutationFn: (vars: { file: File; templateType: string; valueUnit: string; fiscalYear?: string }) => api.previewImport(vars.file, vars.templateType, vars.valueUnit, vars.fiscalYear),
   })
 }
 

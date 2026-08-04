@@ -33,6 +33,8 @@ interface DataTableProps<T> {
   maxHeight?: string
   /** 行点击回调（提供后行显示 pointer 光标，可配合 expandedKeys 实现展开） */
   onRowClick?: (row: T, rowIndex: number) => void
+  /** 行额外类名（如选中行高亮），按行返回 */
+  rowClassName?: (row: T, rowIndex: number) => string | undefined
   /** 展开行集合（以 rowKey 为准），命中时在该行下方渲染 renderExpanded 内容 */
   expandedKeys?: Set<string | number>
   /** 展开行内容渲染（跨整行 colSpan） */
@@ -61,6 +63,7 @@ export function DataTable<T>({
   dense = false,
   maxHeight,
   onRowClick,
+  rowClassName,
   expandedKeys,
   renderExpanded,
   className,
@@ -109,7 +112,7 @@ export function DataTable<T>({
               return (
                 <Fragment key={key}>
                   <tr
-                    className={cn('group border-b transition-colors hover:bg-muted/50', onRowClick && 'cursor-pointer')}
+                    className={cn('group border-b transition-colors hover:bg-muted/50', onRowClick && 'cursor-pointer', rowClassName?.(row, rowIndex))}
                     onClick={onRowClick ? () => onRowClick(row, rowIndex) : undefined}
                   >
                     {columns.map((col) => (

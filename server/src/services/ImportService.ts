@@ -125,6 +125,51 @@ export interface KpiCoverage {
 /** 与 DashboardService KPI 卡匹配逻辑对齐的四类根科目 */
 const KPI_CATEGORIES = ['收入', '成本', '毛利', '费用']
 
+/**
+ * 预算导入口径告警：聚合层对预算行的消费规则是「仅无子节点的数据类科目生效」，
+ * 计算类科目由公式层重算（毛利=收入-成本）、父级科目被子级求和覆盖，导入值均被忽略；
+ * 毛利类数据类叶子的预算只能来自直接导入，缺行即恒为 0。导入前显式提示，避免静默丢失。
+ */
+export interface BudgetWarnings {
+  /** 文件含行的计算类科目：聚合时由公式层重算，导入值被忽略 */
+  recalcSubjects: string[]
+  /** 文件含行的父级科目：聚合时为子级求和，导入值被忽略 */
+  parentSubjects: string[]
+  /** 毛利类数据类叶子中文件未包含行者：其预算金额将为 0 */
+  missingProfitLeaves: string[]
+}
+
+/** 依据文件科目编码集合产出预算口径告警（无告警返回 null） */
+async function computeBudgetWarnings(accountCodes: string[]): Promise<BudgetWarnings | null> {
+  if (accountCodes.length === 0) return null
+  const subjects = await prisma.accountSubject.findMany({
+    where: { subjectType: 'operating' },
+    select: { code: true, name: true, category: true, isLeaf: true },
+  })
+  const fileCodes = new Set(accountCodes)
+  // 毛利数据类叶子的 dataType 也需可查（它们通常不在文件内），故并集后一次查询
+  const profitLeafCodes = subjects.filter((s) => s.category === '毛利' && s.isLeaf).map((s) => s.code)
+  const metrics = await prisma.metric.findMany({
+    where: { code: { in: [...fileCodes, ...profitLeafCodes] } },
+    select: { code: true, dataType: true },
+  })
+  const dtByCode = new Map(metrics.map((m) => [m.code, m.dataType]))
+  const byCode = new Map(subjects.map((s) => [s.code, s]))
+  const recalcSubjects: string[] = []
+  const parentSubjects: string[] = []
+  for (const code of accountCodes) {
+    const s = byCode.get(code)
+    if (!s) continue
+    if (dtByCode.get(code) === 'calc') recalcSubjects.push(s.name)
+    else if (!s.isLeaf) parentSubjects.push(s.name)
+  }
+  const missingProfitLeaves = subjects
+    .filter((s) => s.category === '毛利' && s.isLeaf && dtByCode.get(s.code) !== 'calc' && !fileCodes.has(s.code))
+    .map((s) => s.name)
+  if (recalcSubjects.length === 0 && parentSubjects.length === 0 && missingProfitLeaves.length === 0) return null
+  return { recalcSubjects, parentSubjects, missingProfitLeaves }
+}
+
 function toSummaryDto(s: PreviewSummary): PreviewSummaryDto {
   const { periods: _periods, accountCodes: _accountCodes, ...dto } = s
   return dto
@@ -379,7 +424,7 @@ export const ImportService = {
 
     const subjectRows = ordered.map((s) => [`${'  '.repeat(s.level)}${s.name}`])
     if (type === 'budget') {
-      ws.addRow(['科目名称（金额单位导入时可选：元/万元）', ...companyNames])
+      ws.addRow(['科目名称（金额单位导入时可选：元/万元；年度预算归属财年在导入页面选择）', ...companyNames])
       ws.getRow(1).font = { bold: true }
       subjectRows.forEach((r) => ws.addRow(r))
     } else {
@@ -399,7 +444,7 @@ export const ImportService = {
    * valueUnit 未传时按分支存量兼容默认：unpivot（operating/static/budget）归一目标为万元→默认 wan；
    * transaction 归一目标为元→默认 yuan。
    */
-  async preview(file: { buffer: Buffer }, templateType: TemplateType, fiscalYear = fyLabelOfDate(new Date()), valueUnit?: ValueUnit): Promise<{ dataRowCount: number; errorCount: number; operatingCount: number; staticCount: number; budgetCount: number; errors: ImportErrorItem[]; sampleRows: SampleRows; summary: PreviewSummaryDto; activationImpact: ActivationImpact | null; kpiCoverage: KpiCoverage | null }> {
+  async preview(file: { buffer: Buffer }, templateType: TemplateType, fiscalYear = fyLabelOfDate(new Date()), valueUnit?: ValueUnit): Promise<{ dataRowCount: number; errorCount: number; operatingCount: number; staticCount: number; budgetCount: number; errors: ImportErrorItem[]; sampleRows: SampleRows; summary: PreviewSummaryDto; activationImpact: ActivationImpact | null; kpiCoverage: KpiCoverage | null; budgetWarnings: BudgetWarnings | null }> {
     assertExcelMagic(file.buffer)
     if (!UNPIVOT_TEMPLATES.has(templateType)) {
       if (templateType === 'transaction') {
@@ -425,7 +470,7 @@ export const ImportService = {
           duplicateSamples: parsed.summary.duplicateSamples,
           accountCodes: [...accountCodes],
         }
-        return { dataRowCount: parsed.dataRowCount, errorCount: parsed.errors.length, operatingCount: 0, staticCount: 0, budgetCount: 0, errors: toIssueItems(parsed.errors).slice(0, 200), sampleRows, summary: toSummaryDto(summary), activationImpact: null, kpiCoverage: null }
+        return { dataRowCount: parsed.dataRowCount, errorCount: parsed.errors.length, operatingCount: 0, staticCount: 0, budgetCount: 0, errors: toIssueItems(parsed.errors).slice(0, 200), sampleRows, summary: toSummaryDto(summary), activationImpact: null, kpiCoverage: null, budgetWarnings: null }
       }
       // inventory：仅统计数据行数
       let rowCount = 0
@@ -437,7 +482,7 @@ export const ImportService = {
       } catch {
         throw errors.badRequest('Excel 解析失败，请检查文件内容与模板类型')
       }
-      return { dataRowCount: rowCount, errorCount: 0, operatingCount: 0, staticCount: 0, budgetCount: 0, errors: [], sampleRows: { headers: [], rows: [] }, summary: toSummaryDto(emptySummary()), activationImpact: null, kpiCoverage: null }
+      return { dataRowCount: rowCount, errorCount: 0, operatingCount: 0, staticCount: 0, budgetCount: 0, errors: [], sampleRows: { headers: [], rows: [] }, summary: toSummaryDto(emptySummary()), activationImpact: null, kpiCoverage: null, budgetWarnings: null }
     }
     const template = templateType as ImportTemplate
     let parsed
@@ -459,6 +504,8 @@ export const ImportService = {
     )
     const activationImpact = await computeActivationImpact(template, parsed.summary.periods, fiscalYear)
     const kpiCoverage = template === 'operating' ? await computeKpiCoverage(parsed.summary.accountCodes) : null
+    // 预算模板附加口径告警：计算类/父级科目行将被重算或忽略、毛利直导叶子缺行将为 0
+    const budgetWarnings = template === 'budget' ? await computeBudgetWarnings(parsed.summary.accountCodes) : null
     return {
       dataRowCount: parsed.dataRowCount,
       errorCount: parsed.errors.length,
@@ -470,6 +517,7 @@ export const ImportService = {
       summary: toSummaryDto(parsed.summary),
       activationImpact,
       kpiCoverage,
+      budgetWarnings,
     }
   },
 
