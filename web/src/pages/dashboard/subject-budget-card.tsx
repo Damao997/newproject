@@ -18,11 +18,11 @@ interface SubjectBudgetCardProps {
 /** 金额口径：本月实际 / 本年累计（预算口径随金额口径联动：月度=年度/12，累计=年度总额） */
 type AmountMode = 'month' | 'ytd'
 
-/** 达成率三级语义色（与品类预算达成卡一致）：≥95 达标绿 / 85-95 预警琥珀 / <85 严重偏离红；无预算灰 */
+/** 达成率红绿灯三档（与品类预算达成卡一致）：≥75 达标绿 / 60-75 预警黄 / <60 未达标红；无预算灰 */
 function rateColorClass(rate: number | null): string {
   if (rate === null) return 'text-muted-foreground'
-  if (rate >= 95) return 'text-success-strong'
-  if (rate >= 85) return 'text-warning-strong'
+  if (rate >= 75) return 'text-success-strong'
+  if (rate >= 60) return 'text-warning-strong'
   return 'text-destructive'
 }
 

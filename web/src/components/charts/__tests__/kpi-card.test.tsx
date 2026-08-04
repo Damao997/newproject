@@ -45,12 +45,12 @@ describe('KpiCard', () => {
     expect(screen.getByText('58.3%')).toBeInTheDocument()
   })
 
-  it('达成率三级语义色：≥95 绿 / 85-95 琥珀 / <85 红', () => {
+  it('达成率红绿灯三档：≥75 绿 / 60-75 黄 / <60 红', () => {
     render(<KpiCard data={{ ...revenueKpi, monthRate: 96.5, ytdRate: 58.3 }} />)
     expect(screen.getByText('96.5%').className).toContain('text-success-strong')
     expect(screen.getByText('58.3%').className).toContain('text-destructive')
-    render(<KpiCard data={{ ...revenueKpi, title: '毛利', monthRate: 90 }} />)
-    expect(screen.getByText('90.0%').className).toContain('text-warning-strong')
+    render(<KpiCard data={{ ...revenueKpi, title: '毛利', monthRate: 68 }} />)
+    expect(screen.getByText('68.0%').className).toContain('text-warning-strong')
   })
 
   it('无预算（rate=null）时达成率显示灰色 "–"', () => {
@@ -60,10 +60,11 @@ describe('KpiCard', () => {
     for (const d of dashes) expect(d.className).toContain('text-muted-foreground')
   })
 
-  it('同比上涨：红涨徽标（finance.red token）带 + 前缀', () => {
+  it('同比上涨：红涨徽标（finance.red token），方向由箭头表达、无 + 前缀', () => {
     render(<KpiCard data={revenueKpi} />)
-    const badge = screen.getByText('+12.3%')
+    const badge = screen.getByText('12.3%')
     expect(badge.parentElement?.className).toContain('text-finance-red')
+    expect(screen.queryByText('+12.3%')).not.toBeInTheDocument()
   })
 
   it('同比下跌：绿跌徽标（finance.green token，无 + 前缀）', () => {

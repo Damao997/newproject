@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { KpiSparkline } from './kpi-sparkline'
 import { CHART_SERIES } from '@/lib/chart-theme'
-import { formatMoneyWan, formatPercent, getChangePrefix } from '@/lib/utils'
+import { formatMoneyWan, formatPercent } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { 
   TrendingUp, 
@@ -42,11 +42,11 @@ function rateText(rate: number | null): string {
   return rate === null ? '–' : formatPercent(rate / 100)
 }
 
-/** 达成率三级语义色（规范 §3.2）：≥95 达标绿 / 85-95 预警琥珀 / <85 严重偏离红；无预算灰 */
+/** 达成率红绿灯三档：≥75 达标绿（持续关注）/ 60-75 预警黄（需改善计划）/ <60 未达标红（须根因分析+专项整改）；无预算灰 */
 function rateColorClass(rate: number | null): string {
   if (rate === null) return 'text-muted-foreground'
-  if (rate >= 95) return 'text-success-strong'
-  if (rate >= 85) return 'text-warning-strong'
+  if (rate >= 75) return 'text-success-strong'
+  if (rate >= 60) return 'text-warning-strong'
   return 'text-destructive'
 }
 
@@ -56,8 +56,7 @@ function rateColorClass(rate: number | null): string {
  */
 export function KpiCard({ data, index = 0, onClick }: KpiCardProps) {
   const Icon = iconMap[data.icon] || TrendingUp
-  const changePrefix = getChangePrefix(data.yoy)
-  // 红涨绿跌（A 股/国内财报习惯）：正数红 finance.red / 负数绿 finance.green / 持平灰
+  // 红涨绿跌（A 股/国内财报习惯）：正数红 finance.red / 负数绿 finance.green / 持平灰；方向由箭头图标表达，数值不再重复加 "+" 前缀
   const isPositive = data.yoy > 0
   const isFlat = data.yoy === 0
   const accent = ACCENTS[index % ACCENTS.length]
@@ -121,7 +120,7 @@ export function KpiCard({ data, index = 0, onClick }: KpiCardProps) {
               ) : (
                 <ArrowDownRight className="h-3 w-3" />
               )}
-              <span className="font-num">{changePrefix}{(Math.abs(data.yoy) * 100).toFixed(1)}%</span>
+              <span className="font-num">{(Math.abs(data.yoy) * 100).toFixed(1)}%</span>
             </span>
           </div>
           <div className="flex items-center justify-between">
