@@ -257,17 +257,23 @@ export const IndicatorsService = {
     return { period, companies, rows }
   },
 
-  /** 可用期间与财年列表：汇总全部 active 经营批次的期间，财年由期间派生（降序） */
+  /** 可用期间与财年列表：汇总全部 active 经营批次的期间 ∪ 静态批次的快照月（静态独有月份也可选），财年由期间派生（降序） */
   async getAvailablePeriods(): Promise<{ periods: string[]; fiscalYears: string[]; fiscalStartMonth: number }> {
-    const batches = await prisma.importBatch.findMany({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true } })
-    if (batches.length === 0) return { periods: [], fiscalYears: [], fiscalStartMonth: getFiscalStartMonth() }
-    const rows = await prisma.factOperating.findMany({
-      where: { batchId: { in: batches.map((b) => b.id) } },
-      distinct: ['period'],
-      orderBy: { period: 'asc' },
-      select: { period: true },
-    })
-    const periods = rows.map((r) => r.period)
+    const [operatingBatches, staticBatches] = await Promise.all([
+      prisma.importBatch.findMany({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true } }),
+      prisma.importBatch.findMany({ where: { dataType: 'static', lifecycleStatus: 'active' }, select: { id: true } }),
+    ])
+    const [operatingRows, staticRows] = await Promise.all([
+      operatingBatches.length > 0
+        ? prisma.factOperating.findMany({ where: { batchId: { in: operatingBatches.map((b) => b.id) } }, distinct: ['period'], select: { period: true } })
+        : Promise.resolve([]),
+      staticBatches.length > 0
+        ? prisma.factStatic.findMany({ where: { batchId: { in: staticBatches.map((b) => b.id) } }, distinct: ['snapshotDate'], select: { snapshotDate: true } })
+        : Promise.resolve([]),
+    ])
+    // 快照日期归一为快照月 YYYY-MM（UTC，口径与聚合/展示层一致）
+    const staticPeriods = staticRows.map((r) => `${r.snapshotDate.getUTCFullYear()}-${String(r.snapshotDate.getUTCMonth() + 1).padStart(2, '0')}`)
+    const periods = [...new Set([...operatingRows.map((r) => r.period), ...staticPeriods])].sort()
     const fiscalYears = [...new Set(periods.map((p) => fiscalYearLabel(p)))].sort().reverse()
     return { periods, fiscalYears, fiscalStartMonth: getFiscalStartMonth() }
   },

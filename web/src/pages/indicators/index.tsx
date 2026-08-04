@@ -134,7 +134,7 @@ export default function IndicatorsPage() {
     if (!code || !valid.has(code)) setDimFilter('all')
   }, [companies, setDimFilter])
   const operatingQuery = useOperatingIndicators({ companyCode, period, excludeReclassify: excludeReclassify || undefined })
-  const staticQuery = useStaticIndicators({ companyCode, excludeReclassify: excludeReclassify || undefined })
+  const staticQuery = useStaticIndicators({ companyCode, period, excludeReclassify: excludeReclassify || undefined })
 
   const entityCompanies = useMemo(() => (companies ?? []).filter((c) => c.type === 'entity'), [companies])
   const summaryEntities = useMemo(() => (companies ?? []).filter((c) => c.type === 'summary'), [companies])

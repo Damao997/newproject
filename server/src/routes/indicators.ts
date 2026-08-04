@@ -55,6 +55,7 @@ router.get('/static', requirePermission('indicators:view', 'view'), asyncHandler
   const authUser = req.authUser as AuthUserContext
   const data = await IndicatorsService.getStatic(scopeOf(authUser), {
     companyCode: req.query.companyCode as string | undefined,
+    period: req.query.period as string | undefined,
     excludeReclassify: boolQuery(req.query.excludeReclassify),
   })
   sendOk(res, data)
