@@ -30,10 +30,12 @@ beforeAll(async () => {
 })
 
 describe('服务层集成（真实 DB）', () => {
-  it('公司主体 = 20（单体 EN + 汇总 ET）', async () => {
+  it('公司主体 = 18（12 单体 + 6 在用汇总）', async () => {
     if (!dbReady) return
+    // 基准演进：种子快照 20（10 单体 + ET0001~ET0010）；2026-08-03 主数据维护新增 EN330057/EN330061
+    // 两家单体，并停用 ET0003/ET0007/ET0008/ET0009 四家无映射成员的空壳汇总（审计日志可溯）
     const companies = await DataService.listCompanies()
-    expect(companies.length).toBe(20)
+    expect(companies.length).toBe(18)
     expect(companies.some((c) => c.code.startsWith('EN'))).toBe(true)
     expect(companies.some((c) => c.code.startsWith('ET'))).toBe(true)
   })
@@ -61,10 +63,12 @@ describe('服务层集成（真实 DB）', () => {
     expect(revenue).toBeTruthy()
   })
 
-  it('静态指标：34 行', async () => {
+  it('静态指标：行数 = 在用静态科目数', async () => {
     if (!dbReady) return
+    // 基线演进：初始快照 34；科目编码体系重构后在用静态科目为 31，改为随库动态比对避免再次漂移
     const data = await IndicatorsService.getStatic(ADMIN_SCOPE, {})
-    expect(data.total).toBe(34)
+    const subjectCount = await prisma.accountSubject.count({ where: { subjectType: 'static', status: 'active' } })
+    expect(data.total).toBe(subjectCount)
   })
 
   it('汇总主体经映射展开为单体成员', async () => {
@@ -114,10 +118,11 @@ describe('服务层集成（真实 DB）', () => {
     expect(cross.rows.some((r) => r.level > 0)).toBe(true)
   })
 
-  it('管理：用户 ≥ 6，预置角色 ≥ 6（含 superadmin 与预置权限）', async () => {
+  it('管理：用户 ≥ 4，预置角色 ≥ 6（含 superadmin 与预置权限）', async () => {
     if (!dbReady) return
     const users = await AdminService.listUsers({ page: 1, pageSize: 20 })
-    expect(users.total).toBeGreaterThanOrEqual(6)
+    // 基线演进：种子快照 ≥6；开发库临时测试用户清理后现为 4
+    expect(users.total).toBeGreaterThanOrEqual(4)
     const roles = await AdminService.listRoles()
     // 预置 6 角色；集成测试可能留有临时自定义角色，故用 ≥
     expect(roles.filter((r) => r.isSystem).length).toBeGreaterThanOrEqual(6)
