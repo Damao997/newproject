@@ -43,7 +43,9 @@ function assertPasswordRule(password: string): void {
 }
 
 /**
- * 校验并归一化多选数据范围：去重后逐一核对 company 表存在且启用（可混合单体与汇总主体）。
+ * 校验并归一化多选数据范围：去重后逐一核对 company 表存在且启用。
+ * 汇总主体编码不直接落库：按 CompanyAggregationMap 自动展开为其成员单体（与手动勾选的单体去重合并），
+ * 无映射成员的汇总主体 → 400（与 resolveScope 默认拒绝口径一致）；汇总可见性由「全有或全无」机制运行时推导。
  * 未提供时返回 undefined（不触碰）；空数组表示清空（回退到角色 scopeValue）。
  */
 async function normalizeDataScopeCodes(codes: unknown): Promise<string[] | undefined> {
@@ -53,11 +55,34 @@ async function normalizeDataScopeCodes(codes: unknown): Promise<string[] | undef
   }
   const unique = [...new Set((codes as string[]).map((c) => c.trim()).filter(Boolean))]
   if (unique.length === 0) return []
-  const found = await prisma.company.findMany({ where: { code: { in: unique }, status: 'active' }, select: { code: true } })
-  const foundSet = new Set(found.map((c) => c.code))
-  const invalid = unique.filter((c) => !foundSet.has(c))
+  const found = await prisma.company.findMany({
+    where: { code: { in: unique }, status: 'active' },
+    select: { code: true, entityType: true },
+  })
+  const foundMap = new Map(found.map((c) => [c.code, c.entityType]))
+  const invalid = unique.filter((c) => !foundMap.has(c))
   if (invalid.length > 0) throw errors.badRequest(`数据范围包含无效的公司编码：${invalid.join('、')}`)
-  return unique
+  // 汇总主体 → 展开为成员单体后落库；单体直接保留
+  const singles = new Set(unique.filter((c) => foundMap.get(c) === 'single'))
+  const summaries = unique.filter((c) => foundMap.get(c) === 'summary')
+  if (summaries.length > 0) {
+    const maps = await prisma.companyAggregationMap.findMany({
+      where: { summaryCompanyCode: { in: summaries } },
+      select: { summaryCompanyCode: true, singleCompanyCode: true },
+    })
+    const membersBySummary = new Map<string, string[]>()
+    for (const m of maps) {
+      const list = membersBySummary.get(m.summaryCompanyCode) ?? []
+      list.push(m.singleCompanyCode)
+      membersBySummary.set(m.summaryCompanyCode, list)
+    }
+    const empty = summaries.filter((s) => !membersBySummary.has(s) || membersBySummary.get(s)!.length === 0)
+    if (empty.length > 0) {
+      throw errors.badRequest(`数据范围包含无成员映射的汇总主体：${empty.join('、')}`)
+    }
+    for (const s of summaries) for (const member of membersBySummary.get(s)!) singles.add(member)
+  }
+  return [...singles]
 }
 
 /**

@@ -2,7 +2,7 @@
 import multer from 'multer'
 import { authenticate } from '../middleware/auth'
 import { attachScope } from '../middleware/attach-scope'
-import { requirePermission } from '../middleware/permission'
+import { requirePermission, requireAnyPermission } from '../middleware/permission'
 import { asyncHandler } from '../lib/async-handler'
 import { sendOk } from '../lib/response'
 import { errors } from '../lib/errors'
@@ -134,7 +134,16 @@ router.get('/cross-table', requirePermission('data:browse:view', 'view'), asyncH
 }))
 
 // ===== 公司 =====
-router.get('/companies', requirePermission('data:browse:view', 'view'), asyncHandler(async (req, res) => {
+// 公司列表是各页面筛选器（CompanySelect/CompanyMultiSelect/看板主体候选）的主数据源：
+// 持有任一模块查看权限即可读取，返回范围仍由 DataService.listCompanies 内 effectiveScope 按数据权限收敛
+router.get('/companies', requireAnyPermission([
+  { resource: 'dashboard:view', action: 'view' },
+  { resource: 'indicators:view', action: 'view' },
+  { resource: 'reports:view', action: 'view' },
+  { resource: 'transactions:view', action: 'view' },
+  { resource: 'inventory:view', action: 'view' },
+  { resource: 'data:browse:view', action: 'view' },
+]), asyncHandler(async (req, res) => {
   const includeInactive = req.query.includeInactive === 'true' || req.query.includeInactive === '1'
   sendOk(res, await DataService.listCompanies(includeInactive))
 }))

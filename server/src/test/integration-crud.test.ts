@@ -177,7 +177,7 @@ describe('用户与角色', () => {
     await expect(
       AdminService.createUser({ username, name: '范围用户', password: 'Test@123456', role: 'viewer', dataScopeCodes: ['NOT_EXIST'] }, ctx()),
     ).rejects.toMatchObject({ code: 400 })
-    const companies = await basePrisma.company.findMany({ where: { status: 'active' }, take: 2, select: { code: true } })
+    const companies = await basePrisma.company.findMany({ where: { status: 'active', entityType: 'single' }, take: 2, select: { code: true } })
     if (companies.length < 2) return
     const codes = companies.map((c) => c.code)
     const created = await AdminService.createUser({ username, name: '范围用户', password: 'Test@123456', role: 'viewer', dataScopeCodes: codes }, ctx())
@@ -186,6 +186,42 @@ describe('用户与角色', () => {
     // 更新为空数组 → 清空，回退角色范围（viewer scopeValue='' → 无）
     const updated = await AdminService.updateUser(created.id, { dataScopeCodes: [] }, ctx())
     expect(updated.dataScope).toBe('无')
+  })
+
+  it('创建用户：汇总主体编码自动展开为成员单体落库（不含汇总编码）', async () => {
+    if (!dbReady) return
+    // 取一个有映射成员的种子汇总主体
+    const map = await basePrisma.companyAggregationMap.findFirst({ select: { summaryCompanyCode: true, singleCompanyCode: true } })
+    if (!map) return
+    const members = await basePrisma.companyAggregationMap.findMany({
+      where: { summaryCompanyCode: map.summaryCompanyCode },
+      select: { singleCompanyCode: true },
+    })
+    const memberCodes = members.map((m) => m.singleCompanyCode)
+    const username = `scope.exp.${Date.now().toString(36)}`
+    tempUsernames.push(username)
+    // 混合输入：汇总编码 + 一个成员单体（验证去重合并）
+    const created = await AdminService.createUser({
+      username, name: '范围展开用户', password: 'Test@123456', role: 'viewer',
+      dataScopeCodes: [map.summaryCompanyCode, memberCodes[0]],
+    }, ctx())
+    expect(created.dataScopeCodes.includes(map.summaryCompanyCode)).toBe(false)
+    expect([...created.dataScopeCodes].sort()).toEqual([...new Set(memberCodes)].sort())
+  })
+
+  it('创建用户：无成员映射的汇总主体 → 400', async () => {
+    if (!dbReady) return
+    const emptySummary = `ETEMPTY${Date.now().toString(36)}`.slice(0, 20)
+    await basePrisma.company.create({ data: { code: emptySummary, name: '无成员汇总', entityType: 'summary', status: 'active' } })
+    try {
+      const username = `scope.empty.${Date.now().toString(36)}`
+      tempUsernames.push(username)
+      await expect(
+        AdminService.createUser({ username, name: '范围用户', password: 'Test@123456', role: 'viewer', dataScopeCodes: [emptySummary] }, ctx()),
+      ).rejects.toMatchObject({ code: 400 })
+    } finally {
+      await basePrisma.company.deleteMany({ where: { code: emptySummary } }).catch(() => undefined)
+    }
   })
 
   it('权限清单与审计日志分页', async () => {
@@ -597,8 +633,8 @@ describe('同公司科目间金额调整', () => {
     const comp = `ADJ_${suffix}`
     await basePrisma.company.create({ data: { code: comp, name: '科目调整公司', entityType: 'single', status: 'active' } })
     const scope = { companyCode: null, scopeValue: '*' }
-    // 取两个已存在的经营科目作为源/目标
-    const subjects = await basePrisma.accountSubject.findMany({ where: { subjectType: 'operating', status: 'active', isLeaf: true }, take: 2 })
+    // 取两个金额类经营科目作源/目标（比率类由公式计算禁止调整，数量类与金额类不可互调，锁定 amount 保证夹具稳定）
+    const subjects = await basePrisma.accountSubject.findMany({ where: { subjectType: 'operating', status: 'active', isLeaf: true, valueType: 'amount' }, take: 2 })
     if (subjects.length < 2) return
     const [srcSub, tgtSub] = subjects
     try {
@@ -661,7 +697,7 @@ describe('同公司科目间金额调整', () => {
     const comp = `ADJD_${suffix}`
     await basePrisma.company.create({ data: { code: comp, name: '纯调减公司', entityType: 'single', status: 'active' } })
     const scope = { companyCode: null, scopeValue: '*' }
-    const srcSub = await basePrisma.accountSubject.findFirst({ where: { subjectType: 'operating', status: 'active', isLeaf: true } })
+    const srcSub = await basePrisma.accountSubject.findFirst({ where: { subjectType: 'operating', status: 'active', isLeaf: true, valueType: 'amount' } })
     if (!srcSub) return
     try {
       await basePrisma.factOperating.create({
@@ -693,6 +729,18 @@ describe('同公司科目间金额调整', () => {
       ),
     ).rejects.toMatchObject({ code: 403 })
   })
+
+  it('比率类科目 → 400（比率由公式派生，禁止金额调整）', async () => {
+    if (!dbReady) return
+    const ratioSub = await basePrisma.accountSubject.findFirst({ where: { subjectType: 'operating', status: 'active', isLeaf: true, valueType: 'ratio' } })
+    if (!ratioSub) return
+    await expect(
+      ReclassificationService.previewAdjustSubject(
+        { templateType: 'operating', companyCode: 'EN330058', sourceAccountCode: ratioSub.code, decreaseAmount: 100, period: '2026-05', reason: 'x' },
+        { companyCode: null, scopeValue: '*' },
+      ),
+    ).rejects.toMatchObject({ code: 400, message: expect.stringContaining('比率类科目') })
+  })
 })
 
 describe('科目归类调整', () => {
@@ -714,7 +762,8 @@ describe('科目归类调整', () => {
       expect(restored?.parentCode).toBe(originalParent)
       expect(restored?.category).toBe(rootA.name)
     } finally {
-      await basePrisma.reclassificationLog.deleteMany({ where: { type: 'subject', targetSubject: rootB.code } }).catch(() => undefined)
+      // 用例产生两条配对日志（移过去 targetSubject=rootB、移回来 targetSubject=originalParent），须一并清理避免残留
+      await basePrisma.reclassificationLog.deleteMany({ where: { type: 'subject', targetSubject: { in: [rootB.code, originalParent] } } }).catch(() => undefined)
     }
   })
 

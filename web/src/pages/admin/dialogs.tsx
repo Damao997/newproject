@@ -43,25 +43,22 @@ interface DataScopeSelectProps {
   onChange: (codes: string[]) => void
 }
 
-/** 数据范围多选下拉：单体公司 + 汇总主体分组勾选，支持关键字过滤 */
+/** 数据范围多选下拉：仅列单体公司（汇总主体不可选，其成员全量授权时由后端「全有或全无」自动推导），支持关键字过滤 */
 function DataScopeSelect({ value, onChange }: DataScopeSelectProps) {
   const { data: companiesData } = useCompanies()
   const [keyword, setKeyword] = useState('')
+
+  const isSummary = (c: Company) => (c.entityType ?? (c.type === 'summary' ? 'summary' : 'single')) === 'summary'
   const companies = useMemo(
-    () => ((companiesData ?? []) as Company[]).filter((c) => c.status === 'active'),
+    () => ((companiesData ?? []) as Company[]).filter((c) => c.status === 'active' && !isSummary(c)),
     [companiesData],
   )
 
-  const isSummary = (c: Company) => (c.entityType ?? (c.type === 'summary' ? 'summary' : 'single')) === 'summary'
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase()
     if (!kw) return companies
     return companies.filter((c) => c.code.toLowerCase().includes(kw) || c.name.toLowerCase().includes(kw))
   }, [companies, keyword])
-  const groups = [
-    { label: '单体公司', items: filtered.filter((c) => !isSummary(c)) },
-    { label: '汇总主体', items: filtered.filter(isSummary) },
-  ]
 
   const toggle = (code: string) => {
     onChange(value.includes(code) ? value.filter((c) => c !== code) : [...value, code])
@@ -82,17 +79,12 @@ function DataScopeSelect({ value, onChange }: DataScopeSelectProps) {
       <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-2" align="start">
         <Input placeholder="搜索编码或名称..." value={keyword} onChange={(e) => setKeyword(e.target.value)} className="mb-2 h-8" />
         <div className="max-h-64 space-y-2 overflow-y-auto">
-          {groups.map((g) => g.items.length > 0 && (
-            <div key={g.label}>
-              <p className="px-1 py-1 text-xs font-semibold text-muted-foreground">{g.label}</p>
-              {g.items.map((c) => (
-                <label key={c.code} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm hover:bg-accent">
-                  <input type="checkbox" checked={value.includes(c.code)} onChange={() => toggle(c.code)} />
-                  <span className="font-mono text-xs">{c.code}</span>
-                  <span className="truncate">{c.name}</span>
-                </label>
-              ))}
-            </div>
+          {filtered.map((c) => (
+            <label key={c.code} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm hover:bg-accent">
+              <input type="checkbox" checked={value.includes(c.code)} onChange={() => toggle(c.code)} />
+              <span className="font-mono text-xs">{c.code}</span>
+              <span className="truncate">{c.name}</span>
+            </label>
           ))}
           {filtered.length === 0 && <p className="px-1 py-2 text-sm text-muted-foreground">无匹配公司</p>}
         </div>
@@ -209,7 +201,7 @@ export function UserDialog({ open, mode, user, roles, onClose }: UserDialogProps
             </Select>
           </div>
           <div className="space-y-1">
-            <Label>数据范围（可多选单体公司/汇总主体，留空为按角色默认）</Label>
+            <Label>数据范围（可多选单体公司，留空为按角色默认；汇总主体按成员全有或全无自动推导）</Label>
             <DataScopeSelect value={dataScopeCodes} onChange={setDataScopeCodes} />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
