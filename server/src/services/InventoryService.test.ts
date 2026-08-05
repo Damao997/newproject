@@ -7,7 +7,7 @@ import { STATIC_DIMS } from '../lib/metric-values'
  * 存货管理服务集成测试（真实 DB，无 DB 或静态科目树缺「存货」时整组跳过）。
  * 造唯一测试公司 + 独立 active 静态批次，对前两个存货品类叶子插入多月快照，
  * 覆盖：overview 总额四维/占比/排名/同比、details 公司×品类月份归集与空组合剔除、
- * trend 财年区间截断与品类/总额序列。afterAll 硬删除。
+ * trend 财年区间截断与公司/总额序列。afterAll 硬删除。
  * 月份口径按 S=4（FISCAL_START_MONTH=4）：P='2099-08' → 年初 2099-03（财年起始月前一月=上年期末）/ 同期 2098-08 / 上年年初 2098-03。
  */
 
@@ -122,16 +122,17 @@ describe('InventoryService.getDetails（真实 DB）', () => {
 })
 
 describe('InventoryService.getTrend（真实 DB）', () => {
-  it('财年区间截断：仅纳入 FY2099 内快照月，品类/总额序列对齐', async () => {
+  it('财年区间截断：仅纳入 FY2099 内快照月，公司/总额序列对齐', async () => {
     if (!dbReady) return
     const r = await InventoryService.getTrend(scope, { fiscalYear: 'FY2099' })
     // S=4：FY2099 = 2099-04 ~ 2100-03，2098-XX 与 2099-03（年初快照，属 FY2098）均被截断
     expect(r.months).toEqual(['2099-08'])
     expect(r.total).toEqual([800])
-    const c1 = r.byCategory.find((c) => c.code === cat1)
-    const c2 = r.byCategory.find((c) => c.code === cat2)
-    expect(c1?.values).toEqual([600])
-    expect(c2?.values).toEqual([200])
+    // 单体公司维度：唯一测试公司序列 = 全部品类之和（600 + 200）
+    const co = r.byCompany.find((c) => c.code === companyCode)
+    expect(co).toBeDefined()
+    expect(co?.name).toBe('存货测试公司')
+    expect(co?.values).toEqual([800])
   })
 
   it('非法财年格式报 badRequest', async () => {

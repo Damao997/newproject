@@ -1,22 +1,29 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import type { EChartsOption } from 'echarts'
 import ReactECharts, { echarts } from '@/components/charts/echarts-core'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useDashboardReceivables } from '@/hooks/api-queries'
 import { formatMoneyWan } from '@/lib/utils'
 import { CATEGORY_COLORS } from '@/lib/chart-colors'
 import { CHART_FONT, CHART_INK, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
 import { BarChart3 } from 'lucide-react'
 
+interface ReceivablesCardProps {
+  /** 选定期（跟随看板当前期间） */
+  period?: string
+  /** 主体编码（跟随看板顶部筛选）：单体=自身一行，汇总主体由后端展开为成员公司各行 */
+  companyCode?: string
+  /** 当前主体显示名（副标题说明口径） */
+  subjectName?: string
+}
+
 /**
  * 应收账款主体分布卡（横向柱状图）：指定期间各主体应收期末余额降序排布，
- * 支持单体/汇总口径切换（独立于 KPI 区）；期间跟随看板当前期间。
- * 数据经后端 scope 过滤，仅展示授权范围内主体。
+ * 主体口径完全跟随看板顶部筛选（无独立筛选器）：单体=自身，汇总主体=其成员公司各行；
+ * 期间跟随看板当前期间。数据经后端 scope 过滤。
  */
-export function ReceivablesCard({ period }: { period?: string }) {
-  const [mode, setMode] = useState<'single' | 'summary'>('single')
-  const { data, isLoading } = useDashboardReceivables({ period, mode })
+export function ReceivablesCard({ period, companyCode, subjectName }: ReceivablesCardProps) {
+  const { data, isLoading } = useDashboardReceivables({ period, mode: 'single', companyCode })
   const rows = useMemo(() => data?.rows ?? [], [data])
 
   const option = useMemo<EChartsOption>(() => {
@@ -95,15 +102,9 @@ export function ReceivablesCard({ period }: { period?: string }) {
             应收账款分布
           </CardTitle>
           <p className="mt-1 text-xs text-muted-foreground">
-            {period ? `期间 ${period} · ` : ''}应收期末余额（万元），按主体降序
+            {period ? `期间 ${period} · ` : ''}应收期末余额（万元），按主体降序{subjectName ? ` · 主体：${subjectName}` : ''}
           </p>
         </div>
-        <Tabs value={mode} onValueChange={(v) => setMode(v as 'single' | 'summary')}>
-          <TabsList className="bg-muted p-1">
-            <TabsTrigger value="single" className="rounded-lg px-3 py-1.5 text-xs data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">单体</TabsTrigger>
-            <TabsTrigger value="summary" className="rounded-lg px-3 py-1.5 text-xs data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">汇总</TabsTrigger>
-          </TabsList>
-        </Tabs>
       </CardHeader>
       <CardContent className="px-6 pb-6">
         {isLoading ? (

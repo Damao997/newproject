@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { hasPermission, ROLE_PERMISSIONS } from '@/lib/permissions'
+import { hasPermission, ROLE_PERMISSIONS, resolveHomePath } from '@/lib/permissions'
 
 describe('hasPermission', () => {
   it('管理员拥有全部模块权限', () => {
@@ -50,5 +50,30 @@ describe('hasPermission', () => {
       expect(Array.isArray(ROLE_PERMISSIONS[role])).toBe(true)
       expect(ROLE_PERMISSIONS[role].length).toBeGreaterThan(0)
     }
+  })
+})
+
+describe('resolveHomePath', () => {
+  it('含 dashboard:view 时优先返回 /dashboard', () => {
+    expect(resolveHomePath(['dashboard:view', 'indicators:view', 'inventory:view'])).toBe('/dashboard')
+  })
+
+  it('无 dashboard 时按显式优先级返回第一个有权限的模块（reports 优先于 transactions）', () => {
+    expect(resolveHomePath(['inventory:view'])).toBe('/inventory')
+    expect(resolveHomePath(['transactions:view', 'reports:view'])).toBe('/reports')
+    expect(resolveHomePath(['transactions:view'])).toBe('/transactions')
+    expect(resolveHomePath(['indicators:view'])).toBe('/indicators')
+    expect(resolveHomePath(['data:browse:view'])).toBe('/data')
+    expect(resolveHomePath(['admin:users:view'])).toBe('/admin/users')
+  })
+
+  it('仅持有优先级清单外的权限（如 tools:view）→ null', () => {
+    expect(resolveHomePath(['tools:view'])).toBeNull()
+  })
+
+  it('空数组 / undefined / null → null', () => {
+    expect(resolveHomePath([])).toBeNull()
+    expect(resolveHomePath(undefined)).toBeNull()
+    expect(resolveHomePath(null)).toBeNull()
   })
 })

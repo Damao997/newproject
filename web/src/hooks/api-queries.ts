@@ -35,11 +35,11 @@ export function useDashboardOverview(params: { period?: string; companyCode?: st
   })
 }
 
-/** 应收账款按主体分布：期间跟随看板当前期间，period 未定时不发请求 */
-export function useDashboardReceivables(params: { period?: string; mode: 'single' | 'summary' }) {
+/** 应收账款按主体分布：期间跟随看板当前期间，主体口径跟随看板筛选（companyCode 展开由后端完成）；period 未定时不发请求 */
+export function useDashboardReceivables(params: { period?: string; mode: 'single' | 'summary'; companyCode?: string }) {
   return useQuery({
-    queryKey: ['dashboard', 'receivables', params.period ?? '', params.mode] as const,
-    queryFn: () => api.getDashboardReceivables({ period: params.period as string, mode: params.mode }),
+    queryKey: ['dashboard', 'receivables', params.period ?? '', params.mode, params.companyCode ?? ''] as const,
+    queryFn: () => api.getDashboardReceivables({ period: params.period as string, mode: params.mode, ...(params.companyCode ? { companyCode: params.companyCode } : {}) }),
     enabled: !!params.period,
     placeholderData: keepPreviousData,
     staleTime: 5 * 60 * 1000,
@@ -306,6 +306,34 @@ export function useActivateImport() {
       qc.invalidateQueries({ queryKey: ['indicators'] })
       // 往来批次激活后同步刷新往来分析页（批次操作与分析消费跨页联动约定）
       qc.invalidateQueries({ queryKey: ['transactions'] })
+    },
+  })
+}
+
+/** 批次差异对比查询（enabled 由对话框状态控制，两批次选定后才发起） */
+export function useCompareImports(aId: string | null, bId: string | null) {
+  return useQuery({
+    queryKey: ['data', 'imports', 'compare', aId, bId],
+    queryFn: () => api.compareImports(aId as string, bId as string),
+    enabled: !!aId && !!bId,
+    retry: 1,
+  })
+}
+
+/** 回滚批次（US-03）：恢复快照数据并重新激活历史批次，成功后全量刷新数据相关缓存 */
+export function useRollbackImport() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.rollbackImport(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['data', 'imports'] })
+      qc.invalidateQueries({ queryKey: ['data', 'cross-table'] })
+      qc.invalidateQueries({ queryKey: ['data', 'imports', 'compare'] })
+      qc.invalidateQueries({ queryKey: ['indicators'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+      qc.invalidateQueries({ queryKey: ['transactions'] })
+      // 存货数据源为 fact_static，static 批次回滚直接改写，须一并失效（否则最长 5 分钟显示旧数据）
+      qc.invalidateQueries({ queryKey: ['inventory'] })
     },
   })
 }
@@ -1039,7 +1067,8 @@ export interface InventoryTrendResult {
   fiscalYear: string
   months: string[]
   total: number[]
-  byCategory: { code: string; name: string; values: number[] }[]
+  /** 各单体公司财年内逐月存货总额（汇总主体已展开为成员） */
+  byCompany: { code: string; name: string; values: number[] }[]
 }
 
 /** 存货总览：总额 + 品类占比/排名 + 周转天数 */

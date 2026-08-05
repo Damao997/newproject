@@ -368,7 +368,29 @@ model FactBudget {
   @@map("fact_budget")
 }
 
-// 4.4 重分类记录表（跨公司/科目归类调整的审计追溯，含行级快照支持撤销）
+// 4.4 导入数据快照表（批次激活覆盖时的被删行备份，支撑批次回滚）
+// 仅 operating/static/budget 三类；不设同键唯一约束，允许同一批次被多次覆盖产生多份快照
+model FactSnapshot {
+  id                String         @id @default(uuid())
+  batchId           String         @map("batch_id") // 行原属批次（回滚恢复目标）
+  archivedByBatchId String?        @map("archived_by_batch_id") // 因哪次激活被覆盖（追溯）
+  template          ImportDataType @map("template") // operating/static/budget（v1 不覆盖 transaction）
+  companyCode       String         @map("company_code")
+  accountCode       String         @map("account_code")
+  period            String? // operating: period；budget: 财务期间
+  snapshotDate      DateTime?      @map("snapshot_date") @db.Date // static
+  fiscalYear        String?        @map("fiscal_year")
+  periodDimCode     String?        @map("period_dim_code") // operating/static 维度
+  value             Decimal        @db.Decimal(18, 4)
+  rawJson           Json?          @map("raw_json") @db.JsonB
+  archivedAt        DateTime       @default(now()) @map("archived_at")
+
+  @@index([batchId, template])
+  @@index([archivedByBatchId])
+  @@map("fact_snapshot")
+}
+
+// 4.5 重分类记录表（跨公司/科目归类调整的审计追溯，含行级快照支持撤销）
 model ReclassificationLog {
   id            String    @id @default(uuid())
   type          String // 'company' | 'subject' | 'subject_adjust'

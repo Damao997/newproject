@@ -113,6 +113,7 @@ export const PERMISSION_LABELS: Record<string, string> = {
   'data:export': '导出数据',
   'data:metric:approve': '指标审批',
   'data:import:archive': '归档导入批次',
+  'data:import:rollback': '回滚导入批次',
   'data:import:purge': '清除导入批次',
   'data:company:purge': '彻底删除公司',
   'data:subject:purge': '彻底删除科目',
@@ -159,4 +160,5 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   permission_change: '权限变更',
   denied: '越权拦截',
   rule_change: '公式规则变更',
+  import_rollback: '批次回滚',
 }

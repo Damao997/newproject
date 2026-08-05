@@ -33,6 +33,13 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     return
   }
 
+  // body-parser JSON 解析失败（非法 JSON / 超 limit）→ 400，避免落入兜底 500 误导排查
+  if (err instanceof Error && err.name === 'SyntaxError' && (err as { type?: string }).type === 'entity.parse.failed') {
+    logger.warn(traceId, `请求体解析失败: ${err.message}`)
+    sendFail(res, 400, '请求体不是合法的 JSON', 400)
+    return
+  }
+
   if (err instanceof ZodError) {
     const first = err.errors[0]
     const message = first ? `${first.path.join('.') || '参数'}: ${first.message}` : '参数校验失败'

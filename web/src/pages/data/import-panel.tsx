@@ -14,6 +14,7 @@ import { formatMoneyWan, cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Collapsible } from '@/components/ui/collapsible'
 import { useConfirm } from '@/components/ui/confirm-dialog'
+import { ImportCompareDialog } from './import-compare-dialog'
 import type { ImportBatch } from '@/types'
 import {
   Upload,
@@ -28,6 +29,7 @@ import {
   ChevronDown,
   ChevronRight,
   Loader2,
+  GitCompareArrows,
 } from 'lucide-react'
 
 /** 批次生命周期状态中文标签 */
@@ -318,6 +320,15 @@ export function ImportPanel() {
     }
   }
 
+  // ---- 批次差异对比（US-03）：仅 operating/static/budget 可对比（transaction/inventory v1 不支持） ----
+  const [compareSource, setCompareSource] = useState<ImportBatch | null>(null)
+  const compareCandidates = useMemo(() => {
+    if (!compareSource) return []
+    return recentBatches
+      .filter((b) => b.templateType === compareSource.templateType && b.id !== compareSource.id && b.status !== 'purged')
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  }, [compareSource, recentBatches])
+
   // 批次管理表列（带权限门禁的行操作）
   const batchColumns: DataTableColumn<ImportBatch>[] = useMemo(() => {
     const cols: DataTableColumn<ImportBatch>[] = []
@@ -378,6 +389,11 @@ export function ImportPanel() {
         key: 'actions', header: '操作', align: 'right',
         render: (b) => (
           <div className="flex items-center justify-end gap-1">
+            {(b.templateType === 'operating' || b.templateType === 'static' || b.templateType === 'budget') && (
+              <Button variant="ghost" size="sm" title="差异对比" onClick={() => setCompareSource(b)}>
+                <GitCompareArrows className="h-4 w-4" />
+              </Button>
+            )}
             {canImport && b.status !== 'active' && b.status !== 'purged' && (
               <Button variant="ghost" size="sm" title="激活生效" disabled={activateMutation.isPending || batchActivate.isBusy} onClick={() => handleRowActivate(b)}>
                 <CheckCircle className="h-4 w-4" />
@@ -859,6 +875,13 @@ export function ImportPanel() {
         </Collapsible>
       </div>
       {confirmElement}
+      <ImportCompareDialog
+        open={!!compareSource}
+        onOpenChange={(v) => { if (!v) setCompareSource(null) }}
+        source={compareSource}
+        candidates={compareCandidates}
+        onRollbackSuccess={(msg) => setActivateMsg(msg)}
+      />
     </Card>
   )
 }

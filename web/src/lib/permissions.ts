@@ -38,6 +38,7 @@ const ADMIN_PERMISSIONS: string[] = [
  */
 export const HIGH_RISK_PERMISSIONS: string[] = [
   'data:metric:approve',
+  'data:import:rollback',
   'data:import:archive',
   'data:import:purge',
   'data:company:purge',
@@ -124,4 +125,25 @@ export function hasPermission(
   const permissions = ROLE_PERMISSIONS[role]
   if (!permissions) return false
   return permissions.includes(`${resource}:${action}`)
+}
+
+/** 登录后默认首页优先级（依据《安全与权限规范》模块顺序；reports 优先于 transactions，
+ *  与侧边栏 navItems 展示顺序不同，故显式声明而非依赖数组顺序） */
+export const HOME_ROUTE_PRIORITY: ReadonlyArray<{ resource: string; path: string }> = [
+  { resource: 'dashboard:view', path: '/dashboard' },
+  { resource: 'indicators:view', path: '/indicators' },
+  { resource: 'reports:view', path: '/reports' },
+  { resource: 'transactions:view', path: '/transactions' },
+  { resource: 'inventory:view', path: '/inventory' },
+  { resource: 'data:browse:view', path: '/data' },
+  { resource: 'admin:users:view', path: '/admin/users' },
+]
+
+/** 权限感知首页解析：按优先级返回第一个有权限的模块路径；无匹配返回 null（调用方跳转 /no-access） */
+export function resolveHomePath(permissions: string[] | undefined | null): string | null {
+  if (!permissions || permissions.length === 0) return null
+  for (const { resource, path } of HOME_ROUTE_PRIORITY) {
+    if (permissions.includes(resource)) return path
+  }
+  return null
 }

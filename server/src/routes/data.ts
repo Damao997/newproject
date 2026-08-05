@@ -103,12 +103,24 @@ router.post('/imports/batch-activate-check', requirePermission('data:import:uplo
   sendOk(res, { results: await ImportService.checkBatchActivateConflicts(ids) })
 }))
 
+// 批次差异对比（US-03）：两批次事实值对比（operating/static/budget）；须在 /imports/:id 之前注册
+router.get('/imports/:aId/compare/:bId', requirePermission('data:browse:view', 'view'), asyncHandler(async (req, res) => {
+  const data = await DataService.compareBatches(req.params.aId as string, req.params.bId as string, scopeOf(req.authUser as AuthUserContext))
+  sendOk(res, data)
+}))
+
 router.get('/imports/:id', requirePermission('data:browse:view', 'view'), asyncHandler(async (req, res) => {
   sendOk(res, await ImportService.getById(req.params.id as string))
 }))
 
 router.post('/imports/:id/activate', requirePermission('data:import:upload', 'import'), asyncHandler(async (req, res) => {
   const dto = await ImportService.activate(req.params.id as string, (req.authUser as AuthUserContext).userId, req.traceId)
+  sendOk(res, dto)
+}))
+
+// 回滚批次（US-03）：恢复快照数据并重新激活历史批次；高危操作，独立权限点（仅 superadmin）
+router.post('/imports/:id/rollback', requirePermission('data:import:rollback', 'import'), asyncHandler(async (req, res) => {
+  const dto = await ImportService.rollbackBatch(req.params.id as string, (req.authUser as AuthUserContext).userId, req.traceId)
   sendOk(res, dto)
 }))
 

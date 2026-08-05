@@ -28,6 +28,8 @@ export interface AnalysisTarget {
   subjectType: 'operating' | 'static'
   /** 值类型：决定指标上下文的格式化与单位标注（缺省金额） */
   valueType?: MetricValueType
+  /** 是否展示预算类指标上下文（缺省 true；库存等无预算场景传 false，隐藏全年预算/达成率并排除保存字段） */
+  showBudget?: boolean
   fiscalYear: string
   period: string
   metric?: MetricValue
@@ -89,11 +91,14 @@ export function AnalysisDrawer({ open, target, onClose }: AnalysisDrawerProps) {
   const metricContext = useMemo(() => {
     if (!target?.metric) return null
     const m = target.metric
-    return {
-      budget: m.budget, actual: m.actual, samePeriod: m.samePeriod, ytd: m.ytd,
-      yoy: calcYoy(m), achievement: calcAchievement(m),
-    }
-  }, [target?.metric])
+    // 无预算场景（如库存分析）：快照不含 budget/achievement，避免依赖全年预算口径
+    return target.showBudget === false
+      ? { actual: m.actual, samePeriod: m.samePeriod, ytd: m.ytd, samePeriodYtd: m.samePeriodYtd, yoy: calcYoy(m) }
+      : {
+          budget: m.budget, actual: m.actual, samePeriod: m.samePeriod, ytd: m.ytd,
+          yoy: calcYoy(m), achievement: calcAchievement(m),
+        }
+  }, [target?.metric, target?.showBudget])
 
   if (!open || !target) return null
 
@@ -185,6 +190,17 @@ export function AnalysisDrawer({ open, target, onClose }: AnalysisDrawerProps) {
           const unit = vt === 'ratio' || vt === 'quantity' ? '' : '(万)'
           const fmt = (v: number) => formatMetricValue(v, vt)
           const yoyText = vt === 'ratio' ? `${((m.actual - m.samePeriod) * 100).toFixed(1)}pp` : formatPercent(calcYoy(m))
+          if (target.showBudget === false) {
+            // 无预算场景（如库存分析）：仅展示库存语义指标，不呈现全年预算/达成率
+            return (
+              <div className="grid grid-cols-2 gap-2 border-b px-5 py-3 sm:grid-cols-4">
+                <ContextChip label={`本期金额${unit}`} value={fmt(m.actual)} />
+                <ContextChip label={`年初金额${unit}`} value={fmt(m.budget)} />
+                <ContextChip label={`同期金额${unit}`} value={fmt(m.samePeriod)} />
+                <ContextChip label="同比" value={yoyText} />
+              </div>
+            )
+          }
           return (
             <div className="grid grid-cols-3 gap-2 border-b px-5 py-3 sm:grid-cols-6">
               <ContextChip label={`全年预算${unit}`} value={fmt(m.budget)} />

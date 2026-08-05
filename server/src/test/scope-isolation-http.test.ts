@@ -34,6 +34,11 @@ let noViewUserId = ''
 let noViewToken = ''
 let noViewRoleId = ''
 let noViewPermissionId = ''
+// 仅持有 inventory:view 的临时角色（库存模块独立可用性回归：共享元数据端点不应要求 indicators:view）
+let invOnlyUserId = ''
+let invOnlyToken = ''
+let invOnlyRoleId = ''
+let invOnlyPermissionId = ''
 const detailIds: string[] = []
 
 beforeAll(async () => {
@@ -136,6 +141,31 @@ beforeAll(async () => {
       noViewUserId = noViewUser.id
       const noViewLogin = await request(app).post('/api/v1/auth/login').send({ username: `__noview_u_${suffix}`, password: PASSWORD })
       if (noViewLogin.status === 200) noViewToken = noViewLogin.body.data.accessToken
+
+      // 仅 inventory:view 权限的临时角色 → /indicators/periods 与 /indicators/tree 须放行（库存页不依赖 indicators:view）
+      const invRole = await basePrisma.role.create({
+        data: { code: `__invonly_${suffix}`.slice(0, 24), name: `仅存货查看_${suffix}`, scopeValue: '' },
+        select: { id: true },
+      })
+      invOnlyRoleId = invRole.id
+      const invPerm = await basePrisma.permission.create({
+        data: { roleId: invOnlyRoleId, resource: 'inventory:view', action: 'view' },
+        select: { id: true },
+      })
+      invOnlyPermissionId = invPerm.id
+      const invUser = await basePrisma.user.create({
+        data: {
+          username: `__invonly_u_${suffix}`,
+          passwordHash: await hashPassword(PASSWORD),
+          displayName: '仅存货查看测试',
+          roleId: invOnlyRoleId,
+          status: 'active',
+        },
+        select: { id: true },
+      })
+      invOnlyUserId = invUser.id
+      const invLogin = await request(app).post('/api/v1/auth/login').send({ username: `__invonly_u_${suffix}`, password: PASSWORD })
+      if (invLogin.status === 200) invOnlyToken = invLogin.body.data.accessToken
     }
   } catch (e) {
     // eslint-disable-next-line no-console
@@ -146,13 +176,15 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await basePrisma.transactionDetail.deleteMany({ where: { id: { in: detailIds } } }).catch(() => undefined)
-  for (const uid of [userId, viewerUserId, noViewUserId]) {
+  for (const uid of [userId, viewerUserId, noViewUserId, invOnlyUserId]) {
     if (!uid) continue
     await basePrisma.tokenBlacklist.deleteMany({ where: { userId: uid } }).catch(() => undefined)
     await basePrisma.user.delete({ where: { id: uid } }).catch(() => undefined)
   }
   if (noViewPermissionId) await basePrisma.permission.delete({ where: { id: noViewPermissionId } }).catch(() => undefined)
   if (noViewRoleId) await basePrisma.role.delete({ where: { id: noViewRoleId } }).catch(() => undefined)
+  if (invOnlyPermissionId) await basePrisma.permission.delete({ where: { id: invOnlyPermissionId } }).catch(() => undefined)
+  if (invOnlyRoleId) await basePrisma.role.delete({ where: { id: invOnlyRoleId } }).catch(() => undefined)
   await basePrisma.companyAggregationMap
     .deleteMany({ where: { summaryCompanyCode: ET_PARTIAL } })
     .catch(() => undefined)
@@ -248,6 +280,22 @@ describe('数据范围隔离 HTTP 端到端（真实 DB）', () => {
   it('公司列表：无任何候选查看权限 → 仍 403（权限门未过度放宽）', async () => {
     if (!dbReady || !noViewToken) return
     const res = await request(app).get('/api/v1/data/companies').set('Authorization', `Bearer ${noViewToken}`)
+    expect(res.status).toBe(403)
+  })
+
+  it('共享元数据端点：仅持有 inventory:view（无 indicators:view）→ periods/tree 均 200（库存页独立可用回归）', async () => {
+    if (!dbReady || !invOnlyToken) return
+    const periods = await request(app).get('/api/v1/indicators/periods').set('Authorization', `Bearer ${invOnlyToken}`)
+    expect(periods.status).toBe(200)
+    expect(periods.body.data.periods).toBeDefined()
+    const tree = await request(app).get('/api/v1/indicators/tree?type=static').set('Authorization', `Bearer ${invOnlyToken}`)
+    expect(tree.status).toBe(200)
+    expect(Array.isArray(tree.body.data)).toBe(true)
+  })
+
+  it('共享元数据端点：无任何候选查看权限 → periods 仍 403（权限门未过度放宽）', async () => {
+    if (!dbReady || !noViewToken) return
+    const res = await request(app).get('/api/v1/indicators/periods').set('Authorization', `Bearer ${noViewToken}`)
     expect(res.status).toBe(403)
   })
 })

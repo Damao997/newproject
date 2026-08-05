@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { AlertCircle, Eye, EyeOff, Loader2, Lock, User } from 'lucide-react'
 import { api } from '@/lib/api'
+import { resolveHomePath } from '@/lib/permissions'
 
 /** 记住我：仅记住用户名（凭证不落盘） */
 const REMEMBER_KEY = 'login-remembered-username'
@@ -43,6 +44,8 @@ export default function LoginPage() {
 
   const navigate = useNavigate()
   const login = useAuthStore((state) => state.login)
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const user = useAuthStore((state) => state.user)
 
   // 初始化：回填记住的用户名
   useEffect(() => {
@@ -52,6 +55,11 @@ export default function LoginPage() {
       setRememberMe(true)
     }
   }, [])
+
+  // 已登录用户访问登录页时直接回到权限感知首页（所有 hooks 之后早退，保证调用顺序稳定）
+  if (isAuthenticated) {
+    return <Navigate to={resolveHomePath(user?.permissions) ?? '/no-access'} replace />
+  }
 
   const runValidate = (field: 'username' | 'password', value: string) => {
     const message = field === 'username' ? validateUsername(value) : validatePassword(value)
@@ -97,7 +105,8 @@ export default function LoginPage() {
         localStorage.removeItem(REMEMBER_KEY)
       }
       login(response.user, response.accessToken, response.refreshToken)
-      navigate('/dashboard')
+      // 权限感知跳转：优先 dashboard，否则按模块优先级取第一个有权限的页面；无匹配 → /no-access
+      navigate(resolveHomePath(response.user.permissions) ?? '/no-access')
     } catch (err) {
       setError(err instanceof Error ? err.message : '登录失败，请稍后重试')
     } finally {
@@ -173,7 +182,11 @@ export default function LoginPage() {
                     placeholder="请输入密码"
                     value={password}
                     onChange={(e) => handlePasswordChange(e.target.value)}
-                    onBlur={() => handleBlur('password')}
+                    onBlur={() => {
+                      handleBlur('password')
+                      // 失焦时清除大写锁定提示，避免切走输入框后残留
+                      setCapsLockOn(false)
+                    }}
                     onKeyUp={(e) => setCapsLockOn(e.getModifierState?.('CapsLock') ?? false)}
                     autoComplete="current-password"
                     disabled={isLoading}

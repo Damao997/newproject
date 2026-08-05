@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useProductBudget } from '@/hooks/api-queries'
 import { totalOf } from './budget-total'
-import { formatMoneyWan, formatPercent, getChangePrefix, cn } from '@/lib/utils'
+import { formatMoneyWan, formatPercent, cn } from '@/lib/utils'
 import type { ProductBudgetMetric } from '@/types'
 
 interface ProductBudgetCardProps {
@@ -26,18 +26,18 @@ function rateColorClass(rate: number | null): string {
   return 'text-destructive'
 }
 
-/** 同比徽标：红涨绿跌（A 股/国内财报习惯），持平灰 */
+/** 同比单元格：红涨绿跌（A 股/国内财报习惯），持平灰；正值不带 "+"，负值保留 "-" */
 function YoYBadge({ value }: { value: number }) {
   const isFlat = value === 0
   const isPositive = value > 0
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full px-1.5 py-0.5 text-[11px] font-medium',
-        isFlat ? 'bg-muted text-muted-foreground' : isPositive ? 'bg-finance-red/10 text-finance-red' : 'bg-finance-green/10 text-finance-green',
+        'inline-flex items-center text-sm font-medium',
+        isFlat ? 'text-muted-foreground' : isPositive ? 'text-finance-red' : 'text-finance-green',
       )}
     >
-      <span className="font-num">{getChangePrefix(value)}{(Math.abs(value) * 100).toFixed(1)}%</span>
+      <span className="font-num">{value < 0 ? '-' : ''}{(Math.abs(value) * 100).toFixed(1)}%</span>
     </span>
   )
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { changeRate, rateOf, findInCategory, monthlyBudgetSeries, mapAlertRow, alertScopeWhere, productMetric, matchProductCategories } from './DashboardService'
+import { changeRate, rateOf, findInCategory, monthlyBudgetSeries, budgetAnnualTotal, fallbackBudgetSeries, mapAlertRow, alertScopeWhere, productMetric, matchProductCategories } from './DashboardService'
 import { OPERATING_DIMS } from '../lib/metric-values'
 import type { ValueNode } from './AggregationService'
 import { Prisma } from '@prisma/client'
@@ -93,6 +93,43 @@ describe('DashboardService 纯函数', () => {
     it('叶子码不匹配或无预算行时返回全 null', () => {
       expect(monthlyBudgetSeries([{ accountCode: 'Z', period: '2026-01', value: 9 }], ['A'], months)).toEqual([null, null, null])
       expect(monthlyBudgetSeries([], ['A'], months)).toEqual([null, null, null])
+    })
+  })
+
+  describe('budgetAnnualTotal 指标年度预算总额（含计算类指标树预算回退）', () => {
+    it('有叶子匹配行时按年度求和（含月度粒度归集）', () => {
+      const rows = [
+        { accountCode: 'A', value: 100 },
+        { accountCode: 'A', value: 50 },
+        { accountCode: 'B', value: 30 },
+      ]
+      expect(budgetAnnualTotal(undefined, rows, ['A', 'B'])).toBe(180)
+    })
+    it('无匹配行（计算类指标如毛利）时回退树节点 BUDGET_AMOUNT（公式层重算值）', () => {
+      const profit = node({ code: 'OP_PROFIT', values: { [OPERATING_DIMS.BUDGET_AMOUNT]: 12142.58 } })
+      expect(budgetAnnualTotal(profit, [], ['OP_PROFIT_A', 'OP_PROFIT_B'])).toBe(12142.58)
+    })
+    it('无匹配行且无树预算（节点缺失）时返回 0', () => {
+      expect(budgetAnnualTotal(undefined, [{ accountCode: 'Z', value: 9 }], ['A'])).toBe(0)
+    })
+  })
+
+  describe('fallbackBudgetSeries 预算序列兜底', () => {
+    const months = ['2026-04', '2026-05', '2026-06']
+    it('序列非全 null 时保持原样（月度粒度预算优先）', () => {
+      const series = [100, null, 120]
+      expect(fallbackBudgetSeries(series, 500, months, 'month')).toEqual([100, null, 120])
+    })
+    it('全 null 时月度口径按年度/12 均摊', () => {
+      const series = [null, null, null]
+      expect(fallbackBudgetSeries(series, 1200, months, 'month')).toEqual([100, 100, 100])
+    })
+    it('全 null 时累计口径为年度总额（预算无累计粒度，水平线）', () => {
+      const series = [null, null, null]
+      expect(fallbackBudgetSeries(series, 1200, months, 'ytd')).toEqual([1200, 1200, 1200])
+    })
+    it('年度总额为 0 时保持全 null（无预算不伪造）', () => {
+      expect(fallbackBudgetSeries([null, null, null], 0, months, 'month')).toEqual([null, null, null])
     })
   })
 

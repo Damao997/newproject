@@ -113,7 +113,7 @@ export default function IndicatorsPage() {
     if (periodFilter === '' || (!periods.includes(periodFilter) && periodFilter !== 'all')) {
       setPeriodFilter(periods[periods.length - 1])
     }
-  }, [periods])
+  }, [periods, periodFilter, setPeriodFilter])
 
   // 主体维度：company:CODE / summary:CODE → 传对应编码；all → 不传（后端按 scope 汇总）
   const companyCode = dimFilter.startsWith('company:')

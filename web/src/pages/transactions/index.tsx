@@ -21,9 +21,10 @@ import {
 import { Input } from '@/components/ui/input'
 import { PageContainer } from '@/components/layout/page-container'
 import { Pagination } from '@/components/data-table/pagination'
-import { useTransactionOverview, useTransactionDetails, useTransactionAging, useInternalSummary, useInternalMirrorCheck, useTransactionPeriods, useTransactionAccounts, useCompanies } from '@/hooks/api-queries'
+import { useTransactionOverview, useTransactionDetails, useTransactionAging, useInternalSummary, useInternalMirrorCheck, useTransactionPeriods, useTransactionAccounts, useCompanies, useAvailablePeriods } from '@/hooks/api-queries'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { usePageStore } from '@/stores/pageStateStore'
+import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { CompanySelect, CompanyMultiSelect } from '@/components/filters/company-select'
 import { usePermission } from '@/hooks/usePermission'
 import { cn, formatMoneyWan } from '@/lib/utils'
@@ -218,14 +219,20 @@ function OverviewTab() {
     }
   }, [companies, defaultCode, setSelectedCompanies])
   // 期间筛选（仅作用于卡片）：空串表示跟随最新期间；已选期间不在候选（如财年切换）时回退跟随最新
-  const { data: periods } = useTransactionPeriods()
+  // 期间候选按全局选中财年过滤（财年起始月取后端返回值，与 dashboard/indicators/data/inventory 口径一致）
+  const { data: periodsData } = useAvailablePeriods()
+  const fiscalYear = usePeriodStore((s) => s.fiscalYear)
+  const { data: rawPeriods } = useTransactionPeriods()
+  const periods = useMemo(
+    () => filterPeriodsByFiscalYear(rawPeriods ?? [], fiscalYear, periodsData?.fiscalStartMonth ?? 1),
+    [rawPeriods, fiscalYear, periodsData?.fiscalStartMonth],
+  )
   useEffect(() => {
-    if (!periods || periods.length === 0) return
     const cur = usePageStore.getState().transactions.overview.period
     if (cur !== '' && !periods.includes(cur)) setPeriodFilter('')
   }, [periods, setPeriodFilter])
   // 期末余额为时点数，默认取最新期间（列表倒序首项），不提供跨期累加
-  const period = periodFilter || periods?.[0]
+  const period = periodFilter || periods[0]
   const { data: overview, isLoading } = useTransactionOverview({ companyCodes: selectedCompanies, period })
 
   const list = overview ?? []
@@ -256,7 +263,12 @@ function OverviewTab() {
       <TransactionTrendCard companyCodes={selectedCompanies} />
 
       {isLoading || !period ? (
-        <div className="py-12 text-center text-sm text-muted-foreground">加载中...</div>
+        // 有原始期间但当前财年过滤后为空：提示财年无数据而非永久"加载中"
+        periods.length === 0 && (rawPeriods?.length ?? 0) > 0 ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">当前财年暂无往来数据</div>
+        ) : (
+          <div className="py-12 text-center text-sm text-muted-foreground">加载中...</div>
+        )
       ) : list.length === 0 ? (
         <div className="py-12 text-center text-sm text-muted-foreground">暂无往来数据</div>
       ) : (
@@ -359,14 +371,20 @@ function DetailsTab() {
     if (cur !== 'all' && !valid.has(cur)) setCompanyFilter(defaultCode ?? 'all')
   }, [companies, defaultCode, setCompanyFilter])
   // 持久化期间校验：''/'all'/候选内保留，否则回退跟随最新
-  const { data: periods } = useTransactionPeriods()
+  // 期间候选按全局选中财年过滤（财年起始月取后端返回值，与 dashboard/indicators/data/inventory 口径一致）
+  const { data: periodsData } = useAvailablePeriods()
+  const fiscalYear = usePeriodStore((s) => s.fiscalYear)
+  const { data: rawPeriods } = useTransactionPeriods()
+  const periods = useMemo(
+    () => filterPeriodsByFiscalYear(rawPeriods ?? [], fiscalYear, periodsData?.fiscalStartMonth ?? 1),
+    [rawPeriods, fiscalYear, periodsData?.fiscalStartMonth],
+  )
   useEffect(() => {
-    if (!periods || periods.length === 0) return
     const cur = usePageStore.getState().transactions.details.period
     if (cur !== '' && cur !== 'all' && !periods.includes(cur)) setPeriodFilter('')
   }, [periods, setPeriodFilter])
   const { getDisplayName } = useCompanyDisplayName()
-  const effectivePeriod = periodFilter || periods?.[0] || ''
+  const effectivePeriod = periodFilter || periods[0] || ''
 
   const { data, isLoading } = useTransactionDetails({
     page,
@@ -514,14 +532,20 @@ function AgingTab() {
   const partyFilter = usePageStore((s) => s.transactions.aging.party)
   const groupBy = usePageStore((s) => s.transactions.aging.groupBy)
   // 持久化期间校验：已选期间不在候选（如财年切换）时回退跟随最新
-  const { data: periods } = useTransactionPeriods()
+  // 期间候选按全局选中财年过滤（财年起始月取后端返回值，与 dashboard/indicators/data/inventory 口径一致）
+  const { data: periodsData } = useAvailablePeriods()
+  const fiscalYear = usePeriodStore((s) => s.fiscalYear)
+  const { data: rawPeriods } = useTransactionPeriods()
+  const periods = useMemo(
+    () => filterPeriodsByFiscalYear(rawPeriods ?? [], fiscalYear, periodsData?.fiscalStartMonth ?? 1),
+    [rawPeriods, fiscalYear, periodsData?.fiscalStartMonth],
+  )
   useEffect(() => {
-    if (!periods || periods.length === 0) return
     const cur = usePageStore.getState().transactions.aging.period
     if (cur !== '' && !periods.includes(cur)) setPeriodFilter('')
   }, [periods, setPeriodFilter])
   const { getDisplayName } = useCompanyDisplayName()
-  const period = periodFilter || periods?.[0]
+  const period = periodFilter || periods[0]
   // 科目维度统一由「科目筛选」承载：选中具体科目时自动按科目展开（显示科目列），
   // 未选时按分组方式（往来类型/往来对象）汇总，避免与分组下拉中的「按科目」重复
   const effectiveGroupBy = accountFilter.length > 0 ? 'account' : groupBy

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import ExcelJS from 'exceljs'
 import * as XLSX from 'xlsx'
-import type { Prisma } from '@prisma/client'
+import type { Prisma, ImportDataType } from '@prisma/client'
 import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
@@ -177,6 +177,175 @@ function toSummaryDto(s: PreviewSummary): PreviewSummaryDto {
 
 function ymOfDate(d: Date): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+/** 激活覆盖前备份将被物理删除的经营事实行到 fact_snapshot（支撑批次回滚）；返回备份行数 */
+async function backupOperatingRows(
+  tx: Prisma.TransactionClient,
+  archivedByBatchId: string,
+  where: Prisma.FactOperatingWhereInput,
+): Promise<number> {
+  const rows = await tx.factOperating.findMany({
+    where,
+    select: { batchId: true, companyCode: true, accountCode: true, period: true, fiscalYear: true, periodDimCode: true, value: true, rawJson: true },
+  })
+  if (rows.length === 0) return 0
+  await tx.factSnapshot.createMany({
+    data: rows.map((r) => ({
+      batchId: r.batchId,
+      archivedByBatchId,
+      template: 'operating' as const,
+      companyCode: r.companyCode,
+      accountCode: r.accountCode,
+      period: r.period,
+      fiscalYear: r.fiscalYear,
+      periodDimCode: r.periodDimCode,
+      value: r.value,
+      rawJson: r.rawJson as never,
+    })),
+  })
+  return rows.length
+}
+
+/** 激活覆盖前备份将被物理删除的静态事实行到 fact_snapshot（支撑批次回滚）；返回备份行数 */
+async function backupStaticRows(
+  tx: Prisma.TransactionClient,
+  archivedByBatchId: string,
+  where: Prisma.FactStaticWhereInput,
+): Promise<number> {
+  const rows = await tx.factStatic.findMany({
+    where,
+    select: { batchId: true, companyCode: true, accountCode: true, snapshotDate: true, fiscalYear: true, periodDimCode: true, value: true, rawJson: true },
+  })
+  if (rows.length === 0) return 0
+  await tx.factSnapshot.createMany({
+    data: rows.map((r) => ({
+      batchId: r.batchId,
+      archivedByBatchId,
+      template: 'static' as const,
+      companyCode: r.companyCode,
+      accountCode: r.accountCode,
+      snapshotDate: r.snapshotDate,
+      fiscalYear: r.fiscalYear,
+      periodDimCode: r.periodDimCode,
+      value: r.value,
+      rawJson: r.rawJson as never,
+    })),
+  })
+  return rows.length
+}
+
+/**
+ * 事务内激活核心逻辑（rollbackBatch 复用）：删除旧 active 批次中与本批次重叠的数据
+ * （operating 按 period、static 按快照月，删除前先备份到 fact_snapshot）、
+ * 空批次自动归档、置目标批次 active。transaction/budget/inventory 分支与旧逻辑一致。
+ */
+async function activateInTx(
+  tx: Prisma.TransactionClient,
+  b: { id: string; dataType: ImportDataType; fiscalYear: string | null; coverageJson: unknown },
+): Promise<{ replacedPeriods: string[]; deletedRows: number }> {
+  let replaced: string[] = []
+  let deleted = 0
+  if (b.dataType === 'operating' || b.dataType === 'static') {
+    const oldActive = await tx.importBatch.findMany({
+      where: { dataType: b.dataType, lifecycleStatus: 'active' },
+      select: { id: true },
+    })
+    // 排除目标批次自身：active 目标回滚（期间合并共存场景）时避免删除自己刚恢复的行
+    const oldIds = oldActive.map((x) => x.id).filter((x) => x !== b.id)
+    if (oldIds.length > 0) {
+      if (b.dataType === 'operating') {
+        const rows = await tx.factOperating.findMany({ where: { batchId: b.id }, distinct: ['period'], select: { period: true } })
+        const newPeriods = rows.map((r) => r.period)
+        if (newPeriods.length > 0) {
+          deleted += await backupOperatingRows(tx, b.id, { batchId: { in: oldIds }, period: { in: newPeriods } })
+          await tx.factOperating.deleteMany({ where: { batchId: { in: oldIds }, period: { in: newPeriods } } })
+          replaced = newPeriods.sort()
+        }
+        for (const oldId of oldIds) {
+          const remaining = await tx.factOperating.count({ where: { batchId: oldId } })
+          if (remaining === 0) await tx.importBatch.update({ where: { id: oldId }, data: { lifecycleStatus: 'archived' } })
+        }
+      } else {
+        const snaps = await tx.factStatic.findMany({ where: { batchId: b.id }, distinct: ['snapshotDate'], select: { snapshotDate: true } })
+        const newMonths = new Set(snaps.map((s) => ymOfDate(s.snapshotDate)))
+        if (newMonths.size > 0) {
+          const oldSnaps = await tx.factStatic.findMany({ where: { batchId: { in: oldIds } }, distinct: ['snapshotDate'], select: { snapshotDate: true } })
+          const delDates = oldSnaps.map((s) => s.snapshotDate).filter((d) => newMonths.has(ymOfDate(d)))
+          if (delDates.length > 0) {
+            deleted += await backupStaticRows(tx, b.id, { batchId: { in: oldIds }, snapshotDate: { in: delDates } })
+            await tx.factStatic.deleteMany({ where: { batchId: { in: oldIds }, snapshotDate: { in: delDates } } })
+          }
+          replaced = [...newMonths].sort()
+        }
+        for (const oldId of oldIds) {
+          const remaining = await tx.factStatic.count({ where: { batchId: oldId } })
+          if (remaining === 0) await tx.importBatch.update({ where: { id: oldId }, data: { lifecycleStatus: 'archived' } })
+        }
+      }
+    }
+  } else if (b.dataType === 'transaction') {
+    // 按 (公司, 期间, 往来类型) 三元组合并替换
+    const oldActive = await tx.importBatch.findMany({
+      where: { dataType: 'transaction', lifecycleStatus: 'active' },
+      select: { id: true, coverageJson: true },
+    })
+    const oldIds = oldActive.map((x) => x.id).filter((x) => x !== b.id)
+    if (oldIds.length > 0) {
+      // 实际明细三元组 + 申报覆盖三元组并集：空模板申报"该期确无往来款"，
+      // 激活时同样按申报范围替换（删除）旧生效数据，覆盖矩阵随之显示为 empty
+      const keys = await tx.transactionDetail.findMany({
+        where: { batchId: b.id },
+        distinct: ['companyCode', 'period', 'transactionType'],
+        select: { companyCode: true, period: true, transactionType: true },
+      })
+      const keySet = new Map<string, { companyCode: string; period: string | null; transactionType: string }>()
+      for (const k of keys) keySet.set(`${k.companyCode}|${k.period ?? ''}|${k.transactionType}`, k)
+      for (const d of parseDeclaredCoverage(b.coverageJson)) {
+        keySet.set(`${d.companyCode}|${d.period}|${d.transactionType}`, { companyCode: d.companyCode, period: d.period, transactionType: d.transactionType })
+      }
+      const mergedKeys = [...keySet.values()]
+      if (mergedKeys.length > 0) {
+        const res = await tx.transactionDetail.deleteMany({
+          where: {
+            batchId: { in: oldIds },
+            OR: mergedKeys.map((k) => ({ companyCode: k.companyCode, period: k.period, transactionType: k.transactionType })),
+          },
+        })
+        deleted = res.count
+        replaced = mergedKeys.map((k) => `${k.companyCode}|${k.period ?? '-'}|${k.transactionType}`).sort()
+        const replacedKeySet = new Set(mergedKeys.map((k) => `${k.companyCode}|${k.period ?? ''}|${k.transactionType}`))
+        for (const oldBatch of oldActive) {
+          const remaining = await tx.transactionDetail.count({ where: { batchId: oldBatch.id } })
+          if (remaining > 0) continue
+          // 空模板（无明细）但申报范围未被本次激活全部替换 → 保持 active，
+          // 维持"该期确无往来款"的 empty 状态（否则矩阵将退化为 missing）
+          const stillDeclared = parseDeclaredCoverage(oldBatch.coverageJson).some(
+            (d) => !replacedKeySet.has(`${d.companyCode}|${d.period}|${d.transactionType}`),
+          )
+          if (!stillDeclared) {
+            await tx.importBatch.update({ where: { id: oldBatch.id }, data: { lifecycleStatus: 'archived' } })
+          }
+        }
+      }
+      // mergedKeys 为空（新批次无任何明细与申报）时不执行替换与归档
+    }
+  } else {
+    // budget 按财年隔离；其余类型整体替换（均排除目标自身：active 目标回滚时避免归档自己）
+    const archiveWhere =
+      b.dataType === 'budget'
+        ? { dataType: b.dataType, lifecycleStatus: 'active' as const, fiscalYear: b.fiscalYear, id: { not: b.id } }
+        : { dataType: b.dataType, lifecycleStatus: 'active' as const, id: { not: b.id } }
+    await tx.importBatch.updateMany({
+      where: archiveWhere,
+      data: { lifecycleStatus: 'archived' },
+    })
+  }
+  await tx.importBatch.update({
+    where: { id: b.id },
+    data: { lifecycleStatus: 'active', status: 'success' },
+  })
+  return { replacedPeriods: replaced, deletedRows: deleted }
 }
 
 /** 查当前生效批次并对比期间集合（operating=period、static=快照月、budget=财年）；
@@ -865,7 +1034,8 @@ export const ImportService = {
 
   /**
    * 激活批次：置 active。期间策略：
-   * - operating/static 按期间合并：删除旧 active 批次中与本批次重叠期间的事实行（operating 按 period、static 按快照月），
+   * - operating/static 按期间合并：删除旧 active 批次中与本批次重叠期间的事实行
+   *   （operating 按 period、static 按快照月，删除前先备份到 fact_snapshot 支撑回滚），
    *   旧批次清空后自动归档，否则保持 active（多批次按期间共存）；
    * - transaction 按 (公司, 期间, 往来类型) 合并：删除旧 active 批次中与本批次三元组重叠的明细，旧批次清空后自动归档；
    * - budget 按财年整体替换：归档同 dataType 且同 fiscalYear 的旧 active；
@@ -877,109 +1047,84 @@ export const ImportService = {
     if (b.lifecycleStatus === 'active') return toDto(b)
 
     const { updated, replacedPeriods, deletedRows } = await prisma.$transaction(async (tx) => {
-      let replaced: string[] = []
-      let deleted = 0
-      if (b.dataType === 'operating' || b.dataType === 'static') {
-        const oldActive = await tx.importBatch.findMany({
-          where: { dataType: b.dataType, lifecycleStatus: 'active' },
-          select: { id: true },
-        })
-        const oldIds = oldActive.map((x) => x.id)
-        if (oldIds.length > 0) {
-          if (b.dataType === 'operating') {
-            const rows = await tx.factOperating.findMany({ where: { batchId: id }, distinct: ['period'], select: { period: true } })
-            const newPeriods = rows.map((r) => r.period)
-            if (newPeriods.length > 0) {
-              const res = await tx.factOperating.deleteMany({ where: { batchId: { in: oldIds }, period: { in: newPeriods } } })
-              deleted = res.count
-              replaced = newPeriods.sort()
-            }
-            for (const oldId of oldIds) {
-              const remaining = await tx.factOperating.count({ where: { batchId: oldId } })
-              if (remaining === 0) await tx.importBatch.update({ where: { id: oldId }, data: { lifecycleStatus: 'archived' } })
-            }
-          } else {
-            const snaps = await tx.factStatic.findMany({ where: { batchId: id }, distinct: ['snapshotDate'], select: { snapshotDate: true } })
-            const newMonths = new Set(snaps.map((s) => ymOfDate(s.snapshotDate)))
-            if (newMonths.size > 0) {
-              const oldSnaps = await tx.factStatic.findMany({ where: { batchId: { in: oldIds } }, distinct: ['snapshotDate'], select: { snapshotDate: true } })
-              const delDates = oldSnaps.map((s) => s.snapshotDate).filter((d) => newMonths.has(ymOfDate(d)))
-              if (delDates.length > 0) {
-                const res = await tx.factStatic.deleteMany({ where: { batchId: { in: oldIds }, snapshotDate: { in: delDates } } })
-                deleted = res.count
-              }
-              replaced = [...newMonths].sort()
-            }
-            for (const oldId of oldIds) {
-              const remaining = await tx.factStatic.count({ where: { batchId: oldId } })
-              if (remaining === 0) await tx.importBatch.update({ where: { id: oldId }, data: { lifecycleStatus: 'archived' } })
-            }
-          }
-        }
-      } else if (b.dataType === 'transaction') {
-        // 按 (公司, 期间, 往来类型) 三元组合并替换
-        const oldActive = await tx.importBatch.findMany({
-          where: { dataType: 'transaction', lifecycleStatus: 'active' },
-          select: { id: true, coverageJson: true },
-        })
-        const oldIds = oldActive.map((x) => x.id)
-        if (oldIds.length > 0) {
-          // 实际明细三元组 + 申报覆盖三元组并集：空模板申报"该期确无往来款"，
-          // 激活时同样按申报范围替换（删除）旧生效数据，覆盖矩阵随之显示为 empty
-          const keys = await tx.transactionDetail.findMany({
-            where: { batchId: id },
-            distinct: ['companyCode', 'period', 'transactionType'],
-            select: { companyCode: true, period: true, transactionType: true },
-          })
-          const keySet = new Map<string, { companyCode: string; period: string | null; transactionType: string }>()
-          for (const k of keys) keySet.set(`${k.companyCode}|${k.period ?? ''}|${k.transactionType}`, k)
-          for (const d of parseDeclaredCoverage(b.coverageJson)) {
-            keySet.set(`${d.companyCode}|${d.period}|${d.transactionType}`, { companyCode: d.companyCode, period: d.period, transactionType: d.transactionType })
-          }
-          const mergedKeys = [...keySet.values()]
-          if (mergedKeys.length > 0) {
-            const res = await tx.transactionDetail.deleteMany({
-              where: {
-                batchId: { in: oldIds },
-                OR: mergedKeys.map((k) => ({ companyCode: k.companyCode, period: k.period, transactionType: k.transactionType })),
-              },
-            })
-            deleted = res.count
-            replaced = mergedKeys.map((k) => `${k.companyCode}|${k.period ?? '-'}|${k.transactionType}`).sort()
-            const replacedKeySet = new Set(mergedKeys.map((k) => `${k.companyCode}|${k.period ?? ''}|${k.transactionType}`))
-            for (const oldBatch of oldActive) {
-              const remaining = await tx.transactionDetail.count({ where: { batchId: oldBatch.id } })
-              if (remaining > 0) continue
-              // 空模板（无明细）但申报范围未被本次激活全部替换 → 保持 active，
-              // 维持"该期确无往来款"的 empty 状态（否则矩阵将退化为 missing）
-              const stillDeclared = parseDeclaredCoverage(oldBatch.coverageJson).some(
-                (d) => !replacedKeySet.has(`${d.companyCode}|${d.period}|${d.transactionType}`),
-              )
-              if (!stillDeclared) {
-                await tx.importBatch.update({ where: { id: oldBatch.id }, data: { lifecycleStatus: 'archived' } })
-              }
-            }
-          }
-          // mergedKeys 为空（新批次无任何明细与申报）时不执行替换与归档
-        }
-      } else {
-        // budget 按财年隔离；其余类型整体替换
-        const archiveWhere =
-          b.dataType === 'budget'
-            ? { dataType: b.dataType, lifecycleStatus: 'active' as const, fiscalYear: b.fiscalYear }
-            : { dataType: b.dataType, lifecycleStatus: 'active' as const }
-        await tx.importBatch.updateMany({
-          where: archiveWhere,
-          data: { lifecycleStatus: 'archived' },
-        })
-      }
-      const batch = await tx.importBatch.update({
-        where: { id },
-        data: { lifecycleStatus: 'active', status: 'success' },
-      })
-      return { updated: batch, replacedPeriods: replaced, deletedRows: deleted }
+      const impact = await activateInTx(tx, b)
+      const batch = await tx.importBatch.findUniqueOrThrow({ where: { id } })
+      return { updated: batch, ...impact }
     })
     await recordAudit({ userId, module: 'data', action: 'update', targetId: id, detail: { action: 'activate', replacedPeriods, deletedRows } }, traceId)
+    return toDto(updated)
+  },
+
+  /**
+   * 回滚批次（US-03）：恢复该批次被覆盖时备份到 fact_snapshot 的事实行，再重新激活。
+   * - operating/static：快照行写回对应事实表（skipDuplicates 幂等），随后激活删除当前 active 重叠行（自动备份，天然对称）；
+   * - budget：从不物理删行（仅归档旧批次），无快照也可直接激活回滚；
+   * - transaction/inventory：v1 不支持回滚。
+   */
+  async rollbackBatch(id: string, userId: string, traceId?: string): Promise<ImportBatchDto> {
+    const b = await prisma.importBatch.findUnique({ where: { id } })
+    if (!b) throw errors.notFound('导入批次不存在')
+    // active 批次同样允许回滚：期间合并共存场景下被覆盖的数据需要恢复（恢复快照 + 重新激活）
+    if (b.lifecycleStatus === 'purged') throw errors.conflict('已清除的批次不可回滚')
+    if (b.dataType === 'transaction' || b.dataType === 'inventory') {
+      throw errors.badRequest('该数据类型暂不支持回滚（v1 仅支持经营/静态/预算数据）')
+    }
+
+    const { updated, restoredRows, replacedPeriods, deletedRows } = await prisma.$transaction(async (tx) => {
+      let restored = 0
+      // 1) 恢复快照行（operating/static 被覆盖时备份；budget 从不删行无需恢复）
+      if (b.dataType === 'operating' || b.dataType === 'static') {
+        const snaps = await tx.factSnapshot.findMany({ where: { batchId: id } })
+        if (snaps.length > 0) {
+          if (b.dataType === 'operating') {
+            const res = await tx.factOperating.createMany({
+              data: snaps.map((s) => ({
+                batchId: s.batchId,
+                companyCode: s.companyCode,
+                accountCode: s.accountCode,
+                period: s.period as string,
+                periodDimCode: s.periodDimCode as string,
+                fiscalYear: s.fiscalYear as string,
+                value: s.value,
+                rawJson: s.rawJson as never,
+              })),
+              skipDuplicates: true,
+            })
+            restored = res.count
+          } else {
+            const res = await tx.factStatic.createMany({
+              data: snaps.map((s) => ({
+                batchId: s.batchId,
+                companyCode: s.companyCode,
+                accountCode: s.accountCode,
+                snapshotDate: s.snapshotDate as Date,
+                periodDimCode: s.periodDimCode as string,
+                fiscalYear: s.fiscalYear as string,
+                value: s.value,
+                rawJson: s.rawJson as never,
+              })),
+              skipDuplicates: true,
+            })
+            restored = res.count
+          }
+        }
+      }
+      // 2) 数据可恢复性兜底：恢复后仍无任何事实行则拒绝（可能已被清除）
+      const hasData =
+        b.dataType === 'operating'
+          ? await tx.factOperating.count({ where: { batchId: id } })
+          : b.dataType === 'static'
+            ? await tx.factStatic.count({ where: { batchId: id } })
+            : await tx.factBudget.count({ where: { batchId: id } })
+      if (hasData === 0) throw errors.badRequest('该批次数据已不可恢复（可能已被清除）')
+      // 3) 重新激活：删除当前 active 重叠行（自动备份到快照表）并置目标批次 active
+      const impact = await activateInTx(tx, b)
+      // 4) 清理已恢复的快照（下次覆盖会重新备份）
+      await tx.factSnapshot.deleteMany({ where: { batchId: id } })
+      const batch = await tx.importBatch.findUniqueOrThrow({ where: { id } })
+      return { updated: batch, restoredRows: restored, ...impact }
+    })
+    await recordAudit({ userId, module: 'data', action: 'import_rollback', targetId: id, detail: { restoredRows, replacedPeriods, deletedRows } }, traceId)
     return toDto(updated)
   },
 
@@ -1118,15 +1263,17 @@ export const ImportService = {
     if (b.lifecycleStatus === 'purged') return toDto(b)
     if (b.lifecycleStatus === 'active') throw errors.conflict('生效中批次不可清除，请先归档')
     const { updated, deletedRows } = await prisma.$transaction(async (tx) => {
-      const [op, st, bg, txn, inv] = await Promise.all([
+      const [op, st, bg, txn, inv, snap] = await Promise.all([
         tx.factOperating.deleteMany({ where: { batchId: id } }),
         tx.factStatic.deleteMany({ where: { batchId: id } }),
         tx.factBudget.deleteMany({ where: { batchId: id } }),
         tx.transactionDetail.deleteMany({ where: { batchId: id } }),
         tx.inventoryRecord.deleteMany({ where: { batchId: id } }),
+        // 批次已物理清除，其回滚快照失去意义，级联清理避免表无限膨胀
+        tx.factSnapshot.deleteMany({ where: { batchId: id } }),
       ])
       const batch = await tx.importBatch.update({ where: { id }, data: { lifecycleStatus: 'purged' } })
-      return { updated: batch, deletedRows: op.count + st.count + bg.count + txn.count + inv.count }
+      return { updated: batch, deletedRows: op.count + st.count + bg.count + txn.count + inv.count + snap.count }
     })
     await recordAudit({ userId, module: 'data', action: 'delete', targetId: id, detail: { action: 'purge', deletedRows } }, traceId)
     return toDto(updated)

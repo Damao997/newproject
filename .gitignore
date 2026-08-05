@@ -38,6 +38,17 @@ Thumbs.db
 
 # 临时排查截图（不入库）
 login-attempt.png
+dashboard-top-kpi.png
+trend-*.png
+
+# 代码审查临时产物（不入库）
+review-diff*.txt
+.qoder/_review_part*.diff
+.qoder/_rv_*.diff
+.qoder/mcp.json
+
+# 诊断脚本与请求体（可能含测试口令，不入库）
+server/scripts/diag-*
 
 # Coverage
 coverage

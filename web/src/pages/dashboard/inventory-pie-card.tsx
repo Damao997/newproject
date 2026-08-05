@@ -1,24 +1,39 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { EChartsOption } from 'echarts'
 import ReactECharts, { echarts } from '@/components/charts/echarts-core'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { CompanySelect } from '@/components/filters/company-select'
 import { useInventoryOverview } from '@/hooks/api-queries'
 import { formatMoneyWan } from '@/lib/utils'
 import { CATEGORY_COLORS } from '@/lib/chart-colors'
 import { CHART_FONT, CHART_INK, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
 import { PieChart } from 'lucide-react'
 
+interface InventoryPieCardProps {
+  /** 选定期（跟随看板当前期间） */
+  period?: string
+  /** 主体编码（跟随看板顶部筛选）：单体=自身，汇总主体由后端展开为成员合并口径 */
+  companyCode?: string
+  /** 当前主体显示名（副标题说明口径） */
+  subjectName?: string
+}
+
 /**
  * 存货占比环形图卡：数据与库存管理页同源（/inventory/overview，fact_static），
- * 卡内独立主体筛选（全部/单体公司），期间跟随看板当前期间；
+ * 主体口径跟随看板顶部筛选（无独立筛选器）；期间跟随看板当前期间；
  * 点击扇区跳转库存管理页查看明细。数据经后端 scope 过滤。
  */
-export function InventoryPieCard({ period }: { period?: string }) {
-  const [companyFilter, setCompanyFilter] = useState('all')
+export function InventoryPieCard({ period, companyCode, subjectName }: InventoryPieCardProps) {
   const navigate = useNavigate()
-  const companyCodes = companyFilter === 'all' ? undefined : [companyFilter]
+  /** 深链库存页：携带当前主体与期间，库存页挂载时写入 store 后清理 URL */
+  const gotoInventory = () => {
+    const params = new URLSearchParams()
+    if (companyCode) params.set('companies', companyCode)
+    if (period) params.set('period', period)
+    const qs = params.toString()
+    navigate(qs ? `/inventory?${qs}` : '/inventory')
+  }
+  const companyCodes = companyCode ? [companyCode] : undefined
   const { data, isLoading } = useInventoryOverview({ period, companyCodes })
   const categories = useMemo(() => data?.categories ?? [], [data])
 
@@ -84,16 +99,9 @@ export function InventoryPieCard({ period }: { period?: string }) {
             存货品类占比
           </CardTitle>
           <p className="mt-1 text-xs text-muted-foreground">
-            {period ? `期间 ${period} · ` : ''}品类本期金额占比（万元），与库存管理同源
+            {period ? `期间 ${period} · ` : ''}品类本期金额占比（万元），与库存管理同源{subjectName ? ` · 主体：${subjectName}` : ''}
           </p>
         </div>
-        <CompanySelect
-          value={companyFilter}
-          onChange={setCompanyFilter}
-          entitiesOnly
-          placeholder="全部公司"
-          className="h-8 w-[160px] text-xs"
-        />
       </CardHeader>
       <CardContent className="px-6 pb-6">
         {isLoading ? (
@@ -115,7 +123,7 @@ export function InventoryPieCard({ period }: { period?: string }) {
                 notMerge
                 style={{ height: '100%', width: '100%' }}
                 opts={{ renderer: 'svg' }}
-                onEvents={{ click: () => navigate('/inventory') }}
+                onEvents={{ click: gotoInventory }}
               />
             </div>
             {negatives.length > 0 && (

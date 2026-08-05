@@ -142,6 +142,36 @@ export interface ImportError {
   message: string
 }
 
+/** 批次差异对比行（值均为万元/原始单位数值，展示层格式化） */
+export interface ImportDiffRow {
+  companyCode: string
+  accountCode: string
+  subjectName: string
+  /** operating: 期间（2026-04）；static: 快照月（2026-03）；budget: FY2026/期间 */
+  period: string
+  oldValue: number
+  newValue: number
+  delta: number
+  /** 变化百分比（旧值为 0 时为 null） */
+  deltaPercent: number | null
+}
+
+/** 批次差异对比结果（GET /data/imports/:aId/compare/:bId） */
+export interface ImportDiff {
+  a: { id: string; filename: string; templateType: string; status: string; createdAt: string }
+  b: { id: string; filename: string; templateType: string; status: string; createdAt: string }
+  changed: ImportDiffRow[]
+  added: ImportDiffRow[]
+  removed: ImportDiffRow[]
+  summary: {
+    changedCount: number
+    addedCount: number
+    removedCount: number
+    totalDelta: number
+    truncated: boolean
+  }
+}
+
 /** 重分类操作日志明细（detail JSON，按 type 部分字段可用） */
 export interface ReclassifyLogDetail {
   /** company：转移方式与金额 */
@@ -203,18 +233,27 @@ export interface KpiData {
   trend: number[]
 }
 
-/** 财年趋势行：三个可选指标的 本月合计/上年同期/月度预算 + 回款；null=该月无数据 */
+/** 财年趋势行：三个可选指标的 本月合计/上年同期/月度预算/累计序列 + 回款；null=该月无数据 */
 export interface TrendData {
   period: string
   revenueActual: number | null
   revenueSame: number | null
   revenueBudget: number | null
+  revenueYtdActual: number | null
+  revenueYtdSame: number | null
+  revenueYtdBudget: number | null
   profitActual: number | null
   profitSame: number | null
   profitBudget: number | null
+  profitYtdActual: number | null
+  profitYtdSame: number | null
+  profitYtdBudget: number | null
   netProfitActual: number | null
   netProfitSame: number | null
   netProfitBudget: number | null
+  netProfitYtdActual: number | null
+  netProfitYtdSame: number | null
+  netProfitYtdBudget: number | null
   collectionActual: number | null
 }
 

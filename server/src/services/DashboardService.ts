@@ -32,12 +32,21 @@ interface Trend {
   revenueActual: number | null
   revenueSame: number | null
   revenueBudget: number | null
+  revenueYtdActual: number | null
+  revenueYtdSame: number | null
+  revenueYtdBudget: number | null
   profitActual: number | null
   profitSame: number | null
   profitBudget: number | null
+  profitYtdActual: number | null
+  profitYtdSame: number | null
+  profitYtdBudget: number | null
   netProfitActual: number | null
   netProfitSame: number | null
   netProfitBudget: number | null
+  netProfitYtdActual: number | null
+  netProfitYtdSame: number | null
+  netProfitYtdBudget: number | null
   collectionActual: number | null
 }
 
@@ -237,6 +246,28 @@ export function monthlyBudgetSeries(
   return annual ? months.map(() => round2(annual / 12)) : months.map(() => null)
 }
 
+/**
+ * 指标年度预算总额：优先按叶子预算行求和（含月度粒度归集）；无匹配行（计算类指标如毛利）
+ * 时回退树节点 BUDGET_AMOUNT（公式层 收入-成本 重算值），保证预算序列始终有来源。
+ */
+export function budgetAnnualTotal(node: ValueNode | undefined, budgetRows: { accountCode: string; value: number }[], leafCodes: string[]): number {
+  const codeSet = new Set(leafCodes)
+  // 以「是否存在叶子预算行」判断而非合计值：叶子预算真为 0（合法导入）时不得回退公式重算值
+  const leafRows = budgetRows.filter((r) => codeSet.has(r.accountCode))
+  if (leafRows.length > 0) return round2(leafRows.reduce((s, r) => s + r.value, 0))
+  return round2(budget(node))
+}
+
+/**
+ * 预算序列兜底：叶子归集结果为全 null（无直导预算行）时按树预算总额生成；
+ * month=年度/12 月均均摊，ytd=年度总额（预算无累计粒度，与品类预算表“累计=年度预算”口径一致）。
+ */
+export function fallbackBudgetSeries(series: (number | null)[], annualTotal: number, months: string[], mode: 'month' | 'ytd'): (number | null)[] {
+  if (series.some((v) => v !== null)) return series
+  if (!annualTotal) return series
+  return months.map(() => round2(mode === 'ytd' ? annualTotal : annualTotal / 12))
+}
+
 async function budgetRowsOf(companyCodes: string[], fiscalYear: string): Promise<{ accountCode: string; period: string; value: number }[]> {
   if (companyCodes.length === 0) return []
   const batches = await prisma.importBatch.findMany({ where: { dataType: 'budget', lifecycleStatus: 'active' }, select: { id: true } })
@@ -358,11 +389,21 @@ async function buildDashboardData(companyCodes: string[], period: string, availa
   const tree = treeByPeriod.get(period) ?? []
   const nodes = metricNodes(tree)
 
-  // 月度预算：按财年一次取数，三个图表指标各自按叶子码归集
+  // 预算：按财年一次取数，三个图表指标各自按叶子码归集；
+  // 计算类指标（毛利等）无直导预算行时回退树预算总额（公式层重算值），月度均摊 /12、累计按年度总额
   const budgetRows = await budgetRowsOf(companyCodes, fiscalYearLabel(period))
-  const revenueBudget = monthlyBudgetSeries(budgetRows, collectLeafCodes(nodes.revenue), fyMonths)
-  const profitBudget = monthlyBudgetSeries(budgetRows, collectLeafCodes(nodes.profit), fyMonths)
-  const netProfitBudget = monthlyBudgetSeries(budgetRows, collectLeafCodes(nodes.netProfit), fyMonths)
+  const revenueLeafCodes = collectLeafCodes(nodes.revenue)
+  const profitLeafCodes = collectLeafCodes(nodes.profit)
+  const netProfitLeafCodes = collectLeafCodes(nodes.netProfit)
+  const revenueAnnual = budgetAnnualTotal(nodes.revenue, budgetRows, revenueLeafCodes)
+  const profitAnnual = budgetAnnualTotal(nodes.profit, budgetRows, profitLeafCodes)
+  const netProfitAnnual = budgetAnnualTotal(nodes.netProfit, budgetRows, netProfitLeafCodes)
+  const revenueBudget = fallbackBudgetSeries(monthlyBudgetSeries(budgetRows, revenueLeafCodes, fyMonths), revenueAnnual, fyMonths, 'month')
+  const profitBudget = fallbackBudgetSeries(monthlyBudgetSeries(budgetRows, profitLeafCodes, fyMonths), profitAnnual, fyMonths, 'month')
+  const netProfitBudget = fallbackBudgetSeries(monthlyBudgetSeries(budgetRows, netProfitLeafCodes, fyMonths), netProfitAnnual, fyMonths, 'month')
+  const revenueYtdBudget = fallbackBudgetSeries(monthlyBudgetSeries(budgetRows, revenueLeafCodes, fyMonths), revenueAnnual, fyMonths, 'ytd')
+  const profitYtdBudget = fallbackBudgetSeries(monthlyBudgetSeries(budgetRows, profitLeafCodes, fyMonths), profitAnnual, fyMonths, 'ytd')
+  const netProfitYtdBudget = fallbackBudgetSeries(monthlyBudgetSeries(budgetRows, netProfitLeafCodes, fyMonths), netProfitAnnual, fyMonths, 'ytd')
 
   const trendData: Trend[] = fyMonths.map((m, i) => {
     const t = treeByPeriod.get(m)
@@ -372,12 +413,21 @@ async function buildDashboardData(companyCodes: string[], period: string, availa
       revenueActual: n ? round2(actual(n.revenue)) : null,
       revenueSame: n ? round2(samePeriod(n.revenue)) : null,
       revenueBudget: revenueBudget[i],
+      revenueYtdActual: n ? round2(ytd(n.revenue)) : null,
+      revenueYtdSame: n ? round2(n.revenue?.values[OPERATING_DIMS.SAME_PERIOD_YTD] ?? 0) : null,
+      revenueYtdBudget: revenueYtdBudget[i],
       profitActual: n ? round2(actual(n.profit)) : null,
       profitSame: n ? round2(samePeriod(n.profit)) : null,
       profitBudget: profitBudget[i],
+      profitYtdActual: n ? round2(ytd(n.profit)) : null,
+      profitYtdSame: n ? round2(n.profit?.values[OPERATING_DIMS.SAME_PERIOD_YTD] ?? 0) : null,
+      profitYtdBudget: profitYtdBudget[i],
       netProfitActual: n ? round2(actual(n.netProfit)) : null,
       netProfitSame: n ? round2(samePeriod(n.netProfit)) : null,
       netProfitBudget: netProfitBudget[i],
+      netProfitYtdActual: n ? round2(ytd(n.netProfit)) : null,
+      netProfitYtdSame: n ? round2(n.netProfit?.values[OPERATING_DIMS.SAME_PERIOD_YTD] ?? 0) : null,
+      netProfitYtdBudget: netProfitYtdBudget[i],
       collectionActual: n ? round2(actual(n.collection)) : null,
     }
   })
@@ -604,11 +654,12 @@ export const DashboardService = {
 
   /**
    * 应收账款按主体分布（横向柱状图数据源）：指定期间的应收期末余额合计。
-   * mode=single 按单体公司逐行；mode=summary 按汇总映射把成员余额聚合到汇总主体行。
-   * 口径与往来总览一致（时点数，单期过滤）；companyCode 过滤先经 scope 展开。
+   * companyCode 传入（单体/汇总主体）时先经 scope 展开：单体返回自身一行，汇总主体返回其成员公司各行；
+   * 未传时按全部授权单体逐行（跟随看板全局筛选，mode 参数保留兼容）。
+   * 口径与往来总览一致（时点数，单期过滤）。
    */
-  async getReceivables(scope: Scope, params: { period?: string; mode?: 'single' | 'summary' } = {}): Promise<{ period: string | null; rows: { code: string; name: string; balance: number }[] }> {
-    const companyCodes = await resolveCompanyCodes(scope)
+  async getReceivables(scope: Scope, params: { period?: string; mode?: 'single' | 'summary'; companyCode?: string } = {}): Promise<{ period: string | null; rows: { code: string; name: string; balance: number }[] }> {
+    const companyCodes = params.companyCode ? await resolveCompanyCodes(scope, params.companyCode) : await resolveCompanyCodes(scope)
     if (companyCodes.length === 0 || !params.period) return { period: params.period ?? null, rows: [] }
 
     const grouped = await prisma.transactionDetail.groupBy({

@@ -9,6 +9,8 @@ interface MonthPickerProps {
   onChange: (value: string) => void
   /** 有数据的期间列表（'YYYY-MM'），用于圆点标识与「最新期间」快捷键 */
   availablePeriods?: string[]
+  /** 允许选择的期间列表（如当前财年内的月份）；传入后集合外的月份禁用不可点 */
+  allowedPeriods?: string[]
   placeholder?: string
   className?: string
 }
@@ -29,6 +31,7 @@ export function MonthPicker({
   value,
   onChange,
   availablePeriods = [],
+  allowedPeriods,
   placeholder = '全部月份',
   className,
 }: MonthPickerProps) {
@@ -43,8 +46,12 @@ export function MonthPicker({
   const defaultYear = Number((value || latestPeriod || currentPeriod).slice(0, 4))
   const [viewYear, setViewYear] = useState(defaultYear)
   const availableSet = useMemo(() => new Set(availablePeriods), [availablePeriods])
+  // 未传 allowedPeriods 时不限制；传入后集合外月份禁用（适配财年非自然年的期间口径）
+  const allowedSet = useMemo(() => (allowedPeriods ? new Set(allowedPeriods) : null), [allowedPeriods])
+  const isAllowed = (period: string) => !allowedSet || allowedSet.has(period)
 
   const pick = (period: string) => {
+    if (period && !isAllowed(period)) return
     onChange(period)
     setOpen(false)
   }
@@ -106,10 +113,12 @@ export function MonthPicker({
             const period = toPeriod(viewYear, i)
             const isSelected = value === period
             const hasData = availableSet.has(period)
+            const disabled = !isAllowed(period)
             return (
               <button
                 key={period}
                 type="button"
+                disabled={disabled}
                 onClick={() => pick(period)}
                 className={cn(
                   'relative h-9 rounded-md text-[13px] text-black transition-colors',
@@ -117,6 +126,7 @@ export function MonthPicker({
                     ? 'bg-primary font-medium text-primary-foreground'
                     : 'hover:bg-muted',
                   period === currentPeriod && !isSelected && 'font-medium text-primary',
+                  disabled && 'cursor-not-allowed text-muted-foreground/50 hover:bg-transparent',
                 )}
               >
                 {label}
@@ -137,7 +147,8 @@ export function MonthPicker({
           <button
             type="button"
             onClick={() => pick(currentPeriod)}
-            className="rounded px-2 py-1 text-primary transition-colors hover:bg-primary/10"
+            disabled={!isAllowed(currentPeriod)}
+            className="rounded px-2 py-1 text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:text-muted-foreground/50 disabled:hover:bg-transparent"
           >
             本月
           </button>

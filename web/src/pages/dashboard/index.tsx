@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { KpiCard } from '@/components/charts/kpi-card'
-import { type TrendMetric } from '@/components/charts/trend-metrics'
+import { type TrendMetric, type TrendMode } from '@/components/charts/trend-metrics'
 import { PageContainer } from '@/components/layout/page-container'
 import { StatusIndicator } from '@/components/ui/status-indicator'
 import { KpiGridSkeleton, ChartSkeleton, ListSkeleton } from '@/components/ui/skeleton-blocks'
@@ -26,9 +26,11 @@ export default function DashboardPage() {
   // 默认自动模式（''）：由后端按权限选择 ET0001 → 授权汇总 → 授权单体，前端在候选加载后对齐回显
   const dimFilter = usePageStore((s) => s.dashboard.dim)
   const trendMetric = usePageStore((s) => s.dashboard.trendMetric) as TrendMetric
+  const trendMode = usePageStore((s) => s.dashboard.trendMode) as TrendMode
   const setSelectedPeriod = useCallback((v: string) => setDashboard({ period: v }), [setDashboard])
   const setDimFilter = useCallback((v: string) => setDashboard({ dim: v }), [setDashboard])
   const setTrendMetric = useCallback((v: TrendMetric) => setDashboard({ trendMetric: v }), [setDashboard])
+  const setTrendMode = useCallback((v: TrendMode) => setDashboard({ trendMode: v }), [setDashboard])
   const navigate = useNavigate()
 
   // 期间候选：可用期间按全局选中财年过滤；未选时后端默认取最新期
@@ -71,7 +73,7 @@ export default function DashboardPage() {
       return
     }
     if (cur === 'all') return
-    const code = cur.startsWith('company:') || cur.startsWith('summary:') ? cur.slice('company:'.length) : undefined
+    const code = cur.includes(':') ? cur.split(':')[1] : undefined
     if (!code || !valid.has(code)) setDimFilter(fallback())
   }, [dimFilter, companies, summaryEntities, entityCompanies, setDimFilter])
 
@@ -108,6 +110,7 @@ export default function DashboardPage() {
     <PageContainer
       title="首页看板"
       description={`数据更新时间: ${lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleString('zh-CN') : new Date().toLocaleDateString('zh-CN')}${currentPeriod ? ` · 当前期间: ${currentPeriod}` : ''} · 当前主体: ${currentSubjectName}`}
+      stickyHeader
       actions={
         <div className="flex flex-wrap items-center gap-3">
           <StatusIndicator
@@ -199,11 +202,13 @@ export default function DashboardPage() {
             ))}
           </div>
 
-          {/* 财年趋势（指标可切换，主体口径跟随顶部筛选） */}
+          {/* 财年趋势（指标+月度/累计口径可切换，主体口径跟随顶部筛选） */}
           <TrendSection
             data={trendData}
             metric={trendMetric}
             onMetricChange={setTrendMetric}
+            mode={trendMode}
+            onModeChange={setTrendMode}
             fiscalYearLabel={fiscalYear}
             subjectName={currentSubjectName}
           />
@@ -214,10 +219,10 @@ export default function DashboardPage() {
           {/* 公司预算达成（单期间，主体口径跟随顶部筛选：汇总主体展示成员明细行） */}
           <SubjectBudgetCard period={currentPeriod || undefined} companyCode={companyCode} subjectName={currentSubjectName} />
 
-          {/* 应收分布 + 存货占比（各自独立筛选，期间跟随看板） */}
+          {/* 应收分布 + 存货占比（均跟随顶部主体筛选，期间跟随看板） */}
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-            <ReceivablesCard period={currentPeriod || undefined} />
-            <InventoryPieCard period={currentPeriod || undefined} />
+            <ReceivablesCard period={currentPeriod || undefined} companyCode={companyCode} subjectName={currentSubjectName} />
+            <InventoryPieCard period={currentPeriod || undefined} companyCode={companyCode} subjectName={currentSubjectName} />
           </div>
         </>
       )}

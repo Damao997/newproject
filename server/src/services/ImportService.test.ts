@@ -424,3 +424,175 @@ describe('空模板批次激活后 empty 状态保持（真实 DB）', () => {
     expect(cell?.status).toBe('empty')
   })
 })
+
+describe('批次快照备份与回滚（真实 DB）', () => {
+  // 独立测试公司与远期期间，避免与并行测试及真实数据干扰
+  const COMP = '__TEST_RB_COMP__'
+  const COMP2 = '__TEST_RB_COMP2__'
+  const ACC = '__TEST_RB_ACC__'
+  const ACC2 = '__TEST_RB_ACC2__'
+  const P1 = '2096-04'
+  const P2 = '2096-05'
+  const P3 = '2096-06'
+  const createdBatchIds: string[] = []
+  const createdSnapshotIds: string[] = []
+
+  const makeOpBatch = async (fileName: string, lifecycleStatus: 'draft' | 'active' | 'archived', rows: { companyCode: string; accountCode: string; period: string; value: number }[]) => {
+    const b = await basePrisma.importBatch.create({
+      data: { fileName, status: 'success', dataType: 'operating', lifecycleStatus, sourceType: 'upload', fiscalYear: 'FY2096' },
+    })
+    createdBatchIds.push(b.id)
+    if (rows.length > 0) {
+      await basePrisma.factOperating.createMany({
+        data: rows.map((r) => ({
+          batchId: b.id, companyCode: r.companyCode, accountCode: r.accountCode,
+          period: r.period, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2096', value: r.value,
+        })),
+      })
+    }
+    return b
+  }
+
+  const snapshotRowsOf = async (batchId: string) => basePrisma.factSnapshot.findMany({ where: { batchId } })
+
+  afterAll(async () => {
+    if (createdBatchIds.length === 0) return
+    await basePrisma.factSnapshot.deleteMany({ where: { id: { in: createdSnapshotIds } } }).catch(() => undefined)
+    await basePrisma.factOperating.deleteMany({ where: { batchId: { in: createdBatchIds } } }).catch(() => undefined)
+    await basePrisma.importBatch.deleteMany({ where: { id: { in: createdBatchIds } } }).catch(() => undefined)
+  })
+
+  it('激活覆盖时被删行备份到 fact_snapshot（archivedByBatchId 追溯）', async () => {
+    if (!dbReady) return
+    const a = await makeOpBatch('__test_rb_A__.xlsx', 'active', [
+      { companyCode: COMP, accountCode: ACC, period: P1, value: 100 },
+      { companyCode: COMP, accountCode: ACC, period: P2, value: 200 },
+    ])
+    const b = await makeOpBatch('__test_rb_B__.xlsx', 'draft', [
+      { companyCode: COMP, accountCode: ACC, period: P2, value: 999 },
+      { companyCode: COMP, accountCode: ACC, period: P3, value: 300 },
+    ])
+    await ImportService.activate(b.id, 'test-user', 'trace')
+
+    // A 的重叠期间 P2 行被删除并备份，P1 保留
+    const aRows = await basePrisma.factOperating.findMany({ where: { batchId: a.id }, select: { period: true, value: true } })
+    expect(aRows.map((r) => r.period)).toEqual([P1])
+    const snaps = await snapshotRowsOf(a.id)
+    createdSnapshotIds.push(...snaps.map((s) => s.id))
+    expect(snaps).toHaveLength(1)
+    expect(snaps[0]).toMatchObject({
+      template: 'operating',
+      companyCode: COMP,
+      accountCode: ACC,
+      period: P2,
+      periodDimCode: OPERATING_DIMS.ACTUAL_MONTH,
+      archivedByBatchId: b.id,
+    })
+    expect(Number(snaps[0].value)).toBe(200)
+  })
+
+  it('rollbackBatch 恢复快照行并重新激活，重叠期间被当前 active 覆盖且自动备份', async () => {
+    if (!dbReady) return
+    const a = await makeOpBatch('__test_rb_A2__.xlsx', 'active', [
+      { companyCode: COMP2, accountCode: ACC2, period: P1, value: 100 },
+      { companyCode: COMP2, accountCode: ACC2, period: P2, value: 200 },
+    ])
+    const b = await makeOpBatch('__test_rb_B2__.xlsx', 'draft', [
+      { companyCode: COMP2, accountCode: ACC2, period: P2, value: 999 },
+      { companyCode: COMP2, accountCode: ACC2, period: P3, value: 300 },
+    ])
+    await ImportService.activate(b.id, 'test-user', 'trace')
+    const before = await snapshotRowsOf(a.id)
+    createdSnapshotIds.push(...before.map((s) => s.id))
+
+    // 回滚到 A：A 的 P2 恢复为 200，B 的 P2 被删除并备份（batchId=B），B 剩余 P3 保持 active
+    const dto = await ImportService.rollbackBatch(a.id, 'test-user', 'trace')
+    expect(dto.status).toBe('active')
+    const aRows = await basePrisma.factOperating.findMany({ where: { batchId: a.id }, select: { period: true, value: true } })
+    expect(aRows.map((r) => [r.period, Number(r.value)]).sort()).toEqual([[P1, 100], [P2, 200]].sort())
+    const bRows = await basePrisma.factOperating.findMany({ where: { batchId: b.id }, select: { period: true, value: true } })
+    expect(bRows.map((r) => [r.period, Number(r.value)])).toEqual([[P3, 300]])
+    const bSnaps = await snapshotRowsOf(b.id)
+    createdSnapshotIds.push(...bSnaps.map((s) => s.id))
+    expect(bSnaps).toHaveLength(1)
+    expect(bSnaps[0]).toMatchObject({ archivedByBatchId: a.id, period: P2 })
+    // A 的快照已清理（下次覆盖会重新备份）
+    expect(await snapshotRowsOf(a.id)).toHaveLength(0)
+  })
+
+  it('重复覆盖-回滚循环对称：A→B→A→B 值始终正确', async () => {
+    if (!dbReady) return
+    const a = await makeOpBatch('__test_rb_A3__.xlsx', 'active', [
+      { companyCode: COMP2, accountCode: ACC2, period: P1, value: 100 },
+      { companyCode: COMP2, accountCode: ACC2, period: P2, value: 200 },
+    ])
+    const b = await makeOpBatch('__test_rb_B3__.xlsx', 'draft', [
+      { companyCode: COMP2, accountCode: ACC2, period: P2, value: 999 },
+      { companyCode: COMP2, accountCode: ACC2, period: P3, value: 300 },
+    ])
+    await ImportService.activate(b.id, 'test-user', 'trace')
+    await ImportService.rollbackBatch(a.id, 'test-user', 'trace')
+    await ImportService.rollbackBatch(b.id, 'test-user', 'trace')
+
+    // 两次轮回后 B 持有 P2=999、P3=300，A 持有 P1=100
+    const aRows = await basePrisma.factOperating.findMany({ where: { batchId: a.id }, select: { period: true, value: true } })
+    expect(aRows.map((r) => [r.period, Number(r.value)])).toEqual([[P1, 100]])
+    const bRows = await basePrisma.factOperating.findMany({ where: { batchId: b.id }, select: { period: true, value: true } })
+    expect(bRows.map((r) => [r.period, Number(r.value)]).sort()).toEqual([[P2, 999], [P3, 300]].sort())
+    // B 的 P2 恢复后，A 的 P2 再次被覆盖时快照重新生成（batchId=A）
+    const snaps = await snapshotRowsOf(a.id)
+    createdSnapshotIds.push(...snaps.map((s) => s.id))
+    expect(snaps.some((s) => s.period === P2 && Number(s.value) === 200)).toBe(true)
+  })
+
+  it('budget 批次回滚：数据未删可直接重新激活（无快照也成功）', async () => {
+    if (!dbReady) return
+    const fy = 'FY2093'
+    const mk = async (fileName: string, lifecycleStatus: 'active' | 'draft') => {
+      const b = await basePrisma.importBatch.create({
+        data: { fileName, status: 'success', dataType: 'budget', lifecycleStatus, sourceType: 'upload', fiscalYear: fy },
+      })
+      createdBatchIds.push(b.id)
+      await basePrisma.factBudget.createMany({
+        data: [{ batchId: b.id, companyCode: COMP, accountCode: ACC, fiscalYear: fy, period: '2026-04', value: 111 }],
+      })
+      return b
+    }
+    const a = await mk('__test_rb_BUD_A__.xlsx', 'active')
+    const b = await mk('__test_rb_BUD_B__.xlsx', 'draft')
+    await ImportService.activate(b.id, 'test-user', 'trace')
+    expect((await basePrisma.importBatch.findUnique({ where: { id: a.id } }))?.lifecycleStatus).toBe('archived')
+    expect(await snapshotRowsOf(a.id)).toHaveLength(0) // budget 从不备份
+
+    const dto = await ImportService.rollbackBatch(a.id, 'test-user', 'trace')
+    expect(dto.status).toBe('active')
+    expect((await basePrisma.importBatch.findUnique({ where: { id: b.id } }))?.lifecycleStatus).toBe('archived')
+    const rows = await basePrisma.factBudget.findMany({ where: { batchId: a.id } })
+    expect(rows).toHaveLength(1)
+    expect(Number(rows[0].value)).toBe(111)
+  })
+
+  it('transaction 回滚被拒绝；purged 批次回滚被拒绝', async () => {
+    if (!dbReady) return
+    const t = await basePrisma.importBatch.create({
+      data: { fileName: '__test_rb_TXN__.xls', status: 'success', dataType: 'transaction', lifecycleStatus: 'archived', sourceType: 'upload' },
+    })
+    createdBatchIds.push(t.id)
+    await expect(ImportService.rollbackBatch(t.id, 'test-user', 'trace')).rejects.toMatchObject({ message: expect.stringContaining('暂不支持回滚') })
+
+    const p = await basePrisma.importBatch.create({
+      data: { fileName: '__test_rb_PURGED__.xlsx', status: 'success', dataType: 'operating', lifecycleStatus: 'purged', sourceType: 'upload', fiscalYear: 'FY2096' },
+    })
+    createdBatchIds.push(p.id)
+    await expect(ImportService.rollbackBatch(p.id, 'test-user', 'trace')).rejects.toMatchObject({ message: expect.stringContaining('不可回滚') })
+  })
+
+  it('无快照且无事实行的 archived 批次回滚被拒绝（数据不可恢复）', async () => {
+    if (!dbReady) return
+    const x = await basePrisma.importBatch.create({
+      data: { fileName: '__test_rb_LOST__.xlsx', status: 'success', dataType: 'operating', lifecycleStatus: 'archived', sourceType: 'upload', fiscalYear: 'FY2096' },
+    })
+    createdBatchIds.push(x.id)
+    await expect(ImportService.rollbackBatch(x.id, 'test-user', 'trace')).rejects.toMatchObject({ message: expect.stringContaining('不可恢复') })
+  })
+})

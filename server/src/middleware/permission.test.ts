@@ -52,6 +52,7 @@ describe('requirePermission', () => {
 const ANY_GRANTS = [
   { resource: 'dashboard:view', action: 'view' as const },
   { resource: 'indicators:view', action: 'view' as const },
+  { resource: 'inventory:view', action: 'view' as const },
 ]
 
 describe('requireAnyPermission', () => {
@@ -72,6 +73,15 @@ describe('requireAnyPermission', () => {
     expect(mocks.prisma.permission.findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ roleId: 'r-viewer', OR: expect.any(Array) }),
     }))
+  })
+
+  it('仅持有 inventory:view 等非首候选权限 → 放行（等价库存模块用户可访问共享元数据端点）', async () => {
+    mocks.prisma.permission.findFirst.mockResolvedValue({ id: 'p1' })
+    const { req, res, next } = runMiddleware({
+      authUser: { userId: 'u1', username: 'a', roleId: 'r-inv', roleCode: 'custom', scopeValue: '', companyCode: null },
+    })
+    await requireAnyPermission(ANY_GRANTS)(req, res, next)
+    expect(next).toHaveBeenCalledWith()
   })
 
   it('全部候选未命中 → next(403)（默认拒绝）', async () => {

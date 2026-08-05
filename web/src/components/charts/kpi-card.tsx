@@ -1,6 +1,4 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { KpiSparkline } from './kpi-sparkline'
-import { CHART_SERIES } from '@/lib/chart-theme'
 import { formatMoneyWan, formatPercent } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { 
@@ -29,12 +27,12 @@ const iconMap: Record<string, React.ElementType> = {
   Banknote,
 }
 
-/** 四色强调体系：橙 / 青蓝 / 翠绿 / 柔紫，取自图表序列色，按卡片序号轮换 */
+/** 四色强调体系：橙 / 青蓝 / 翠绿 / 柔紫，按卡片序号轮换 */
 const ACCENTS = [
-  { icon: 'bg-chart-1/10 text-chart-1', spark: CHART_SERIES[0] },
-  { icon: 'bg-chart-2/10 text-chart-2', spark: CHART_SERIES[1] },
-  { icon: 'bg-chart-3/10 text-chart-3', spark: CHART_SERIES[2] },
-  { icon: 'bg-chart-5/10 text-chart-5', spark: CHART_SERIES[4] },
+  { icon: 'bg-chart-1/10 text-chart-1' },
+  { icon: 'bg-chart-2/10 text-chart-2' },
+  { icon: 'bg-chart-3/10 text-chart-3' },
+  { icon: 'bg-chart-5/10 text-chart-5' },
 ]
 
 /** 达成率展示：null（无预算）显示 "–" */
@@ -52,7 +50,7 @@ function rateColorClass(rate: number | null): string {
 
 /**
  * 核心 KPI 卡（收入/毛利/净利润/回款）：
- * 大字体 = 本月合计 + 月度预算达成率（分级色）；小字体 = 累计实际 / 同比 / 累计达成率；底部迷你趋势图。
+ * 大字体 = 本月合计 + 月度预算达成率（分级色）；小字体 = 累计实际 / 同比 / 累计达成率。
  */
 export function KpiCard({ data, index = 0, onClick }: KpiCardProps) {
   const Icon = iconMap[data.icon] || TrendingUp
@@ -105,12 +103,12 @@ export function KpiCard({ data, index = 0, onClick }: KpiCardProps) {
             <span className="text-muted-foreground">同比</span>
             <span
               className={cn(
-                'inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[11px] font-medium',
+                'inline-flex items-center gap-0.5 text-xs font-medium',
                 isFlat
-                  ? 'bg-muted text-muted-foreground'
+                  ? 'text-muted-foreground'
                   : isPositive
-                    ? 'bg-finance-red/10 text-finance-red'
-                    : 'bg-finance-green/10 text-finance-green'
+                    ? 'text-finance-red'
+                    : 'text-finance-green'
               )}
             >
               {isFlat ? (
@@ -127,9 +125,6 @@ export function KpiCard({ data, index = 0, onClick }: KpiCardProps) {
             <span className="text-muted-foreground">累计达成率</span>
             <span className={cn('font-num font-medium', rateColorClass(data.ytdRate))}>{rateText(data.ytdRate)}</span>
           </div>
-        </div>
-        <div className="mt-3 border-t border-border pt-3">
-          <KpiSparkline data={data.trend} color={accent.spark} />
         </div>
       </CardContent>
     </Card>

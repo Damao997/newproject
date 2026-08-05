@@ -7,19 +7,27 @@ import { CHART_FONT, CHART_INK, labelSpan, numSpan, titleSpan, tooltipShell } fr
 import { BarChart3 } from 'lucide-react'
 import type { InventoryCategoryRow } from '@/hooks/api-queries'
 import { CATEGORY_COLORS } from './category-colors'
+import { EmptyHint } from './empty-hint'
 
 /**
  * 存货品类排名横向条形图：按本期金额降序展示全部品类，
- * tooltip 附占比 / 同比 / 较年初变动率。
+ * tooltip 附占比 / 同比 / 较年初变动率；点击条形触发品类钻取。
  */
 
-export function CategoryRankCard({ categories, loading }: { categories: InventoryCategoryRow[]; loading?: boolean }) {
-  // 后端已按金额降序附 rank；横向条形图 yAxis 需倒序使第一名在顶部
+export function CategoryRankCard({ categories, loading, onCategoryClick }: {
+  categories: InventoryCategoryRow[]
+  loading?: boolean
+  onCategoryClick?: (code: string) => void
+}) {
+  // 后端已按金额降序附 rank；横向条形图 yAxis 需倒序以使第一名在顶部
   const ranked = useMemo(() => [...categories].sort((a, b) => a.rank - b.rank), [categories])
+  // ECharts click 回调仅能拿到 name，这里维护 名称→编码 映射用于钻取
+  const nameToCode = useMemo(() => new Map(ranked.map((c) => [c.name, c.code])), [ranked])
 
   const option = useMemo<EChartsOption>(() => {
     const byRow = new Map(ranked.map((c) => [c.name, c]))
     return {
+      animation: false,
       textStyle: {
         fontFamily: CHART_FONT,
       },
@@ -43,9 +51,10 @@ export function CategoryRankCard({ categories, loading }: { categories: Inventor
             + line('占比', `${row.share.toFixed(1)}%`)
             + line('同比', `${row.yoy >= 0 ? '+' : ''}${row.yoy.toFixed(1)}%`)
             + line('较年初', `${yearStartChange >= 0 ? '+' : ''}${yearStartChange.toFixed(1)}%`)
+            + `<div style="margin-top:6px;color:${CHART_INK.axis};font-size:11px">点击钻取该品类明细</div>`
         },
       },
-      grid: { top: 8, right: 48, bottom: 8, left: 8, containLabel: true },
+      grid: { top: 8, right: 96, bottom: 8, left: 8, containLabel: true },
       xAxis: {
         type: 'value',
         axisLine: { show: false },
@@ -75,7 +84,9 @@ export function CategoryRankCard({ categories, loading }: { categories: Inventor
             fontSize: 10,
             color: CHART_INK.axis,
             fontFamily: CHART_FONT,
-            formatter: (p: { value?: number | unknown }) => formatMoneyWan(Number(p.value ?? 0)),
+            // 金额 + 占比双信息，dataIndex 对应 ranked 顺序
+            formatter: (p: { value?: number | unknown; dataIndex: number }) =>
+              `${formatMoneyWan(Number(p.value ?? 0))} · ${ranked[p.dataIndex]?.share.toFixed(1) ?? '0.0'}%`,
           },
         },
       ],
@@ -92,17 +103,31 @@ export function CategoryRankCard({ categories, loading }: { categories: Inventor
       </CardHeader>
       <CardContent>
         {loading ? (
-          <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">加载中...</div>
+          <div className="skeleton h-[260px] w-full rounded-lg lg:h-[320px]" />
         ) : ranked.length === 0 ? (
-          <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">暂无数据</div>
-        ) : (
-          <ReactECharts
-            echarts={echarts}
-            option={option}
-            notMerge
-            style={{ height: 320, width: '100%' }}
-            opts={{ renderer: 'svg' }}
+          <EmptyHint
+            icon={BarChart3}
+            title="暂无品类数据"
+            hint="当前公司/期间无存货品类数据，请调整筛选条件"
+            className="h-[260px] lg:h-[320px]"
           />
+        ) : (
+          <div className="h-[260px] w-full lg:h-[320px]">
+            <ReactECharts
+              echarts={echarts}
+              option={option}
+              notMerge
+              style={{ height: '100%', width: '100%' }}
+              opts={{ renderer: 'svg' }}
+              onEvents={{
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                click: (params: any) => {
+                  const code = nameToCode.get(params?.name ?? '')
+                  if (code) onCategoryClick?.(code)
+                },
+              }}
+            />
+          </div>
         )}
       </CardContent>
     </Card>

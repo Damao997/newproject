@@ -6,8 +6,9 @@ import { evaluateFormula, topoSortMetrics } from '../lib/formula'
 import { OPERATING_DIMS } from '../lib/metric-values'
 import { fiscalYearStartPeriod, fiscalYearOpeningSnapshotPeriod, periodMinusYears, fiscalYtdDays } from '../lib/period'
 import { buildExcel } from '../lib/excel'
-import { effectiveScope } from '../lib/scope-guard'
+import { effectiveScope, type ScopeInput } from '../lib/scope-guard'
 import { withoutScope } from '../middleware/scope-context'
+import type { Prisma } from '@prisma/client'
 
 /**
  * 数据管理服务：公司主体、科目体系 CRUD、指标 CRUD（含公式与 DAG 校验）、导出。
@@ -58,6 +59,50 @@ function metricDto(m: { id: string; code: string; name: string; dataType: string
     category: m.category, status: m.status,
   }
 }
+
+/** 快照日期 → 月份（YYYY-MM，UTC 口径，与 ImportService/IndicatorsService 一致） */
+function ymOfDate(d: Date): string {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+/** 批次元信息（对比响应两侧头部展示） */
+function batchMetaOf(b: { id: string; fileName: string; dataType: string; lifecycleStatus: string; createdAt: Date }): ImportDiff['a'] {
+  return { id: b.id, filename: b.fileName, templateType: b.dataType, status: b.lifecycleStatus, createdAt: b.createdAt.toISOString() }
+}
+
+/** 差异对比行（值均为万元/原始单位数值，展示层格式化） */
+export interface ImportDiffRow {
+  companyCode: string
+  accountCode: string
+  subjectName: string
+  /** operating: 期间（2026-04）；static: 快照月（2026-03）；budget: FY2026/期间 */
+  period: string
+  oldValue: number
+  newValue: number
+  delta: number
+  /** 变化百分比（旧值为 0 时为 null）；四舍五入到 1 位小数 */
+  deltaPercent: number | null
+}
+
+export interface ImportDiff {
+  a: { id: string; filename: string; templateType: string; status: string; createdAt: string }
+  b: { id: string; filename: string; templateType: string; status: string; createdAt: string }
+  changed: ImportDiffRow[]
+  added: ImportDiffRow[]
+  removed: ImportDiffRow[]
+  summary: {
+    changedCount: number
+    addedCount: number
+    removedCount: number
+    totalDelta: number
+    truncated: boolean
+  }
+}
+
+/** 单数组截断上限（防止超大批次拖垮响应） */
+const DIFF_ROW_LIMIT = 500
+/** 对比读取上限：防超大批次全量载入内存（超出时按截断处理并在 summary 标注） */
+const COMPARE_FETCH_LIMIT = 5000
 
 export const DataService = {
   // ===== 公司 =====
@@ -706,7 +751,11 @@ export const DataService = {
     return metricDto(updated)
   },
 
-  /** 公式试算：用指定公司/期间的本月实际值代入公式求值 */
+  /**
+   * 公式试算：用指定公司/期间的本月实际值代入公式求值。
+   * 跨维度引用（{CODE@维度}）支持 calc 指标：被引用指标为计算类时，
+   * 按目标维度上下文重算其依赖链（如 {ST_13@YEAR_START} 取子科目年初快照之和）。
+   */
   async trialCalc(input: { formula: string; companyCode?: string; period?: string }): Promise<{ value: number | null; period: string | null; operands: { code: string; name: string; value: number; hasData: boolean }[]; batchInfo: { id: string; filename: string; activatedAt: string } | null }> {
     const codes = extractCodes(input.formula)
     if (codes.length === 0) return { value: null, period: null, operands: [], batchInfo: null }
@@ -748,6 +797,8 @@ export const DataService = {
 
     // 2b）跨维度引用（{CODE@维度}/{DAYS_YTD}）：收集全部公式的复合键需求并逐维取值
     const evalValues: Record<string, number> = {}
+    // 依赖链上有真实数据的 CODE@DIM（calc 派生与裸键原始值均登记，供操作数 hasData 回显）
+    const derivedKeys = new Set<string>()
     const allFormulas = [input.formula, ...allCodeList.filter((c) => calcFormulaByCode.has(c)).map((c) => calcFormulaByCode.get(c) as string)]
     const dimRefs = new Map<string, Set<string>>() // 维度码 → 引用该维度的 code 集合
     let needsDays = false
@@ -771,14 +822,26 @@ export const DataService = {
       YTD_ACTUAL: { gte: fyStart, lte: period },
       SAME_PERIOD_YTD: { gte: prevFyStart, lte: prevPeriod },
     }
-    for (const [dim, codeSet] of dimRefs) {
+    // 各维度裸键原始值（供 2c 逐维度 calc 派生）
+    const opDimRaw: Record<string, Record<string, number>> = {}
+    const refDims = Array.from(dimRefs.keys())
+    for (const dim of refDims) {
       const range = opDimRanges[dim]
-      const opRefCodes = [...codeSet].filter((c) => !c.startsWith('ST_'))
+      // 该维度求值上下文需要全部展开 code 的原始值（calc 公式按裸键引用依赖叶子，如 OP_03={OP_0301}）
+      const opRefCodes = allCodeList.filter((c) => !c.startsWith('ST_'))
       if (!range || opRefCodes.length === 0) continue
       const dimWhere: Record<string, unknown> = { batchId: batch.id, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, period: range, accountCode: { in: opRefCodes } }
       if (input.companyCode) dimWhere.companyCode = input.companyCode
       const grouped = await prisma.factOperating.groupBy({ by: ['accountCode'], where: dimWhere, _sum: { value: true } })
-      for (const g of grouped) evalValues[`${g.accountCode}@${dim}`] = Number(g._sum.value ?? 0)
+      const raw: Record<string, number> = {}
+      for (const g of grouped) {
+        const v = Number(g._sum.value ?? 0)
+        evalValues[`${g.accountCode}@${dim}`] = v
+        raw[g.accountCode] = v
+        // 维度裸键有真实数据即登记，与 calc 门槛解耦（仅维度引用公式的 hasData 依赖此处）
+        if (dimRefs.get(dim)?.has(g.accountCode)) derivedKeys.add(`${g.accountCode}@${dim}`)
+      }
+      opDimRaw[dim] = raw
     }
     // 静态维度复合键目标快照月（年初/上年年初 = 财年起始月前一月，即上年期末余额时点）
     const opening = fiscalYearOpeningSnapshotPeriod(period)
@@ -788,6 +851,8 @@ export const DataService = {
       SAME_PERIOD_AMOUNT: prevPeriod,
       LAST_YEAR_START: periodMinusYears(opening, 1),
     }
+    // 静态各维度裸键原始值（供 2c 逐维度 calc 派生）
+    const stDimRaw: Record<string, Record<string, number>> = {}
     const stCodes = allCodeList.filter((c) => c.startsWith('ST_'))
     if (stCodes.length > 0) {
       const stBatches = await prisma.importBatch.findMany({ where: { dataType: 'static', lifecycleStatus: 'active' }, select: { id: true } })
@@ -799,25 +864,62 @@ export const DataService = {
           const d = g.snapshotDate as Date
           const mon = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
           if (mon === period) valueMap.set(g.accountCode, (valueMap.get(g.accountCode) ?? 0) + Number(g._sum.value ?? 0))
-          // 静态复合键：命中目标快照月的维度引用累加
+          // 静态复合键：命中目标快照月的维度值累加（含 calc 派生所需的裸键原始值）
           for (const [dim, mon2] of Object.entries(stDimMonths)) {
-            if (mon === mon2 && dimRefs.get(dim)?.has(g.accountCode)) {
+            if (mon !== mon2) continue
+            const v = Number(g._sum.value ?? 0)
+            const raw = (stDimRaw[dim] ??= {})
+            raw[g.accountCode] = (raw[g.accountCode] ?? 0) + v
+            if (dimRefs.get(dim)?.has(g.accountCode)) {
               const k = `${g.accountCode}@${dim}`
-              evalValues[k] = (evalValues[k] ?? 0) + Number(g._sum.value ?? 0)
+              evalValues[k] = (evalValues[k] ?? 0) + v
+              // 静态裸键同样登记（与 calc 门槛解耦，保证仅维度引用公式的操作数 hasData 正确）
+              derivedKeys.add(k)
             }
           }
         }
       }
     }
 
-    // 3）拓扑序求值 calc 指标（环检测由 topoSortMetrics 负责），写回 evalValues
-    for (const c of allCodeList) evalValues[c] = valueMap.get(c) ?? 0
+    // 3）拓扑序（2c 逐维度派生与当前维度求值共用；环检测由 topoSortMetrics 负责）
     const calcNodes = allCodeList
       .filter((c) => calcFormulaByCode.has(c))
       .map((c) => ({ code: c, dependsOn: extractCodes(calcFormulaByCode.get(c) as string) }))
+    let order: string[] = []
+    if (calcNodes.length > 0) order = topoSortMetrics(calcNodes)
+    // 2c）跨维度复合键 calc 派生：被引用指标为 calc 时（如 {ST_13@YEAR_START}），
+    // 在目标维度上下文按拓扑序重算其依赖链（树路径 applyCalcLayer 同款语义），
+    // 两趟收敛跨维引用；必须早于下方裸键铺底，避免当前维度值污染其他维度上下文。
+    // （derivedKeys 已在 2b 顶部声明，此处直接复用并继续登记 calc 派生键）
+    if (calcNodes.length > 0) {
+      for (let pass = 0; pass < 2; pass++) {
+        for (const dim of refDims) {
+          const ctx: Record<string, number> = { ...evalValues, ...(opDimRaw[dim] ?? {}), ...(stDimRaw[dim] ?? {}) }
+          const dimHas = new Map<string, boolean>()
+          for (const c of allCodeList) {
+            dimHas.set(c, Object.prototype.hasOwnProperty.call(opDimRaw[dim] ?? {}, c) || Object.prototype.hasOwnProperty.call(stDimRaw[dim] ?? {}, c))
+          }
+          for (const c of order) {
+            const f = calcFormulaByCode.get(c)
+            if (!f) continue
+            try {
+              ctx[c] = evaluateFormula(f, ctx)
+            } catch { /* 求值失败保底：保留上下文现值 */ }
+            dimHas.set(c, extractCodes(f).some((d) => dimHas.get(d) ?? false))
+          }
+          for (const code of dimRefs.get(dim) ?? []) {
+            const key = `${code}@${dim}`
+            evalValues[key] = ctx[code] ?? 0
+            if (dimHas.get(code)) derivedKeys.add(key)
+          }
+        }
+      }
+    }
+
+    // 4）当前维度：裸键铺底 + 拓扑序求值 calc 指标，写回 evalValues
+    for (const c of allCodeList) evalValues[c] = valueMap.get(c) ?? 0
     const hasDataMap = new Map<string, boolean>(allCodeList.map((c) => [c, valueMap.has(c)]))
     if (calcNodes.length > 0) {
-      const order = topoSortMetrics(calcNodes)
       for (const c of order) {
         const f = calcFormulaByCode.get(c) as string
         try {
@@ -830,7 +932,7 @@ export const DataService = {
       }
     }
 
-    // 4）操作数回显：按直接引用（含维度后缀/伪操作数）展示，value 取展开后的值
+    // 5）操作数回显：按直接引用（含维度后缀/伪操作数）展示，value 取展开后的值
     const DIM_LABELS: Record<string, string> = {
       BUDGET_AMOUNT: '预算', ACTUAL_MONTH: '本月实际', SAME_PERIOD_ACTUAL: '同期实际', YTD_ACTUAL: '本年累计', SAME_PERIOD_YTD: '同期累计',
       CURRENT_AMOUNT: '本期', YEAR_START: '年初', SAME_PERIOD_AMOUNT: '同期', LAST_YEAR_START: '上年年初',
@@ -852,7 +954,7 @@ export const DataService = {
         code: key,
         name: r.dim ? `${baseName}(${DIM_LABELS[r.dim] ?? r.dim})` : baseName,
         value: r.dim ? (evalValues[key] ?? 0) : (evalValues[r.code] ?? 0),
-        hasData: r.dim ? evalValues[key] !== undefined : (hasDataMap.get(r.code) ?? false),
+        hasData: r.dim ? derivedKeys.has(key) : (hasDataMap.get(r.code) ?? false),
       })
     }
     let value: number | null = null
@@ -921,5 +1023,127 @@ export const DataService = {
       { header: '大类', key: 'category', width: 16 }, { header: '借贷方向', key: 'direction' },
       { header: '是否叶子', key: 'isLeaf' },
     ], rows.map((r) => ({ code: r.code, name: r.name, type: r.subjectType, level: r.level, category: r.category, direction: r.direction, isLeaf: r.isLeaf ? '是' : '否' })))
+  },
+
+  // ===== 批次差异对比（US-03） =====
+  /**
+   * 两批次差异对比：按 (公司, 科目, 期间) 键对比 operating/static/budget 三类批次事实值。
+   * - 仅同类型、非 purged 批次可比；transaction/inventory v1 不支持；
+   * - 结果按数据范围过滤（仅对比用户有权限的公司）；
+   * - changed/added/removed 各上限 500 行，超出截断并在 summary 标注。
+   */
+  async compareBatches(aId: string, bId: string, scope?: ScopeInput): Promise<ImportDiff> {
+    const [a, b] = await Promise.all([
+      prisma.importBatch.findUnique({ where: { id: aId } }),
+      prisma.importBatch.findUnique({ where: { id: bId } }),
+    ])
+    if (!a || !b) throw errors.notFound('导入批次不存在')
+    if (a.lifecycleStatus === 'purged' || b.lifecycleStatus === 'purged') throw errors.badRequest('已清除的批次不可参与对比')
+    if (a.dataType !== b.dataType) throw errors.badRequest('仅支持同类型批次对比')
+    if (a.dataType === 'transaction' || a.dataType === 'inventory') {
+      throw errors.badRequest('该数据类型暂不支持对比（v1 仅支持经营/静态/预算数据）')
+    }
+    const template = a.dataType
+
+    // 数据范围过滤：'all'/无上下文不过滤；'companies' 收敛到授权单体；'none' 返回空结果
+    const s = await effectiveScope(scope)
+    const allowedCompanies = s !== null && s.type === 'companies' ? s.companyCodes : s?.type === 'none' ? [] : undefined
+    const companyWhere = allowedCompanies ? { companyCode: { in: allowedCompanies } } : {}
+
+    // 读取两批次事实行并归一化为统一行（periodKey 用于对比键，periodLabel 用于展示）
+    // 读取上限 COMPARE_FETCH_LIMIT：防数万行全量载入内存，超限按截断处理
+    type NormalizedRow = { companyCode: string; accountCode: string; value: Prisma.Decimal; periodKey: string; periodLabel: string }
+    let aRows: NormalizedRow[]
+    let bRows: NormalizedRow[]
+    let fetchTruncated = false
+    if (template === 'operating') {
+      const withPeriod = { select: { companyCode: true, accountCode: true, period: true, periodDimCode: true, value: true } }
+      const ra = await prisma.factOperating.findMany({ where: { batchId: aId, ...companyWhere }, take: COMPARE_FETCH_LIMIT, ...withPeriod })
+      const rb = await prisma.factOperating.findMany({ where: { batchId: bId, ...companyWhere }, take: COMPARE_FETCH_LIMIT, ...withPeriod })
+      fetchTruncated = ra.length === COMPARE_FETCH_LIMIT || rb.length === COMPARE_FETCH_LIMIT
+      aRows = ra.map((r) => ({ companyCode: r.companyCode, accountCode: r.accountCode, value: r.value, periodKey: `${r.period}|${r.periodDimCode}`, periodLabel: r.period }))
+      bRows = rb.map((r) => ({ companyCode: r.companyCode, accountCode: r.accountCode, value: r.value, periodKey: `${r.period}|${r.periodDimCode}`, periodLabel: r.period }))
+    } else if (template === 'static') {
+      const withSnap = { select: { companyCode: true, accountCode: true, snapshotDate: true, periodDimCode: true, value: true } }
+      const ra = await prisma.factStatic.findMany({ where: { batchId: aId, ...companyWhere }, take: COMPARE_FETCH_LIMIT, ...withSnap })
+      const rb = await prisma.factStatic.findMany({ where: { batchId: bId, ...companyWhere }, take: COMPARE_FETCH_LIMIT, ...withSnap })
+      fetchTruncated = ra.length === COMPARE_FETCH_LIMIT || rb.length === COMPARE_FETCH_LIMIT
+      aRows = ra.map((r) => ({ companyCode: r.companyCode, accountCode: r.accountCode, value: r.value, periodKey: `${ymOfDate(r.snapshotDate)}|${r.periodDimCode}`, periodLabel: ymOfDate(r.snapshotDate) }))
+      bRows = rb.map((r) => ({ companyCode: r.companyCode, accountCode: r.accountCode, value: r.value, periodKey: `${ymOfDate(r.snapshotDate)}|${r.periodDimCode}`, periodLabel: ymOfDate(r.snapshotDate) }))
+    } else {
+      const withFy = { select: { companyCode: true, accountCode: true, fiscalYear: true, period: true, value: true } }
+      const ra = await prisma.factBudget.findMany({ where: { batchId: aId, ...companyWhere }, take: COMPARE_FETCH_LIMIT, ...withFy })
+      const rb = await prisma.factBudget.findMany({ where: { batchId: bId, ...companyWhere }, take: COMPARE_FETCH_LIMIT, ...withFy })
+      fetchTruncated = ra.length === COMPARE_FETCH_LIMIT || rb.length === COMPARE_FETCH_LIMIT
+      aRows = ra.map((r) => ({ companyCode: r.companyCode, accountCode: r.accountCode, value: r.value, periodKey: `${r.fiscalYear}|${r.period}`, periodLabel: `${r.fiscalYear}/${r.period}` }))
+      bRows = rb.map((r) => ({ companyCode: r.companyCode, accountCode: r.accountCode, value: r.value, periodKey: `${r.fiscalYear}|${r.period}`, periodLabel: `${r.fiscalYear}/${r.period}` }))
+    }
+
+    // 科目名称联查
+    const accountCodes = [...new Set([...aRows.map((r) => r.accountCode), ...bRows.map((r) => r.accountCode)])]
+    const subjects = await prisma.accountSubject.findMany({ where: { code: { in: accountCodes } }, select: { code: true, name: true } })
+    const nameMap = new Map(subjects.map((s) => [s.code, s.name]))
+    const rowOf = (r: NormalizedRow): ImportDiffRow => ({
+      companyCode: r.companyCode,
+      accountCode: r.accountCode,
+      subjectName: nameMap.get(r.accountCode) ?? r.accountCode,
+      period: r.periodLabel,
+      oldValue: 0,
+      newValue: 0,
+      delta: 0,
+      deltaPercent: null,
+    })
+
+    const aMap = new Map<string, NormalizedRow>()
+    const bMap = new Map<string, NormalizedRow>()
+    for (const r of aRows) aMap.set(`${r.companyCode}|${r.accountCode}|${r.periodKey}`, r)
+    for (const r of bRows) bMap.set(`${r.companyCode}|${r.accountCode}|${r.periodKey}`, r)
+
+    const changed: ImportDiffRow[] = []
+    const added: ImportDiffRow[] = []
+    const removed: ImportDiffRow[] = []
+    let totalDelta = 0
+    for (const [key, ar] of aMap) {
+      const br = bMap.get(key)
+      if (!br) {
+        removed.push({ ...rowOf(ar), oldValue: Number(ar.value), newValue: 0, delta: -Number(ar.value), deltaPercent: null })
+        totalDelta -= Number(ar.value)
+        continue
+      }
+      const oldV = Number(ar.value)
+      const newV = Number(br.value)
+      if (oldV === newV) continue
+      const delta = newV - oldV
+      totalDelta += delta
+      changed.push({
+        ...rowOf(ar),
+        oldValue: oldV,
+        newValue: newV,
+        delta,
+        deltaPercent: oldV === 0 ? null : Number(((delta / Math.abs(oldV)) * 100).toFixed(1)),
+      })
+    }
+    for (const [key, br] of bMap) {
+      if (aMap.has(key)) continue
+      added.push({ ...rowOf(br), oldValue: 0, newValue: Number(br.value), delta: Number(br.value), deltaPercent: null })
+      totalDelta += Number(br.value)
+    }
+
+    changed.sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta))
+    const truncated = changed.length > DIFF_ROW_LIMIT || added.length > DIFF_ROW_LIMIT || removed.length > DIFF_ROW_LIMIT || fetchTruncated
+    return {
+      a: batchMetaOf(a),
+      b: batchMetaOf(b),
+      changed: changed.slice(0, DIFF_ROW_LIMIT),
+      added: added.slice(0, DIFF_ROW_LIMIT),
+      removed: removed.slice(0, DIFF_ROW_LIMIT),
+      summary: {
+        changedCount: changed.length,
+        addedCount: added.length,
+        removedCount: removed.length,
+        totalDelta: Number(totalDelta.toFixed(4)),
+        truncated,
+      },
+    }
   },
 }

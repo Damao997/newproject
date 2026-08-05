@@ -4,7 +4,8 @@ import { DataService } from '../services/DataService'
 import { AdminService } from '../services/AdminService'
 import { ImportService } from '../services/ImportService'
 import { ReclassificationService } from '../services/ReclassificationService'
-import { OPERATING_DIMS } from '../lib/metric-values'
+import { OPERATING_DIMS, STATIC_DIMS } from '../lib/metric-values'
+import { fiscalYearOpeningSnapshotPeriod, fiscalYtdDays } from '../lib/period'
 
 /**
  * 数据/权限管理写路径集成测试（真实 DB）。
@@ -446,6 +447,72 @@ describe('公式试算递归展开 calc 依赖', () => {
     } finally {
       await basePrisma.factOperating.deleteMany({ where: { accountCode: dataCode } }).catch(() => undefined)
       await basePrisma.accountSubject.deleteMany({ where: { code: { in: [dataCode, calcCode] } } }).catch(() => undefined)
+    }
+  })
+
+  it('跨维度引用 calc 指标：{ST_PARENT@YEAR_START} 与 {OP_PARENT@YTD_ACTUAL} 取派生值', async () => {
+    if (!dbReady) return
+    const opBatch = await basePrisma.importBatch.findFirst({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true } })
+    const stBatch = await basePrisma.importBatch.findFirst({ where: { dataType: 'static', lifecycleStatus: 'active' }, select: { id: true } })
+    if (!opBatch || !stBatch) return
+    const latest = await basePrisma.factOperating.findFirst({ where: { batchId: opBatch.id }, orderBy: { period: 'desc' }, select: { period: true } })
+    if (!latest) return
+    const period = latest.period
+    const opening = fiscalYearOpeningSnapshotPeriod(period) // S=4：2026-04 → 2026-03
+    const suffix = Date.now().toString(36)
+    const stA = `ST_TCA_${suffix}`
+    const stB = `ST_TCB_${suffix}`
+    const stP = `ST_TCP_${suffix}`
+    const opD = `OP_TCD_${suffix}`
+    const opP = `OP_TCP_${suffix}`
+    const allTemp = [stA, stB, stP, opD, opP]
+    tempMetricCodes.push(...allTemp)
+    tempSubjectCodes.push(...allTemp)
+    const curA = 20
+    const curB = 30
+    const ysA = 12
+    const ysB = 18
+    const opV = 100
+    try {
+      await basePrisma.accountSubject.createMany({
+        data: allTemp.map((code) => ({
+          code, name: `临时_${code}`, subjectType: code.startsWith('ST_') ? 'static' : 'operating',
+          level: 1, parentCode: null, category: '自定义', direction: 'credit', isLeaf: true,
+        })),
+      })
+      await DataService.createMetric({ code: stA, name: '存货甲', dataType: 'data', category: '自定义' }, ctx())
+      await DataService.createMetric({ code: stB, name: '存货乙', dataType: 'data', category: '自定义' }, ctx())
+      await DataService.createMetric({ code: stP, name: '存货合计', dataType: 'calc', formula: `{${stA}} + {${stB}}`, category: '自定义' }, ctx())
+      await DataService.createMetric({ code: opD, name: '成本叶', dataType: 'data', category: '自定义' }, ctx())
+      await DataService.createMetric({ code: opP, name: '成本合计', dataType: 'calc', formula: `{${opD}}`, category: '自定义' }, ctx())
+      // 静态快照：本期月 + 年初快照月（S=4 时年初 = 财年起始月前一月）
+      await basePrisma.factStatic.createMany({
+        data: [
+          { batchId: stBatch.id, companyCode: 'EN330059', accountCode: stA, snapshotDate: new Date(`${period}-28T00:00:00.000Z`), periodDimCode: STATIC_DIMS.CURRENT_AMOUNT, fiscalYear: `FY${period.slice(0, 4)}`, value: curA },
+          { batchId: stBatch.id, companyCode: 'EN330059', accountCode: stB, snapshotDate: new Date(`${period}-28T00:00:00.000Z`), periodDimCode: STATIC_DIMS.CURRENT_AMOUNT, fiscalYear: `FY${period.slice(0, 4)}`, value: curB },
+          { batchId: stBatch.id, companyCode: 'EN330059', accountCode: stA, snapshotDate: new Date(`${opening}-28T00:00:00.000Z`), periodDimCode: STATIC_DIMS.CURRENT_AMOUNT, fiscalYear: `FY${opening.slice(0, 4)}`, value: ysA },
+          { batchId: stBatch.id, companyCode: 'EN330059', accountCode: stB, snapshotDate: new Date(`${opening}-28T00:00:00.000Z`), periodDimCode: STATIC_DIMS.CURRENT_AMOUNT, fiscalYear: `FY${opening.slice(0, 4)}`, value: ysB },
+        ],
+      })
+      // 经营事实：本期 ACTUAL_MONTH（YTD 区间 = 财年起..本期，单期场景即本期）
+      await basePrisma.factOperating.create({
+        data: { batchId: opBatch.id, companyCode: 'EN330059', accountCode: opD, period, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: `FY${period.slice(0, 4)}`, value: opV },
+      })
+      const formula = `({${stP}@YEAR_START} + {${stP}}) / 2 * {DAYS_YTD} / {${opP}@YTD_ACTUAL}`
+      const res = await DataService.trialCalc({ formula, companyCode: 'EN330059', period })
+      // 期望：(12+18+20+30)/2 × 财年累计天数 ÷ 100
+      const expected = (((ysA + ysB) + (curA + curB)) / 2) * fiscalYtdDays(period) / opV
+      expect(res.value).toBeCloseTo(expected, 6)
+      const opMap = new Map(res.operands.map((o) => [o.code, o]))
+      expect(opMap.get(`${stP}@YEAR_START`)?.value).toBeCloseTo(ysA + ysB, 6)
+      expect(opMap.get(`${stP}@YEAR_START`)?.hasData).toBe(true)
+      expect(opMap.get(`${opP}@YTD_ACTUAL`)?.value).toBeCloseTo(opV, 6)
+      expect(opMap.get(`${opP}@YTD_ACTUAL`)?.hasData).toBe(true)
+    } finally {
+      await basePrisma.factStatic.deleteMany({ where: { accountCode: { in: [stA, stB] } } }).catch(() => undefined)
+      await basePrisma.factOperating.deleteMany({ where: { accountCode: opD } }).catch(() => undefined)
+      await basePrisma.metric.deleteMany({ where: { code: { in: allTemp } } }).catch(() => undefined)
+      await basePrisma.accountSubject.deleteMany({ where: { code: { in: allTemp } } }).catch(() => undefined)
     }
   })
 })

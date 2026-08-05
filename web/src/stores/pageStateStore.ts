@@ -114,6 +114,8 @@ export interface DashboardState {
   /** '' = 自动模式；'all' | 'company:X' | 'summary:X' */
   dim: string
   trendMetric: string
+  /** 趋势图金额口径：'month' = 月度，'ytd' = 累计 */
+  trendMode: string
 }
 
 export interface InventoryState {
@@ -121,6 +123,12 @@ export interface InventoryState {
   companies: string[]
   /** '' = 跟随最新期间 */
   period: string
+  /** 品类钻取筛选（'' = 全部品类），由饼图/排名图点击联动 */
+  categoryCode: string
+  /** 明细表关键词（公司/品类模糊匹配） */
+  keyword: string
+  /** 明细表展示维度：'company' 按公司汇总（默认）| 'category' 按品类展开 | 'detail' 公司×品类明细 */
+  detailDim: 'company' | 'category' | 'detail'
 }
 
 export interface FormulasState {
@@ -189,9 +197,10 @@ const defaultCollections: TransactionCollectionsState = {
   keyword: '',
 }
 
-const defaultDashboard: DashboardState = { period: '', dim: '', trendMetric: 'revenue' }
+const defaultDashboard: DashboardState = { period: '', dim: '', trendMetric: 'revenue', trendMode: 'month' }
 
-const defaultInventory: InventoryState = { companies: [], period: '' }
+// 默认主体：浙江省公司汇总（与往来总览 overview 默认口径一致；空数组=全部公司仍可显式选择）
+const defaultInventory: InventoryState = { companies: [DEFAULT_SUMMARY_CODE], period: '', categoryCode: '', keyword: '', detailDim: 'company' }
 
 const defaultFormulas: FormulasState = { subjectType: 'operating', keyword: '', category: 'all', status: 'all', page: 1 }
 
@@ -270,7 +279,19 @@ export const usePageStore = create<PageStateStore>()(
     }),
     {
       name: 'page-state-storage',
-      version: 1,
+      version: 2,
+      // v1→v2：旧默认「全部公司」[]（非用户显式多选）迁移为 ET0001，与新默认主体口径一致；
+      // 注意：空数组同时是显式「全部公司」的语义，此迁移仅覆盖从未改过默认值的存量会话
+      migrate: (persistedState, version) => {
+        if (version < 2) {
+          const p = persistedState as { inventory?: { companies?: string[] } } | null
+          const inv = p?.inventory
+          if (inv && Array.isArray(inv.companies) && inv.companies.length === 0) {
+            return { ...p, inventory: { ...inv, companies: [DEFAULT_SUMMARY_CODE] } }
+          }
+        }
+        return persistedState
+      },
       partialize: (state) => ({
         indicators: state.indicators,
         dataBrowse: state.dataBrowse,

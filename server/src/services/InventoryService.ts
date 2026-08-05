@@ -61,7 +61,8 @@ export interface InventoryTrend {
   fiscalYear: string
   months: string[]
   total: number[]
-  byCategory: { code: string; name: string; values: number[] }[]
+  /** 各单体公司财年内逐月存货总额（汇总主体已展开为成员） */
+  byCompany: { code: string; name: string; values: number[] }[]
 }
 
 interface InventorySubjects {
@@ -219,13 +220,12 @@ export const InventoryService = {
     return { period: params.period, rows }
   },
 
-  /** 趋势：财年内各月存货总额与品类值（月份取实际存在快照的月份，升序） */
+  /** 趋势：财年内各月存货总额与各单体公司值（汇总主体展开为成员；月份取实际存在快照的月份，升序） */
   async getTrend(scope: Scope, params: { companyCodes?: string[]; fiscalYear: string }): Promise<InventoryTrend> {
     if (!/^FY\d{4}$/.test(params.fiscalYear)) throw errors.badRequest('财年格式应为 FYxxxx')
-    const subjects = await resolveInventorySubjects()
     const companies = await resolveCompanies(scope, params.companyCodes)
-    const catCodes = subjects.categories.map((c) => c.code)
-    const empty: InventoryTrend = { fiscalYear: params.fiscalYear, months: [], total: [], byCategory: [] }
+    const catCodes = (await resolveInventorySubjects()).categories.map((c) => c.code)
+    const empty: InventoryTrend = { fiscalYear: params.fiscalYear, months: [], total: [], byCompany: [] }
     if (companies.length === 0 || catCodes.length === 0) return empty
 
     const batchIds = await activeStaticBatchIds()
@@ -237,27 +237,35 @@ export const InventoryService = {
     const fyEnd = formatPeriod(startYear, startMonth + 11)
 
     const grouped = await prisma.factStatic.groupBy({
-      by: ['accountCode', 'snapshotDate'],
+      by: ['companyCode', 'accountCode', 'snapshotDate'],
       where: { companyCode: { in: companies }, accountCode: { in: catCodes }, batchId: { in: batchIds } },
       _sum: { value: true },
     })
-    // (品类|月份) → 金额，仅保留财年区间内的快照月
+    // (公司|品类|月份) → 金额，仅保留财年区间内的快照月
     const monthSum = new Map<string, number>()
     const monthSet = new Set<string>()
     for (const g of grouped) {
       const mon = snapshotMonth(g.snapshotDate as Date)
       if (mon < fyStart || mon > fyEnd) continue
       monthSet.add(mon)
-      const k = `${g.accountCode}|${mon}`
+      const k = `${g.companyCode}|${g.accountCode}|${mon}`
       monthSum.set(k, (monthSum.get(k) ?? 0) + Number(g._sum.value ?? 0))
     }
     const months = [...monthSet].sort()
-    const byCategory = subjects.categories.map((c) => ({
-      code: c.code,
-      name: c.name,
-      values: months.map((m) => round2(monthSum.get(`${c.code}|${m}`) ?? 0)),
+
+    const companyRows = await prisma.company.findMany({
+      where: { code: { in: companies } },
+      orderBy: { orderNo: 'asc' },
+      select: { code: true, name: true },
+    })
+    const byCompany = companyRows.map((co) => ({
+      code: co.code,
+      name: co.name,
+      // 公司×月份 = 全部品类求和
+      values: months.map((m) =>
+        round2(catCodes.reduce((sum, cat) => sum + (monthSum.get(`${co.code}|${cat}|${m}`) ?? 0), 0))),
     }))
-    const total = months.map((_, i) => round2(byCategory.reduce((sum, c) => sum + (c.values[i] ?? 0), 0)))
-    return { fiscalYear: params.fiscalYear, months, total, byCategory }
+    const total = months.map((_, i) => round2(byCompany.reduce((sum, c) => sum + (c.values[i] ?? 0), 0)))
+    return { fiscalYear: params.fiscalYear, months, total, byCompany }
   },
 }

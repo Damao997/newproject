@@ -1,6 +1,6 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios'
 import { useAuthStore } from '@/stores/authStore'
-import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse, FilterParams, BatchActivateCheckResult, KpiData, TrendData, DashboardAlert, ReceivableRow, ProductBudgetResponse, SubjectBudgetResponse, ProductCategory, ProductCategoryCheckResult, SubjectBudgetConfig, SubjectBudgetConfigCheckResult, ImportBatch, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData } from '@/types'
+import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse, FilterParams, BatchActivateCheckResult, KpiData, TrendData, DashboardAlert, ReceivableRow, ProductBudgetResponse, SubjectBudgetResponse, ProductCategory, ProductCategoryCheckResult, SubjectBudgetConfig, SubjectBudgetConfigCheckResult, ImportBatch, ImportDiff, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData } from '@/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
@@ -110,8 +110,13 @@ class ApiClient {
       (response) => response,
       async (error) => {
         const originalRequest = error.config
-        
-        if (error.response?.status === 401 && !originalRequest._retry) {
+
+        // 认证接口自身的 401 直接透传：/auth/login 密码错误、/auth/refresh 令牌失效时
+        // 不应触发刷新流程（未登录态 refreshToken 为空会走 logout+跳转，吞掉登录错误提示）
+        const isAuthEndpoint =
+          originalRequest.url?.includes('/auth/login') || originalRequest.url?.includes('/auth/refresh')
+
+        if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
           originalRequest._retry = true
           
           try {
@@ -208,8 +213,8 @@ class ApiClient {
     })
   }
 
-  /** 应收账款按主体分布（单体/汇总口径） */
-  async getDashboardReceivables(params: { period: string; mode: 'single' | 'summary' }): Promise<{
+  /** 应收账款按主体分布（跟随看板主体筛选：单体=自身一行，汇总主体=成员公司各行） */
+  async getDashboardReceivables(params: { period: string; mode: 'single' | 'summary'; companyCode?: string }): Promise<{
     period: string | null
     rows: ReceivableRow[]
   }> {
@@ -455,6 +460,22 @@ class ApiClient {
     return this.request({
       method: 'POST',
       url: `/data/imports/${id}/activate`,
+    })
+  }
+
+  /** 批次差异对比（US-03）：按 (公司, 科目, 期间) 键对比两批次事实值（operating/static/budget） */
+  async compareImports(aId: string, bId: string): Promise<ImportDiff> {
+    return this.request({
+      method: 'GET',
+      url: `/data/imports/${aId}/compare/${bId}`,
+    })
+  }
+
+  /** 回滚批次（US-03）：恢复快照数据并重新激活历史批次 */
+  async rollbackImport(id: string): Promise<void> {
+    return this.request({
+      method: 'POST',
+      url: `/data/imports/${id}/rollback`,
     })
   }
 

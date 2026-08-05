@@ -5,27 +5,44 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatMoneyWan } from '@/lib/utils'
 import { CHART_FONT, CHART_INK, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
 import { PieChart } from 'lucide-react'
-import type { InventoryCategoryRow } from '@/hooks/api-queries'
+import type { InventoryDetailRow } from '@/hooks/api-queries'
+import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { CATEGORY_COLORS } from './category-colors'
 import { EmptyHint } from './empty-hint'
 
 /**
- * 存货品类占比饼图：按品类本期金额展示占比结构，环形中心显示正值合计总额。
- * 金额 ≤0 的品类不进饼图（占比无意义），负值品类在卡片脚注说明。
- * 点击扇区触发品类钻取（onCategoryClick），联动明细表筛选。
+ * 成员单体公司占比饼图：展示所选汇总主体下各成员单体公司本期库存金额占比。
+ * 数据来自 GET /inventory/details（公司×品类明细），前端按公司分组求和；
+ * 金额 ≤0 的公司不进饼图（占比无意义），负值公司脚注说明。
+ * 仅当筛选器恰好选中一个汇总主体时由父级条件渲染。
  */
 
-export function CategoryPieCard({ categories, loading, onCategoryClick }: {
-  categories: InventoryCategoryRow[]
-  loading?: boolean
-  onCategoryClick?: (code: string) => void
-}) {
-  // 饼图仅纳入正金额品类；负值品类记入脚注提示
-  const pieData = useMemo(() => categories.filter((c) => c.current > 0), [categories])
-  const negatives = useMemo(() => categories.filter((c) => c.current < 0), [categories])
+/** 金额两位小数舍入（与明细表聚合口径一致） */
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
+export function CompanyShareCard({ rows, loading }: { rows: InventoryDetailRow[]; loading?: boolean }) {
+  const { getDisplayName } = useCompanyDisplayName()
+  // 公司 → 本期金额跨品类求和；名称跟随全局「显示简称」开关
+  const companies = useMemo(() => {
+    const by = new Map<string, { code: string; name: string; current: number }>()
+    for (const r of rows) {
+      const acc = by.get(r.companyCode) ?? { code: r.companyCode, name: r.companyName, current: 0 }
+      acc.current += r.current
+      by.set(r.companyCode, acc)
+    }
+    return [...by.values()].map((c) => ({
+      ...c,
+      current: round2(c.current),
+      label: getDisplayName(c.code, c.name),
+    }))
+  }, [rows, getDisplayName])
+
+  // 仅纳入正金额公司；负值公司记入脚注（与品类饼图口径一致）
+  const pieData = useMemo(() => companies.filter((c) => c.current > 0), [companies])
+  const negatives = useMemo(() => companies.filter((c) => c.current < 0), [companies])
   const sum = useMemo(() => pieData.reduce((s, c) => s + c.current, 0), [pieData])
-  // ECharts click 回调仅能拿到 name，这里维护 名称→编码 映射用于钻取
-  const nameToCode = useMemo(() => new Map(pieData.map((c) => [c.name, c.code])), [pieData])
 
   const option = useMemo<EChartsOption>(() => {
     return {
@@ -47,8 +64,7 @@ export function CategoryPieCard({ categories, loading, onCategoryClick }: {
             <div style="display:flex;align-items:center;justify-content:space-between;gap:16px">
               ${labelSpan('占比')}
               ${numSpan(`${pct}%`)}
-            </div>
-            <div style="margin-top:6px;color:${CHART_INK.axis};font-size:11px">点击钻取该品类明细</div>`
+            </div>`
         },
       },
       series: [
@@ -65,7 +81,7 @@ export function CategoryPieCard({ categories, loading, onCategoryClick }: {
           },
           labelLine: { length: 10, length2: 8, lineStyle: { color: CHART_INK.grid } },
           data: pieData.map((c, i) => ({
-            name: c.name,
+            name: c.label,
             value: c.current,
             itemStyle: { color: CATEGORY_COLORS[i % CATEGORY_COLORS.length] },
           })),
@@ -79,7 +95,7 @@ export function CategoryPieCard({ categories, loading, onCategoryClick }: {
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-base">
           <PieChart className="h-4 w-4" />
-          品类金额占比
+          成员单体公司占比
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -88,8 +104,8 @@ export function CategoryPieCard({ categories, loading, onCategoryClick }: {
         ) : pieData.length === 0 ? (
           <EmptyHint
             icon={PieChart}
-            title="暂无品类数据"
-            hint="当前公司/期间无正金额存货品类，请调整筛选条件"
+            title="暂无成员公司数据"
+            hint="当前汇总主体/期间无正金额存货公司，请调整筛选条件"
             className="h-[260px] lg:h-[320px]"
           />
         ) : (
@@ -101,13 +117,6 @@ export function CategoryPieCard({ categories, loading, onCategoryClick }: {
                 notMerge
                 style={{ height: '100%', width: '100%' }}
                 opts={{ renderer: 'svg' }}
-                onEvents={{
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  click: (params: any) => {
-                    const code = nameToCode.get(params?.name ?? '')
-                    if (code) onCategoryClick?.(code)
-                  },
-                }}
               />
               {/* 环形中心总额（与图表 center 50%/50% 对齐，不拦截鼠标事件） */}
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
@@ -117,7 +126,7 @@ export function CategoryPieCard({ categories, loading, onCategoryClick }: {
             </div>
             {negatives.length > 0 && (
               <p className="mt-2 text-xs text-muted-foreground">
-                金额为负的品类未计入饼图：{negatives.map((c) => `${c.name}（${formatMoneyWan(c.current)}）`).join('、')}
+                金额为负的公司未计入饼图：{negatives.map((c) => `${c.label}（${formatMoneyWan(c.current)}）`).join('、')}
               </p>
             )}
           </>

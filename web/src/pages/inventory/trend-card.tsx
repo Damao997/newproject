@@ -4,14 +4,16 @@ import ReactECharts, { echarts } from '@/components/charts/echarts-core'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useInventoryTrend } from '@/hooks/api-queries'
+import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { formatMoneyWan } from '@/lib/utils'
 import { CHART_FONT, CHART_INK, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
 import { LineChart, RefreshCw } from 'lucide-react'
 import { CATEGORY_COLORS } from './category-colors'
+import { EmptyHint } from './empty-hint'
 
 /**
- * 存货趋势卡：财年内各月品类堆叠柱 + 存货总额折线。
- * 数据来自 GET /inventory/trend（fact_static 快照月 DB 侧聚合）；
+ * 存货趋势卡：财年内各月公司堆叠柱 + 存货总额折线，图例为公司维度。
+ * 数据来自 GET /inventory/trend（fact_static 快照月 DB 侧聚合，汇总主体已展开为成员单体公司）；
  * 财年跟随顶部导航全局财年选择，公司多选由页面筛选区传入。
  */
 
@@ -19,14 +21,17 @@ const TOTAL_COLOR = CHART_INK.text
 
 export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes: string[]; fiscalYear: string | null }) {
   const { data, isLoading, isError, error, refetch, isFetching } = useInventoryTrend({ fiscalYear, companyCodes })
+  // 图例/系列名称跟随全局「显示简称」开关（与明细表一致）
+  const { getDisplayName } = useCompanyDisplayName()
 
   const hasData = !!data && data.months.length > 0
 
   const option = useMemo<EChartsOption>(() => {
     const months = data?.months ?? []
-    const byCategory = data?.byCategory ?? []
+    const byCompany = data?.byCompany ?? []
     const total = data?.total ?? []
     return {
+      animation: false,
       textStyle: {
         fontFamily: CHART_FONT,
       },
@@ -52,7 +57,7 @@ export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes:
         },
       },
       legend: {
-        data: [...byCategory.map((c) => c.name), '存货总额'],
+        data: [...byCompany.map((c) => getDisplayName(c.code, c.name)), '存货总额'],
         bottom: 0,
         type: 'scroll',
         itemWidth: 12,
@@ -83,10 +88,10 @@ export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes:
         axisLabel: { color: CHART_INK.axis, fontSize: 11 },
       },
       series: [
-        ...byCategory.map((c, i) => ({
-          name: c.name,
+        ...byCompany.map((c, i) => ({
+          name: getDisplayName(c.code, c.name),
           type: 'bar' as const,
-          stack: 'category',
+          stack: 'company',
           barMaxWidth: 28,
           data: c.values,
           itemStyle: { color: CATEGORY_COLORS[i % CATEGORY_COLORS.length] },
@@ -104,7 +109,7 @@ export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes:
         },
       ] as SeriesOption[],
     }
-  }, [data])
+  }, [data, getDisplayName])
 
   return (
     <Card className="animate-fade-in">
@@ -121,9 +126,9 @@ export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes:
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">加载中...</div>
+          <div className="skeleton h-[260px] w-full rounded-lg lg:h-[320px]" />
         ) : isError ? (
-          <div className="flex h-[320px] flex-col items-center justify-center gap-3">
+          <div className="flex h-[260px] flex-col items-center justify-center gap-3 lg:h-[320px]">
             <p className="text-sm text-destructive">{error instanceof Error ? error.message : '数据加载失败'}</p>
             <Button variant="outline" size="sm" disabled={isFetching} onClick={() => refetch()}>
               <RefreshCw className="mr-1 h-3.5 w-3.5" />
@@ -131,15 +136,22 @@ export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes:
             </Button>
           </div>
         ) : !hasData ? (
-          <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">暂无数据</div>
-        ) : (
-          <ReactECharts
-            echarts={echarts}
-            option={option}
-            notMerge
-            style={{ height: 320, width: '100%' }}
-            opts={{ renderer: 'svg' }}
+          <EmptyHint
+            icon={LineChart}
+            title="暂无趋势数据"
+            hint={fiscalYear ? '当前财年暂无存货快照数据' : '请先在顶部导航选择财年'}
+            className="h-[260px] lg:h-[320px]"
           />
+        ) : (
+          <div className="h-[260px] w-full lg:h-[320px]">
+            <ReactECharts
+              echarts={echarts}
+              option={option}
+              notMerge
+              style={{ height: '100%', width: '100%' }}
+              opts={{ renderer: 'svg' }}
+            />
+          </div>
         )}
       </CardContent>
     </Card>

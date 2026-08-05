@@ -57,6 +57,7 @@ const PERMISSIONS: { resource: string; action: PermissionAction }[] = [
   { resource: 'data:export', action: 'export' },
   // 数据管理（高危操作，仅 superadmin）
   { resource: 'data:metric:approve', action: 'approve' },
+  { resource: 'data:import:rollback', action: 'import' },
   { resource: 'data:import:archive', action: 'import' },
   { resource: 'data:import:purge', action: 'delete' },
   { resource: 'data:company:purge', action: 'delete' },
@@ -87,6 +88,7 @@ const ALL_RESOURCES = PERMISSIONS.map((p) => p.resource)
 // ---- 高危操作权限码：仅授予 superadmin，admin 及其他角色一律排除 ----
 const HIGH_RISK_RESOURCES = [
   'data:metric:approve',
+  'data:import:rollback',
   'data:import:archive',
   'data:import:purge',
   'data:company:purge',

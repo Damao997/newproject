@@ -31,6 +31,7 @@ router.get('/receivables', requirePermission('dashboard:view', 'view'), asyncHan
   const data = await DashboardService.getReceivables(scopeOf(req.authUser as AuthUserContext), {
     period: req.query.period as string | undefined,
     mode,
+    companyCode: req.query.companyCode as string | undefined,
   })
   sendOk(res, data)
 }))

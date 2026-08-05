@@ -3,25 +3,28 @@ import type { EChartsOption, SeriesOption } from 'echarts'
 import ReactECharts, { echarts } from './echarts-core'
 import { formatMoneyWan } from '@/lib/utils'
 import { CHART_FONT, CHART_INK, CHART_SERIES, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
-import { seriesOf, type TrendMetric } from './trend-metrics'
+import { seriesOf, TREND_SERIES_LABELS, type TrendMetric, type TrendMode } from './trend-metrics'
 import type { TrendData } from '@/types'
 
 interface TrendChartProps {
   data: TrendData[]
   metric: TrendMetric
+  /** 金额口径：month=本月合计/月度预算，ytd=累计实际/年度预算 */
+  mode?: TrendMode
 }
 
 const SERIES_COLORS = { actual: CHART_SERIES[0], same: CHART_SERIES[1], budget: CHART_SERIES[4] }
 
 /**
- * 财年趋势图：本月合计（柱，品牌橙）+ 上年同期（柱，青蓝）+ 月度预算（实线曲线，柔紫）。
+ * 财年趋势图：本月合计/累计实际（柱，品牌橙）+ 上年同期/同期累计（柱，青蓝）+ 预算（实线曲线，柔紫）。
  * X 轴为所选财年 12 个月，未导入数据的月份留空（null 断点）。
  */
-export function TrendChart({ data, metric }: TrendChartProps) {
-  // option 随 data/metric 变化才重建，避免父组件无关状态更新触发图表全量重渲染
+export function TrendChart({ data, metric, mode = 'month' }: TrendChartProps) {
+  // option 随 data/metric/mode 变化才重建，避免父组件无关状态更新触发图表全量重渲染
   const option: EChartsOption = useMemo(() => {
     const periods = data.map(d => d.period)
-    const { actual, same, budget } = seriesOf(data, metric)
+    const { actual, same, budget } = seriesOf(data, metric, mode)
+    const labels = TREND_SERIES_LABELS[mode]
     return {
     animation: false,
     textStyle: {
@@ -40,8 +43,8 @@ export function TrendChart({ data, metric }: TrendChartProps) {
         if (!Array.isArray(params)) return ''
         let result = titleSpan(params[0].axisValue)
         params.forEach((item: any) => {
-          const color = item.seriesName === '本月合计' ? SERIES_COLORS.actual
-            : item.seriesName === '上年同期' ? SERIES_COLORS.same
+          const color = item.seriesName === labels.actual ? SERIES_COLORS.actual
+            : item.seriesName === labels.same ? SERIES_COLORS.same
             : SERIES_COLORS.budget
           const value = item.value === null || item.value === undefined ? '–' : formatMoneyWan(item.value)
           result += `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin:4px 0">
@@ -56,7 +59,7 @@ export function TrendChart({ data, metric }: TrendChartProps) {
       },
     },
     legend: {
-      data: ['本月合计', '上年同期', '月度预算'],
+      data: [labels.actual, labels.same, labels.budget],
       bottom: 0,
       itemWidth: 12,
       itemHeight: 8,
@@ -122,7 +125,7 @@ export function TrendChart({ data, metric }: TrendChartProps) {
     },
     series: [
       {
-        name: '本月合计',
+        name: labels.actual,
         type: 'bar',
         data: actual,
         itemStyle: {
@@ -133,7 +136,7 @@ export function TrendChart({ data, metric }: TrendChartProps) {
         barGap: '20%',
       },
       {
-        name: '上年同期',
+        name: labels.same,
         type: 'bar',
         data: same,
         itemStyle: {
@@ -143,7 +146,7 @@ export function TrendChart({ data, metric }: TrendChartProps) {
         barWidth: '20%',
       },
       {
-        name: '月度预算',
+        name: labels.budget,
         type: 'line',
         data: budget,
         smooth: 0.4,
@@ -164,7 +167,7 @@ export function TrendChart({ data, metric }: TrendChartProps) {
       },
     ] as SeriesOption[],
     }
-  }, [data, metric])
+  }, [data, metric, mode])
 
   return (
     <div className="h-[260px] w-full lg:h-[320px]">
