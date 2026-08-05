@@ -11,6 +11,8 @@ export interface AccessTokenPayload {
   username: string
   role: string // roleCode
   type: 'access'
+  /** 会话唯一标识（登录/刷新时生成），用于精准登出与改密轮转；旧 token 无此字段需兼容 */
+  jti?: string
 }
 
 export interface RefreshTokenPayload {
@@ -19,13 +21,15 @@ export interface RefreshTokenPayload {
   type: 'refresh'
 }
 
-export function signAccessToken(input: { userId: string; username: string; roleCode: string }): string {
+export function signAccessToken(input: { userId: string; username: string; roleCode: string; jti?: string }): string {
   const cfg = loadConfig()
   const payload: AccessTokenPayload = {
     sub: input.userId,
     username: input.username,
     role: input.roleCode,
     type: 'access',
+    // 缺省生成独立 jti；登录/刷新/改密时传入与 refresh token 相同的 jti，保证会话可精准定位
+    jti: input.jti ?? randomUUID(),
   }
   const options: SignOptions = { expiresIn: cfg.accessTokenTtl as SignOptions['expiresIn'] }
   return jwt.sign(payload, cfg.jwtSecret, options)

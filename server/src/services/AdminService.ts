@@ -189,7 +189,7 @@ export const AdminService = {
     if (!found) throw errors.notFound('用户不存在')
     await assertRoleAssignable(ctx.actorRoleId, found.roleId)
     await assertNotLastSuperadmin(id)
-    await prisma.user.update({ where: { id }, data: { status: 'inactive', refreshTokenJti: null } })
+    await prisma.user.update({ where: { id }, data: { status: 'inactive', refreshTokenJtiList: [] } })
     await recordAudit({ userId: ctx.userId, module: 'admin', action: 'user_disable', targetId: id }, ctx.traceId)
   },
 
@@ -219,7 +219,7 @@ export const AdminService = {
     if (!found) throw errors.notFound('用户不存在')
     await assertRoleAssignable(ctx.actorRoleId, found.roleId)
     const passwordHash = await hashPassword(newPassword)
-    await prisma.user.update({ where: { id }, data: { passwordHash, mustChangePassword: true, refreshTokenJti: null } })
+    await prisma.user.update({ where: { id }, data: { passwordHash, mustChangePassword: true, refreshTokenJtiList: [] } })
     await recordAudit({ userId: ctx.userId, module: 'admin', action: 'update', targetId: id, detail: { action: 'reset_password' } }, ctx.traceId)
   },
 

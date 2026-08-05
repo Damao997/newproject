@@ -12,7 +12,7 @@ import type { SubjectNode } from '@/types'
  * metric-values 边界测试。
  *
  * 重点覆盖三个比率函数的除零与负值分支 —— 财务口径下
- * "分母为 0 返回 0" 与 "负分母不得让涨跌方向反转" 是易错点。
+ * "分母为 0 返回 0" 与 "负分母按绝对值计算、涨跌方向不反转" 是易错点。
  */
 
 /** 构造 MetricValue，未指定字段取 0 */
@@ -57,14 +57,19 @@ describe('calcYoy 同比', () => {
     expect(calcYoy(mv({ actual: 0, samePeriod: 100 }))).toBe(-1)
   })
 
-  it('同期为负（亏损转盈）→ 数学结果为负，需在展示层解读', () => {
-    // (50 - (-100)) / -100 = -1.5：分母为负会使"改善"呈现为负增长
-    expect(calcYoy(mv({ actual: 50, samePeriod: -100 }))).toBeCloseTo(-1.5, 10)
+  it('同期为负（亏损转盈）→ 按绝对值分母显示正增长', () => {
+    // (50 - (-100)) / |-100| = 1.5：扭亏为盈显示为 +150% 改善，而非误导性负增长
+    expect(calcYoy(mv({ actual: 50, samePeriod: -100 }))).toBeCloseTo(1.5, 10)
   })
 
-  it('本月负、同期负（亏损扩大）', () => {
-    // (-150 - (-100)) / -100 = 0.5
-    expect(calcYoy(mv({ actual: -150, samePeriod: -100 }))).toBeCloseTo(0.5, 10)
+  it('本月负、同期负（亏损扩大）→ 负增长', () => {
+    // (-150 - (-100)) / |-100| = -0.5：亏损扩大显示为负增长
+    expect(calcYoy(mv({ actual: -150, samePeriod: -100 }))).toBeCloseTo(-0.5, 10)
+  })
+
+  it('同期为负、本月为 0 → 100% 改善', () => {
+    // (0 - (-100)) / |-100| = 1：由亏转平按 +100% 解读
+    expect(calcYoy(mv({ actual: 0, samePeriod: -100 }))).toBeCloseTo(1, 10)
   })
 
   it('极小同期不产生 Infinity', () => {
@@ -119,8 +124,9 @@ describe('calcYtdYoy 累计同比', () => {
     expect(calcYtdYoy(mv({ ytd: 0, samePeriodYtd: 600 }))).toBe(-1)
   })
 
-  it('同期累计为负', () => {
-    expect(calcYtdYoy(mv({ ytd: 300, samePeriodYtd: -300 }))).toBeCloseTo(-2, 10)
+  it('同期累计为负（扭亏）→ 按绝对值分母显示正增长', () => {
+    // (300 - (-300)) / |-300| = 2：亏损转盈利按 +200% 解读
+    expect(calcYtdYoy(mv({ ytd: 300, samePeriodYtd: -300 }))).toBeCloseTo(2, 10)
   })
 })
 

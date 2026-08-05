@@ -26,6 +26,8 @@ export interface AuthUserContext {
   orgScopeBu: string[] | null
   /** 多选数据范围（公司编码数组，可混合单体与汇总），优先于 companyCode */
   dataScopeCodes: string[] | null
+  /** 当前 access token 的会话标识（jti），用于精准登出/改密轮转；旧 token 可能缺失 */
+  tokenJti?: string
 }
 
 export {}

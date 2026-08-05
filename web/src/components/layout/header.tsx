@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { useAuthStore } from '@/stores/authStore'
 import { usePeriodStore } from '@/stores/periodStore'
 import { useAvailablePeriods } from '@/hooks/api-queries'
+import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -123,7 +124,18 @@ export function Header({ onMenuClick }: HeaderProps) {
                 <span>修改密码</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={logout}>
+              {/* 退出登录：先通知后端吊销当前会话（黑名单+审计），失败也不阻塞本地登出 */}
+              <DropdownMenuItem
+                onClick={async () => {
+                  try {
+                    await api.logout()
+                  } catch {
+                    // 忽略：令牌可能已失效/网络异常，本地登出兜底
+                  } finally {
+                    logout()
+                  }
+                }}
+              >
                 <LogOut className="mr-2 h-4 w-4" />
                 <span>退出登录</span>
               </DropdownMenuItem>

@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma'
+import { Prisma } from '@prisma/client'
 import { verifyPassword, hashPassword } from '../lib/password'
 import {
   signAccessToken,
@@ -61,6 +62,25 @@ function findUserWithRole(where: { id: string } | { username: string }) {
   })
 }
 
+/** 多会话上限：同账号最多同时保留的 refresh jti 数，超限淘汰最旧会话 */
+const MAX_SESSIONS = 10
+
+/** 读取 jti 列表（旧单值/空值兼容为 []） */
+function readJtiList(user: { refreshTokenJtiList?: unknown }): string[] {
+  return Array.isArray(user.refreshTokenJtiList) ? (user.refreshTokenJtiList as string[]) : []
+}
+
+/** 追加 jti（超限淘汰最旧） */
+function appendJti(list: string[], jti: string): string[] {
+  const next = [...list, jti]
+  return next.length > MAX_SESSIONS ? next.slice(next.length - MAX_SESSIONS) : next
+}
+
+/** 移除指定 jti（精准登出/轮转） */
+function removeJti(list: string[], jti: string): string[] {
+  return list.filter((x) => x !== jti)
+}
+
 function toFrontendUser(user: UserWithRole): FrontendUser {
   const scopeCodes = Array.isArray(user.dataScopeCodes) ? (user.dataScopeCodes as string[]) : []
   let dataScope: string
@@ -116,16 +136,19 @@ export const AuthService = {
       throw errors.unauthorized('用户名或密码错误')
     }
 
+    const { token: refreshToken, jti } = signRefreshToken(user.id)
     const accessToken = signAccessToken({
       userId: user.id,
       username: user.username,
       roleCode: user.role.code,
+      // 与 refresh token 共享会话 jti，登出/改密时可精准定位本会话
+      jti,
     })
-    const { token: refreshToken, jti } = signRefreshToken(user.id)
 
+    // 多会话模型：追加而非覆盖，避免后登录会话把已登录会话踢下线
     await prisma.user.update({
       where: { id: user.id },
-      data: { refreshTokenJti: jti },
+      data: { refreshTokenJtiList: appendJti(readJtiList(user), jti) },
     })
 
     await recordAudit(
@@ -159,50 +182,79 @@ export const AuthService = {
       throw errors.unauthorized('用户不存在或已停用')
     }
 
-    // 轮转防重放：仅当前记录的 jti 有效，防止旧 refresh 复用
-    if (user.refreshTokenJti !== payload.jti) {
+    // 轮转防重放：仅当前有效会话列表中的 jti 可刷新，任一命中即放行（多会话互不影响）
+    const jtiList = readJtiList(user)
+    if (!jtiList.includes(payload.jti)) {
       throw errors.unauthorized('刷新令牌已失效')
     }
 
+    const { token: newRefresh, jti: newJti } = signRefreshToken(user.id)
     const newAccess = signAccessToken({
       userId: user.id,
       username: user.username,
       roleCode: user.role.code,
+      // 与 refresh token 共享会话 jti，登出/改密时可精准定位本会话
+      jti: newJti,
     })
-    const { token: newRefresh, jti: newJti } = signRefreshToken(user.id)
 
-    // 事务：旧 jti 入黑名单 + 更新为新 jti
+    // 事务：旧 jti 入黑名单（upsert 幂等，并发重放同令牌不产生唯一冲突）+ 列表内移除旧 jti 并追加新 jti（仅轮转当前会话）
     await prisma.$transaction([
-      prisma.tokenBlacklist.create({
-        data: {
+      prisma.tokenBlacklist.upsert({
+        where: { jti: payload.jti },
+        create: {
           jti: payload.jti,
           userId: user.id,
           expiredAt: getRefreshTokenExpiry(refreshToken),
         },
+        update: {},
       }),
-      prisma.user.update({ where: { id: user.id }, data: { refreshTokenJti: newJti } }),
+      prisma.user.update({
+        where: { id: user.id },
+        data: { refreshTokenJtiList: appendJti(removeJti(jtiList, payload.jti), newJti) },
+      }),
     ])
 
     return { accessToken: newAccess, refreshToken: newRefresh }
   },
 
-  /** 登出：当前 refresh jti 入黑名单 + 清空，记录审计 */
-  async logout(userId: string, meta: AuditMeta = {}): Promise<void> {
+  /** 登出：仅将当前会话 jti 入黑名单并从列表移除（其他会话不受影响），记录审计 */
+  async logout(userId: string, tokenJti: string | undefined, meta: AuditMeta = {}): Promise<void> {
     const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user) {
       // 幂等：用户不存在也视为已登出
       return
     }
-    if (user.refreshTokenJti) {
+    const jtiList = readJtiList(user)
+    // 三分支：旧 token 无 jti → 回退全量清理（保持历史语义）；
+    // 有 jti 且在列表 → 精准吊销当前会话；有 jti 但已不在列表（被轮转/淘汰的幽灵会话）
+    // → 仅将该 jti 入黑名单防未来重放，不动其他活跃会话
+    let jtis: string[]
+    let nextList: string[]
+    if (!tokenJti) {
+      jtis = jtiList
+      nextList = []
+    } else if (jtiList.includes(tokenJti)) {
+      jtis = [tokenJti]
+      nextList = removeJti(jtiList, tokenJti)
+    } else {
+      jtis = [tokenJti]
+      nextList = jtiList
+    }
+    if (jtis.length > 0) {
       const ttlDays = 7
       const expiredAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000)
       await prisma.$transaction([
-        prisma.tokenBlacklist.upsert({
-          where: { jti: user.refreshTokenJti },
-          create: { jti: user.refreshTokenJti, userId: user.id, expiredAt },
-          update: {},
+        ...jtis.map((jti) =>
+          prisma.tokenBlacklist.upsert({
+            where: { jti },
+            create: { jti, userId: user.id, expiredAt },
+            update: {},
+          })
+        ),
+        prisma.user.update({
+          where: { id: user.id },
+          data: { refreshTokenJtiList: nextList },
         }),
-        prisma.user.update({ where: { id: user.id }, data: { refreshTokenJti: null } }),
       ])
     }
     await recordAudit(
@@ -220,9 +272,21 @@ export const AuthService = {
     return toFrontendUser(user)
   },
 
-  /** 修改密码：校验原密码 → bcrypt 更新 */
-  async changePassword(userId: string, oldPassword: string, newPassword: string, meta: AuditMeta = {}): Promise<void> {
-    const user = await prisma.user.findUnique({ where: { id: userId } })
+  /**
+   * 修改密码：校验原密码 → bcrypt 更新 → 当前会话轮转（签发新 token 对，不清空其他会话）。
+   * 返回新令牌对供前端静默续期，避免改密后强制跳转登录页。
+   */
+  async changePassword(
+    userId: string,
+    oldPassword: string,
+    newPassword: string,
+    meta: AuditMeta = {},
+    tokenJti?: string,
+  ): Promise<TokenPair> {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { role: true },
+    })
     if (!user || user.status !== 'active') {
       throw errors.unauthorized('用户不存在或已停用')
     }
@@ -233,14 +297,41 @@ export const AuthService = {
     // 复用配置校验（确保 bcryptCost 合法）
     loadConfig()
     const passwordHash = await hashPassword(newPassword)
-    await prisma.user.update({
-      where: { id: user.id },
-      // 改密成功后清除强制改密标志，并吊销 refresh token 强制重新登录
-      data: { passwordHash, mustChangePassword: false, refreshTokenJti: null },
+    const jtiList = readJtiList(user)
+    // 当前会话轮转：旧 jti 入黑名单并从列表移除（若可定位），追加新 jti；其余会话保留
+    const targetJti = tokenJti && jtiList.includes(tokenJti) ? tokenJti : null
+    const { token: newRefresh, jti: newJti } = signRefreshToken(user.id)
+    const updatedJtiList = appendJti(targetJti ? removeJti(jtiList, targetJti) : jtiList, newJti)
+    const accessToken = signAccessToken({
+      userId: user.id,
+      username: user.username,
+      roleCode: user.role.code,
+      // 与 refresh token 共享会话 jti，登出/改密时可精准定位本会话
+      jti: newJti,
     })
+
+    const ops: Prisma.PrismaPromise<unknown>[] = []
+    if (targetJti) {
+      ops.push(
+        prisma.tokenBlacklist.upsert({
+          // 当前会话 jti 入黑名单（与 refresh token 共享 jti），防并发改密下旧令牌重放；upsert 幂等
+          where: { jti: targetJti },
+          create: { jti: targetJti, userId: user.id, expiredAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
+          update: {},
+        })
+      )
+    }
+    ops.push(
+      prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash, mustChangePassword: false, refreshTokenJtiList: updatedJtiList },
+      })
+    )
+    await prisma.$transaction(ops)
     await recordAudit(
       { userId, module: 'auth', action: 'update', targetId: userId, detail: { field: 'password' }, ip: meta.ip ?? null, userAgent: meta.userAgent ?? null },
       meta.traceId,
     )
+    return { accessToken, refreshToken: newRefresh }
   },
 }

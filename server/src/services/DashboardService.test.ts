@@ -31,6 +31,12 @@ describe('DashboardService 纯函数', () => {
     it('下降返回负比率', () => {
       expect(changeRate(90, 100)).toBe(-0.1)
     })
+    it('负基期扭亏为盈返回正比率（绝对值分母，方向不反转）', () => {
+      expect(changeRate(50, -100)).toBe(1.5)
+    })
+    it('负基期亏损扩大返回负比率', () => {
+      expect(changeRate(-150, -100)).toBe(-0.5)
+    })
   })
 
   describe('rateOf 预算达成率', () => {

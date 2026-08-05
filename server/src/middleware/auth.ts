@@ -73,6 +73,8 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
       // orgScopeBu / dataScopeCodes 为 Json? 字段，运行时校验为字符串数组后收窄类型
       orgScopeBu: Array.isArray(user.orgScopeBu) ? (user.orgScopeBu as string[]) : null,
       dataScopeCodes: Array.isArray(user.dataScopeCodes) ? (user.dataScopeCodes as string[]) : null,
+      // 会话标识：登出/改密时精准轮转对应 jti（旧 token 无 jti，回退全量清理）
+      tokenJti: payload.jti,
     }
     req.authUser = context
     next()

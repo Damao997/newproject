@@ -87,9 +87,12 @@ export function generateStaticLeaf(
   }
 }
 
-/** 同比 = (本月实际 - 同期实际) / 同期实际 */
+/** 同比 = (本月实际 - 同期实际) / |同期实际|（基期为负时按绝对值分母，保证涨跌方向不反转） */
 export function calcYoy(actual: number, samePeriod: number): number {
-  return samePeriod ? round2(((actual - samePeriod) / samePeriod) * 100) : 0
+  const base = Math.abs(samePeriod)
+  if (!base) return 0
+  const r = ((actual - samePeriod) / base) * 100
+  return Number.isFinite(r) ? round2(r) : 0
 }
 
 /** 达成率 = 本年累计 / 全年预算（预算为年度值，须用 YTD 累计作分子） */

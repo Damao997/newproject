@@ -28,6 +28,9 @@ describe('确定性值生成器', () => {
   it('calcYoy / calcAchievement 计算与除零保护', () => {
     expect(calcYoy(120, 100)).toBe(20)
     expect(calcYoy(120, 0)).toBe(0)
+    // 负基期按绝对值分母：扭亏为盈显示正增长、亏损扩大显示负增长
+    expect(calcYoy(50, -100)).toBe(150)
+    expect(calcYoy(-150, -100)).toBe(-50)
     // 达成率 = 本年累计 / 全年预算：累计 600 / 全年 1200 = 50%
     expect(calcAchievement(600, 1200)).toBe(50)
     expect(calcAchievement(90, 100)).toBe(90)

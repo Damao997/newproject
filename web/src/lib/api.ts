@@ -5,12 +5,76 @@ import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse,
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
 /**
- * 单飞刷新：并发 401 请求共享同一个 refresh 流程。
+ * 单飞刷新：并发 401 请求共享同一个 refresh 流程（单标签页内）。
  * 后端 refresh token 为轮转制——同一 token 只可成功使用一次（重复使用返回 401），
  * 若多个 401 各自独立 refresh，竞态中除首个外全部失败并触发登出跳转。
  * 该 Promise 在成功后置空，保证下次 401 可重新发起刷新。
  */
 let refreshPromise: Promise<string> | null = null
+
+const REFRESH_TIMEOUT_MS = 10000
+const REFRESH_RETRY_DELAY_MS = 1000
+/** 跨标签页竞态兜底等待窗口：其他标签页轮转成功后广播几乎必然在 400ms 内到达 */
+const REFRESH_RACE_WAIT_MS = 400
+
+/**
+ * 跨标签页令牌协调：任一标签页刷新成功后广播新令牌，其他标签页 401 时直接复用，
+ * 避免各标签页用同一旧 refresh token 并发刷新导致轮转竞态互踢。
+ * store 为唯一权威：onmessage 直接写入 store，刷新失败兜底只依赖 store 变化，不另设缓存。
+ */
+const refreshChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('auth-refresh') : null
+
+if (refreshChannel) {
+  refreshChannel.onmessage = (e) => {
+    const data = e.data as { accessToken?: string; refreshToken?: string } | null
+    if (!data?.accessToken || !data?.refreshToken) return
+    const { refreshToken, setTokens } = useAuthStore.getState()
+    // 仅当本地令牌与广播不一致时更新（广播按发送顺序到达，后者恒新）
+    if (refreshToken !== data.refreshToken) {
+      setTokens(data.accessToken, data.refreshToken)
+    }
+  }
+}
+
+/** 提取刷新失败的业务消息（与拦截器一致：有响应取 message，无响应区分超时与网络层错误） */
+function toRefreshError(e: unknown): Error {
+  const axiosErr = e as { response?: { data?: { message?: string } }; code?: string }
+  const message = axiosErr.response?.data?.message
+  if (message) return new Error(message)
+  if (axiosErr.code === 'ECONNABORTED') return new Error('刷新令牌请求超时，请重新登录')
+  return new Error('网络连接异常，请检查网络后重试')
+}
+
+/**
+ * 刷新请求：10s 超时；超时/网络层错误重试一次（请求可能未达服务端；
+ * 有响应如 401/500 不重试，避免对已轮转的旧令牌做无意义重放）。
+ */
+async function postRefreshWithRetry(refreshToken: string): Promise<AxiosResponse> {
+  const attempt = (): Promise<AxiosResponse> =>
+    axios.post(`${API_BASE_URL}/auth/refresh`, { refreshToken }, { timeout: REFRESH_TIMEOUT_MS })
+  try {
+    return await attempt()
+  } catch (e) {
+    const axiosErr = e as { code?: string; response?: unknown }
+    const retryable = axiosErr.code === 'ECONNABORTED' || (!axiosErr.response && !axiosErr.code)
+    if (!retryable) throw e
+    await new Promise((r) => setTimeout(r, REFRESH_RETRY_DELAY_MS))
+    return attempt()
+  }
+}
+
+/** 等待本地 refresh token 发生变化（其他标签页广播写入），超时返回 */
+function waitForStoreTokenChange(previousRefreshToken: string, ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const deadline = Date.now() + ms
+    const check = () => {
+      if (Date.now() >= deadline) return resolve()
+      if (useAuthStore.getState().refreshToken !== previousRefreshToken) return resolve()
+      setTimeout(check, 40)
+    }
+    check()
+  })
+}
 
 async function refreshAccessTokenOnce(): Promise<string> {
   if (!refreshPromise) {
@@ -18,28 +82,41 @@ async function refreshAccessTokenOnce(): Promise<string> {
       const { refreshToken, setTokens } = useAuthStore.getState()
       if (!refreshToken) throw new Error('登录状态已失效，请重新登录')
       try {
-        // refresh 为轮转制且后端耗时 <300ms，10s 超时仅防网络黑洞导致永久挂起
-        const response = await axios.post(
-          `${API_BASE_URL}/auth/refresh`,
-          { refreshToken },
-          { timeout: 10000 },
-        )
+        const response = await postRefreshWithRetry(refreshToken)
         const { accessToken, refreshToken: newRefreshToken } = response.data.data
         setTokens(accessToken, newRefreshToken)
+        refreshChannel?.postMessage({ accessToken, refreshToken: newRefreshToken })
         return accessToken
       } catch (e) {
-        // 提取后端统一响应中的业务消息（如“刷新令牌已失效”），无响应时区分超时与网络层错误
-        const axiosErr = e as { response?: { data?: { message?: string } }; code?: string }
-        const message = axiosErr.response?.data?.message
-        if (message) throw new Error(message)
-        if (axiosErr.code === 'ECONNABORTED') throw new Error('刷新令牌请求超时，请重新登录')
-        throw new Error('网络连接异常，请检查网络后重试')
+        // 跨标签页轮转竞态兜底：本标签页刷新失败时，其他标签页可能已成功轮转并广播
+        await waitForStoreTokenChange(refreshToken, REFRESH_RACE_WAIT_MS)
+        const latest = useAuthStore.getState()
+        if (latest.refreshToken && latest.refreshToken !== refreshToken) {
+          return latest.accessToken as string
+        }
+        throw toRefreshError(e)
       }
     })().finally(() => {
       refreshPromise = null
     })
   }
   return refreshPromise
+}
+
+/** 会话失效提示：并发 401 只提示一次，避免连环弹窗 */
+let sessionExpiredNotified = false
+
+/**
+ * 会话失效降级处理：本地登出 → 弹窗告知原因 → 跳转登录页（携带 expired 提示参数）。
+ * 弹窗在跳转前同步展示，用户明确知晓被踢原因。
+ */
+function handleSessionExpired(reason: unknown): void {
+  useAuthStore.getState().logout()
+  if (sessionExpiredNotified) return
+  sessionExpiredNotified = true
+  const message = reason instanceof Error ? reason.message : '登录状态已失效，请重新登录'
+  window.alert(`${message}，请重新登录`)
+  window.location.href = '/login?expired=1'
 }
 
 /** 导入预览（dry-run）返回结构：计数 + 错误明细 + 覆盖摘要 + 激活影响预告 + 看板 KPI 覆盖检查 */
@@ -113,26 +190,29 @@ class ApiClient {
       async (error) => {
         const originalRequest = error.config
 
-        // 认证接口自身的 401 直接透传：/auth/login 密码错误、/auth/refresh 令牌失效时
-        // 不应触发刷新流程（未登录态 refreshToken 为空会走 logout+跳转，吞掉登录错误提示）
+        // 认证接口自身的 401 直接透传：/auth/login 密码错误、/auth/refresh 令牌失效、
+        // /auth/logout 主动登出时不应触发刷新流程（未登录态 refreshToken 为空会走 logout+跳转，吞掉登录错误提示）
         const isAuthEndpoint =
-          originalRequest.url?.includes('/auth/login') || originalRequest.url?.includes('/auth/refresh')
+          originalRequest.url?.includes('/auth/login') ||
+          originalRequest.url?.includes('/auth/refresh') ||
+          originalRequest.url?.includes('/auth/logout')
 
         if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
           originalRequest._retry = true
-          
+
           try {
             const accessToken = await refreshAccessTokenOnce()
             originalRequest.headers.Authorization = `Bearer ${accessToken}`
             return this.client(originalRequest)
           } catch (refreshError) {
-            useAuthStore.getState().logout()
-            window.location.href = '/login'
+            // 降级处理：先本地登出并弹窗告知原因（仅一次），再跳转登录页携带提示参数；
+            // 不再静默 location.href 跳转，避免用户不明原因被踢
+            handleSessionExpired(refreshError)
             // refreshAccessTokenOnce 已统一抛中文 Error；兜底非 Error 值
             return Promise.reject(refreshError instanceof Error ? refreshError : new Error('登录状态已失效，请重新登录'))
           }
         }
-        
+
         return Promise.reject(error)
       }
     )
@@ -187,8 +267,9 @@ class ApiClient {
     })
   }
 
-  async updatePassword(data: { oldPassword: string; newPassword: string }): Promise<void> {
-    return this.request<void>({
+  /** 修改密码：成功返回新令牌对，前端据此静默续期（不再强制登出） */
+  async updatePassword(data: { oldPassword: string; newPassword: string }): Promise<{ accessToken: string; refreshToken: string }> {
+    return this.request<{ accessToken: string; refreshToken: string }>({
       method: 'PUT',
       url: '/auth/password',
       data,

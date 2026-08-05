@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -43,9 +43,13 @@ export default function LoginPage() {
   const submittingRef = useRef(false)
 
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const login = useAuthStore((state) => state.login)
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const user = useAuthStore((state) => state.user)
+
+  // 会话过期跳转提示（api.ts 刷新失败降级后带 ?expired=1 落地）
+  const sessionExpired = searchParams.get('expired') === '1'
 
   // 初始化：回填记住的用户名
   useEffect(() => {
@@ -136,6 +140,15 @@ export default function LoginPage() {
           </CardHeader>
           <form onSubmit={handleSubmit} noValidate>
             <CardContent className="space-y-4">
+              {sessionExpired && (
+                <div
+                  role="alert"
+                  className="flex animate-fade-in items-start gap-2 rounded-md border border-warning/20 bg-warning/10 p-3 text-sm text-warning-strong"
+                >
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>登录已过期，请重新登录</span>
+                </div>
+              )}
               {error && (
                 <div
                   role="alert"

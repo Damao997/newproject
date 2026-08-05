@@ -695,7 +695,8 @@ model User {
   status          RecordStatus @default(active)
   // 首次登录强制改密：管理员创建/重置密码后置 true，改密成功后置 false
   mustChangePassword Boolean     @default(false) @map("must_change_password")
-  refreshTokenJti String?      @map("refresh_token_jti")
+  // 多会话刷新令牌 jti 列表（Json 数组）：任一有效即放行，登录追加、登出/改密轮转移除
+  refreshTokenJtiList Json?      @map("refresh_token_jti_list") @db.JsonB
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
 

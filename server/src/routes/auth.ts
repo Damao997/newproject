@@ -43,13 +43,13 @@ router.post(
   }),
 )
 
-// POST /auth/logout —— 登出（需登录）
+// POST /auth/logout —— 登出（需登录；仅吊销当前会话）
 router.post(
   '/logout',
   authenticate,
   asyncHandler(async (req, res) => {
     if (!req.authUser) throw errors.unauthorized()
-    await AuthService.logout(req.authUser.userId, auditMeta(req))
+    await AuthService.logout(req.authUser.userId, req.authUser.tokenJti, auditMeta(req))
     sendOk(res, null)
   }),
 )
@@ -65,15 +65,15 @@ router.get(
   }),
 )
 
-// PUT /auth/password —— 修改密码（需登录）
+// PUT /auth/password —— 修改密码（需登录；成功返回新令牌对供前端静默续期）
 router.put(
   '/password',
   authenticate,
   asyncHandler(async (req, res) => {
     if (!req.authUser) throw errors.unauthorized()
     const parsed = updatePasswordSchema.parse(req.body)
-    await AuthService.changePassword(req.authUser.userId, parsed.oldPassword, parsed.newPassword, auditMeta(req))
-    sendOk(res, null)
+    const result = await AuthService.changePassword(req.authUser.userId, parsed.oldPassword, parsed.newPassword, auditMeta(req), req.authUser.tokenJti)
+    sendOk(res, result)
   }),
 )
 

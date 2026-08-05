@@ -111,7 +111,10 @@ function round2(n: number): number {
   return Number(n.toFixed(2))
 }
 export function changeRate(cur: number, base: number): number {
-  return base ? round2((cur - base) / base) : 0
+  const absBase = Math.abs(base)
+  if (!absBase) return 0
+  const r = (cur - base) / absBase
+  return Number.isFinite(r) ? round2(r) : 0
 }
 /** 预算达成率（%）：divisor=12 表示按月均预算折算月度达成率；预算为 0/缺失返回 null（前端显示 "–"） */
 export function rateOf(actualVal: number, budgetVal: number, divisor = 1): number | null {

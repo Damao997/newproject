@@ -43,7 +43,7 @@ function activeUser(overrides: Record<string, unknown> = {}) {
     companyCode: null,
     status: 'active',
     mustChangePassword: false,
-    refreshTokenJti: null,
+    refreshTokenJtiList: [],
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-02T00:00:00Z'),
     role: { id: 'r-admin', code: 'admin', scopeValue: '*', status: 'active', permissions: [{ resource: 'admin:users:view', action: 'view' }] },
@@ -141,19 +141,20 @@ describe('全链路：登录 → profile → refresh → logout', () => {
       .set('Authorization', `Bearer ${accessToken}`)
     expect(profileRes.status).toBe(200)
 
-    // refresh：需库中 jti 与令牌一致
+    // refresh：需库中 jti 列表包含令牌 jti
     const jwtLib = await import('./lib/jwt')
     const decoded = jwtLib.verifyRefreshToken(refreshToken)
     mocks.prisma.tokenBlacklist.findUnique.mockResolvedValue(null)
-    mocks.prisma.user.findUnique.mockResolvedValue(activeUser({ refreshTokenJti: decoded.jti }))
+    mocks.prisma.user.findUnique.mockResolvedValue(activeUser({ refreshTokenJtiList: [decoded.jti] }))
     const refreshRes = await request(app)
       .post('/api/v1/auth/refresh')
       .send({ refreshToken })
     expect(refreshRes.status).toBe(200)
     expect(refreshRes.body.data.accessToken).toBeTruthy()
 
-    // logout
-    mocks.prisma.user.findUnique.mockResolvedValue(activeUser({ refreshTokenJti: 'jti-x' }))
+    // logout：access token 携带会话 jti，精准移除该会话（mock 列表含该 jti）
+    const accessJti = jwtLib.verifyAccessToken(accessToken).jti
+    mocks.prisma.user.findUnique.mockResolvedValue(activeUser({ refreshTokenJtiList: [accessJti] }))
     const logoutRes = await request(app)
       .post('/api/v1/auth/logout')
       .set('Authorization', `Bearer ${accessToken}`)

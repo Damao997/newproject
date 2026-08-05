@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -82,11 +81,10 @@ function PasswordField({ id, label, value, onChange, error, placeholder, autoCom
 
 /**
  * 修改密码对话框：右上角用户菜单主动改密 + 首次登录强制改密（force 模式不可关闭）。
- * 成功后清除强制改密标志并登出（后端已吊销 refresh token，须重新登录）。
+ * 成功后后端签发新令牌对，前端静默续期（不登出、不跳转），其他会话不受影响。
  */
 export function ChangePasswordDialog() {
-  const { user, passwordDialog, closePasswordDialog, updateUser, logout } = useAuthStore()
-  const navigate = useNavigate()
+  const { user, passwordDialog, closePasswordDialog, updateUser, setTokens } = useAuthStore()
   const { open, force } = passwordDialog
 
   const [oldPassword, setOldPassword] = useState('')
@@ -124,13 +122,13 @@ export function ChangePasswordDialog() {
     setError(null)
     setIsSubmitting(true)
     try {
-      // 后端 AuthService.changePassword：校验原密码 → bcrypt 更新 → 吊销 refresh token → 审计
-      await api.updatePassword({ oldPassword, newPassword })
+      // 后端 AuthService.changePassword：校验原密码 → bcrypt 更新 → 当前会话轮转并签发新令牌对
+      const result = await api.updatePassword({ oldPassword, newPassword })
       updateUser({ mustChangePassword: false })
+      // 静默续期：用新令牌对替换本地令牌，保持当前登录态（其他标签页/会话不受影响）
+      setTokens(result.accessToken, result.refreshToken)
       closePasswordDialog()
-      window.alert('密码修改成功，请使用新密码重新登录')
-      logout()
-      navigate('/login')
+      window.alert('密码修改成功')
     } catch (e) {
       setError(e instanceof Error ? e.message : '修改失败，请稍后重试')
     } finally {
