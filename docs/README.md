@@ -13,7 +13,7 @@
 
 平台提供经营指标看板、财务指标明细、数据导入管理、权限管理等模块，帮助财务与经营分析人员快速掌握财年进度与同比表现。
 
-> **当前交付状态**：项目处于规划与文档建设阶段。前端方案采用 v3 纸质感设计（Radix UI + Shadcn/ui）。文档体系采用 CLAUDE.md（AI Agent 入口）+ 四分类结构（references/ + plans/ + data-templates/ + archive/）。
+> **当前交付状态**：项目处于规划与文档建设阶段。前端方案采用 v3 纸质感设计（Radix UI + Shadcn/ui）。文档体系采用 CLAUDE.md（AI Agent 入口）+ 五分类结构（references/ + plans/ + data-templates/ + archive/ + superpowers/）。
 
 ---
 
@@ -71,10 +71,11 @@
 |---|---|---|
 | 项目概述（本页） | `docs/README.md` | 平台定位、特性、术语表、技术栈 |
 | AI Agent 入口 | `CLAUDE.md`（根目录） | 开发规范、裁决总纲、按场景路由的文档索引表 |
-| 引用（11 篇） | `docs/references/` | 前端/后端/数据库/安全/错误码/并发/运维/可观测性/性能/测试/版本控制 |
+| 引用（12 篇） | `docs/references/` | 前端/后端/数据库/安全/错误码/并发/导入边界/运维/可观测性/性能/测试/版本控制 |
 | 方案（6 篇） | `docs/plans/` | 整体方案v3 / 前端设计方案v3 / 数据模型规范 / 安全与权限规范 / AI模块规范 / 部署运维规范 |
 | 数据模版 | `docs/data-templates/samples/` | 示例 Excel 数据文件（分析主体/经营数据/静态数据/年度预算） |
 | 历史归档 | `docs/archive/` | 旧版本文档与设计审查报告（归档索引见 [archive/index.md](archive/index.md)） |
+| 功能规划 | `docs/superpowers/` | 高级功能实施计划（plans/）与设计规格（specs/） |
 
 > AI Agent 开发请从根目录 `CLAUDE.md` 开始，它包含按场景路由到具体文档的索引表。
 
@@ -87,13 +88,21 @@
 ├── CLAUDE.md                    # AI Agent 指令文件（唯一权威入口）
 ├── docs/
 │   ├── README.md                # 项目概述（本页）
-│   ├── references/              # 引用：模块化快速参考（11 篇）
+│   ├── 本地开发环境启动指南.md    # 现行操作指南
+│   ├── references/              # 引用：模块化快速参考（12 篇）
 │   ├── data-templates/          # 数据模版：示例 Excel 数据
 │   │   └── samples/
 │   ├── plans/                   # 方案：权威深度规范与设计文档（6 篇）
-│   └── archive/                 # 历史文档：已废止的旧版本文档
+│   ├── superpowers/             # 高级功能规划（plans/）与设计规格（specs/）
+│   │   ├── plans/
+│   │   └── specs/
+│   └── archive/                 # 历史文档：已废止的旧版本文档与审查报告
 │       ├── index.md
 │       ├── UI设计规范.md         # v2 毛玻璃规范（已废止）
+│       ├── 全面代码审查报告-2026-07-30.md
+│       ├── 前端全面审查报告-2026-07-27.md
+│       ├── 文档与代码差异对齐报告-2026-07-30.md
+│       ├── 项目交接文档-2026-07-26.md
 │       └── legacydocs/          # 原始 PRD/方案/审查报告
 ```
 
@@ -104,4 +113,4 @@
 - 当前项目处于规划与文档建设阶段。
 - 前端方案采用 **v3 纸质感设计**（Radix UI + Shadcn/ui + Tailwind CSS + 纯 CSS 动画），详见 `docs/plans/frontend-design-proposal.md`。
 - v2 毛玻璃 UI 设计规范（Ant Design 全量 + Framer Motion）已废止，归档于 `docs/archive/`。
-- 文档体系采用四分类结构：`CLAUDE.md`（AI 入口）+ `references/`（引用）+ `plans/`（方案）+ `data-templates/`（数据模版）。
+- 文档体系采用五分类结构：`CLAUDE.md`（AI 入口）+ `references/`（引用）+ `plans/`（方案）+ `data-templates/`（数据模版）+ `superpowers/`（功能规划）。

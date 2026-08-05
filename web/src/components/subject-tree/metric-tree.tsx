@@ -22,11 +22,11 @@ interface MetricTreeProps {
   emptyText?: string
 }
 
-/** 涨跌彩色变化值（红涨绿跌、无箭头、等宽数字居中）：比率科目用百分点差 pp，其余用相对百分比 */
-function ChangeText({ value, unit = '%' }: { value: number; unit?: '%' | 'pp' }) {
+/** 涨跌彩色变化值（红涨绿跌、无箭头、等宽数字居中）：统一按相对增长率百分比显示 */
+function ChangeText({ value }: { value: number }) {
   return (
     <span className={cn('font-num', getChangeColor(value))}>
-      {(value * 100).toFixed(1)}{unit}
+      {(value * 100).toFixed(1)}%
     </span>
   )
 }
@@ -36,13 +36,12 @@ function valueColCount(isOperating: boolean): number {
   return isOperating ? 8 : 3
 }
 
-/** 数值单元格：按 variant + 值类型输出各期间维度列（金额/数量/比率分型格式化）；比率科目同比为百分点差 */
+/** 数值单元格：按 variant + 值类型输出各期间维度列（金额/数量/比率分型格式化）；同比统一按相对增长率 */
 function renderValueCells(mv: MetricValue | undefined, isOperating: boolean, valueType?: SubjectNode['valueType']) {
   const cell = 'whitespace-nowrap px-4 py-2 align-middle text-center font-num'
-  const isRatio = valueType === 'ratio'
   const fmt = (v: number) => formatMetricValue(v, valueType)
-  // 比率科目：同比 = 本期比率 - 同期比率（pp），避免 20%→22% 被显示成 +10% 的误导
-  const yoy = (mv: MetricValue) => (isRatio ? <ChangeText value={mv.actual - mv.samePeriod} unit="pp" /> : <ChangeText value={calcYoy(mv)} />)
+  // 同比 = 相对同期增长率（比率科目同样用增长率，如 20%→22% 显示 +10.0%）
+  const yoy = (mv: MetricValue) => <ChangeText value={calcYoy(mv)} />
   if (isOperating) {
     return (
       <>
@@ -54,7 +53,7 @@ function renderValueCells(mv: MetricValue | undefined, isOperating: boolean, val
         <td className={cell}>{mv ? fmt(mv.ytd) : '-'}</td>
         <td className={cell}>{mv ? fmt(mv.samePeriodYtd) : '-'}</td>
         <td className={cn(cell, 'font-medium')}>
-          {mv ? (isRatio ? <ChangeText value={mv.ytd - mv.samePeriodYtd} unit="pp" /> : <ChangeText value={calcYtdYoy(mv)} />) : '-'}
+          {mv ? <ChangeText value={calcYtdYoy(mv)} /> : '-'}
         </td>
       </>
     )

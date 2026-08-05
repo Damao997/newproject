@@ -61,8 +61,8 @@ function useDefaultCompanyCode(): string | null {
 // 页面子标签（与侧边栏二级菜单 ?tab= 参数对应）
 const TRANSACTION_TABS = ['overview', 'details', 'aging', 'internal', 'coverage', 'account-filter', 'collections'] as const
 type TransactionTab = (typeof TRANSACTION_TABS)[number]
-// 账龄分析展示分段（后端已由 10 段归集为 5 段）
-const AGING_GROUPS = ['1-3月', '4-6月', '半年以上', '1年至3年', '3年以上']
+// 账龄分析展示分段（后端已由 10 段归集为 7 段，1-3月按单月展开）
+const AGING_GROUPS = ['1个月', '2个月', '3个月', '4-6月', '半年以上', '1年至3年', '3年以上']
 
 /** 账龄表渲染行：数据行 / 公司小计行 / 总合计行 */
 type AgingRenderRow =
@@ -397,7 +397,8 @@ function DetailsTab() {
     counterpartyKeyword: keyword || undefined,
   }, { enabled: periods !== undefined }) // 等期间列表加载后再查，避免首次跨期查询闪现
 
-  const items = (data?.items || []) as TransactionDetailItem[]
+  // 后端已固定排除零余额行，此处为展示层防御（双保险，不参与分页计数）
+  const items = (data?.items || []).filter((r) => r.closingBalance !== 0) as TransactionDetailItem[]
   const total = data?.total || 0
   const totalsClosing = data?.totals?.closingBalance ?? 0
 
@@ -559,7 +560,8 @@ function AgingTab() {
     partyType: partyFilter === 'all' ? undefined : partyFilter,
   }, { enabled: !!period }) // 等期间确定后再查，避免跨期重复累加的首次查询
 
-  const rows = (agingData || []) as AgingAnalysisRow[]
+  // 后端已固定排除零余额行，此处为展示层防御（过滤后再聚合小计/合计，0 行对金额无贡献）
+  const rows = ((agingData || []) as AgingAnalysisRow[]).filter((r) => r.closingBalance !== 0)
 
   // 按公司分组（公司升序、组内余额降序），逐组插小计行，表尾插合计行
   const renderRows = useMemo<AgingRenderRow[]>(() => {
@@ -659,7 +661,7 @@ function AgingTab() {
             <div className="py-8 text-center text-sm text-muted-foreground">暂无数据</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm" style={{ minWidth: 960 }}>
+              <table className="w-full text-sm" style={{ minWidth: 1140 }}>
                 <thead>
                   <tr className="border-b text-center text-black">
                     <th className="w-[150px] px-2 py-2 font-medium">公司</th>

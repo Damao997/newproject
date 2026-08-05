@@ -209,9 +209,9 @@ export default function IndicatorsPage() {
 
   const handleExport = async () => {
     const pct = (v: number) => `${v.toFixed(1)}%`
-    // 分型导出：比率列乘 100 加 %，数量取整，金额保持数值；比率科目同比为百分点差 pp（后端已按 pp 返回）
+    // 分型导出：比率列乘 100 加 %，数量取整，金额保持数值；同比统一按增长率百分比（后端已按增长率返回）
     const fmtVal = (v: number, vt: string) => (vt === 'ratio' ? `${(v * 100).toFixed(1)}%` : vt === 'quantity' ? Math.round(v) : v)
-    const fmtYoy = (v: number, vt: string) => (vt === 'ratio' ? `${v.toFixed(1)}pp` : pct(v))
+    const fmtYoy = (v: number) => pct(v)
     const flat = flattenForExport(activeItems as Row[])
     // 去重分类口径导出时文件名标识区分，避免与正式口径混淆
     const scopeSuffix = excludeReclassify ? '_原始口径' : ''
@@ -221,8 +221,8 @@ export default function IndicatorsPage() {
         return {
           account: `${'　'.repeat(depth)}${o.name}`,
           budget: fmtVal(o.budget, o.valueType), actual: fmtVal(o.actual, o.valueType), samePeriod: fmtVal(o.samePeriod, o.valueType),
-          yoy: fmtYoy(o.yoy, o.valueType), achievement: pct(o.achievement),
-          ytd: fmtVal(o.ytd, o.valueType), samePeriodYtd: fmtVal(o.samePeriodYtd, o.valueType), ytdYoy: fmtYoy(o.ytdYoy, o.valueType),
+          yoy: fmtYoy(o.yoy), achievement: pct(o.achievement),
+          ytd: fmtVal(o.ytd, o.valueType), samePeriodYtd: fmtVal(o.samePeriodYtd, o.valueType), ytdYoy: fmtYoy(o.ytdYoy),
         }
       })
       await exportToExcel({
@@ -246,7 +246,7 @@ export default function IndicatorsPage() {
         const s = row as StaticRow
         return {
           account: `${'　'.repeat(depth)}${s.name}`,
-          actual: fmtVal(s.current, s.valueType), samePeriod: fmtVal(s.samePeriod, s.valueType), yoy: fmtYoy(s.yoy, s.valueType),
+          actual: fmtVal(s.current, s.valueType), samePeriod: fmtVal(s.samePeriod, s.valueType), yoy: fmtYoy(s.yoy),
         }
       })
       await exportToExcel({

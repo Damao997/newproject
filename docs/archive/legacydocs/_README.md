@@ -30,7 +30,7 @@ d:\flies\pj3\
 ├── CLAUDE.md                          ← AI Agent 指令文件（唯一权威入口）
 ├── docs/
 │   ├── README.md                      ← 项目概述
-│   ├── references/                    ← 引用：模块化快速参考（11 篇）
+│   ├── references/                    ← 引用：模块化快速参考（12 篇）
 │   │   ├── frontend.md               ← 前端开发速查（v3 纸质感版）
 │   │   ├── backend.md                ← 后端技术栈 + API 规范
 │   │   ├── db.md                     ← 数据库设计原则

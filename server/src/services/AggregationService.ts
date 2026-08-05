@@ -57,6 +57,8 @@ export interface BuildTreeOpts {
   excludeReclassify?: boolean
   /** 回放统计收集器（调用方传入，聚合过程中累加） */
   reclassifyMeta?: ReclassifyReversalMeta
+  /** 汇总抵消上下文：请求主体为汇总主体时传入其编码，聚合时叠加该主体的抵消调整（单体链路不传） */
+  consolidationSummaryCode?: string | null
 }
 
 /** 将汇总主体编码经 company_aggregation_map 递归展开为其所有单体成员；单体编码原样保留 */
@@ -486,6 +488,29 @@ export const AggregationService = {
         }
       }
     }
+    // 汇总抵消：仅汇总主体查询链路叠加（内部公司间交易在汇总口径的抵消，单体报表不受影响）。
+    // 四维度统一叠加：本月实际/本年累计按抵消期匹配（当期或 [财年初..当期]），
+    // 同期实际/同期累计按抵消期减 1 年匹配（[上年财年初..上年同期]），保证同比口径可比；预算维度不抵消。
+    if (opts?.consolidationSummaryCode) {
+      const fyStart = fiscalYearStartPeriod(period)
+      const prevPeriod = periodMinusYears(period, 1)
+      const prevFyStart = fiscalYearStartPeriod(prevPeriod)
+      const adjustments = await prisma.consolidationAdjustment.findMany({
+        where: {
+          summaryCompanyCode: opts.consolidationSummaryCode,
+          templateType: 'operating',
+          deletedAt: null,
+          period: { lte: period },
+        },
+        select: { accountCode: true, period: true, amount: true },
+      })
+      for (const a of adjustments) {
+        if (a.period === period) addDim(a.accountCode, OPERATING_DIMS.ACTUAL_MONTH, a.amount)
+        if (a.period >= fyStart && a.period <= period) addDim(a.accountCode, OPERATING_DIMS.YTD_ACTUAL, a.amount)
+        if (a.period === prevPeriod) addDim(a.accountCode, OPERATING_DIMS.SAME_PERIOD_ACTUAL, a.amount)
+        if (a.period >= prevFyStart && a.period <= prevPeriod) addDim(a.accountCode, OPERATING_DIMS.SAME_PERIOD_YTD, a.amount)
+      }
+    }
     const tree = buildTree(subjects, leafValues, EMPTY_OPERATING)
     const calc = await loadCalcFormulas('operating')
     // 跨树依赖（对称方向）：经营计算类科目引用静态科目（ST_ 前缀）时，
@@ -495,7 +520,7 @@ export const AggregationService = {
     const needsExternal = !opts?.skipExternal && calc.some((m) => m.dependsOn.some((d) => d.startsWith('ST_')))
     if (needsExternal && companyCodes.length > 0) {
       // 外部树透传同一去重分类口径（meta 不透传，避免重复计数）
-      const stFlat = flattenValueTree(await AggregationService.buildStaticTree(companyCodes, period, { skipExternal: true, excludeReclassify: opts?.excludeReclassify }))
+      const stFlat = flattenValueTree(await AggregationService.buildStaticTree(companyCodes, period, { skipExternal: true, excludeReclassify: opts?.excludeReclassify, consolidationSummaryCode: opts?.consolidationSummaryCode }))
       const current: Record<string, number> = {}
       const same: Record<string, number> = {}
       for (const n of stFlat) {
@@ -592,7 +617,7 @@ export const AggregationService = {
     const needsExternal = !opts?.skipExternal && calc.some((m) => m.dependsOn.some((d) => d.startsWith('OP_')))
     if (needsExternal && companyCodes.length > 0) {
       // 外部树透传同一去重分类口径（meta 不透传，避免重复计数）
-      const opFlat = flattenValueTree(await AggregationService.buildOperatingTree(companyCodes, period, { skipExternal: true, excludeReclassify: opts?.excludeReclassify }))
+      const opFlat = flattenValueTree(await AggregationService.buildOperatingTree(companyCodes, period, { skipExternal: true, excludeReclassify: opts?.excludeReclassify, consolidationSummaryCode: opts?.consolidationSummaryCode }))
       const current: Record<string, number> = {}
       const same: Record<string, number> = {}
       externalAllDims = {}

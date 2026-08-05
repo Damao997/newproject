@@ -215,6 +215,23 @@ export interface ReclassifyLog {
   createdAt: string
 }
 
+/** 汇总抵消调整记录：在汇总主体（如 ET0001）聚合口径上按科目/期间叠加抵消金额，单体报表不受影响 */
+export interface ConsolidationAdjustment {
+  id: string
+  templateType: 'operating'
+  summaryCompanyCode: string
+  summaryCompanyName: string
+  accountCode: string
+  accountName: string
+  /** 调整期间（单月 YYYY-MM） */
+  period: string
+  /** 抵消金额（万元）：正=调增、负=调减 */
+  amount: number
+  reason: string
+  operator: string
+  createdAt: string
+}
+
 /** 核心 KPI 卡（收入/毛利/净利润/回款）：金额万元，达成率 0-100，null=无预算（显示 "–"） */
 export interface KpiData {
   title: string

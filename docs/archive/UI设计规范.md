@@ -1,5 +1,7 @@
 # 浙江壹品慧财年经营数据分析平台 — UI设计规范 v2.0（macOS 风格增强版）
 
+> ⚠️ **本文档已废止（v2 毛玻璃方案）。AI Agent 请 Read `docs/plans/frontend-design-proposal.md`（v3 纸质感方案）与 `docs/references/frontend.md` 而非本文档。** 本文档保留供历史参考。
+
 > **版本**：v2.0（macOS 风格增强版）
 > **触发条件**：AI 编写前端页面 / 组件 / 样式 / 图表 / 主题切换 / 前端动画(Framer Motion) / 图标(Lucide) 时，以本文档 + `references/frontend.md` 为 UI 权威参考
 > **自包含**：AI 阅读本文档后，可独立完成所有 UI 层面的开发工作

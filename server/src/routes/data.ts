@@ -13,6 +13,7 @@ import { ProductCategoryService } from '../services/ProductCategoryService'
 import { SubjectBudgetConfigService } from '../services/SubjectBudgetConfigService'
 import { IndicatorsService } from '../services/IndicatorsService'
 import { ReclassificationService } from '../services/ReclassificationService'
+import { ConsolidationService } from '../services/ConsolidationService'
 import { fyLabelOfDate } from '../lib/period'
 import { fixUploadFilename } from '../lib/sanitize'
 import { prisma } from '../lib/prisma'
@@ -322,6 +323,9 @@ router.post('/metrics/:id/rollback', requirePermission('data:metric:update', 'up
 router.post('/metrics/trial-calc', requirePermission('data:metric:create', 'create'), asyncHandler(async (req, res) => {
   const formula = String(req.body?.formula ?? '')
   if (!formula) throw errors.badRequest('公式不能为空')
+  if (req.body?.period !== undefined && req.body?.period !== null && req.body?.period !== '' && !PERIOD_RE.test(String(req.body.period))) {
+    throw errors.badRequest('请选择有效期间（YYYY-MM）')
+  }
   sendOk(res, await DataService.trialCalc({ formula, companyCode: req.body?.companyCode, period: req.body?.period }))
 }))
 
@@ -441,6 +445,48 @@ router.get('/reclassify/logs', requirePermission('data:reclassify:company', 'upd
 // 撤销重分类/科目调整（按日志快照逆向恢复）
 router.post('/reclassify/logs/:id/revert', requirePermission('data:reclassify:company', 'update'), asyncHandler(async (req, res) => {
   sendOk(res, await ReclassificationService.revertLog(req.params.id as string, scopeOf(req.authUser as AuthUserContext), ctxOf(req)))
+}))
+
+// ===== 汇总抵消调整（内部公司间交易在汇总口径的抵消，单体报表不受影响）=====
+// 本版仅支持经营数据（现金流属经营科目树）；模板字段保留扩展
+const CONSOLIDATION_TEMPLATES = ['operating']
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function consolidationAdjustBody(b: any) {
+  if (!b.summaryCompanyCode || !b.accountCode) throw errors.badRequest('汇总主体与科目必填')
+  if (!b.templateType || !CONSOLIDATION_TEMPLATES.includes(b.templateType)) throw errors.badRequest('模板类型不合法（本版仅支持经营数据）')
+  if (typeof b.period !== 'string' || !PERIOD_RE.test(b.period)) throw errors.badRequest('请选择调整期间（单月 YYYY-MM）')
+  const amount = Number(b.amount)
+  if (!Number.isFinite(amount) || amount === 0) throw errors.badRequest('调整金额必须为非 0 数值（万元，正=调增、负=调减）')
+  if (!b.reason || !String(b.reason).trim()) throw errors.badRequest('调整原因必填')
+  return {
+    templateType: b.templateType,
+    summaryCompanyCode: b.summaryCompanyCode,
+    accountCode: b.accountCode,
+    period: b.period,
+    amount,
+    reason: String(b.reason).trim(),
+  }
+}
+
+router.get('/consolidation/adjustments', requirePermission('data:reclassify:company', 'update'), asyncHandler(async (req, res) => {
+  const { page, pageSize } = pageParams(req.query)
+  sendOk(res, await ConsolidationService.listAdjustments({ page, pageSize }, scopeOf(req.authUser as AuthUserContext)))
+}))
+
+router.post('/consolidation/adjustments', requirePermission('data:reclassify:company', 'update'), asyncHandler(async (req, res) => {
+  sendOk(res, await ConsolidationService.createAdjustment(consolidationAdjustBody(req.body ?? {}), scopeOf(req.authUser as AuthUserContext), ctxOf(req)))
+}))
+
+// 解析两个单体公司共同所属的汇总主体（company_aggregation_map 交集 + 权限过滤），供抵消对话框自动匹配
+router.post('/consolidation/common-summaries', requirePermission('data:reclassify:company', 'update'), asyncHandler(async (req, res) => {
+  const b = req.body ?? {}
+  if (!b.singleCompanyCodeA || !b.singleCompanyCodeB) throw errors.badRequest('请选择两个单体公司')
+  sendOk(res, await ConsolidationService.commonSummariesOf(b.singleCompanyCodeA, b.singleCompanyCodeB, scopeOf(req.authUser as AuthUserContext)))
+}))
+
+router.delete('/consolidation/adjustments/:id', requirePermission('data:reclassify:company', 'update'), asyncHandler(async (req, res) => {
+  sendOk(res, await ConsolidationService.deleteAdjustment(req.params.id as string, scopeOf(req.authUser as AuthUserContext), ctxOf(req)))
 }))
 
 // ===== 导出 =====

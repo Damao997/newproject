@@ -34,6 +34,8 @@ import { SubjectBudgetPanel } from '@/components/dimension/subject-budget-panel'
 import { ReclassifyCompanyDialog } from '@/components/reclassify/reclassify-company-dialog'
 import { ReclassifySubjectDialog } from '@/components/reclassify/reclassify-subject-dialog'
 import { ReclassifyLogsPanel } from '@/components/reclassify/reclassify-logs-panel'
+import { ConsolidationAdjustDialog } from '@/components/reclassify/consolidation-adjust-dialog'
+import { ConsolidationAdjustmentsPanel } from '@/components/reclassify/consolidation-adjustments-panel'
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { usePageStore } from '@/stores/pageStateStore'
 import { FormulaMaintenance } from './formula-maintenance'
@@ -51,12 +53,13 @@ type DimSubTab = (typeof DIM_SUB_TABS)[number]
 const BOARD_SUB_TABS = ['category', 'subject'] as const
 type BoardSubTab = (typeof BOARD_SUB_TABS)[number]
 
-/** 数据调整入口（科目调整 / 跨公司重分类）：按权限码显隐，两个 Tab 复用 */
-function ReclassifyMenu({ canSubject, canCompany, onSubject, onCompany }: {
+/** 数据调整入口（科目调整 / 跨公司重分类 / 汇总抵消）：按权限码显隐，两个 Tab 复用 */
+function ReclassifyMenu({ canSubject, canCompany, onSubject, onCompany, onConsolidation }: {
   canSubject: boolean
   canCompany: boolean
   onSubject: () => void
   onCompany: () => void
+  onConsolidation: () => void
 }) {
   if (!canSubject && !canCompany) return null
   return (
@@ -73,6 +76,9 @@ function ReclassifyMenu({ canSubject, canCompany, onSubject, onCompany }: {
         )}
         {canCompany && (
           <DropdownMenuItem onClick={onCompany}>跨公司重分类</DropdownMenuItem>
+        )}
+        {canCompany && (
+          <DropdownMenuItem onClick={onConsolidation}>汇总抵消调整</DropdownMenuItem>
         )}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -125,6 +131,8 @@ export default function DataPage() {
   // 数据编辑入口：复用重分类/科目调整通道（校验、预览影响、二次确认、审计留痕均在对话框内）
   const [adjustSubjectOpen, setAdjustSubjectOpen] = useState(false)
   const [reclassifyCompanyOpen, setReclassifyCompanyOpen] = useState(false)
+  // 汇总抵消调整（仅作用于汇总主体口径，单体报表不受影响）
+  const [consolidationOpen, setConsolidationOpen] = useState(false)
 
   // ---- 数据浏览（交叉表：指标 × 公司，支持多层级展开）----
   // 公司多选：空数组语义为「全部公司」；查询条件与展开状态持久化到 pageStateStore（路由切换/刷新后恢复）
@@ -324,6 +332,7 @@ export default function DataPage() {
                     canCompany={canReclassifyCompany}
                     onSubject={() => setAdjustSubjectOpen(true)}
                     onCompany={() => setReclassifyCompanyOpen(true)}
+                    onConsolidation={() => setConsolidationOpen(true)}
                   />
                   {canExport && (
                     <Button variant="outline" size="sm" onClick={handleBrowseExport}>
@@ -363,11 +372,21 @@ export default function DataPage() {
                   canCompany={canReclassifyCompany}
                   onSubject={() => setAdjustSubjectOpen(true)}
                   onCompany={() => setReclassifyCompanyOpen(true)}
+                  onConsolidation={() => setConsolidationOpen(true)}
                 />
               </CardTitle>
             </CardHeader>
             <CardContent>
               <ReclassifyLogsPanel canRevert={canReclassifyCompany} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>汇总抵消调整记录</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ConsolidationAdjustmentsPanel />
             </CardContent>
           </Card>
         </div>
@@ -486,6 +505,12 @@ export default function DataPage() {
         onClose={() => setReclassifyCompanyOpen(false)}
         defaultTemplateType={browseSubjectType}
         defaultSourceCompany={singleBrowseCompany}
+      />
+
+      {/* 汇总抵消调整（仅作用于汇总主体口径，单体报表不受影响） */}
+      <ConsolidationAdjustDialog
+        open={consolidationOpen}
+        onClose={() => setConsolidationOpen(false)}
       />
     </PageContainer>
   )

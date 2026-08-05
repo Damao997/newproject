@@ -43,7 +43,7 @@ beforeAll(async () => {
   try {
     await basePrisma.$queryRaw`SELECT 1`
     // A 公司：2097-01 两条（求和 100+50）、2097-03 一条（2097-02 缺失 → null）；
-    // 2097-03 这条带 10 段账龄，验证 5 段归集：1-3月=200 / 4-6月=50 / 半年以上=20 / 1年至3年=25 / 3年以上=5
+    // 2097-03 这条带 10 段账龄，验证 7 段归集：1个月=100 / 2个月=50 / 3个月=50 / 4-6月=50 / 半年以上=20 / 1年至3年=25 / 3年以上=5
     await seedDetail(CO_A, '趋势测试A', '2097-01', 100)
     await seedDetail(CO_A, '趋势测试A', '2097-01', 50)
     await seedDetail(CO_A, '趋势测试A', '2097-03', 300, {
@@ -172,15 +172,15 @@ describe('TransactionService.getOverview 过滤（真实 DB）', () => {
 })
 
 describe('TransactionService.getAgingAnalysis / listDetails（真实 DB）', () => {
-  it('账龄 10 段归集为 5 段，支持 period + 科目多选过滤，按期末余额倒序', async () => {
+  it('账龄 10 段归集为 7 段，支持 period + 科目多选过滤，按期末余额倒序', async () => {
     if (!dbReady) return
     const rows = await TransactionService.getAgingAnalysis({ groupBy: 'type', period: '2097-03', accountCodes: ['__TREND_1122__'] }) as Array<{ companyCode: string; closingBalance: number; aging: Record<string, number> }>
     expect(rows).toHaveLength(2)
     // 倒序：B(700) 在前，A(300) 在后
     expect(rows[0].companyCode).toBe(CO_B)
     expect(rows[1].companyCode).toBe(CO_A)
-    // 5 段归集断言（CO_A 种子）
-    expect(rows[1].aging).toEqual({ '1-3月': 200, '4-6月': 50, '半年以上': 20, '1年至3年': 25, '3年以上': 5 })
+    // 7 段归集断言（CO_A 种子）
+    expect(rows[1].aging).toEqual({ '1个月': 100, '2个月': 50, '3个月': 50, '4-6月': 50, '半年以上': 20, '1年至3年': 25, '3年以上': 5 })
     // 科目过滤：不存在的科目返回空
     const none = await TransactionService.getAgingAnalysis({ groupBy: 'type', period: '2097-03', accountCodes: ['__NO_SUCH__'] })
     expect(none).toHaveLength(0)
@@ -194,5 +194,28 @@ describe('TransactionService.getAgingAnalysis / listDetails（真实 DB）', () 
     expect(page.items[1].closingBalance).toBe(300)
     const none = await TransactionService.listDetails({ period: '2097-03', accountCodes: ['__NO_SUCH__'] })
     expect(none.total).toBe(0)
+  })
+
+  it('账龄分析与明细固定过滤零余额行', async () => {
+    if (!dbReady) return
+    // 临时种子：与 CO_A 300 行同公司同类型同期间、余额为 0 但账龄非 0（异常数据），
+    // 若不过滤，groupBy 合并后 1个月 变 1099、明细 total 变 3，断言即失败
+    const zero = await basePrisma.transactionDetail.create({
+      data: {
+        companyCode: CO_A, companyName: '趋势测试A', transactionType: TYPE, direction: 'AP',
+        counterpartyCode: '__TREND_CP_ZERO__', accountCode: ACC_ACTIVE, closingBalance: 0,
+        period: '2097-03', aging1m: 999,
+      },
+    })
+    try {
+      const rows = await TransactionService.getAgingAnalysis({ groupBy: 'type', period: '2097-03', accountCodes: [ACC_ACTIVE] }) as Array<{ companyCode: string; aging: Record<string, number> }>
+      expect(rows).toHaveLength(2)
+      const a = rows.find((r) => r.companyCode === CO_A)!
+      expect(a.aging['1个月']).toBe(100)
+      const page = await TransactionService.listDetails({ period: '2097-03', accountCodes: [ACC_ACTIVE] })
+      expect(page.total).toBe(2)
+    } finally {
+      await basePrisma.transactionDetail.delete({ where: { id: zero.id } }).catch(() => undefined)
+    }
   })
 })

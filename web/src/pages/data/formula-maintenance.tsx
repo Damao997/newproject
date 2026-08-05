@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -33,9 +33,12 @@ import {
   useConvertMetric,
   useTrialCalc,
   useDependencies,
+  useAvailablePeriods,
 } from '@/hooks/api-queries'
 import { Pencil, Sparkles, History, Trash2, MoreHorizontal, Plus, Calculator, Download, ShieldAlert, RotateCcw, ArrowRightLeft } from 'lucide-react'
 import { usePageStore } from '@/stores/pageStateStore'
+import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
+import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { HistoryDialog } from './formula-history-dialog'
 import { FormulaText } from './formula-text'
 import { useConfirm } from '@/components/ui/confirm-dialog'
@@ -115,6 +118,8 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
   const [draftFormula, setDraftFormula] = useState('')
   const [saveError, setSaveError] = useState<string | null>(null)
   const [trialCompany, setTrialCompany] = useState('all')
+  // '' = 最新期间（自动），与 transactions OverviewTab 空串语义一致
+  const [trialPeriod, setTrialPeriod] = useState('')
   const [trialResult, setTrialResult] = useState<{ value: number | null; period: string | null; operands: { code: string; name: string; value: number }[] } | null>(null)
   const [showDeps, setShowDeps] = useState(false)
   // 新建（仅限科目体系内尚无指标记录的科目）
@@ -219,10 +224,24 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
   const resetPage = () => setPage(1)
 
+  // 汇总主体与单体公司（useCompanies 已按数据权限收敛，仅返回授权主体；后端按 orderNo 排序，汇总在前）
   const companies = useMemo(() => {
     const list = (companiesData ?? []) as unknown as Array<Record<string, unknown>>
-    return list.filter((c) => c.type === 'entity').map((c) => ({ code: String(c.code), name: String(c.name) }))
+    return list.filter((c) => c.type === 'entity' || c.type === 'summary').map((c) => ({ code: String(c.code), name: String(c.name) }))
   }, [companiesData])
+  const { displayNameMap } = useCompanyDisplayName()
+
+  // 试算期间候选：按全局选中财年过滤（财年起始月取后端返回值，与 transactions/data/inventory 口径一致）
+  const { data: periodsData } = useAvailablePeriods()
+  const fiscalYear = usePeriodStore((s) => s.fiscalYear)
+  const trialPeriods = useMemo(
+    () => filterPeriodsByFiscalYear(periodsData?.periods ?? [], fiscalYear, periodsData?.fiscalStartMonth ?? 1),
+    [periodsData, fiscalYear],
+  )
+  // 已选期间不在候选（如财年切换）时回退跟随最新，与 transactions 各 Tab 防护一致
+  useEffect(() => {
+    if (trialPeriod !== '' && !trialPeriods.includes(trialPeriod)) setTrialPeriod('')
+  }, [trialPeriods, trialPeriod])
 
   // 父级编码 → 直接子级的映射（用于结构聚合推荐）
   const childrenMap = useMemo(() => {
@@ -361,7 +380,11 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
     if (!draftFormula.trim()) return
     setTrialResult(null)
     try {
-      const res = await trialCalc.mutateAsync({ formula: draftFormula.trim(), companyCode: trialCompany === 'all' ? undefined : trialCompany })
+      const res = await trialCalc.mutateAsync({
+        formula: draftFormula.trim(),
+        companyCode: trialCompany === 'all' ? undefined : trialCompany,
+        period: trialPeriod || undefined,
+      })
       setTrialResult(res)
     } catch (err) {
       setTrialResult({ value: null, period: null, operands: [] })
@@ -636,8 +659,17 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
                 <SelectContent>
                   <SelectItem value="all">全部公司（汇总）</SelectItem>
                   {companies.map((c) => (
-                    <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
+                    <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+              <Select value={trialPeriod} onValueChange={setTrialPeriod}>
+                <SelectTrigger className="w-full max-w-full sm:w-[150px]">
+                  <SelectValue placeholder="期间" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">最新期间（自动）</SelectItem>
+                  {(trialPeriods || []).map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                 </SelectContent>
               </Select>
               <Button variant="outline" size="sm" onClick={handleTrial} disabled={trialCalc.isPending || !draftFormula.trim()}>
@@ -745,7 +777,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
                     size="sm"
                     onClick={async () => {
                       try {
-                        const res = await trialCalc.mutateAsync({ formula: createForm.formula.trim() })
+                        const res = await trialCalc.mutateAsync({ formula: createForm.formula.trim(), period: trialPeriod || undefined })
                         setTrialResult(res)
                       } catch { /* ignore */ }
                     }}

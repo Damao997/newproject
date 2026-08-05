@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { changeRate, rateOf, findInCategory, monthlyBudgetSeries, budgetAnnualTotal, fallbackBudgetSeries, mapAlertRow, alertScopeWhere, productMetric, matchProductCategories } from './DashboardService'
+import { changeRate, rateOf, findInCategory, monthlyBudgetSeries, budgetAnnualTotal, fallbackBudgetSeries, ytdBudgetSeries, mapAlertRow, alertScopeWhere, productMetric, matchProductCategories } from './DashboardService'
 import { OPERATING_DIMS } from '../lib/metric-values'
 import type { ValueNode } from './AggregationService'
 import { Prisma } from '@prisma/client'
@@ -114,22 +114,28 @@ describe('DashboardService 纯函数', () => {
     })
   })
 
-  describe('fallbackBudgetSeries 预算序列兜底', () => {
+  describe('fallbackBudgetSeries 预算序列兜底（月度口径）', () => {
     const months = ['2026-04', '2026-05', '2026-06']
     it('序列非全 null 时保持原样（月度粒度预算优先）', () => {
       const series = [100, null, 120]
-      expect(fallbackBudgetSeries(series, 500, months, 'month')).toEqual([100, null, 120])
+      expect(fallbackBudgetSeries(series, 500, months)).toEqual([100, null, 120])
     })
-    it('全 null 时月度口径按年度/12 均摊', () => {
+    it('全 null 时按年度/12 均摊', () => {
       const series = [null, null, null]
-      expect(fallbackBudgetSeries(series, 1200, months, 'month')).toEqual([100, 100, 100])
-    })
-    it('全 null 时累计口径为年度总额（预算无累计粒度，水平线）', () => {
-      const series = [null, null, null]
-      expect(fallbackBudgetSeries(series, 1200, months, 'ytd')).toEqual([1200, 1200, 1200])
+      expect(fallbackBudgetSeries(series, 1200, months)).toEqual([100, 100, 100])
     })
     it('年度总额为 0 时保持全 null（无预算不伪造）', () => {
-      expect(fallbackBudgetSeries([null, null, null], 0, months, 'month')).toEqual([null, null, null])
+      expect(fallbackBudgetSeries([null, null, null], 0, months)).toEqual([null, null, null])
+    })
+  })
+
+  describe('ytdBudgetSeries 累计预算序列（年度总额水平线）', () => {
+    const months = ['2026-04', '2026-05', '2026-06']
+    it('有年度总额时各月均为总额（水平线，与品类表“累计=年度预算”口径一致）', () => {
+      expect(ytdBudgetSeries(1200, months)).toEqual([1200, 1200, 1200])
+    })
+    it('年度总额为 0 时返回全 null（无预算不伪造）', () => {
+      expect(ytdBudgetSeries(0, months)).toEqual([null, null, null])
     })
   })
 

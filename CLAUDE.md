@@ -263,10 +263,12 @@ formatMoneyWan(value) // → "1,234.56"（财务指标/数据管理，纯数值�
 | **写测试用例** | Read `docs/references/testing.md` |
 | **提交流程/Git 操作** | Read `docs/references/vcs.md` |
 | **处理并发/幂等/事务** | Read `docs/references/concurrency.md` |
+| **处理导入/文件解析边界（Excel/伪xls/编码）** | Read `docs/references/import-boundary.md` |
 | **了解全局架构/设计决策背景** | Read `docs/plans/整体方案v3.md` §八（关键决策与风险）|
 | **查看旧版本文档** | Read `docs/archive/legacydocs/_README.md` |
+| **查看审查报告/归档索引** | Read `docs/archive/index.md` |
 
-> **重要**：`docs/archive/` 中的旧版本文档均已标注废止状态，**不要参考其中的设计来开发**。唯一例外是两份审查报告，可作为历史参考理解设计决策背景。v2 毛玻璃 UI 设计规范（`docs/archive/UI设计规范.md`）已被 v3 `docs/plans/frontend-design-proposal.md` 全面取代。
+> **重要**：`docs/archive/` 中的旧版本文档均已标注废止状态，**不要参考其中的设计来开发**。唯一例外是各审查报告（整体方案可行性审查报告、权限安全复审报告、全面代码审查报告、前端全面审查报告、差异对齐报告等），可作为历史参考理解设计决策背景。v2 毛玻璃 UI 设计规范（`docs/archive/UI设计规范.md`）已被 v3 `docs/plans/frontend-design-proposal.md` 全面取代。
 
 ---
 

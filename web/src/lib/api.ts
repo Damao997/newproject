@@ -1,6 +1,6 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios'
 import { useAuthStore } from '@/stores/authStore'
-import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse, FilterParams, BatchActivateCheckResult, KpiData, TrendData, DashboardAlert, ReceivableRow, ProductBudgetResponse, SubjectBudgetResponse, ProductCategory, ProductCategoryCheckResult, SubjectBudgetConfig, SubjectBudgetConfigCheckResult, ImportBatch, ImportDiff, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData } from '@/types'
+import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse, FilterParams, BatchActivateCheckResult, KpiData, TrendData, DashboardAlert, ReceivableRow, ProductBudgetResponse, SubjectBudgetResponse, ProductCategory, ProductCategoryCheckResult, SubjectBudgetConfig, SubjectBudgetConfigCheckResult, ImportBatch, ImportDiff, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, ConsolidationAdjustment, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData } from '@/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
@@ -73,6 +73,8 @@ export interface ImportPreviewResult {
     recalcSubjects: string[]
     parentSubjects: string[]
     missingProfitLeaves: string[]
+    /** 毛利叶子类型与公式不一致（data 类残留公式，多为历史种子回写）：须先恢复计算类 */
+    typeFormulaMismatch: string[]
   } | null
 }
 
@@ -642,6 +644,32 @@ class ApiClient {
 
   async revertReclassifyLog(id: string): Promise<{ restoredRows: number }> {
     return this.request({ method: 'POST', url: `/data/reclassify/logs/${id}/revert` })
+  }
+
+  async getConsolidationAdjustments(params?: FilterParams): Promise<PaginatedResponse<ConsolidationAdjustment>> {
+    return this.request({ method: 'GET', url: '/data/consolidation/adjustments', params })
+  }
+
+  /** 解析两个单体公司共同所属的汇总主体（company_aggregation_map 交集 + 权限过滤） */
+  async commonConsolidationSummaries(data: { singleCompanyCodeA: string; singleCompanyCodeB: string }): Promise<{
+    summaries: { code: string; name: string; isInternalElimination: boolean }[]
+  }> {
+    return this.request({ method: 'POST', url: '/data/consolidation/common-summaries', data })
+  }
+
+  async createConsolidationAdjustment(data: {
+    templateType: 'operating'
+    summaryCompanyCode: string
+    accountCode: string
+    period: string
+    amount: number
+    reason: string
+  }): Promise<{ id: string }> {
+    return this.request({ method: 'POST', url: '/data/consolidation/adjustments', data })
+  }
+
+  async deleteConsolidationAdjustment(id: string): Promise<{ deleted: boolean }> {
+    return this.request({ method: 'DELETE', url: `/data/consolidation/adjustments/${id}` })
   }
 
   async reclassifySubject(id: string, parentCode: string | null): Promise<AccountSubject> {

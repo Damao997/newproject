@@ -184,12 +184,12 @@ export function AnalysisDrawer({ open, target, onClose }: AnalysisDrawerProps) {
           </button>
         </div>
 
-        {/* 指标上下文：按值类型格式化，仅金额类标注“(万)”；比率科目同比为百分点差；达成率 = 本年累计 / 全年预算 */}
+        {/* 指标上下文：按值类型格式化，仅金额类标注“(万)”；同比统一按相对增长率；达成率 = 本年累计 / 全年预算 */}
         {m && (() => {
           const vt = target.valueType
           const unit = vt === 'ratio' || vt === 'quantity' ? '' : '(万)'
           const fmt = (v: number) => formatMetricValue(v, vt)
-          const yoyText = vt === 'ratio' ? `${((m.actual - m.samePeriod) * 100).toFixed(1)}pp` : formatPercent(calcYoy(m))
+          const yoyText = formatPercent(calcYoy(m))
           if (target.showBudget === false) {
             // 无预算场景（如库存分析）：仅展示库存语义指标，不呈现全年预算/达成率
             return (

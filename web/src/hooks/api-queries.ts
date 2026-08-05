@@ -518,6 +518,57 @@ export function useAdjustSubject() {
   })
 }
 
+// ---------------- 汇总抵消调整（汇总口径内部交易抵消，单体报表不受影响） ----------------
+export interface ConsolidationAdjustInput {
+  templateType: 'operating'
+  summaryCompanyCode: string
+  accountCode: string
+  period: string
+  amount: number
+  reason: string
+}
+
+export function useConsolidationAdjustments(params: FilterParams = {}) {
+  return useQuery({
+    queryKey: ['data', 'consolidation-adjustments', params] as const,
+    queryFn: () => api.getConsolidationAdjustments(params),
+    placeholderData: keepPreviousData,
+  })
+}
+
+export interface CommonSummaryItem { code: string; name: string; isInternalElimination: boolean }
+
+/** 解析两个单体公司共同所属的汇总主体（匹配按钮触发） */
+export function useCommonSummaries() {
+  return useMutation({
+    mutationFn: (data: { singleCompanyCodeA: string; singleCompanyCodeB: string }) => api.commonConsolidationSummaries(data),
+  })
+}
+
+export function useCreateConsolidationAdjustment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: ConsolidationAdjustInput) => api.createConsolidationAdjustment(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['data', 'consolidation-adjustments'] })
+      qc.invalidateQueries({ queryKey: ['indicators'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+    },
+  })
+}
+
+export function useDeleteConsolidationAdjustment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.deleteConsolidationAdjustment(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['data', 'consolidation-adjustments'] })
+      qc.invalidateQueries({ queryKey: ['indicators'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+    },
+  })
+}
+
 export function useReclassifySubject() {
   const qc = useQueryClient()
   return useMutation({

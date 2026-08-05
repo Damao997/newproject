@@ -515,6 +515,54 @@ describe('公式试算递归展开 calc 依赖', () => {
       await basePrisma.accountSubject.deleteMany({ where: { code: { in: allTemp } } }).catch(() => undefined)
     }
   })
+
+  it('汇总主体 companyCode 展开为成员求和（ET0001 同款映射口径）', async () => {
+    if (!dbReady) return
+    const batch = await basePrisma.importBatch.findFirst({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true } })
+    if (!batch) return
+    const latest = await basePrisma.factOperating.findFirst({ where: { batchId: batch.id }, orderBy: { period: 'desc' }, select: { period: true } })
+    if (!latest) return
+    const period = latest.period
+    const suffix = Date.now().toString(36)
+    const code = `OP_TSU_${suffix}`
+    const singleA = `TSUA_${suffix}`
+    const singleB = `TSUB_${suffix}`
+    const summary = `ETSU_${suffix}`
+    const companies = [singleA, singleB, summary]
+    try {
+      await createTempSubject(code)
+      await basePrisma.company.createMany({
+        data: [
+          { code: singleA, name: `试算单体A_${suffix}`, entityType: 'single', status: 'active' },
+          { code: singleB, name: `试算单体B_${suffix}`, entityType: 'single', status: 'active' },
+          { code: summary, name: `试算汇总_${suffix}`, entityType: 'summary', status: 'active' },
+        ],
+      })
+      await basePrisma.companyAggregationMap.createMany({
+        data: [
+          { summaryCompanyCode: summary, singleCompanyCode: singleA },
+          { summaryCompanyCode: summary, singleCompanyCode: singleB },
+        ],
+      })
+      await basePrisma.factOperating.createMany({
+        data: [
+          { batchId: batch.id, companyCode: singleA, accountCode: code, period, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: `FY${period.slice(0, 4)}`, value: 100 },
+          { batchId: batch.id, companyCode: singleB, accountCode: code, period, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: `FY${period.slice(0, 4)}`, value: 250 },
+        ],
+      })
+      // 汇总主体：经映射展开为成员后求和
+      const res = await DataService.trialCalc({ formula: `{${code}}`, companyCode: summary, period })
+      expect(res.value).toBe(350)
+      expect(res.operands[0].hasData).toBe(true)
+      // 单体主体：仅取自身值（回归既有口径）
+      const resA = await DataService.trialCalc({ formula: `{${code}}`, companyCode: singleA, period })
+      expect(resA.value).toBe(100)
+    } finally {
+      await basePrisma.companyAggregationMap.deleteMany({ where: { summaryCompanyCode: summary } }).catch(() => undefined)
+      await basePrisma.factOperating.deleteMany({ where: { companyCode: { in: companies } } }).catch(() => undefined)
+      await basePrisma.company.deleteMany({ where: { code: { in: companies } } }).catch(() => undefined)
+    }
+  })
 })
 
 describe('跨公司重分类', () => {

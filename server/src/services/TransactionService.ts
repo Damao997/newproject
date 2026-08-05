@@ -13,9 +13,11 @@ const AGING_BUCKETS = ['1个月', '2个月', '3个月', '4个月', '5个月', '6
 
 const AGING_FIELDS = ['aging1m', 'aging2m', 'aging3m', 'aging4m', 'aging5m', 'aging6m', 'aging6mTo1y', 'aging1yTo2y', 'aging2yTo3y', 'aging3yPlus'] as const
 
-/** 账龄分析展示归集：10 段 → 5 段（半年以上 = 半年到1年段；1年至3年 = 1-2年 + 2-3年） */
+/** 账龄分析展示归集：10 段 → 7 段（1-3月按单月展开为 1/2/3 个月；半年以上 = 半年到1年段；1年至3年 = 1-2年 + 2-3年） */
 const AGING_GROUP_DEFS: [string, (typeof AGING_FIELDS)[number][]][] = [
-  ['1-3月', ['aging1m', 'aging2m', 'aging3m']],
+  ['1个月', ['aging1m']],
+  ['2个月', ['aging2m']],
+  ['3个月', ['aging3m']],
   ['4-6月', ['aging4m', 'aging5m', 'aging6m']],
   ['半年以上', ['aging6mTo1y']],
   ['1年至3年', ['aging1yTo2y', 'aging2yTo3y']],
@@ -348,8 +350,9 @@ export const TransactionService = {
 
   /**
    * 账龄分析：按公司×往来类型×往来对象汇总账龄分布。
-   * 账龄 10 段归集为 5 段展示（1-3月 / 4-6月 / 半年以上 / 1年至3年 / 3年以上）；
-   * 支持 period 单期过滤（期末余额为时点数）与科目多选；结果按期末余额倒序。
+   * 账龄 10 段归集为 7 段展示（1个月 / 2个月 / 3个月 / 4-6月 / 半年以上 / 1年至3年 / 3年以上）；
+   * 支持 period 单期过滤（期末余额为时点数）与科目多选；固定排除零余额行（与 listDetails 口径一致）；
+   * 结果按期末余额倒序。
    */
   async getAgingAnalysis(params: { companyCodes?: string[]; transactionType?: string; groupBy?: 'type' | 'counterparty' | 'account'; period?: string; accountCodes?: string[]; partyType?: string }) {
     const where: Record<string, unknown> = {}
@@ -363,6 +366,8 @@ export const TransactionService = {
     else if (agingInactiveCodes.length) where.accountCode = { notIn: agingInactiveCodes }
     // 排除已抵消的内部往来
     where.isEliminated = false
+    // 零余额行固定隐藏（对金额合计无贡献，仅提升可读性）
+    where.closingBalance = { not: 0 }
 
     const groupBy = params.groupBy || 'type'
     let by: string[]

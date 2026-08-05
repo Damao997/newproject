@@ -30,12 +30,13 @@ beforeAll(async () => {
 })
 
 describe('服务层集成（真实 DB）', () => {
-  it('公司主体 = 18（12 单体 + 6 在用汇总）', async () => {
+  it('公司主体 = 19（13 单体 + 6 在用汇总）', async () => {
     if (!dbReady) return
     // 基准演进：种子快照 20（10 单体 + ET0001~ET0010）；2026-08-03 主数据维护新增 EN330057/EN330061
-    // 两家单体，并停用 ET0003/ET0007/ET0008/ET0009 四家无映射成员的空壳汇总（审计日志可溯）
+    // 两家单体，并停用 ET0003/ET0007/ET0008/ET0009 四家无映射成员的空壳汇总（审计日志可溯）；
+    // 2026-08-05 又新增 EN330073 单体（13 单体 + 6 在用汇总 = 19）
     const companies = await DataService.listCompanies()
-    expect(companies.length).toBe(18)
+    expect(companies.length).toBe(19)
     expect(companies.some((c) => c.code.startsWith('EN'))).toBe(true)
     expect(companies.some((c) => c.code.startsWith('ET'))).toBe(true)
   })

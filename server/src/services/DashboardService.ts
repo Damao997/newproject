@@ -202,9 +202,9 @@ async function availablePeriods(): Promise<string[]> {
   return rows.map((r) => r.period)
 }
 
-/** 并行构建各期间聚合树（避免串行 N+1），供趋势与选定期 KPI 复用 */
-async function buildTrees(companyCodes: string[], periods: string[]): Promise<Map<string, ValueNode[]>> {
-  const trees = await Promise.all(periods.map((p) => AggregationService.buildOperatingTree(companyCodes, p)))
+/** 并行构建各期间聚合树（避免串行 N+1），供趋势与选定期 KPI 复用；汇总主体查询链路透传抵消上下文 */
+async function buildTrees(companyCodes: string[], periods: string[], consolidationSummaryCode?: string | null): Promise<Map<string, ValueNode[]>> {
+  const trees = await Promise.all(periods.map((p) => AggregationService.buildOperatingTree(companyCodes, p, { consolidationSummaryCode })))
   return new Map(periods.map((p, i) => [p, trees[i]]))
 }
 
@@ -259,13 +259,22 @@ export function budgetAnnualTotal(node: ValueNode | undefined, budgetRows: { acc
 }
 
 /**
- * 预算序列兜底：叶子归集结果为全 null（无直导预算行）时按树预算总额生成；
- * month=年度/12 月均均摊，ytd=年度总额（预算无累计粒度，与品类预算表“累计=年度预算”口径一致）。
+ * 预算序列兜底（月度口径）：叶子归集结果为全 null（无直导预算行）时按树预算总额月均均摊；
+ * 无预算返回原全 null（不伪造）。
  */
-export function fallbackBudgetSeries(series: (number | null)[], annualTotal: number, months: string[], mode: 'month' | 'ytd'): (number | null)[] {
+export function fallbackBudgetSeries(series: (number | null)[], annualTotal: number, months: string[]): (number | null)[] {
   if (series.some((v) => v !== null)) return series
   if (!annualTotal) return series
-  return months.map(() => round2(mode === 'ytd' ? annualTotal : annualTotal / 12))
+  return months.map(() => round2(annualTotal / 12))
+}
+
+/**
+ * 累计预算序列：预算无累计粒度，恒为年度总额水平线（与品类预算表“累计=年度预算”口径一致）；
+ * 年度总额为 0（无预算）时返回全 null。
+ */
+export function ytdBudgetSeries(annualTotal: number, months: string[]): (number | null)[] {
+  if (!annualTotal) return months.map(() => null)
+  return months.map(() => round2(annualTotal))
 }
 
 async function budgetRowsOf(companyCodes: string[], fiscalYear: string): Promise<{ accountCode: string; period: string; value: number }[]> {
@@ -379,13 +388,13 @@ export function matchProductCategories(
   return { rows, covered, uncovered }
 }
 
-/** 构建看板核心数据：4 张 KPI 卡 + 当期所属财年 12 个月的趋势行 */
-async function buildDashboardData(companyCodes: string[], period: string, available: string[]): Promise<{ kpiData: Kpi[]; trendData: Trend[] }> {
+/** 构建看板核心数据：4 张 KPI 卡 + 当期所属财年 12 个月的趋势行；汇总主体查询链路透传抵消上下文 */
+async function buildDashboardData(companyCodes: string[], period: string, available: string[], consolidationSummaryCode?: string | null): Promise<{ kpiData: Kpi[]; trendData: Trend[] }> {
   const fyStart = fiscalYearStartPeriod(period)
   const { year, month } = parsePeriod(fyStart)
   const fyMonths = periodsInRange(fyStart, formatPeriod(year, month + 11))
   const dataMonths = fyMonths.filter((m) => available.includes(m))
-  const treeByPeriod = await buildTrees(companyCodes, dataMonths.includes(period) ? dataMonths : [...dataMonths, period])
+  const treeByPeriod = await buildTrees(companyCodes, dataMonths.includes(period) ? dataMonths : [...dataMonths, period], consolidationSummaryCode)
   const tree = treeByPeriod.get(period) ?? []
   const nodes = metricNodes(tree)
 
@@ -398,12 +407,13 @@ async function buildDashboardData(companyCodes: string[], period: string, availa
   const revenueAnnual = budgetAnnualTotal(nodes.revenue, budgetRows, revenueLeafCodes)
   const profitAnnual = budgetAnnualTotal(nodes.profit, budgetRows, profitLeafCodes)
   const netProfitAnnual = budgetAnnualTotal(nodes.netProfit, budgetRows, netProfitLeafCodes)
-  const revenueBudget = fallbackBudgetSeries(monthlyBudgetSeries(budgetRows, revenueLeafCodes, fyMonths), revenueAnnual, fyMonths, 'month')
-  const profitBudget = fallbackBudgetSeries(monthlyBudgetSeries(budgetRows, profitLeafCodes, fyMonths), profitAnnual, fyMonths, 'month')
-  const netProfitBudget = fallbackBudgetSeries(monthlyBudgetSeries(budgetRows, netProfitLeafCodes, fyMonths), netProfitAnnual, fyMonths, 'month')
-  const revenueYtdBudget = fallbackBudgetSeries(monthlyBudgetSeries(budgetRows, revenueLeafCodes, fyMonths), revenueAnnual, fyMonths, 'ytd')
-  const profitYtdBudget = fallbackBudgetSeries(monthlyBudgetSeries(budgetRows, profitLeafCodes, fyMonths), profitAnnual, fyMonths, 'ytd')
-  const netProfitYtdBudget = fallbackBudgetSeries(monthlyBudgetSeries(budgetRows, netProfitLeafCodes, fyMonths), netProfitAnnual, fyMonths, 'ytd')
+  const revenueBudget = fallbackBudgetSeries(monthlyBudgetSeries(budgetRows, revenueLeafCodes, fyMonths), revenueAnnual, fyMonths)
+  const profitBudget = fallbackBudgetSeries(monthlyBudgetSeries(budgetRows, profitLeafCodes, fyMonths), profitAnnual, fyMonths)
+  const netProfitBudget = fallbackBudgetSeries(monthlyBudgetSeries(budgetRows, netProfitLeafCodes, fyMonths), netProfitAnnual, fyMonths)
+  // 累计预算：预算无累计粒度，独立生成为年度总额水平线（不复用月度序列，避免累计模式误显月均均摊值）
+  const revenueYtdBudget = ytdBudgetSeries(revenueAnnual, fyMonths)
+  const profitYtdBudget = ytdBudgetSeries(profitAnnual, fyMonths)
+  const netProfitYtdBudget = ytdBudgetSeries(netProfitAnnual, fyMonths)
 
   const trendData: Trend[] = fyMonths.map((m, i) => {
     const t = treeByPeriod.get(m)
@@ -487,7 +497,7 @@ export const DashboardService = {
     if (eff.codes.length === 0) {
       return { kpiData: [], trendData: [], alerts: [], lastUpdatedAt: new Date().toISOString(), period, availablePeriods: periods, ...subject }
     }
-    const { kpiData, trendData } = await buildDashboardData(eff.codes, period, periods)
+    const { kpiData, trendData } = await buildDashboardData(eff.codes, period, periods, eff.companyType === 'summary' ? eff.companyCode : null)
 
     const [alerts, lastBatch] = await Promise.all([
       unacknowledgedAlerts(eff.codes),
@@ -510,7 +520,7 @@ export const DashboardService = {
     if (eff.codes.length === 0) {
       return { kpiData: [], trendData: [], companyCode: null, companyName: null, companyType: null, degraded: eff.degraded }
     }
-    const { kpiData, trendData } = await buildDashboardData(eff.codes, period, periods)
+    const { kpiData, trendData } = await buildDashboardData(eff.codes, period, periods, eff.companyType === 'summary' ? eff.companyCode : null)
     return { kpiData, trendData, companyCode: eff.companyCode, companyName: eff.companyName, companyType: eff.companyType, degraded: eff.degraded }
   },
 
@@ -542,7 +552,7 @@ export const DashboardService = {
       return { period, rows: [], companyCode: null, companyName: null, companyType: null, degraded: eff.degraded }
     }
     const [tree, categories] = await Promise.all([
-      AggregationService.buildOperatingTree(eff.codes, period),
+      AggregationService.buildOperatingTree(eff.codes, period, { consolidationSummaryCode: eff.companyType === 'summary' ? eff.companyCode : null }),
       prisma.productCategory.findMany({
         where: { status: 'active' },
         orderBy: { sortOrder: 'asc' },
@@ -622,7 +632,7 @@ export const DashboardService = {
     })
     const subjects = await prisma.company.findMany({
       where: { code: { in: configs.map((c) => c.companyCode) }, entityType: mode === 'summary' ? 'summary' : 'single', status: 'active' },
-      select: { code: true, name: true, shortName: true },
+      select: { code: true, name: true, shortName: true, entityType: true },
     })
     // 按配置 sortOrder 排序（company.findMany 无序，按配置顺序重排）
     const order = new Map(configs.map((c, i) => [c.companyCode, i]))
@@ -635,7 +645,7 @@ export const DashboardService = {
       } catch {
         return null
       }
-      const tree = await AggregationService.buildOperatingTree(codes, period)
+      const tree = await AggregationService.buildOperatingTree(codes, period, { consolidationSummaryCode: s.entityType === 'summary' ? s.code : null })
       const nodes = metricNodes(tree)
       const row: SubjectBudgetRow = {
         code: s.code,

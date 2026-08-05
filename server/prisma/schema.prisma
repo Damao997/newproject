@@ -413,6 +413,27 @@ model ReclassificationLog {
   @@map("reclassification_log")
 }
 
+// 汇总抵消调整：在汇总主体（如 ET0001）聚合口径上按科目/期间叠加抵消金额，
+// 解决内部公司间交易（如集团内现金流）在汇总层面的重复计算；单体报表不受影响。
+// 软删除（deletedAt）即撤销抵消，聚合查询只取未删除记录。
+model ConsolidationAdjustment {
+  id                 String    @id @default(uuid())
+  templateType       String    @map("template_type") // 本版仅 'operating'（现金流属经营科目树），字段保留扩展
+  summaryCompanyCode String    @map("summary_company_code")
+  accountCode        String    @map("account_code")
+  period             String // 单月 YYYY-MM
+  amount             Float // 万元，正=调增、负=调减，非 0
+  reason             String
+  createdBy          String    @map("created_by")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime? @map("updated_at")
+  updatedBy          String?   @map("updated_by")
+  deletedAt          DateTime? @map("deleted_at")
+
+  @@index([summaryCompanyCode, templateType, period, accountCode])
+  @@map("consolidation_adjustment")
+}
+
 // ============================================================
 // 五、业务表
 // ============================================================

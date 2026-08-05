@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
 import { validateFormulaChange, extractCodes, extractOperandRefs, PSEUDO_OPERANDS } from './FormulaRuleService'
+import { resolveCompanyCodes } from './AggregationService'
 import { evaluateFormula, topoSortMetrics } from '../lib/formula'
 import { OPERATING_DIMS } from '../lib/metric-values'
 import { fiscalYearStartPeriod, fiscalYearOpeningSnapshotPeriod, periodMinusYears, fiscalYtdDays } from '../lib/period'
@@ -768,6 +769,13 @@ export const DataService = {
     }
     if (!period) return { value: null, period: null, operands: [], batchInfo: null }
 
+    // 汇总主体 → 展开为单体成员（与 indicators/transactions 同口径：成员求和；
+    // 越权汇总主体按「全有或全无」拒绝 403；非请求链路视为全量，与现状一致）
+    let companyCodes: string[] | undefined
+    if (input.companyCode) {
+      companyCodes = await resolveCompanyCodes({ companyCode: null, scopeValue: '*' }, input.companyCode)
+    }
+
     // 1）递归展开 calc 依赖：先取全部计算类指标公式，再从直接 code 出发逐层收集传递依赖
     const calcMetrics = await prisma.metric.findMany({
       where: { dataType: 'calc', formula: { not: null }, status: 'active' },
@@ -791,7 +799,7 @@ export const DataService = {
 
     // 2）一次性取全量 code 的事实值（经营科目取 ACTUAL_MONTH，静态科目取同期间快照月，支持跨类型公式如 ROA）
     const where: Record<string, unknown> = { batchId: batch.id, period, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, accountCode: { in: allCodeList } }
-    if (input.companyCode) where.companyCode = input.companyCode
+    if (companyCodes) where.companyCode = { in: companyCodes }
     const facts = await prisma.factOperating.groupBy({ by: ['accountCode'], where, _sum: { value: true } })
     const valueMap = new Map(facts.map((f) => [f.accountCode, Number(f._sum.value ?? 0)]))
 
@@ -831,7 +839,7 @@ export const DataService = {
       const opRefCodes = allCodeList.filter((c) => !c.startsWith('ST_'))
       if (!range || opRefCodes.length === 0) continue
       const dimWhere: Record<string, unknown> = { batchId: batch.id, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, period: range, accountCode: { in: opRefCodes } }
-      if (input.companyCode) dimWhere.companyCode = input.companyCode
+      if (companyCodes) dimWhere.companyCode = { in: companyCodes }
       const grouped = await prisma.factOperating.groupBy({ by: ['accountCode'], where: dimWhere, _sum: { value: true } })
       const raw: Record<string, number> = {}
       for (const g of grouped) {
@@ -858,7 +866,7 @@ export const DataService = {
       const stBatches = await prisma.importBatch.findMany({ where: { dataType: 'static', lifecycleStatus: 'active' }, select: { id: true } })
       if (stBatches.length > 0) {
         const stWhere: Record<string, unknown> = { batchId: { in: stBatches.map((b) => b.id) }, accountCode: { in: stCodes } }
-        if (input.companyCode) stWhere.companyCode = input.companyCode
+        if (companyCodes) stWhere.companyCode = { in: companyCodes }
         const stFacts = await prisma.factStatic.groupBy({ by: ['accountCode', 'snapshotDate'], where: stWhere, _sum: { value: true } })
         for (const g of stFacts) {
           const d = g.snapshotDate as Date

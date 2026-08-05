@@ -249,7 +249,7 @@ export function SubjectDialog({ open, mode, type, subject, flat, canConvert = fa
               <SelectContent>
                 <SelectItem value="amount">金额（万元，千分位两位小数）</SelectItem>
                 <SelectItem value="quantity">数量（整数，如户数/天数）</SelectItem>
-                <SelectItem value="ratio">比率（百分比展示，同比按百分点差）</SelectItem>
+                <SelectItem value="ratio">比率（百分比展示，同比按增长率）</SelectItem>
               </SelectContent>
             </Select>
           </div>

@@ -137,10 +137,12 @@ export interface BudgetWarnings {
   parentSubjects: string[]
   /** 毛利类数据类叶子中文件未包含行者：其预算金额将为 0 */
   missingProfitLeaves: string[]
+  /** 毛利叶子类型与公式不一致（dataType=data 但 formula 非空，多为历史种子回写残留）：须先恢复计算类，导入值不会按公式重算 */
+  typeFormulaMismatch: string[]
 }
 
 /** 依据文件科目编码集合产出预算口径告警（无告警返回 null） */
-async function computeBudgetWarnings(accountCodes: string[]): Promise<BudgetWarnings | null> {
+export async function computeBudgetWarnings(accountCodes: string[]): Promise<BudgetWarnings | null> {
   if (accountCodes.length === 0) return null
   const subjects = await prisma.accountSubject.findMany({
     where: { subjectType: 'operating' },
@@ -151,9 +153,10 @@ async function computeBudgetWarnings(accountCodes: string[]): Promise<BudgetWarn
   const profitLeafCodes = subjects.filter((s) => s.category === '毛利' && s.isLeaf).map((s) => s.code)
   const metrics = await prisma.metric.findMany({
     where: { code: { in: [...fileCodes, ...profitLeafCodes] } },
-    select: { code: true, dataType: true },
+    select: { code: true, dataType: true, formula: true },
   })
   const dtByCode = new Map(metrics.map((m) => [m.code, m.dataType]))
+  const formulaByCode = new Map(metrics.map((m) => [m.code, m.formula]))
   const byCode = new Map(subjects.map((s) => [s.code, s]))
   const recalcSubjects: string[] = []
   const parentSubjects: string[] = []
@@ -163,11 +166,15 @@ async function computeBudgetWarnings(accountCodes: string[]): Promise<BudgetWarn
     if (dtByCode.get(code) === 'calc') recalcSubjects.push(s.name)
     else if (!s.isLeaf) parentSubjects.push(s.name)
   }
-  const missingProfitLeaves = subjects
-    .filter((s) => s.category === '毛利' && s.isLeaf && dtByCode.get(s.code) !== 'calc' && !fileCodes.has(s.code))
+  // 矛盾状态（data 类却残留公式）单独归口提示，不误导为直导缺行；缺行仅指真正无公式的数据类叶子
+  const typeFormulaMismatch = subjects
+    .filter((s) => s.category === '毛利' && s.isLeaf && dtByCode.get(s.code) === 'data' && !!formulaByCode.get(s.code))
     .map((s) => s.name)
-  if (recalcSubjects.length === 0 && parentSubjects.length === 0 && missingProfitLeaves.length === 0) return null
-  return { recalcSubjects, parentSubjects, missingProfitLeaves }
+  const missingProfitLeaves = subjects
+    .filter((s) => s.category === '毛利' && s.isLeaf && dtByCode.get(s.code) !== 'calc' && !formulaByCode.get(s.code) && !fileCodes.has(s.code))
+    .map((s) => s.name)
+  if (recalcSubjects.length === 0 && parentSubjects.length === 0 && missingProfitLeaves.length === 0 && typeFormulaMismatch.length === 0) return null
+  return { recalcSubjects, parentSubjects, missingProfitLeaves, typeFormulaMismatch }
 }
 
 function toSummaryDto(s: PreviewSummary): PreviewSummaryDto {

@@ -167,7 +167,10 @@ export async function seedDomain(prisma: PrismaClient): Promise<void> {
     const dataType = metricDataTypeOf(s)
     await prisma.metric.upsert({
       where: { code: s.code },
-      update: { name: s.name, category: s.category, dataType },
+      // 更新分支不覆盖 dataType：类型变更为高危操作，须走 DataService.convertMetricType
+      // （含引用保护与审计）。种子静默回写会撤销运行期转换（如毛利叶子被转回数据类导致公式失效），
+      // 仅在新建时按树定义初始化类型。
+      update: { name: s.name, category: s.category },
       create: { code: s.code, name: s.name, category: s.category, dataType },
     })
   }

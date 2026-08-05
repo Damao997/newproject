@@ -619,6 +619,21 @@ export function ImportPanel() {
                   </div>
                 </div>
               )}
+              {previewResult.budgetWarnings && previewResult.budgetWarnings.typeFormulaMismatch.length > 0 && (
+                <div className="rounded-lg border border-destructive/25 bg-destructive/[0.06] p-3">
+                  <div className="flex items-start space-x-2">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-destructive">
+                        以下毛利科目类型与公式不一致（数据类残留公式），导入值不会按公式重算。请先在「指标维护」中将它们恢复为计算类后再导入预算：
+                      </p>
+                      <ul className="list-inside list-disc text-xs text-destructive">
+                        {previewResult.budgetWarnings.typeFormulaMismatch.map((s, i) => <li key={i}>{s}</li>)}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              )}
               {previewResult.budgetWarnings && (previewResult.budgetWarnings.recalcSubjects.length > 0 || previewResult.budgetWarnings.parentSubjects.length > 0) && (
                 <div className="flex items-start space-x-2 rounded-lg border border-info/25 bg-info/10 p-3">
                   <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-info" />

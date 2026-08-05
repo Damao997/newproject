@@ -55,22 +55,17 @@ function serializeOperating(node: ValueNode): OperatingRow {
   const samePeriod = v[OPERATING_DIMS.SAME_PERIOD_ACTUAL] ?? 0
   const ytd = v[OPERATING_DIMS.YTD_ACTUAL] ?? 0
   const samePeriodYtd = v[OPERATING_DIMS.SAME_PERIOD_YTD] ?? 0
-  // 比率类科目同比用百分点差（pp），避免相对变化率误导（20%→22% 不应显示 +10%）
-  const isRatio = node.valueType === 'ratio'
   return {
     code: node.code, name: node.name, level: node.level, category: node.category,
     dataType: node.dataType, valueType: node.valueType, isLeaf: node.isLeaf,
     budget, actual, samePeriod, ytd, samePeriodYtd,
-    yoy: isRatio ? round2pp((actual - samePeriod) * 100) : calcYoy(actual, samePeriod),
+    // 同比统一按相对增长率返回百分数值（比率科目同样用增长率，不再用百分点差）
+    yoy: calcYoy(actual, samePeriod),
     // 预算为全年值，达成率用本年累计作分子（避免月实际/年预算的口径错配）
     achievement: calcAchievement(ytd, budget),
-    ytdYoy: isRatio ? round2pp((ytd - samePeriodYtd) * 100) : calcYoy(ytd, samePeriodYtd),
+    ytdYoy: calcYoy(ytd, samePeriodYtd),
     children: node.children.map(serializeOperating),
   }
-}
-
-function round2pp(n: number): number {
-  return Number(n.toFixed(2))
 }
 
 function serializeStatic(node: ValueNode): StaticRow {
@@ -79,12 +74,12 @@ function serializeStatic(node: ValueNode): StaticRow {
   const yearStart = v[STATIC_DIMS.YEAR_START] ?? 0
   const samePeriod = v[STATIC_DIMS.SAME_PERIOD_AMOUNT] ?? 0
   const lastYearStart = v[STATIC_DIMS.LAST_YEAR_START] ?? 0
-  const isRatio = node.valueType === 'ratio'
   return {
     code: node.code, name: node.name, level: node.level, category: node.category,
     dataType: node.dataType, valueType: node.valueType, isLeaf: node.isLeaf,
     current, yearStart, samePeriod, lastYearStart,
-    yoy: isRatio ? round2pp((current - samePeriod) * 100) : calcYoy(current, samePeriod),
+    // 变动率统一按相对增长率返回百分数值（比率科目同样用增长率）
+    yoy: calcYoy(current, samePeriod),
     children: node.children.map(serializeStatic),
   }
 }
@@ -138,6 +133,13 @@ export async function latestStaticPeriod(): Promise<string> {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
 }
 
+/** 请求主体为汇总主体时返回其编码（聚合叠加汇总抵消用），单体/未指定返回 null */
+async function summaryContextOf(companyCode?: string): Promise<string | null> {
+  if (!companyCode) return null
+  const company = await prisma.company.findUnique({ where: { code: companyCode }, select: { entityType: true } })
+  return company?.entityType === 'summary' ? companyCode : null
+}
+
 export const IndicatorsService = {
   async getTree(subjectType: 'operating' | 'static'): Promise<unknown[]> {
     return structuralTree(subjectType)
@@ -145,9 +147,14 @@ export const IndicatorsService = {
 
   async getOperating(scope: Scope, params: { companyCode?: string; period?: string; excludeReclassify?: boolean }): Promise<{ items: OperatingRow[]; total: number; period: string; companyCount: number; reclassifyExcluded: boolean; skippedReclassifyLogs: number }> {
     const companyCodes = await resolveCompanyCodes(scope, params.companyCode)
+    // 请求主体为汇总主体时透传编码，聚合时叠加该主体的汇总抵消（内部交易抵消；单体查询链路不生效）
+    const consolidationSummaryCode = await summaryContextOf(params.companyCode)
     const period = params.period || (await latestOperatingPeriod())
     const meta: ReclassifyReversalMeta = { appliedLogs: 0, skippedLogs: 0 }
-    const tree = await AggregationService.buildOperatingTree(companyCodes, period, params.excludeReclassify ? { excludeReclassify: true, reclassifyMeta: meta } : undefined)
+    const tree = await AggregationService.buildOperatingTree(companyCodes, period, {
+      ...(params.excludeReclassify ? { excludeReclassify: true, reclassifyMeta: meta } : {}),
+      consolidationSummaryCode,
+    })
     const items = tree.map(serializeOperating)
     const total = flattenValueTree(tree).length
     return { items, total, period, companyCount: companyCodes.length, reclassifyExcluded: !!params.excludeReclassify, skippedReclassifyLogs: meta.skippedLogs }
@@ -155,9 +162,14 @@ export const IndicatorsService = {
 
   async getStatic(scope: Scope, params: { companyCode?: string; period?: string; excludeReclassify?: boolean }): Promise<{ items: StaticRow[]; total: number; period: string; companyCount: number; reclassifyExcluded: boolean; skippedReclassifyLogs: number }> {
     const companyCodes = await resolveCompanyCodes(scope, params.companyCode)
+    // 静态树本版不叠加抵消，但透传上下文以保持跨树引用（静态比率引用经营科目）口径一致
+    const consolidationSummaryCode = await summaryContextOf(params.companyCode)
     const period = params.period || (await latestStaticPeriod())
     const meta: ReclassifyReversalMeta = { appliedLogs: 0, skippedLogs: 0 }
-    const tree = await AggregationService.buildStaticTree(companyCodes, period, params.excludeReclassify ? { excludeReclassify: true, reclassifyMeta: meta } : undefined)
+    const tree = await AggregationService.buildStaticTree(companyCodes, period, {
+      ...(params.excludeReclassify ? { excludeReclassify: true, reclassifyMeta: meta } : {}),
+      consolidationSummaryCode,
+    })
     const items = tree.map(serializeStatic)
     const total = flattenValueTree(tree).length
     return { items, total, period, companyCount: companyCodes.length, reclassifyExcluded: !!params.excludeReclassify, skippedReclassifyLogs: meta.skippedLogs }
