@@ -66,6 +66,8 @@ export interface AccountSubject {
   status: 'active' | 'inactive'
   /** 值类型：金额（万元）/ 数量（整数）/ 比率（公式计算，不可直接调整） */
   valueType?: 'amount' | 'quantity' | 'ratio'
+  /** 指标类型：data=数据 / calc=计算（公式驱动）/ display=展示（只读）；calc/display 不可直接调整 */
+  dataType?: 'data' | 'calc' | 'display'
 }
 
 export interface Metric {
@@ -209,8 +211,14 @@ export interface ReclassifyLog {
   /** 撤销时间（null = 未撤销） */
   revertedAt: string | null
   revertedBy: string | null
-  /** 是否可撤销（含行级快照且未撤销） */
+  /** 是否可撤销（含行级快照且未撤销且未因批次替换失效） */
   revertible: boolean
+  /** 批次替换/归档/清除导致引用失效的时间（null = 未失效） */
+  invalidatedAt: string | null
+  /** 失效原因：rows_replaced（行被物理删除）| batch_inactive（批次不再生效） */
+  invalidatedReason: string | null
+  /** 失效详情（触发批次、替换期间） */
+  invalidation: { reason: string; replacedByBatchId: string; replacedPeriods: string[] | null } | null
   detail?: ReclassifyLogDetail | null
   createdAt: string
 }
@@ -277,6 +285,8 @@ export interface TrendData {
 /** 品类预算达成的单指标组（收入/毛利各一组）：预算为年度总额（万元），月均口径由前端按 预算/12 折算 */
 export interface ProductBudgetMetric {
   budget: number
+  /** 当月预算金额（按月度占比拆分后的当月值；无预算为 null） */
+  monthBudget: number | null
   monthActual: number
   /** 上年同月实际（供合计行同比按 Σ金额重算） */
   monthSame: number
@@ -346,6 +356,55 @@ export interface ProductCategoryCheckResult {
   uncoveredSubjects: string[]
   brokenKeywords: string[]
   missingProfitMirror: string[]
+}
+
+/** 运营费用映射（运营费用分析：展示指标 ↔ 经营科目编码集合） */
+export interface ExpenseMapping {
+  id: string
+  code: string
+  name: string
+  subjectCodes: string[]
+  sortOrder: number
+  status: 'active' | 'inactive'
+  createdAt: string
+  updatedAt: string
+}
+
+/** 候选科目分组（运营费用映射 check 返回，供配置面板按组多选：付现/非付现/财务费用；hasData=false 表示无经营数据与预算，配置后看板不展示） */
+export interface ExpenseCandidateGroup {
+  group: string
+  items: { code: string; name: string; hasData: boolean }[]
+}
+
+/** 运营费用映射检测结果：已配置列表 + 候选科目分组 + 未配置科目 + 失效编码（mappings.hasData=false 表示引用科目均无数据，看板不展示） */
+export interface ExpenseMappingCheckResult {
+  mappings: (ExpenseMapping & { matchedSubjects: string[]; hasData: boolean })[]
+  candidates: ExpenseCandidateGroup[]
+  uncoveredSubjects: string[]
+  brokenCodes: string[]
+}
+
+/** 运营费用分析行：展示指标（映射配置）+ 单组口径值（字段平铺） */
+export type ExpenseAnalysisRow = { code: string; name: string } & ProductBudgetMetric
+
+/** 运营费用分析接口响应（companyCode/companyName/companyType/degraded 为看板实际生效主体，越权时自动降级） */
+export interface ExpenseAnalysisResponse {
+  period: string
+  rows: ExpenseAnalysisRow[]
+  companyCode: string | null
+  companyName: string | null
+  companyType: 'single' | 'summary' | null
+  degraded: boolean
+}
+
+/** 预算月度占比配置（看板月度预算按占比拆分；ratios 按财年 4月起 12 个月顺序，和为 100） */
+export interface BudgetRatio {
+  fiscalYear: string
+  ratios: number[]
+  /** 该财年生效预算的年度总额（万元，全部公司全部科目合计） */
+  annualTotal: number
+  /** 按占比拆分后的各月预算金额（万元，末月余差保证 Σ=年度总额；无预算时全 null） */
+  monthlyAmounts: (number | null)[]
 }
 
 /** 主体展示配置（主体预算达成分析：配置展示的主体/排序/启停） */

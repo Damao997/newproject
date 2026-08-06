@@ -1,5 +1,6 @@
 ﻿import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import request from 'supertest'
+import ExcelJS from 'exceljs'
 import { createApp } from '../app'
 import { basePrisma, prisma } from '../lib/prisma'
 import { hashPassword } from '../lib/password'
@@ -39,6 +40,11 @@ let invOnlyUserId = ''
 let invOnlyToken = ''
 let invOnlyRoleId = ''
 let invOnlyPermissionId = ''
+// 仅持有 transactions:view（无 transactions:export）的临时角色：账龄导出权限门回归
+let expNoUserId = ''
+let expNoToken = ''
+let expNoRoleId = ''
+let expNoPermissionId = ''
 const detailIds: string[] = []
 
 beforeAll(async () => {
@@ -166,6 +172,31 @@ beforeAll(async () => {
       invOnlyUserId = invUser.id
       const invLogin = await request(app).post('/api/v1/auth/login').send({ username: `__invonly_u_${suffix}`, password: PASSWORD })
       if (invLogin.status === 200) invOnlyToken = invLogin.body.data.accessToken
+
+      // 仅 transactions:view（无 export）的临时角色 → 账龄导出须 403（导出权限独立门禁）
+      const expNoRole = await basePrisma.role.create({
+        data: { code: `__expno_${suffix}`.slice(0, 24), name: `仅账龄查看_${suffix}`, scopeValue: '' },
+        select: { id: true },
+      })
+      expNoRoleId = expNoRole.id
+      const expNoPerm = await basePrisma.permission.create({
+        data: { roleId: expNoRoleId, resource: 'transactions:view', action: 'view' },
+        select: { id: true },
+      })
+      expNoPermissionId = expNoPerm.id
+      const expNoUser = await basePrisma.user.create({
+        data: {
+          username: `__expno_u_${suffix}`,
+          passwordHash: await hashPassword(PASSWORD),
+          displayName: '仅账龄查看测试',
+          roleId: expNoRoleId,
+          status: 'active',
+        },
+        select: { id: true },
+      })
+      expNoUserId = expNoUser.id
+      const expNoLogin = await request(app).post('/api/v1/auth/login').send({ username: `__expno_u_${suffix}`, password: PASSWORD })
+      if (expNoLogin.status === 200) expNoToken = expNoLogin.body.data.accessToken
     }
   } catch (e) {
     // eslint-disable-next-line no-console
@@ -176,7 +207,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await basePrisma.transactionDetail.deleteMany({ where: { id: { in: detailIds } } }).catch(() => undefined)
-  for (const uid of [userId, viewerUserId, noViewUserId, invOnlyUserId]) {
+  for (const uid of [userId, viewerUserId, noViewUserId, invOnlyUserId, expNoUserId]) {
     if (!uid) continue
     await basePrisma.tokenBlacklist.deleteMany({ where: { userId: uid } }).catch(() => undefined)
     await basePrisma.user.delete({ where: { id: uid } }).catch(() => undefined)
@@ -185,6 +216,8 @@ afterAll(async () => {
   if (noViewRoleId) await basePrisma.role.delete({ where: { id: noViewRoleId } }).catch(() => undefined)
   if (invOnlyPermissionId) await basePrisma.permission.delete({ where: { id: invOnlyPermissionId } }).catch(() => undefined)
   if (invOnlyRoleId) await basePrisma.role.delete({ where: { id: invOnlyRoleId } }).catch(() => undefined)
+  if (expNoPermissionId) await basePrisma.permission.delete({ where: { id: expNoPermissionId } }).catch(() => undefined)
+  if (expNoRoleId) await basePrisma.role.delete({ where: { id: expNoRoleId } }).catch(() => undefined)
   await basePrisma.companyAggregationMap
     .deleteMany({ where: { summaryCompanyCode: ET_PARTIAL } })
     .catch(() => undefined)
@@ -296,6 +329,35 @@ describe('数据范围隔离 HTTP 端到端（真实 DB）', () => {
   it('共享元数据端点：无任何候选查看权限 → periods 仍 403（权限门未过度放宽）', async () => {
     if (!dbReady || !noViewToken) return
     const res = await request(app).get('/api/v1/indicators/periods').set('Authorization', `Bearer ${noViewToken}`)
+    expect(res.status).toBe(403)
+  })
+
+  it('账龄导出：transactions:export 角色 → 200 xlsx，且仅含授权公司（scope 不泄露范围外数据）', async () => {
+    if (!dbReady) return
+    const res = await auth(request(app).get(`/api/v1/transactions/aging/export?period=${PERIOD}&groupBy=type`).responseType('blob'))
+    expect(res.status).toBe(200)
+    expect(res.headers['content-type']).toContain('spreadsheetml')
+    expect(res.headers['content-disposition']).toContain('aging-analysis')
+    // xlsx = ZIP 魔数开头
+    const buf = res.body as Buffer
+    expect(buf[0]).toBe(0x50)
+    expect(buf[1]).toBe(0x4B)
+    // 解析导出表：公司列仅出现授权公司 CO_IN，不出现范围外 CO_OUT
+    const wb = new ExcelJS.Workbook()
+    await wb.xlsx.load(buf)
+    const ws = wb.worksheets[0]
+    const companies = new Set<string>()
+    ws.eachRow((row) => {
+      const v = row.getCell(1).text
+      if (v) companies.add(v)
+    })
+    expect(companies.has(CO_IN)).toBe(true)
+    expect(companies.has(CO_OUT)).toBe(false)
+  })
+
+  it('账龄导出：仅 transactions:view 无 export → 403（导出权限独立门禁）', async () => {
+    if (!dbReady || !expNoToken) return
+    const res = await request(app).get('/api/v1/transactions/aging/export').set('Authorization', `Bearer ${expNoToken}`)
     expect(res.status).toBe(403)
   })
 })

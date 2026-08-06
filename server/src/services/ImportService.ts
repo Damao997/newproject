@@ -10,6 +10,7 @@ import { parseTransactionWorkbook, type TransactionParseResult, type Transaction
 import { fyLabelOfDate, parsePeriod, formatPeriod } from '../lib/period'
 import { assertCompaniesInScope, effectiveScope } from '../lib/scope-guard'
 import { latestOperatingPeriod, latestStaticPeriod } from './IndicatorsService'
+import { markInvalidatedReclassifications } from './ReclassificationService'
 
 /**
  * 数据导入服务：文件校验（MIME magic + 大小由 multer 保证）、解析计数、
@@ -186,17 +187,17 @@ function ymOfDate(d: Date): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
 }
 
-/** 激活覆盖前备份将被物理删除的经营事实行到 fact_snapshot（支撑批次回滚）；返回备份行数 */
+/** 激活覆盖前备份将被物理删除的经营事实行到 fact_snapshot（支撑批次回滚）；返回备份行数与被删行 id（供重分类失效标记） */
 async function backupOperatingRows(
   tx: Prisma.TransactionClient,
   archivedByBatchId: string,
   where: Prisma.FactOperatingWhereInput,
-): Promise<number> {
+): Promise<{ count: number; ids: string[] }> {
   const rows = await tx.factOperating.findMany({
     where,
-    select: { batchId: true, companyCode: true, accountCode: true, period: true, fiscalYear: true, periodDimCode: true, value: true, rawJson: true },
+    select: { id: true, batchId: true, companyCode: true, accountCode: true, period: true, fiscalYear: true, periodDimCode: true, value: true, rawJson: true },
   })
-  if (rows.length === 0) return 0
+  if (rows.length === 0) return { count: 0, ids: [] }
   await tx.factSnapshot.createMany({
     data: rows.map((r) => ({
       batchId: r.batchId,
@@ -211,20 +212,20 @@ async function backupOperatingRows(
       rawJson: r.rawJson as never,
     })),
   })
-  return rows.length
+  return { count: rows.length, ids: rows.map((r) => r.id) }
 }
 
-/** 激活覆盖前备份将被物理删除的静态事实行到 fact_snapshot（支撑批次回滚）；返回备份行数 */
+/** 激活覆盖前备份将被物理删除的静态事实行到 fact_snapshot（支撑批次回滚）；返回备份行数与被删行 id（供重分类失效标记） */
 async function backupStaticRows(
   tx: Prisma.TransactionClient,
   archivedByBatchId: string,
   where: Prisma.FactStaticWhereInput,
-): Promise<number> {
+): Promise<{ count: number; ids: string[] }> {
   const rows = await tx.factStatic.findMany({
     where,
-    select: { batchId: true, companyCode: true, accountCode: true, snapshotDate: true, fiscalYear: true, periodDimCode: true, value: true, rawJson: true },
+    select: { id: true, batchId: true, companyCode: true, accountCode: true, snapshotDate: true, fiscalYear: true, periodDimCode: true, value: true, rawJson: true },
   })
-  if (rows.length === 0) return 0
+  if (rows.length === 0) return { count: 0, ids: [] }
   await tx.factSnapshot.createMany({
     data: rows.map((r) => ({
       batchId: r.batchId,
@@ -239,20 +240,23 @@ async function backupStaticRows(
       rawJson: r.rawJson as never,
     })),
   })
-  return rows.length
+  return { count: rows.length, ids: rows.map((r) => r.id) }
 }
 
 /**
  * 事务内激活核心逻辑（rollbackBatch 复用）：删除旧 active 批次中与本批次重叠的数据
  * （operating 按 period、static 按快照月，删除前先备份到 fact_snapshot）、
- * 空批次自动归档、置目标批次 active。transaction/budget/inventory 分支与旧逻辑一致。
+ * 空批次自动归档、置目标批次 active；删除/归档联动重分类失效标记。
+ * transaction/budget/inventory 分支与旧逻辑一致。
  */
 async function activateInTx(
   tx: Prisma.TransactionClient,
   b: { id: string; dataType: ImportDataType; fiscalYear: string | null; coverageJson: unknown },
-): Promise<{ replacedPeriods: string[]; deletedRows: number }> {
+  userId: string,
+): Promise<{ replacedPeriods: string[]; deletedRows: number; markedInvalidations: number }> {
   let replaced: string[] = []
   let deleted = 0
+  let marked = 0
   if (b.dataType === 'operating' || b.dataType === 'static') {
     const oldActive = await tx.importBatch.findMany({
       where: { dataType: b.dataType, lifecycleStatus: 'active' },
@@ -265,9 +269,15 @@ async function activateInTx(
         const rows = await tx.factOperating.findMany({ where: { batchId: b.id }, distinct: ['period'], select: { period: true } })
         const newPeriods = rows.map((r) => r.period)
         if (newPeriods.length > 0) {
-          deleted += await backupOperatingRows(tx, b.id, { batchId: { in: oldIds }, period: { in: newPeriods } })
+          const backed = await backupOperatingRows(tx, b.id, { batchId: { in: oldIds }, period: { in: newPeriods } })
+          deleted += backed.count
           await tx.factOperating.deleteMany({ where: { batchId: { in: oldIds }, period: { in: newPeriods } } })
           replaced = newPeriods.sort()
+          if (backed.ids.length > 0) {
+            marked += await markInvalidatedReclassifications(tx, 'operating', {
+              templateType: 'operating', replacedByBatchId: b.id, replacedPeriods: newPeriods, operatorId: userId,
+            })
+          }
         }
         for (const oldId of oldIds) {
           const remaining = await tx.factOperating.count({ where: { batchId: oldId } })
@@ -280,8 +290,14 @@ async function activateInTx(
           const oldSnaps = await tx.factStatic.findMany({ where: { batchId: { in: oldIds } }, distinct: ['snapshotDate'], select: { snapshotDate: true } })
           const delDates = oldSnaps.map((s) => s.snapshotDate).filter((d) => newMonths.has(ymOfDate(d)))
           if (delDates.length > 0) {
-            deleted += await backupStaticRows(tx, b.id, { batchId: { in: oldIds }, snapshotDate: { in: delDates } })
+            const backed = await backupStaticRows(tx, b.id, { batchId: { in: oldIds }, snapshotDate: { in: delDates } })
+            deleted += backed.count
             await tx.factStatic.deleteMany({ where: { batchId: { in: oldIds }, snapshotDate: { in: delDates } } })
+            if (backed.ids.length > 0) {
+              marked += await markInvalidatedReclassifications(tx, 'static', {
+                templateType: 'static', replacedByBatchId: b.id, replacedPeriods: [...newMonths].sort(), operatorId: userId,
+              })
+            }
           }
           replaced = [...newMonths].sort()
         }
@@ -343,16 +359,26 @@ async function activateInTx(
       b.dataType === 'budget'
         ? { dataType: b.dataType, lifecycleStatus: 'active' as const, fiscalYear: b.fiscalYear, id: { not: b.id } }
         : { dataType: b.dataType, lifecycleStatus: 'active' as const, id: { not: b.id } }
+    const toArchive = await tx.importBatch.findMany({ where: archiveWhere, select: { id: true } })
     await tx.importBatch.updateMany({
       where: archiveWhere,
       data: { lifecycleStatus: 'archived' },
     })
+    // budget 按财年整体替换：旧批次归档（行保留但批次失效）联动重分类失效标记
+    if (b.dataType === 'budget' && toArchive.length > 0) {
+      marked += await markInvalidatedReclassifications(tx, 'budget', {
+        templateType: 'budget',
+        replacedByBatchId: b.id,
+        replacedPeriods: b.fiscalYear ? [b.fiscalYear] : undefined,
+        operatorId: userId,
+      })
+    }
   }
   await tx.importBatch.update({
     where: { id: b.id },
     data: { lifecycleStatus: 'active', status: 'success' },
   })
-  return { replacedPeriods: replaced, deletedRows: deleted }
+  return { replacedPeriods: replaced, deletedRows: deleted, markedInvalidations: marked }
 }
 
 /** 查当前生效批次并对比期间集合（operating=period、static=快照月、budget=财年）；
@@ -1053,12 +1079,15 @@ export const ImportService = {
     if (!b) throw errors.notFound('导入批次不存在')
     if (b.lifecycleStatus === 'active') return toDto(b)
 
-    const { updated, replacedPeriods, deletedRows } = await prisma.$transaction(async (tx) => {
-      const impact = await activateInTx(tx, b)
+    const { updated, replacedPeriods, deletedRows, markedInvalidations } = await prisma.$transaction(async (tx) => {
+      const impact = await activateInTx(tx, b, userId)
       const batch = await tx.importBatch.findUniqueOrThrow({ where: { id } })
       return { updated: batch, ...impact }
     })
-    await recordAudit({ userId, module: 'data', action: 'update', targetId: id, detail: { action: 'activate', replacedPeriods, deletedRows } }, traceId)
+    await recordAudit(
+      { userId, module: 'data', action: 'update', targetId: id, detail: { action: 'activate', replacedPeriods, deletedRows, markedInvalidations } },
+      traceId,
+    )
     return toDto(updated)
   },
 
@@ -1077,7 +1106,7 @@ export const ImportService = {
       throw errors.badRequest('该数据类型暂不支持回滚（v1 仅支持经营/静态/预算数据）')
     }
 
-    const { updated, restoredRows, replacedPeriods, deletedRows } = await prisma.$transaction(async (tx) => {
+    const { updated, restoredRows, replacedPeriods, deletedRows, markedInvalidations } = await prisma.$transaction(async (tx) => {
       let restored = 0
       // 1) 恢复快照行（operating/static 被覆盖时备份；budget 从不删行无需恢复）
       if (b.dataType === 'operating' || b.dataType === 'static') {
@@ -1125,13 +1154,16 @@ export const ImportService = {
             : await tx.factBudget.count({ where: { batchId: id } })
       if (hasData === 0) throw errors.badRequest('该批次数据已不可恢复（可能已被清除）')
       // 3) 重新激活：删除当前 active 重叠行（自动备份到快照表）并置目标批次 active
-      const impact = await activateInTx(tx, b)
+      const impact = await activateInTx(tx, b, userId)
       // 4) 清理已恢复的快照（下次覆盖会重新备份）
       await tx.factSnapshot.deleteMany({ where: { batchId: id } })
       const batch = await tx.importBatch.findUniqueOrThrow({ where: { id } })
       return { updated: batch, restoredRows: restored, ...impact }
     })
-    await recordAudit({ userId, module: 'data', action: 'import_rollback', targetId: id, detail: { restoredRows, replacedPeriods, deletedRows } }, traceId)
+    await recordAudit(
+      { userId, module: 'data', action: 'import_rollback', targetId: id, detail: { restoredRows, replacedPeriods, deletedRows, markedInvalidations } },
+      traceId,
+    )
     return toDto(updated)
   },
 
@@ -1255,8 +1287,18 @@ export const ImportService = {
     if (!b) throw errors.notFound('导入批次不存在')
     if (b.lifecycleStatus === 'archived') return toDto(b)
     if (b.lifecycleStatus === 'purged') throw errors.conflict('已清除的批次不可归档')
-    const updated = await prisma.importBatch.update({ where: { id }, data: { lifecycleStatus: 'archived' } })
-    await recordAudit({ userId, module: 'data', action: 'update', targetId: id, detail: { action: 'archive' } }, traceId)
+    const { updated, markedInvalidations } = await prisma.$transaction(async (tx) => {
+      const up = await tx.importBatch.update({ where: { id }, data: { lifecycleStatus: 'archived' } })
+      // 批次归档（行保留但批次失效）联动重分类失效标记
+      let marked = 0
+      if (b.dataType === 'operating' || b.dataType === 'static' || b.dataType === 'budget') {
+        marked = await markInvalidatedReclassifications(tx, b.dataType, {
+          templateType: b.dataType, replacedByBatchId: id, operatorId: userId,
+        })
+      }
+      return { updated: up, markedInvalidations: marked }
+    })
+    await recordAudit({ userId, module: 'data', action: 'update', targetId: id, detail: { action: 'archive', markedInvalidations } }, traceId)
     return toDto(updated)
   },
 
@@ -1269,7 +1311,7 @@ export const ImportService = {
     if (!b) throw errors.notFound('导入批次不存在')
     if (b.lifecycleStatus === 'purged') return toDto(b)
     if (b.lifecycleStatus === 'active') throw errors.conflict('生效中批次不可清除，请先归档')
-    const { updated, deletedRows } = await prisma.$transaction(async (tx) => {
+    const { updated, deletedRows, markedInvalidations } = await prisma.$transaction(async (tx) => {
       const [op, st, bg, txn, inv, snap] = await Promise.all([
         tx.factOperating.deleteMany({ where: { batchId: id } }),
         tx.factStatic.deleteMany({ where: { batchId: id } }),
@@ -1279,10 +1321,20 @@ export const ImportService = {
         // 批次已物理清除，其回滚快照失去意义，级联清理避免表无限膨胀
         tx.factSnapshot.deleteMany({ where: { batchId: id } }),
       ])
+      // 事实行被物理删除后，引用它们的未撤销重分类记录联动标记失效
+      let marked = 0
+      if (b.dataType === 'operating' || b.dataType === 'static' || b.dataType === 'budget') {
+        marked = await markInvalidatedReclassifications(tx, b.dataType, {
+          templateType: b.dataType, replacedByBatchId: id, operatorId: userId,
+        })
+      }
       const batch = await tx.importBatch.update({ where: { id }, data: { lifecycleStatus: 'purged' } })
-      return { updated: batch, deletedRows: op.count + st.count + bg.count + txn.count + inv.count + snap.count }
+      return { updated: batch, deletedRows: op.count + st.count + bg.count + txn.count + inv.count + snap.count, markedInvalidations: marked }
     })
-    await recordAudit({ userId, module: 'data', action: 'delete', targetId: id, detail: { action: 'purge', deletedRows } }, traceId)
+    await recordAudit(
+      { userId, module: 'data', action: 'delete', targetId: id, detail: { action: 'purge', deletedRows, markedInvalidations } },
+      traceId,
+    )
     return toDto(updated)
   },
 }

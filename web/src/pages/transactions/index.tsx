@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { PageContainer } from '@/components/layout/page-container'
 import { Pagination } from '@/components/data-table/pagination'
 import { useTransactionOverview, useTransactionDetails, useTransactionAging, useInternalSummary, useInternalMirrorCheck, useTransactionPeriods, useTransactionAccounts, useCompanies, useAvailablePeriods } from '@/hooks/api-queries'
@@ -27,8 +28,9 @@ import { usePageStore } from '@/stores/pageStateStore'
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { CompanySelect, CompanyMultiSelect } from '@/components/filters/company-select'
 import { usePermission } from '@/hooks/usePermission'
+import { api } from '@/lib/api'
 import { cn, formatMoneyWan } from '@/lib/utils'
-import { ArrowLeftRight, TrendingUp, TrendingDown, Building2, AlertTriangle, Upload, ChevronDown, FileText, Eye } from 'lucide-react'
+import { ArrowLeftRight, TrendingUp, TrendingDown, Building2, AlertTriangle, Upload, ChevronDown, FileText, Eye, Download } from 'lucide-react'
 import { TransactionImportDialog } from './import-dialog'
 import { CollectionsTab } from './collections-tab'
 import { TransactionTrendCard } from './trend-card'
@@ -61,8 +63,8 @@ function useDefaultCompanyCode(): string | null {
 // 页面子标签（与侧边栏二级菜单 ?tab= 参数对应）
 const TRANSACTION_TABS = ['overview', 'details', 'aging', 'internal', 'coverage', 'account-filter', 'collections'] as const
 type TransactionTab = (typeof TRANSACTION_TABS)[number]
-// 账龄分析展示分段（后端已由 10 段归集为 7 段，1-3月按单月展开）
-const AGING_GROUPS = ['1个月', '2个月', '3个月', '4-6月', '半年以上', '1年至3年', '3年以上']
+// 账龄分析展示分段（后端已由 10 段归集为 8 段，1-3月与1年至3年均按单段展开）
+const AGING_GROUPS = ['1个月', '2个月', '3个月', '4-6月', '半年以上', '1年至2年', '2年至3年', '3年以上']
 
 /** 账龄表渲染行：数据行 / 公司小计行 / 总合计行 */
 type AgingRenderRow =
@@ -517,6 +519,11 @@ function AgingTab() {
   const setAccountFilter = useCallback((v: string[]) => setTransactionsTab('aging', { accounts: v }), [setTransactionsTab])
   const setPartyFilter = useCallback((v: string) => setTransactionsTab('aging', { party: v }), [setTransactionsTab])
   const setGroupBy = useCallback((v: string) => setTransactionsTab('aging', { groupBy: v }), [setTransactionsTab])
+  const subtotalOnly = usePageStore((s) => s.transactions.aging.subtotalOnly)
+  const setSubtotalOnly = useCallback((v: boolean) => setTransactionsTab('aging', { subtotalOnly: v }), [setTransactionsTab])
+  // 导出状态：exporting 期间显示生成/下载进度（响应头未达时 total 为 undefined，仅显示"生成中…"）
+  const [exporting, setExporting] = useState(false)
+  const [exportProgress, setExportProgress] = useState(0)
   // 持久化公司校验：编码已删除/越权时回退默认主体（候选加载后生效，用户手动切换后不再覆盖）
   const { data: companies } = useCompanies()
   useEffect(() => {
@@ -591,6 +598,35 @@ function AgingTab() {
     return out
   }, [rows, getDisplayName])
 
+  // 仅显示小计：渲染层过滤（renderRows 计算不变，小计/合计由全量数据聚合，不影响数据完整性）
+  const visibleRows = subtotalOnly ? renderRows.filter((r) => r.kind !== 'data') : renderRows
+  const hiddenDetailCount = renderRows.filter((r) => r.kind === 'data').length
+
+  // Excel 导出：参数与当前表格查询一致（含小计开关），服务端生成（transactions:export 权限 + 审计）
+  const handleExport = async () => {
+    if (!period || exporting) return
+    setExporting(true)
+    setExportProgress(0)
+    try {
+      const blob = await api.exportTransactionAging({
+        companyCode: companyFilter === 'all' ? undefined : companyFilter,
+        transactionType: typeFilter || undefined,
+        groupBy: effectiveGroupBy,
+        period,
+        accountCodes: accountFilter.length ? accountFilter.join(',') : undefined,
+        partyType: partyFilter === 'all' ? undefined : partyFilter,
+        subtotalOnly,
+      }, setExportProgress)
+      // 按需加载 file-saver，避免进入首屏 chunk
+      const { saveAs } = await import('file-saver')
+      saveAs(blob, `账龄分析_${period}.xlsx`)
+    } catch (e) {
+      window.alert((e as Error).message || '导出失败，请稍后重试')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   // 小计/合计行标签列合并数：公司+往来类型(+往来对象/科目列)
   const labelColSpan = 2 + (effectiveGroupBy === 'counterparty' || effectiveGroupBy === 'account' ? 1 : 0)
 
@@ -626,6 +662,16 @@ function AgingTab() {
             <SelectItem value="counterparty">按往来对象</SelectItem>
           </SelectContent>
         </Select>
+        <div className="flex items-center gap-2">
+          <Switch id="aging-subtotal-only" checked={subtotalOnly} onCheckedChange={setSubtotalOnly} disabled={rows.length === 0} />
+          <span className="cursor-pointer text-xs text-muted-foreground select-none" onClick={() => setSubtotalOnly(!subtotalOnly)}>仅显示小计</span>
+        </div>
+        {can('transactions', 'export') && (
+          <Button variant="outline" size="sm" disabled={!period || exporting} onClick={handleExport}>
+            <Download className="mr-1 h-4 w-4" />
+            {exporting ? (exportProgress > 0 ? `导出中 ${exportProgress}%` : '生成中…') : '导出 Excel'}
+          </Button>
+        )}
         {can('reports', 'create') && (
           <Button
             variant="outline"
@@ -653,6 +699,11 @@ function AgingTab() {
         )}
       </div>
 
+      {/* 仅显示小计提示：明细行数仍参与小计/合计聚合，仅隐藏展示 */}
+      {subtotalOnly && hiddenDetailCount > 0 && (
+        <p className="text-xs text-muted-foreground">已隐藏 {hiddenDetailCount} 条明细，仅显示小计/合计</p>
+      )}
+
       <Card>
         <CardContent className="pt-4">
           {isLoading ? (
@@ -661,7 +712,7 @@ function AgingTab() {
             <div className="py-8 text-center text-sm text-muted-foreground">暂无数据</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm" style={{ minWidth: 1140 }}>
+              <table className="w-full text-sm" style={{ minWidth: 1240 }}>
                 <thead>
                   <tr className="border-b text-center text-black">
                     <th className="w-[150px] px-2 py-2 font-medium">公司</th>
@@ -675,7 +726,7 @@ function AgingTab() {
                   </tr>
                 </thead>
                 <tbody>
-                  {renderRows.map((rr, idx) => {
+                  {visibleRows.map((rr, idx) => {
                     if (rr.kind === 'data') {
                       const row = rr.row
                       return (

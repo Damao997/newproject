@@ -54,10 +54,12 @@ describe('服务层集成（真实 DB）', () => {
     expect(tree[0].name).toBe('回款')
   })
 
-  it('经营指标：admin 全量 152 行、公司数 = 单体数', async () => {
+  it('经营指标：admin 全量行数 = 在用经营科目数、公司数 = 单体数', async () => {
     if (!dbReady) return
+    // 基线演进：初始快照 152；科目体系新增科目后漂移，改为随库动态比对避免再次漂移（与静态指标口径一致）
     const data = await IndicatorsService.getOperating(ADMIN_SCOPE, {})
-    expect(data.total).toBe(152)
+    const subjectCount = await prisma.accountSubject.count({ where: { subjectType: 'operating', status: 'active' } })
+    expect(data.total).toBe(subjectCount)
     const singles = await prisma.company.count({ where: { entityType: 'single', status: 'active' } })
     expect(data.companyCount).toBe(singles)
     const revenue = data.items.find((r) => r.name === '收入')

@@ -72,7 +72,7 @@ export const navItems: NavItem[] = [
     resource: 'data:browse:view',
     children: [
       { path: '/data', label: '导入与浏览' },
-      { path: '/data?tab=reclassify', label: '重分类记录' },
+      { path: '/data?tab=reclassify', label: '重分类管理' },
       {
         path: '/data?tab=dimensions',
         label: '维度/科目体系',
@@ -88,7 +88,9 @@ export const navItems: NavItem[] = [
         label: '看板管理',
         children: [
           { path: '/data?tab=board&sub=category', label: '品类配置' },
+          { path: '/data?tab=board&sub=expense', label: '运营费用映射' },
           { path: '/data?tab=board&sub=subject', label: '主体配置' },
+          { path: '/data?tab=board&sub=budget-ratio', label: '月度预算比例' },
         ],
       },
       { path: '/data?tab=formulas', label: '公式维护' },

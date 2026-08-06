@@ -38,6 +38,21 @@ const PRODUCT_CATEGORIES = [
   { code: 'directWater', name: '直饮水业务', subjectKeyword: '直饮水业务', sortOrder: 10 },
 ]
 
+/**
+ * 运营费用分析默认映射：费用 > 壹品慧费用 > 运营费用 下 19 个叶子科目一对一
+ * （付现运营费用 17 个 + 非付现折旧摊销 + 财务费用），展示名称=科目名；
+ * 科目编码运行时按名称解析（级联数字编码随科目树生成，避免硬编码漂移）。
+ * 管理员可在「看板管理 > 运营费用映射」中归并多个科目或停用。
+ */
+const EXPENSE_SUBJECT_NAMES = [
+  '人力成本', '生产运营费', '行政办公费', '市场费用', '差旅费', '招待费', '会议费',
+  '增值业务客服费用', '增值业务车辆费用', '增值业务地方税费', '增值业务劳动保护',
+  '增值业务信息服务类费用', '增值业务中介服务费', '增值业务商业保险', '增值业务其他费用',
+  '增值业务技术服务费', '增值业务安全监察专项费用', // 付现运营费用
+  '折旧摊销', // 非付现运营费用
+  '财务费用',
+] as const
+
 function metricDataTypeOf(s: DecoratedSubject): 'data' | 'calc' | 'display' {
   return s.dataType
 }
@@ -178,6 +193,27 @@ export async function seedDomain(prisma: PrismaClient): Promise<void> {
 
   // 6) 计算类指标展示公式（供聚合层计算层执行，如 毛利 = 收入 - 成本）
   await seedCalcMetricFormulas(prisma)
+
+  // 6-1) 运营费用映射（运营费用分析，按 code 幂等：默认叶子科目一对一，管理员可归并/停用）。
+  // 仅创建缺失的映射，不覆盖管理员对既有映射的归并（subjectCodes）与停用（status）修改。
+  const feeSubjects = await prisma.accountSubject.findMany({
+    where: { subjectType: 'operating', category: '费用', status: 'active' },
+    select: { code: true, name: true },
+  })
+  const feeNameToCode = new Map(feeSubjects.map((s) => [s.name, s.code]))
+  const expenseMappings = EXPENSE_SUBJECT_NAMES
+    .filter((n) => feeNameToCode.has(n))
+    .map((n, i) => ({ code: feeNameToCode.get(n) as string, name: n, sortOrder: i + 1 }))
+  const existingCodes = new Set(
+    (await prisma.expenseSubjectMapping.findMany({ select: { code: true } })).map((m) => m.code),
+  )
+  const toCreate = expenseMappings.filter((em) => !existingCodes.has(em.code))
+  for (const em of toCreate) {
+    await prisma.expenseSubjectMapping.create({
+      data: { code: em.code, name: em.name, subjectCodes: [em.code], sortOrder: em.sortOrder, status: 'active' },
+    })
+  }
+  console.log(`[seed] 运营费用映射 新增 ${toCreate.length} 条（既有 ${existingCodes.size} 条保留） 完成`)
 
   // 7) 往来会计科目主数据（集团 ERP 科目表中六大往来相关科目，供往来分析科目筛选器）
   for (let i = 0; i < transactionAccounts.length; i++) {

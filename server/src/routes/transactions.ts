@@ -1,5 +1,6 @@
 ﻿import { Router } from 'express'
 import multer from 'multer'
+import type { Response } from 'express'
 import { authenticate } from '../middleware/auth'
 import { attachScope } from '../middleware/attach-scope'
 import { requirePermission } from '../middleware/permission'
@@ -11,13 +12,20 @@ import { ImportService } from '../services/ImportService'
 import { CollectionService } from '../services/CollectionService'
 import { resolveCompanyCodes, resolveDashboardCompany } from '../services/AggregationService'
 import { fixUploadFilename } from '../lib/sanitize'
+import { recordAudit, clientIp } from '../middleware/audit'
 import type { AuthUserContext } from '../types/express'
 
 /**
  * 往来分析路由（/api/v1/transactions）。
- * 权限：查看 transactions:view；导入 transactions:import；催收 transactions:create/update。
+ * 权限：查看 transactions:view；导入 transactions:import；催收 transactions:create/update；导出 transactions:export。
  */
 const router = Router()
+
+function sendXlsx(res: Response, buffer: Buffer, filename: string): void {
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`)
+  res.send(buffer)
+}
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } })
 
@@ -109,6 +117,30 @@ router.get('/aging', requirePermission('transactions:view', 'view'), asyncHandle
     partyType: parsePartyType(q.partyType),
   })
   sendOk(res, data)
+}))
+
+// ===== 账龄分析导出（Excel；与 /aging 同口径，subtotalOnly 时仅小计/合计） =====
+router.get('/aging/export', requirePermission('transactions:export', 'export'), asyncHandler(async (req, res) => {
+  const authUser = req.authUser as AuthUserContext
+  const q = req.query
+  const buffer = await TransactionService.exportAgingAnalysis({
+    companyCodes: await normalizeCompanies(authUser, q.companyCode),
+    transactionType: q.transactionType as string | undefined,
+    groupBy: (q.groupBy as 'type' | 'counterparty' | 'account') || 'type',
+    period: q.period as string | undefined,
+    accountCodes: q.accountCodes ? String(q.accountCodes).split(',').map((s) => s.trim()).filter(Boolean) : undefined,
+    partyType: parsePartyType(q.partyType),
+    subtotalOnly: q.subtotalOnly === 'true',
+  })
+  await recordAudit({
+    userId: authUser.userId,
+    module: 'transactions',
+    action: 'export',
+    targetId: 'aging',
+    detail: { period: q.period, transactionType: q.transactionType, groupBy: q.groupBy, subtotalOnly: q.subtotalOnly === 'true', companyCode: q.companyCode },
+    ip: clientIp(req),
+  }, req.traceId)
+  sendXlsx(res, buffer, `aging-analysis-${q.period ?? 'all'}.xlsx`)
 }))
 
 // ===== 会计科目列表（去重，供科目多选筛选；可按往来类型过滤） =====

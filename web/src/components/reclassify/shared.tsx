@@ -89,7 +89,7 @@ export function PreviewStats({ items, warning, empty }: { items: PreviewStatItem
   )
 }
 
-export interface SubjectOption { code: string; name: string; valueType?: string }
+export interface SubjectOption { code: string; name: string; valueType?: string; dataType?: string }
 
 /** 弹层触发按钮（外观对齐 MonthPicker：图标 + 值 + X 清除）；转发 ref/props 以兼容 Radix asChild */
 interface PickerTriggerProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -201,7 +201,7 @@ export function SubjectPicker({ options, value, onChange, excludeCode, placehold
   )
 }
 
-/** 科目多选弹层选择器（触发按钮显示已选数量 Badge） */
+/** 科目多选弹层选择器：触发按钮显示已选科目名称 chips（溢出 +N，title 完整列表）；弹层已选项置顶 */
 export function SubjectMultiPicker({ options, selected, onToggle, onClear, placeholder = '全部科目', className }: {
   options: SubjectOption[]
   selected: Set<string>
@@ -213,13 +213,23 @@ export function SubjectMultiPicker({ options, selected, onToggle, onClear, place
   const [open, setOpen] = useState(false)
   const [keyword, setKeyword] = useState('')
   const filtered = useMemo(() => filterSubjects(options, keyword), [options, keyword])
+  // 已选项置顶，便于核对当前选择
+  const sorted = useMemo(() => [...filtered.filter((s) => selected.has(s.code)), ...filtered.filter((s) => !selected.has(s.code))], [filtered, selected])
+  const selectedList = useMemo(() => options.filter((s) => selected.has(s.code)), [options, selected])
 
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) setKeyword('') }}>
       <PopoverTrigger asChild>
         <PickerTrigger
           icon={<BookOpen className="h-4 w-4" />}
-          display={selected.size > 0 ? <span className="flex items-center gap-1.5">按科目筛选<Badge variant="secondary" className="px-1.5 py-0">{selected.size}</Badge></span> : null}
+          display={selected.size > 0 ? (
+            <span className="flex min-w-0 items-center gap-1" title={selectedList.map((s) => `${s.name}（${s.code}）`).join('、')}>
+              {selectedList.slice(0, 3).map((s) => (
+                <span key={s.code} className="max-w-[90px] truncate rounded bg-muted px-1.5 py-0.5 text-xs text-foreground">{s.name}</span>
+              ))}
+              {selected.size > 3 && <span className="shrink-0 text-xs text-muted-foreground">+{selected.size - 3}</span>}
+            </span>
+          ) : null}
           placeholder={placeholder}
           onClear={onClear}
           className={className}
@@ -227,7 +237,7 @@ export function SubjectMultiPicker({ options, selected, onToggle, onClear, place
       </PopoverTrigger>
       <PopoverContent className="w-[320px] p-2">
         <SubjectSearchList
-          options={filtered}
+          options={sorted}
           keyword={keyword}
           onKeyword={setKeyword}
           renderItem={(s) => (
@@ -248,6 +258,38 @@ export function SubjectMultiPicker({ options, selected, onToggle, onClear, place
         )}
       </PopoverContent>
     </Popover>
+  )
+}
+
+/** 重分类日志元信息（只读详情对话框展示用，字段取自 ReclassifyLog） */
+export interface ReclassifyLogMeta {
+  operator: string
+  createdAt: string
+  affectedRows: number
+  revertedAt: string | null
+  revertedBy: string | null
+  invalidatedAt: string | null
+  invalidatedReason: string | null
+  invalidation: { reason: string; replacedByBatchId: string; replacedPeriods: string[] | null } | null
+}
+
+/** 只读元信息条：操作人/时间/影响行数/状态（已生效/已撤销/已失效） */
+export function ReadonlyLogMeta({ meta }: { meta: ReclassifyLogMeta }) {
+  const status = meta.revertedAt
+    ? <Badge variant="outline" className="border-transparent bg-muted text-muted-foreground">已撤销</Badge>
+    : meta.invalidatedAt
+      ? <Badge variant="outline" title={meta.invalidatedReason === 'rows_replaced' ? '相关数据已被批次替换' : '相关批次已不再生效'} className="border-transparent bg-destructive/10 text-destructive">已失效</Badge>
+      : <Badge variant="outline" className="border-transparent bg-success/10 text-success-strong">已生效</Badge>
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+      <span>操作人：{meta.operator}</span>
+      <span>时间：{new Date(meta.createdAt).toLocaleString('zh-CN')}</span>
+      <span>影响 {meta.affectedRows} 行</span>
+      {status}
+      {meta.invalidatedAt && meta.invalidatedReason === 'rows_replaced' && meta.invalidation?.replacedByBatchId && (
+        <span className="text-destructive">数据已被批次 {meta.invalidation.replacedByBatchId} 替换</span>
+      )}
+    </div>
   )
 }
 

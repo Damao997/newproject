@@ -748,8 +748,12 @@ describe('同公司科目间金额调整', () => {
     const comp = `ADJ_${suffix}`
     await basePrisma.company.create({ data: { code: comp, name: '科目调整公司', entityType: 'single', status: 'active' } })
     const scope = { companyCode: null, scopeValue: '*' }
-    // 取两个金额类经营科目作源/目标（比率类由公式计算禁止调整，数量类与金额类不可互调，锁定 amount 保证夹具稳定）
-    const subjects = await basePrisma.accountSubject.findMany({ where: { subjectType: 'operating', status: 'active', isLeaf: true, valueType: 'amount' }, take: 2 })
+    // 取两个可调整经营科目作源/目标（比率类由公式计算禁止调整，计算类/展示类亦禁止，数量类与金额类不可互调，锁定 amount + data 类型保证夹具稳定）
+    const amountSubjects = await basePrisma.accountSubject.findMany({ where: { subjectType: 'operating', status: 'active', isLeaf: true, valueType: 'amount' }, take: 10 })
+    const metrics = amountSubjects.length > 0
+      ? await basePrisma.metric.findMany({ where: { code: { in: amountSubjects.map((s) => s.code) } }, select: { code: true, dataType: true } })
+      : []
+    const subjects = amountSubjects.filter((s) => !metrics.some((m) => m.code === s.code && (m.dataType === 'calc' || m.dataType === 'display'))).slice(0, 2)
     if (subjects.length < 2) return
     const [srcSub, tgtSub] = subjects
     try {

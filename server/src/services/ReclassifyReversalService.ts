@@ -7,20 +7,25 @@ import { prisma } from '../lib/prisma'
  * 实现"去除跨公司重分类影响"的模拟视图。全程不写库、不影响真实撤销。
  *
  * 口径约定：
- * - 仅逆向 type='company'（跨公司重分类）且未撤销（revertedAt 为空）的日志；
+ * - 仅逆向 type='company'（跨公司重分类）且未撤销（revertedAt 为空）、未失效（invalidatedAt 为空）的日志；
  * - 日志按 createdAt 倒序回放（最新的先回放），保证同一行被链式多次重分类时 beforeValue 链正确；
  * - 缺快照、涉及行已不存在或所属批次不再 active 的日志整条跳过并计入 skippedLogs
- *   （与 revertLog 的拒绝条件一致）。
+ *   （与 revertLog 的拒绝条件一致）；
+ * - 因批次替换/归档/清除已被联动标记失效的日志显式排除并计入 invalidatedLogs（见
+ *   ReclassificationService.markInvalidatedReclassifications）。
  */
 
 type TemplateType = 'operating' | 'static' | 'budget'
 
-/** 快照中的行级变更（结构见 ReclassificationService.RowSnapshot） */
+/** 快照中的行级变更（结构见 ReclassificationService.RowSnapshot；created 兼容旧格式 string） */
 interface RowSnapshot {
-  updated: { id: string; data: Record<string, unknown> }[]
-  created: string[]
+  updated: { id: string; data: Record<string, unknown>; row?: Record<string, unknown> }[]
+  created: Array<string | { id: string; data: Record<string, unknown> }>
   deleted: Record<string, unknown>[]
 }
+
+/** created 元素归一化（兼容旧格式 string） */
+const createdIdOf = (c: string | { id: string; data: Record<string, unknown> }): string => (typeof c === 'string' ? c : c.id)
 
 /** 回放用的事实行内存镜像（三张表字段的并集，static 的 snapshotDate 归一为 YYYY-MM） */
 interface VirtualRow {
@@ -54,6 +59,8 @@ export interface ReversalResult {
   deltas: ReversalDelta[]
   appliedLogs: number
   skippedLogs: number
+  /** 因批次替换/归档/清除已失效而被显式排除的日志数 */
+  invalidatedLogs: number
 }
 
 const num = (v: unknown): number => Number(String(v ?? 0))
@@ -113,12 +120,15 @@ export const ReclassifyReversalService = {
    * 返回按 (公司, 科目, 期间, 维度, 批次) 归并、剔除零值后的净差额，以及实际回放/跳过的日志数。
    */
   async buildReversalDeltas(templateType: TemplateType): Promise<ReversalResult> {
-    const logs = await prisma.reclassificationLog.findMany({
-      where: { type: 'company', templateType, revertedAt: null },
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, detail: true },
-    })
-    if (logs.length === 0) return { deltas: [], appliedLogs: 0, skippedLogs: 0 }
+    const [logs, invalidatedLogs] = await Promise.all([
+      prisma.reclassificationLog.findMany({
+        where: { type: 'company', templateType, revertedAt: null, invalidatedAt: null },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, detail: true },
+      }),
+      prisma.reclassificationLog.count({ where: { type: 'company', templateType, revertedAt: null, invalidatedAt: { not: null } } }),
+    ])
+    if (logs.length === 0) return { deltas: [], appliedLogs: 0, skippedLogs: 0, invalidatedLogs }
 
     let skippedLogs = 0
     const withSnap: { snap: RowSnapshot }[] = []
@@ -131,9 +141,9 @@ export const ReclassifyReversalService = {
       }
       withSnap.push({ snap })
       for (const u of snap.updated) allIds.add(u.id)
-      for (const c of snap.created) allIds.add(c)
+      for (const c of snap.created) allIds.add(createdIdOf(c))
     }
-    if (withSnap.length === 0) return { deltas: [], appliedLogs: 0, skippedLogs }
+    if (withSnap.length === 0) return { deltas: [], appliedLogs: 0, skippedLogs, invalidatedLogs }
 
     const delegate = delegateOf(templateType)
     const rows = allIds.size > 0 ? await delegate.findMany({ where: { id: { in: [...allIds] } } }) : []
@@ -151,8 +161,8 @@ export const ReclassifyReversalService = {
         if (!row) return false
         batchIds.add(row.batchId)
       }
-      for (const cid of snap.created) {
-        const row = currentById.get(cid)
+      for (const c of snap.created) {
+        const row = currentById.get(createdIdOf(c))
         if (!row) return false
         batchIds.add(row.batchId)
       }
@@ -165,13 +175,13 @@ export const ReclassifyReversalService = {
       if (!ok) skippedLogs++
       return ok
     })
-    if (replayable.length === 0) return { deltas: [], appliedLogs: 0, skippedLogs }
+    if (replayable.length === 0) return { deltas: [], appliedLogs: 0, skippedLogs, invalidatedLogs }
 
     // 仅统计可回放日志涉及的行（跳过日志的行不参与差额，保持现状口径）
     const involvedIds = new Set<string>()
     for (const { snap } of replayable) {
       for (const u of snap.updated) involvedIds.add(u.id)
-      for (const c of snap.created) involvedIds.add(c)
+      for (const c of snap.created) involvedIds.add(createdIdOf(c))
     }
 
     const deltaMap = new Map<string, { row: VirtualRow; delta: number }>()
@@ -206,7 +216,7 @@ export const ReclassifyReversalService = {
           else if (field === 'snapshotDate') row.snapshotMonth = toMonth(val)
         }
       }
-      for (const cid of snap.created) virtual.delete(cid)
+      for (const c of snap.created) virtual.delete(createdIdOf(c))
       for (const d of snap.deleted) restored.push(toVirtualRow(templateType, d))
     }
 
@@ -230,6 +240,6 @@ export const ReclassifyReversalService = {
         delta: v,
       })
     }
-    return { deltas, appliedLogs: replayable.length, skippedLogs }
+    return { deltas, appliedLogs: replayable.length, skippedLogs, invalidatedLogs }
   },
 }

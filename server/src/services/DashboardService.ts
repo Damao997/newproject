@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma'
 import { AggregationService, flattenValueTree, resolveCompanyCodes, resolveDashboardCompany } from './AggregationService'
+import { BudgetRatioService, splitMonthlyBudget } from './BudgetRatioService'
 import { latestOperatingPeriod } from './IndicatorsService'
 import { OPERATING_DIMS } from '../lib/metric-values'
 import { fiscalYearStartPeriod, fiscalYearLabel, periodsInRange, formatPeriod, parsePeriod } from '../lib/period'
@@ -50,9 +51,10 @@ interface Trend {
   collectionActual: number | null
 }
 
-/** 品类预算达成的单指标组（收入/毛利各一组）：预算为年度总额，月均口径由前端按 预算/12 折算 */
+/** 品类预算达成的单指标组（收入/毛利各一组）：预算为年度总额；monthBudget 为当月预算金额（按占比拆分，无预算 null） */
 interface ProductBudgetMetric {
   budget: number
+  monthBudget: number | null
   monthActual: number
   /** 上年同月实际（供合计行同比按 Σ金额重算） */
   monthSame: number
@@ -70,6 +72,22 @@ interface ProductBudgetRow {
   category: string
   income: ProductBudgetMetric
   profit: ProductBudgetMetric
+}
+
+/** 运营费用分析行：展示指标（映射配置）+ 单组口径值（字段平铺，供前端直接消费） */
+interface ExpenseAnalysisRow {
+  code: string
+  name: string
+  budget: number
+  monthBudget: number | null
+  monthActual: number
+  monthSame: number
+  monthRate: number | null
+  monthYoy: number
+  ytdActual: number
+  ytdSame: number
+  ytdRate: number | null
+  ytdYoy: number
 }
 
 /** 主体预算达成行：主体（单体公司/汇总主体）+ 收入/毛利/净利润各一组口径值 */
@@ -225,12 +243,14 @@ const PERIOD_RE = /^\d{4}-\d{2}$/
 
 /**
  * 月度预算序列：active 预算批次内按 (科目, 期间) 求和，再按指标叶子码集合归集为 期间→合计。
- * 预算行无月度粒度（period 非 YYYY-MM）时回退 年度合计/12 均摊；完全无预算返回全 null。
+ * 预算行无月度粒度（period 非 YYYY-MM）时：配置了完整占比（ratios 12 项）返回全 null
+ * （交由 fallbackBudgetSeries 按占比拆分），否则回退 年度合计/12 均摊；完全无预算返回全 null。
  */
 export function monthlyBudgetSeries(
   rows: { accountCode: string; period: string; value: number }[],
   leafCodes: string[],
   months: string[],
+  ratios?: number[] | null,
 ): (number | null)[] {
   const codeSet = new Set(leafCodes)
   const mine = rows.filter((r) => codeSet.has(r.accountCode))
@@ -246,6 +266,7 @@ export function monthlyBudgetSeries(
     }
   }
   if (hasMonthly) return months.map((m) => (monthly.has(m) ? round2(monthly.get(m)!) : null))
+  if (ratios && ratios.length === 12) return months.map(() => null)
   return annual ? months.map(() => round2(annual / 12)) : months.map(() => null)
 }
 
@@ -262,13 +283,14 @@ export function budgetAnnualTotal(node: ValueNode | undefined, budgetRows: { acc
 }
 
 /**
- * 预算序列兜底（月度口径）：叶子归集结果为全 null（无直导预算行）时按树预算总额月均均摊；
+ * 预算序列兜底（月度口径）：叶子归集结果为全 null（无直导预算行）时按树预算总额拆分——
+ * 配置了月度占比（ratios，完整 12 项）时按占比拆分（末月余差保证 Σ=总额），否则年度/12 均摊；
  * 无预算返回原全 null（不伪造）。
  */
-export function fallbackBudgetSeries(series: (number | null)[], annualTotal: number, months: string[]): (number | null)[] {
+export function fallbackBudgetSeries(series: (number | null)[], annualTotal: number, months: string[], ratios?: number[] | null): (number | null)[] {
   if (series.some((v) => v !== null)) return series
   if (!annualTotal) return series
-  return months.map(() => round2(annualTotal / 12))
+  return splitMonthlyBudget(annualTotal, ratios ?? null, months)
 }
 
 /**
@@ -292,13 +314,16 @@ async function budgetRowsOf(companyCodes: string[], fiscalYear: string): Promise
   return grouped.map((g) => ({ accountCode: g.accountCode, period: g.period, value: Number(g._sum.value ?? 0) }))
 }
 
-/** 单指标组口径取值：本月/累计预算达成率（月均=年度/12）+ 单月/累计同比；节点缺失时全 0/null */
-export function productMetric(node?: ValueNode): ProductBudgetMetric {
+/** 单指标组口径取值：本月/累计预算达成率 + 单月/累计同比；节点缺失时全 0/null。
+ * monthBudget 传入（含 null=当月无预算）时月度预算与达成率按该值计算（占比拆分后的当月预算），
+ * 未传（undefined）回退年度/12 折算（monthBudget = budget/12，保持旧口径）。 */
+export function productMetric(node?: ValueNode, monthBudget?: number | null): ProductBudgetMetric {
   return {
     budget: round2(budget(node)),
+    monthBudget: monthBudget === undefined ? round2(budget(node) / 12) : (monthBudget || null),
     monthActual: round2(actual(node)),
     monthSame: round2(samePeriod(node)),
-    monthRate: rateOf(actual(node), budget(node), 12),
+    monthRate: monthBudget === undefined ? rateOf(actual(node), budget(node), 12) : rateOf(actual(node), monthBudget ?? 0),
     monthYoy: changeRate(actual(node), samePeriod(node)),
     ytdActual: round2(ytd(node)),
     ytdSame: round2(node?.values[OPERATING_DIMS.SAME_PERIOD_YTD] ?? 0),
@@ -334,9 +359,50 @@ export function profitMirrorName(name: string): string {
   return name.replace(/收入(?=$|（)/, '毛利')
 }
 
+/** 映射行输入（expense_subject_mapping 行子集，供 matchExpenseMappings） */
+export interface ExpenseMappingRow {
+  code: string
+  name: string
+  subjectCodes: string[]
+}
+
+/**
+ * 运营费用映射 × 科目树匹配：每条映射按其科目编码集合在各节点 values 上求和，
+ * 生成单组口径值（productMetric：预算/本月/累计/同期/使用率/同比）；缺失编码静默跳过；
+ * ratios/monthIndex 传入时月度预算与使用率按占比拆分后的当月预算计算（未传保持年度/12 折算）；
+ * 金额与预算全为 0 的映射行不展示（无导入数据/无预算）。
+ */
+export function matchExpenseMappings(mappings: ExpenseMappingRow[], tree: ValueNode[], ratios?: number[] | null, monthIndex?: number): ExpenseAnalysisRow[] {
+  const byCode = new Map(flattenValueTree(tree).map((n) => [n.code, n]))
+  const sumValues = (codes: string[]): Record<string, number> => {
+    const acc: Record<string, number> = {}
+    for (const c of codes) {
+      const n = byCode.get(c)
+      if (!n) continue
+      for (const [dim, v] of Object.entries(n.values)) acc[dim] = round2((acc[dim] ?? 0) + (v ?? 0))
+    }
+    return acc
+  }
+  // 月度预算：按占比拆分后的当月预算（ratios/monthIndex 缺失回退 undefined，调用方保持年度/12 折算）
+  const monthBudgetOf = (values: Record<string, number>): number | null | undefined => {
+    if (!ratios || monthIndex === undefined || monthIndex < 0 || monthIndex >= ratios.length) return undefined
+    const annual = values[OPERATING_DIMS.BUDGET_AMOUNT] ?? 0
+    return annual ? round2((annual * ratios[monthIndex]) / 100) : 0
+  }
+  const rows: ExpenseAnalysisRow[] = []
+  for (const m of mappings) {
+    const values = sumValues(m.subjectCodes)
+    const metric = productMetric(nodeOf(values), monthBudgetOf(values))
+    const hasData = metric.budget !== 0 || metric.monthActual !== 0 || metric.ytdActual !== 0
+    if (hasData) rows.push({ code: m.code, name: m.name, ...metric })
+  }
+  return rows
+}
+
 /**
  * 品类 × 科目树匹配：按关键词命中收入类别节点（可多个，各维度求和；汇总节点值=子级求和），
  * 毛利按镜像名（profitMirrorName，"XX收入"→"XX毛利"）在毛利类别中取值求和。
+ * ratios/monthIndex 传入时月度达成率按占比拆分后的当月预算计算（未传保持年度/12 折算）。
  * uncovered = 收入类别 level>=1 且自身与祖先均未被任何品类匹配的节点
  * （已配置品类节点的后代叶子视为已覆盖，仅提示真正未配置的业务线，如新增业务线）。
  */
@@ -344,6 +410,8 @@ export function matchProductCategories(
   categories: ProductCategoryMatch[],
   incomeRoots: ValueNode[],
   profitByName: Map<string, ValueNode>,
+  ratios?: number[] | null,
+  monthIndex?: number,
 ): ProductCategoryMatchResult {
   const matchedNames = new Set<string>()
   const rows: ProductBudgetRow[] = []
@@ -363,14 +431,20 @@ export function matchProductCategories(
     }
     return acc
   }
+  // 月度预算：按占比拆分后的当月预算（ratios/monthIndex 缺失回退 undefined，调用方保持年度/12 折算）
+  const monthBudgetOf = (nodes: ValueNode[]): number | null | undefined => {
+    if (!ratios || monthIndex === undefined || monthIndex < 0 || monthIndex >= ratios.length) return undefined
+    const annual = nodes.reduce((s, n) => s + (n.values[OPERATING_DIMS.BUDGET_AMOUNT] ?? 0), 0)
+    return annual ? round2((annual * ratios[monthIndex]) / 100) : 0
+  }
   for (const cat of categories) {
     const hits = allNodes.filter((n) => n.name.includes(cat.subjectKeyword))
     for (const h of hits) matchedNames.add(h.name)
-    const income = productMetric(hits.length > 0 ? nodeOf(sumValues(hits)) : undefined)
+    const income = productMetric(hits.length > 0 ? nodeOf(sumValues(hits)) : undefined, monthBudgetOf(hits))
     const profitHits = hits
       .map((h) => profitByName.get(profitMirrorName(h.name)))
       .filter((n): n is ValueNode => !!n)
-    const profit = productMetric(profitHits.length > 0 ? nodeOf(sumValues(profitHits)) : undefined)
+    const profit = productMetric(profitHits.length > 0 ? nodeOf(sumValues(profitHits)) : undefined, monthBudgetOf(profitHits))
     const row: ProductBudgetRow = { category: cat.name, income, profit }
     // 金额与预算全为 0 的品类不展示（无导入数据/无预算）
     const hasData = row.income.monthActual !== 0 || row.income.ytdActual !== 0 || row.income.budget !== 0
@@ -391,7 +465,16 @@ export function matchProductCategories(
   return { rows, covered, uncovered }
 }
 
-/** 构建看板核心数据：4 张 KPI 卡 + 当期所属财年 12 个月的趋势行；汇总主体查询链路透传抵消上下文 */
+/** 月度预算（按占比拆分后的当月值）：ratios 缺失/期间不在占比范围回退 undefined（调用方保持年度/12 现行为） */
+export function monthBudgetOf(node: ValueNode | undefined, ratios: number[] | null, monthIndex: number): number | null | undefined {
+  if (!ratios || monthIndex < 0 || monthIndex >= ratios.length) return undefined
+  return node ? round2((budget(node) * ratios[monthIndex]) / 100) : undefined
+}
+
+/**
+ * 构建看板核心数据：4 张 KPI 卡 + 当期所属财年 12 个月的趋势行；汇总主体查询链路透传抵消上下文。
+ * 预算月度口径：预算行无月度粒度（period 非 YYYY-MM）时按月度占比拆分（未配置财年回退年度/12 均摊）。
+ */
 async function buildDashboardData(companyCodes: string[], period: string, available: string[], consolidationSummaryCode?: string | null): Promise<{ kpiData: Kpi[]; trendData: Trend[] }> {
   const fyStart = fiscalYearStartPeriod(period)
   const { year, month } = parsePeriod(fyStart)
@@ -402,17 +485,22 @@ async function buildDashboardData(companyCodes: string[], period: string, availa
   const nodes = metricNodes(tree)
 
   // 预算：按财年一次取数，三个图表指标各自按叶子码归集；
-  // 计算类指标（毛利等）无直导预算行时回退树预算总额（公式层重算值），月度均摊 /12、累计按年度总额
-  const budgetRows = await budgetRowsOf(companyCodes, fiscalYearLabel(period))
+  // 计算类指标（毛利等）无直导预算行时回退树预算总额（公式层重算值），
+  // 月度口径按占比拆分（无配置财年 /12 均摊）、累计按年度总额
+  const fyLabel = fiscalYearLabel(period)
+  const [budgetRows, ratios] = await Promise.all([
+    budgetRowsOf(companyCodes, fyLabel),
+    BudgetRatioService.budgetRatiosOf(fyLabel),
+  ])
   const revenueLeafCodes = collectLeafCodes(nodes.revenue)
   const profitLeafCodes = collectLeafCodes(nodes.profit)
   const netProfitLeafCodes = collectLeafCodes(nodes.netProfit)
   const revenueAnnual = budgetAnnualTotal(nodes.revenue, budgetRows, revenueLeafCodes)
   const profitAnnual = budgetAnnualTotal(nodes.profit, budgetRows, profitLeafCodes)
   const netProfitAnnual = budgetAnnualTotal(nodes.netProfit, budgetRows, netProfitLeafCodes)
-  const revenueBudget = fallbackBudgetSeries(monthlyBudgetSeries(budgetRows, revenueLeafCodes, fyMonths), revenueAnnual, fyMonths)
-  const profitBudget = fallbackBudgetSeries(monthlyBudgetSeries(budgetRows, profitLeafCodes, fyMonths), profitAnnual, fyMonths)
-  const netProfitBudget = fallbackBudgetSeries(monthlyBudgetSeries(budgetRows, netProfitLeafCodes, fyMonths), netProfitAnnual, fyMonths)
+  const revenueBudget = fallbackBudgetSeries(monthlyBudgetSeries(budgetRows, revenueLeafCodes, fyMonths, ratios), revenueAnnual, fyMonths, ratios)
+  const profitBudget = fallbackBudgetSeries(monthlyBudgetSeries(budgetRows, profitLeafCodes, fyMonths, ratios), profitAnnual, fyMonths, ratios)
+  const netProfitBudget = fallbackBudgetSeries(monthlyBudgetSeries(budgetRows, netProfitLeafCodes, fyMonths, ratios), netProfitAnnual, fyMonths, ratios)
   // 累计预算：预算无累计粒度，独立生成为年度总额水平线（不复用月度序列，避免累计模式误显月均均摊值）
   const revenueYtdBudget = ytdBudgetSeries(revenueAnnual, fyMonths)
   const profitYtdBudget = ytdBudgetSeries(profitAnnual, fyMonths)
@@ -445,11 +533,17 @@ async function buildDashboardData(companyCodes: string[], period: string, availa
     }
   })
 
-  const kpiOf = (title: string, icon: string, node: ValueNode | undefined, key: 'revenueActual' | 'profitActual' | 'netProfitActual' | 'collectionActual'): Kpi => ({
+  // 当前期在财年序列中的索引（趋势行月度预算 = 最终口径：有月度粒度行用行值，否则占比拆分或 /12）
+  const periodIdx = fyMonths.indexOf(period)
+  const monthBudgetOfTrend = (field: 'revenueBudget' | 'profitBudget' | 'netProfitBudget'): number | null | undefined =>
+    periodIdx >= 0 ? trendData[periodIdx][field] : undefined
+
+  // monthRate 按当月预算计算（与趋势图月度预算线同口径），无预算为 null
+  const kpiOf = (title: string, icon: string, node: ValueNode | undefined, key: 'revenueActual' | 'profitActual' | 'netProfitActual' | 'collectionActual', monthBudget?: number | null): Kpi => ({
     title,
     icon,
     monthActual: round2(actual(node)),
-    monthRate: rateOf(actual(node), budget(node), 12),
+    monthRate: monthBudget === undefined ? rateOf(actual(node), budget(node), 12) : rateOf(actual(node), monthBudget ?? 0),
     ytdActual: round2(ytd(node)),
     yoy: changeRate(actual(node), samePeriod(node)),
     ytdRate: rateOf(ytd(node), budget(node)),
@@ -457,9 +551,9 @@ async function buildDashboardData(companyCodes: string[], period: string, availa
   })
 
   const kpiData: Kpi[] = [
-    kpiOf('收入', 'TrendingUp', nodes.revenue, 'revenueActual'),
-    kpiOf('毛利', 'DollarSign', nodes.profit, 'profitActual'),
-    kpiOf('净利润', 'Wallet', nodes.netProfit, 'netProfitActual'),
+    kpiOf('收入', 'TrendingUp', nodes.revenue, 'revenueActual', monthBudgetOfTrend('revenueBudget')),
+    kpiOf('毛利', 'DollarSign', nodes.profit, 'profitActual', monthBudgetOfTrend('profitBudget')),
+    kpiOf('净利润', 'Wallet', nodes.netProfit, 'netProfitActual', monthBudgetOfTrend('netProfitBudget')),
     kpiOf('回款', 'Banknote', nodes.collection, 'collectionActual'),
   ]
   return { kpiData, trendData }
@@ -554,18 +648,54 @@ export const DashboardService = {
     if (eff.codes.length === 0) {
       return { period, rows: [], companyCode: null, companyName: null, companyType: null, degraded: eff.degraded }
     }
-    const [tree, categories] = await Promise.all([
+    const [tree, categories, ratios] = await Promise.all([
       AggregationService.buildOperatingTree(eff.codes, period, { consolidationSummaryCode: eff.companyType === 'summary' ? eff.companyCode : null }),
       prisma.productCategory.findMany({
         where: { status: 'active' },
         orderBy: { sortOrder: 'asc' },
         select: { code: true, name: true, subjectKeyword: true },
       }),
+      BudgetRatioService.budgetRatiosOf(fiscalYearLabel(period)),
     ])
     const flat = flattenValueTree(tree)
     const incomeRoots = tree.filter((n) => n.category === '收入')
     const profitByName = new Map(flat.filter((n) => n.category === '毛利').map((n) => [n.name, n]))
-    const { rows } = matchProductCategories(categories, incomeRoots, profitByName)
+    // 当前期在财年中的月份索引（月度达成率按占比拆分后的当月预算计算）
+    const monthIndex = periodsInRange(fiscalYearStartPeriod(period), period).length - 1
+    const { rows } = matchProductCategories(categories, incomeRoots, profitByName, ratios, monthIndex)
+    return { period, rows, companyCode: eff.companyCode, companyName: eff.companyName, companyType: eff.companyType, degraded: eff.degraded }
+  },
+
+  /**
+   * 运营费用分析表（单期间）：按映射配置（expense_subject_mapping，科目编码集合）聚合
+   * 费用 > 壹品慧费用 > 运营费用 子树科目，每行 = 展示指标 + 单组口径值（月度/累计预算达成与同比）。
+   * 未配置/失效编码静默跳过；金额与预算全为 0 的映射行不展示。预警按费用类红绿灯由前端渲染。
+   */
+  async getExpenseAnalysis(scope: Scope, params: { period?: string; companyCode?: string } = {}): Promise<{
+    period: string
+    rows: ExpenseAnalysisRow[]
+    companyCode: string | null
+    companyName: string | null
+    companyType: 'single' | 'summary' | null
+    degraded: boolean
+  }> {
+    // 越权主体自动降级到有权主体（与 getOverview 同源策略）
+    const [eff, periods] = await Promise.all([resolveDashboardCompany(scope, params.companyCode), availablePeriods()])
+    const period = (params.period && periods.includes(params.period) ? params.period : periods[periods.length - 1]) ?? (await latestOperatingPeriod())
+    if (eff.codes.length === 0) {
+      return { period, rows: [], companyCode: null, companyName: null, companyType: null, degraded: eff.degraded }
+    }
+    const [tree, mappings, ratios] = await Promise.all([
+      AggregationService.buildOperatingTree(eff.codes, period, { consolidationSummaryCode: eff.companyType === 'summary' ? eff.companyCode : null }),
+      prisma.expenseSubjectMapping.findMany({
+        where: { status: 'active' },
+        orderBy: { sortOrder: 'asc' },
+      }),
+      BudgetRatioService.budgetRatiosOf(fiscalYearLabel(period)),
+    ])
+    // 当前期在财年中的月份索引（月度预算/使用率按占比拆分后的当月预算计算）
+    const monthIndex = periodsInRange(fiscalYearStartPeriod(period), period).length - 1
+    const rows = matchExpenseMappings(mappings, tree, ratios, monthIndex)
     return { period, rows, companyCode: eff.companyCode, companyName: eff.companyName, companyType: eff.companyType, degraded: eff.degraded }
   },
 
@@ -582,6 +712,9 @@ export const DashboardService = {
     }
     const mode: 'single' | 'summary' = params.mode === 'summary' ? 'summary' : 'single'
     const period = (params.period && periods.includes(params.period) ? params.period : periods[periods.length - 1]) ?? (await latestOperatingPeriod())
+    // 月度达成率口径：按财年月度占比拆分后的当月预算（无配置回退 undefined，保持年度/12 折算）
+    const [ratios] = await Promise.all([BudgetRatioService.budgetRatiosOf(fiscalYearLabel(period))])
+    const monthIndex = periodsInRange(fiscalYearStartPeriod(period), period).length - 1
     // 指定主体：汇总主体展开为成员明细（每成员一行，供公司分析展示）；单体公司返回自身一行；
     // 越权主体自动降级到有权主体（不抛 403）
     if (params.companyCode) {
@@ -601,9 +734,9 @@ export const DashboardService = {
           const row: SubjectBudgetRow = {
             code: m.code,
             name: m.shortName ?? m.name,
-            income: productMetric(nodes.revenue),
-            profit: productMetric(nodes.profit),
-            netProfit: productMetric(nodes.netProfit),
+            income: productMetric(nodes.revenue, monthBudgetOf(nodes.revenue, ratios, monthIndex)),
+            profit: productMetric(nodes.profit, monthBudgetOf(nodes.profit, ratios, monthIndex)),
+            netProfit: productMetric(nodes.netProfit, monthBudgetOf(nodes.netProfit, ratios, monthIndex)),
           }
           const hasData = row.income.monthActual !== 0 || row.income.ytdActual !== 0 || row.income.budget !== 0
             || row.profit.monthActual !== 0 || row.profit.ytdActual !== 0 || row.profit.budget !== 0
@@ -621,9 +754,9 @@ export const DashboardService = {
         rows: [{
           code: eff.companyCode,
           name: eff.companyName ?? eff.companyCode,
-          income: productMetric(nodes.revenue),
-          profit: productMetric(nodes.profit),
-          netProfit: productMetric(nodes.netProfit),
+          income: productMetric(nodes.revenue, monthBudgetOf(nodes.revenue, ratios, monthIndex)),
+          profit: productMetric(nodes.profit, monthBudgetOf(nodes.profit, ratios, monthIndex)),
+          netProfit: productMetric(nodes.netProfit, monthBudgetOf(nodes.netProfit, ratios, monthIndex)),
         }],
       }
     }
@@ -653,9 +786,9 @@ export const DashboardService = {
       const row: SubjectBudgetRow = {
         code: s.code,
         name: s.shortName ?? s.name,
-        income: productMetric(nodes.revenue),
-        profit: productMetric(nodes.profit),
-        netProfit: productMetric(nodes.netProfit),
+        income: productMetric(nodes.revenue, monthBudgetOf(nodes.revenue, ratios, monthIndex)),
+        profit: productMetric(nodes.profit, monthBudgetOf(nodes.profit, ratios, monthIndex)),
+        netProfit: productMetric(nodes.netProfit, monthBudgetOf(nodes.netProfit, ratios, monthIndex)),
       }
       const hasData = row.income.monthActual !== 0 || row.income.ytdActual !== 0 || row.income.budget !== 0
         || row.profit.monthActual !== 0 || row.profit.ytdActual !== 0 || row.profit.budget !== 0

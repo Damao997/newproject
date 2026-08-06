@@ -1,6 +1,6 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios'
 import { useAuthStore } from '@/stores/authStore'
-import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse, FilterParams, BatchActivateCheckResult, KpiData, TrendData, DashboardAlert, ReceivableRow, ProductBudgetResponse, SubjectBudgetResponse, ProductCategory, ProductCategoryCheckResult, SubjectBudgetConfig, SubjectBudgetConfigCheckResult, ImportBatch, ImportDiff, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, ConsolidationAdjustment, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData } from '@/types'
+import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse, FilterParams, BatchActivateCheckResult, KpiData, TrendData, DashboardAlert, ReceivableRow, ProductBudgetResponse, SubjectBudgetResponse, ExpenseAnalysisResponse, ProductCategory, ProductCategoryCheckResult, ExpenseMapping, ExpenseMappingCheckResult, SubjectBudgetConfig, SubjectBudgetConfigCheckResult, BudgetRatio, ImportBatch, ImportDiff, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, ConsolidationAdjustment, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData } from '@/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
@@ -355,6 +355,15 @@ class ApiClient {
     })
   }
 
+  /** 运营费用分析表（单期间）：按映射配置聚合的运营费用科目预算达成与同比（含月度/累计两组口径） */
+  async getExpenseAnalysis(params?: { period?: string; companyCode?: string }): Promise<ExpenseAnalysisResponse> {
+    return this.request({
+      method: 'GET',
+      url: '/dashboard/expense-analysis',
+      params,
+    })
+  }
+
   // ---- 品类配置（品类预算达成分析，数据维护）----
   async getProductCategories(): Promise<ProductCategory[]> {
     return this.request({
@@ -394,6 +403,45 @@ class ApiClient {
     })
   }
 
+  // ---- 运营费用映射（运营费用分析，数据维护）----
+  async getExpenseMappings(): Promise<ExpenseMapping[]> {
+    return this.request({
+      method: 'GET',
+      url: '/data/expense-mappings',
+    })
+  }
+
+  /** 科目树变化检测：映射匹配状态 / 候选科目分组 / 未配置科目 / 失效编码 */
+  async checkExpenseMappings(): Promise<ExpenseMappingCheckResult> {
+    return this.request({
+      method: 'GET',
+      url: '/data/expense-mappings/check',
+    })
+  }
+
+  async createExpenseMapping(input: { code: string; name: string; subjectCodes: string[]; sortOrder?: number; status?: string }): Promise<ExpenseMapping> {
+    return this.request({
+      method: 'POST',
+      url: '/data/expense-mappings',
+      data: input,
+    })
+  }
+
+  async updateExpenseMapping(id: string, input: { name?: string; subjectCodes?: string[]; sortOrder?: number; status?: string }): Promise<ExpenseMapping> {
+    return this.request({
+      method: 'PUT',
+      url: `/data/expense-mappings/${id}`,
+      data: input,
+    })
+  }
+
+  async deleteExpenseMapping(id: string): Promise<void> {
+    return this.request({
+      method: 'DELETE',
+      url: `/data/expense-mappings/${id}`,
+    })
+  }
+
   // ---- 主体展示配置（主体预算达成分析，数据维护）----
   async getSubjectBudgetConfigs(): Promise<SubjectBudgetConfig[]> {
     return this.request({
@@ -430,6 +478,23 @@ class ApiClient {
     return this.request({
       method: 'DELETE',
       url: `/data/subject-budget-configs/${id}`,
+    })
+  }
+
+  // ---- 预算月度占比（看板月度预算按占比拆分，数据维护）----
+  async getBudgetRatio(fiscalYear: string): Promise<BudgetRatio> {
+    return this.request({
+      method: 'GET',
+      url: '/data/budget-ratios',
+      params: { fiscalYear },
+    })
+  }
+
+  async updateBudgetRatio(fiscalYear: string, ratios: number[]): Promise<{ fiscalYear: string; ratios: number[] }> {
+    return this.request({
+      method: 'PUT',
+      url: `/data/budget-ratios/${fiscalYear}`,
+      data: { ratios },
     })
   }
 
@@ -1088,6 +1153,18 @@ class ApiClient {
   // 账龄分析：支持单期间与科目多选（逗号分隔）
   async getTransactionAging(params: { companyCode?: string; transactionType?: string; groupBy?: string; period?: string; accountCodes?: string; partyType?: string }) {
     return this.request({ method: 'GET', url: '/transactions/aging', params })
+  }
+
+  // 账龄分析 Excel 导出（Blob 下载；onProgress 回调下载进度 0-100，与 indicators/data 导出同款权限与审计）
+  async exportTransactionAging(params: Record<string, unknown>, onProgress?: (p: number) => void): Promise<Blob> {
+    const response = await this.client.get('/transactions/aging/export', {
+      params,
+      responseType: 'blob',
+      onDownloadProgress: (e) => {
+        if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100))
+      },
+    })
+    return response.data
   }
 
   // 会计科目列表（去重，供科目多选筛选；可按往来类型过滤）

@@ -75,6 +75,20 @@ export function useSubjectBudget(params: { period?: string; mode: 'single' | 'su
   })
 }
 
+/** 运营费用分析表：单期间 + 可选指定主体（跟随看板顶部筛选），period 未定时不发请求 */
+export function useExpenseAnalysis(params: { period?: string; companyCode?: string }) {
+  return useQuery({
+    queryKey: ['dashboard', 'expense-analysis', params.period ?? '', params.companyCode ?? ''] as const,
+    queryFn: () => api.getExpenseAnalysis({
+      period: params.period as string,
+      ...(params.companyCode ? { companyCode: params.companyCode } : {}),
+    }),
+    enabled: !!params.period,
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
 // ---------------- 品类配置（品类预算达成分析，数据维护） ----------------
 export function useProductCategories() {
   return useQuery({
@@ -114,6 +128,47 @@ export function useProductCategoryMutations() {
   }
 }
 
+// ---------------- 运营费用映射（运营费用分析，数据维护） ----------------
+export function useExpenseMappings() {
+  return useQuery({
+    queryKey: ['data', 'expense-mappings'] as const,
+    queryFn: () => api.getExpenseMappings(),
+    staleTime: 30 * 1000,
+  })
+}
+
+export function useExpenseMappingCheck() {
+  return useQuery({
+    queryKey: ['data', 'expense-mappings', 'check'] as const,
+    queryFn: () => api.checkExpenseMappings(),
+    staleTime: 30 * 1000,
+  })
+}
+
+export function useExpenseMappingMutations() {
+  const queryClient = useQueryClient()
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['data', 'expense-mappings'] })
+    // 配置变更即时反映到看板（否则需等 staleTime 过期或手动刷新）
+    queryClient.invalidateQueries({ queryKey: ['dashboard', 'expense-analysis'] })
+  }
+  return {
+    create: useMutation({
+      mutationFn: (input: { code: string; name: string; subjectCodes: string[]; sortOrder?: number; status?: string }) => api.createExpenseMapping(input),
+      onSuccess: invalidate,
+    }),
+    update: useMutation({
+      mutationFn: (input: { id: string; name?: string; subjectCodes?: string[]; sortOrder?: number; status?: string }) =>
+        api.updateExpenseMapping(input.id, input),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => api.deleteExpenseMapping(id),
+      onSuccess: invalidate,
+    }),
+  }
+}
+
 // ---------------- 主体展示配置（主体预算达成分析，数据维护） ----------------
 export function useSubjectBudgetConfigs() {
   return useQuery({
@@ -148,6 +203,30 @@ export function useSubjectBudgetConfigMutations() {
     remove: useMutation({
       mutationFn: (id: string) => api.deleteSubjectBudgetConfig(id),
       onSuccess: invalidate,
+    }),
+  }
+}
+
+// ---------------- 预算月度占比（看板月度预算按占比拆分，数据维护） ----------------
+export function useBudgetRatio(fiscalYear: string) {
+  return useQuery({
+    queryKey: ['data', 'budget-ratios', fiscalYear] as const,
+    queryFn: () => api.getBudgetRatio(fiscalYear),
+    enabled: !!fiscalYear,
+    staleTime: 30 * 1000,
+  })
+}
+
+export function useBudgetRatioMutation() {
+  const queryClient = useQueryClient()
+  return {
+    update: useMutation({
+      mutationFn: (input: { fiscalYear: string; ratios: number[] }) => api.updateBudgetRatio(input.fiscalYear, input.ratios),
+      onSuccess: (_data, vars) => {
+        queryClient.invalidateQueries({ queryKey: ['data', 'budget-ratios', vars.fiscalYear] })
+        // 占比拆分结果被看板品类/主体预算卡、运营费用分析与趋势线消费，须一并失效
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      },
     }),
   }
 }

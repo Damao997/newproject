@@ -23,7 +23,7 @@ import {
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { formatMoney, cn } from '@/lib/utils'
 import { ArrowLeftRight } from 'lucide-react'
-import { TEMPLATE_LABEL, FeedbackAlert, PreviewStats, SubjectMultiPicker, SectionTitle, type PreviewStatItem } from './shared'
+import { TEMPLATE_LABEL, FeedbackAlert, PreviewStats, SubjectMultiPicker, SectionTitle, ReadonlyLogMeta, type ReclassifyLogMeta, type PreviewStatItem } from './shared'
 
 interface ReclassifyCompanyDialogProps {
   open: boolean
@@ -32,6 +32,23 @@ interface ReclassifyCompanyDialogProps {
   defaultTemplateType?: 'operating' | 'static'
   /** 预填源公司（来自指标页当前主体） */
   defaultSourceCompany?: string
+  /** 完整预填参数（来自失效/已撤销日志的「重新应用」或只读查看）：父级以 key 强制重挂载使其生效 */
+  preset?: ReclassifyCompanyPreset
+  /** 只读查看模式：预填 preset 展示原始操作参数，禁止修改与提交（不触发任何写接口） */
+  readonly?: boolean
+  /** 只读模式下展示的日志元信息（操作人/时间/状态） */
+  meta?: ReclassifyLogMeta
+}
+
+export interface ReclassifyCompanyPreset {
+  templateType: 'operating' | 'static' | 'budget'
+  sourceCompanyCode: string
+  targetCompanyCode: string
+  transferMode: 'all' | 'ratio' | 'amount'
+  ratio?: number
+  amount?: number
+  period: string
+  accountCodes: string[]
 }
 
 interface PreviewData {
@@ -49,15 +66,16 @@ interface PreviewData {
  * （源行调减保留，目标同口径行调增，无则新建）。提交前预览影响并二次确认。
  * 期间按单月必选（与后端口径一致）；本年累计由查询时按财年实时聚合，自动反映调整结果。
  */
-export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = 'operating', defaultSourceCompany }: ReclassifyCompanyDialogProps) {
-  const [templateType, setTemplateType] = useState<string>(defaultTemplateType)
-  const [sourceCompanyCode, setSourceCompanyCode] = useState<string>(defaultSourceCompany ?? '')
-  const [targetCompanyCode, setTargetCompanyCode] = useState<string>('')
-  const [transferMode, setTransferMode] = useState<'all' | 'ratio' | 'amount'>('all')
-  const [ratioInput, setRatioInput] = useState('')
-  const [amountInput, setAmountInput] = useState('')
-  const [period, setPeriod] = useState('')
-  const [selectedSubjects, setSelectedSubjects] = useState<Set<string>>(new Set())
+export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = 'operating', defaultSourceCompany, preset, readonly = false, meta }: ReclassifyCompanyDialogProps) {
+  const [templateType, setTemplateType] = useState<string>(preset?.templateType ?? defaultTemplateType)
+  const [sourceCompanyCode, setSourceCompanyCode] = useState<string>(preset?.sourceCompanyCode ?? defaultSourceCompany ?? '')
+  const [targetCompanyCode, setTargetCompanyCode] = useState<string>(preset?.targetCompanyCode ?? '')
+  const [transferMode, setTransferMode] = useState<'all' | 'ratio' | 'amount'>(preset?.transferMode ?? 'all')
+  // 日志 ratio 为 0-1 小数，表单按百分比字符串展示
+  const [ratioInput, setRatioInput] = useState(() => (preset?.ratio != null ? String(Math.round(preset.ratio * 10000) / 100) : ''))
+  const [amountInput, setAmountInput] = useState(() => (preset?.amount != null ? String(preset.amount) : ''))
+  const [period, setPeriod] = useState(preset?.period ?? '')
+  const [selectedSubjects, setSelectedSubjects] = useState<Set<string>>(() => new Set(preset?.accountCodes ?? []))
   const [preview, setPreview] = useState<PreviewData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
@@ -70,10 +88,13 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
   // 下拉选项跟随「显示简称」开关；确认弹窗文案仍用全称，保证高危操作确认的严谨性
   const { displayNameMap } = useCompanyDisplayName()
 
-  // 科目候选：静态模板取静态科目，否则取经营科目
+  // 科目候选：静态模板取静态科目，否则取经营科目；比率类（公式计算）与 calc/display 类不可直接调整，从候选中排除
   const subjectType = templateType === 'static' ? 'static' : 'operating'
   const { data: subjectsData } = useSubjects({ type: subjectType, pageSize: 1000 })
-  const subjectOptions = useMemo(() => subjectsData?.items ?? [], [subjectsData])
+  const subjectOptions = useMemo(
+    () => (subjectsData?.items ?? []).filter((s) => s.valueType !== 'ratio' && s.dataType !== 'calc' && s.dataType !== 'display'),
+    [subjectsData],
+  )
 
   const previewMutation = usePreviewReclassifyCompany()
   const reclassifyMutation = useReclassifyCompany()
@@ -198,8 +219,12 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>跨公司数据重分类</DialogTitle>
-          <DialogDescription>将源公司已生效的数据转移到目标公司，看板与指标将即时刷新。</DialogDescription>
+          <DialogTitle>{readonly ? '跨公司重分类详情' : '跨公司数据重分类'}</DialogTitle>
+          {readonly ? (
+            <DialogDescription>原始操作参数只读展示{meta && <ReadonlyLogMeta meta={meta} />}</DialogDescription>
+          ) : (
+            <DialogDescription>将源公司已生效的数据转移到目标公司，看板与指标将即时刷新。</DialogDescription>
+          )}
         </DialogHeader>
 
         <div className="space-y-4">
@@ -209,7 +234,7 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label>模板类型</Label>
-                <Select value={templateType} onValueChange={(v) => { setTemplateType(v); reset(); setSelectedSubjects(new Set()) }}>
+                <Select value={templateType} disabled={readonly} onValueChange={(v) => { setTemplateType(v); reset(); setSelectedSubjects(new Set()) }}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="operating">经营数据</SelectItem>
@@ -220,19 +245,40 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
               </div>
               <div className="space-y-1">
                 <Label>调整期间（单月） <span className="text-destructive">*</span></Label>
-                <MonthPicker className="w-full" value={period} onChange={(v) => { setPeriod(v); reset() }} availablePeriods={availablePeriods} placeholder="选择月份" />
-                {templateType === 'budget' && <p className="text-xs text-muted-foreground">预算数据按该月所属财年整体匹配。</p>}
+                {readonly
+                  ? <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">{period || '-'}</div>
+                  : (
+                    <>
+                      <MonthPicker className="w-full" value={period} onChange={(v) => { setPeriod(v); reset() }} availablePeriods={availablePeriods} placeholder="选择月份" />
+                      {templateType === 'budget' && <p className="text-xs text-muted-foreground">预算数据按该月所属财年整体匹配。</p>}
+                    </>
+                  )}
               </div>
             </div>
             <div className="space-y-1">
               <Label>科目筛选（可选）</Label>
-              <SubjectMultiPicker
-                options={subjectOptions}
-                selected={selectedSubjects}
-                onToggle={toggleSubject}
-                onClear={() => { setSelectedSubjects(new Set()); setPreview(null) }}
-                placeholder="全部科目"
-              />
+              {readonly
+                ? (
+                    selectedSubjects.size > 0
+                      ? <div className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border bg-muted/40 px-3 py-1.5 text-sm">
+                          {subjectOptions.filter((s) => selectedSubjects.has(s.code)).map((s) => (
+                            <span key={s.code} className="max-w-[160px] truncate rounded bg-background px-1.5 py-0.5 text-xs" title={s.code}>{s.name}</span>
+                          ))}
+                        </div>
+                      : <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground">全部科目</div>
+                  )
+                : (
+                  <>
+                    <SubjectMultiPicker
+                      options={subjectOptions}
+                      selected={selectedSubjects}
+                      onToggle={toggleSubject}
+                      onClear={() => { setSelectedSubjects(new Set()); setPreview(null) }}
+                      placeholder="全部科目"
+                    />
+                    <p className="text-xs text-muted-foreground">不选 = 源公司全部科目；多选 = 仅对所选科目的数据执行重分类。</p>
+                  </>
+                )}
             </div>
           </section>
 
@@ -242,7 +288,7 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
               <div className="flex-1 space-y-1">
                 <Label htmlFor="rc-source-company">源公司</Label>
-                <Select value={sourceCompanyCode} onValueChange={(v) => { setSourceCompanyCode(v); reset() }}>
+                <Select value={sourceCompanyCode} disabled={readonly} onValueChange={(v) => { setSourceCompanyCode(v); reset() }}>
                   <SelectTrigger id="rc-source-company"><SelectValue placeholder="选择源公司" /></SelectTrigger>
                   <SelectContent className="max-h-[280px]">
                     {entityCompanies.map((c) => (
@@ -251,21 +297,23 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
                   </SelectContent>
                 </Select>
               </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="mx-auto h-9 w-9 shrink-0 text-muted-foreground sm:mx-0"
-                aria-label="交换源公司与目标公司"
-                title="交换源公司与目标公司"
-                onClick={handleSwap}
-                disabled={!sourceCompanyCode && !targetCompanyCode}
-              >
-                <ArrowLeftRight className="h-4 w-4" />
-              </Button>
+              {!readonly && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="mx-auto h-9 w-9 shrink-0 text-muted-foreground sm:mx-0"
+                  aria-label="交换源公司与目标公司"
+                  title="交换源公司与目标公司"
+                  onClick={handleSwap}
+                  disabled={!sourceCompanyCode && !targetCompanyCode}
+                >
+                  <ArrowLeftRight className="h-4 w-4" />
+                </Button>
+              )}
               <div className="flex-1 space-y-1">
                 <Label htmlFor="rc-target-company">目标公司</Label>
-                <Select value={targetCompanyCode} onValueChange={(v) => { setTargetCompanyCode(v); reset() }}>
+                <Select value={targetCompanyCode} disabled={readonly} onValueChange={(v) => { setTargetCompanyCode(v); reset() }}>
                   <SelectTrigger id="rc-target-company"><SelectValue placeholder="选择目标公司" /></SelectTrigger>
                   <SelectContent className="max-h-[280px]">
                     {entityCompanies.filter((c) => c.code !== sourceCompanyCode).map((c) => (
@@ -279,7 +327,7 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label htmlFor="rc-transfer-mode">转移方式</Label>
-                <Select value={transferMode} onValueChange={(v) => { setTransferMode(v as 'all' | 'ratio' | 'amount'); reset() }}>
+                <Select value={transferMode} disabled={readonly} onValueChange={(v) => { setTransferMode(v as 'all' | 'ratio' | 'amount'); reset() }}>
                   <SelectTrigger id="rc-transfer-mode"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">整体迁移</SelectItem>
@@ -299,6 +347,7 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
                     step="0.01"
                     placeholder="如 30"
                     value={ratioInput}
+                    disabled={readonly}
                     aria-invalid={!!ratioError}
                     className={cn(ratioError && 'border-destructive focus-visible:ring-destructive')}
                     onChange={(e) => { setRatioInput(e.target.value); reset() }}
@@ -316,6 +365,7 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
                     step="0.01"
                     placeholder="如 100"
                     value={amountInput}
+                    disabled={readonly}
                     aria-invalid={!!amountError}
                     className={cn(amountError && 'border-destructive focus-visible:ring-destructive')}
                     onChange={(e) => { setAmountInput(e.target.value); reset() }}
@@ -332,26 +382,32 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
             )}
           </section>
 
-          {/* ===== 预览与执行 ===== */}
-          <section className="space-y-2">
-            <SectionTitle>预览与执行</SectionTitle>
-            {!preview && !done && !error && (
-              <p className="text-xs text-muted-foreground">设置完成后点击「预览影响」查看将变更的数据范围与金额。</p>
-            )}
-            {preview && (preview.affectedRows === 0 ? <PreviewStats items={[]} empty /> : <PreviewStats items={previewItems} />)}
-            {done && <FeedbackAlert kind="success">{done}</FeedbackAlert>}
-            {error && <FeedbackAlert kind="error">{error}</FeedbackAlert>}
-          </section>
+          {/* ===== 预览与执行（只读模式隐藏） ===== */}
+          {!readonly && (
+            <section className="space-y-2">
+              <SectionTitle>预览与执行</SectionTitle>
+              {!preview && !done && !error && (
+                <p className="text-xs text-muted-foreground">设置完成后点击「预览影响」查看将变更的数据范围与金额。</p>
+              )}
+              {preview && (preview.affectedRows === 0 ? <PreviewStats items={[]} empty /> : <PreviewStats items={previewItems} />)}
+              {done && <FeedbackAlert kind="success">{done}</FeedbackAlert>}
+              {error && <FeedbackAlert kind="error">{error}</FeedbackAlert>}
+            </section>
+          )}
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" onClick={onClose}>关闭</Button>
-          <Button variant="outline" onClick={handlePreview} disabled={previewMutation.isPending || !sourceCompanyCode || !targetCompanyCode || !period}>
-            {previewMutation.isPending ? '预览中...' : '预览影响'}
-          </Button>
-          <Button variant="destructive" onClick={handleSubmit} disabled={!preview || preview.affectedRows === 0 || reclassifyMutation.isPending}>
-            {reclassifyMutation.isPending ? '重分类中...' : '执行重分类'}
-          </Button>
+          {!readonly && (
+            <>
+              <Button variant="outline" onClick={handlePreview} disabled={previewMutation.isPending || !sourceCompanyCode || !targetCompanyCode || !period}>
+                {previewMutation.isPending ? '预览中...' : '预览影响'}
+              </Button>
+              <Button variant="destructive" onClick={handleSubmit} disabled={!preview || preview.affectedRows === 0 || reclassifyMutation.isPending}>
+                {reclassifyMutation.isPending ? '重分类中...' : '执行重分类'}
+              </Button>
+            </>
+          )}
         </DialogFooter>
         {confirmElement}
       </DialogContent>

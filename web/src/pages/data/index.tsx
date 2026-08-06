@@ -30,10 +30,15 @@ import { SubjectTreePanel } from '@/components/subject-tree/subject-tree-panel'
 import { CompanyPanel } from '@/components/dimension/company-panel'
 import { AggregationMapPanel } from '@/components/dimension/aggregation-map-panel'
 import { ProductCategoryPanel } from '@/components/dimension/product-category-panel'
+import { ExpenseMappingPanel } from '@/components/dimension/expense-mapping-panel'
 import { SubjectBudgetPanel } from '@/components/dimension/subject-budget-panel'
+import { BudgetRatioPanel } from '@/components/dimension/budget-ratio-panel'
 import { ReclassifyCompanyDialog } from '@/components/reclassify/reclassify-company-dialog'
 import { ReclassifySubjectDialog } from '@/components/reclassify/reclassify-subject-dialog'
 import { ReclassifyLogsPanel } from '@/components/reclassify/reclassify-logs-panel'
+import { ReadonlyLogMeta, type ReclassifyLogMeta } from '@/components/reclassify/shared'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import type { ReclassifyLog } from '@/types'
 import { ConsolidationAdjustDialog } from '@/components/reclassify/consolidation-adjust-dialog'
 import { ConsolidationAdjustmentsPanel } from '@/components/reclassify/consolidation-adjustments-panel'
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
@@ -49,8 +54,8 @@ type DataTab = (typeof DATA_TABS)[number]
 const DIM_SUB_TABS = ['operating', 'static', 'company', 'summary'] as const
 type DimSubTab = (typeof DIM_SUB_TABS)[number]
 
-// 「看板管理」内部三级子标签（品类配置 / 主体配置，从科目体系拆出）
-const BOARD_SUB_TABS = ['category', 'subject'] as const
+// 「看板管理」内部三级子标签（品类配置 / 运营费用映射 / 主体配置 / 月度预算比例，从科目体系拆出）
+const BOARD_SUB_TABS = ['category', 'expense', 'subject', 'budget-ratio'] as const
 type BoardSubTab = (typeof BOARD_SUB_TABS)[number]
 
 /** 数据调整入口（科目调整 / 跨公司重分类 / 汇总抵消）：按权限码显隐，两个 Tab 复用 */
@@ -131,6 +136,10 @@ export default function DataPage() {
   // 数据编辑入口：复用重分类/科目调整通道（校验、预览影响、二次确认、审计留痕均在对话框内）
   const [adjustSubjectOpen, setAdjustSubjectOpen] = useState(false)
   const [reclassifyCompanyOpen, setReclassifyCompanyOpen] = useState(false)
+  // 重分类记录「重新应用」目标：失效/已撤销日志 → 打开对应对话框并预填原参数（key 重挂载生效）
+  const [reapplyLog, setReapplyLog] = useState<ReclassifyLog | null>(null)
+  // 重分类记录「只读查看」目标：点击记录行 → 打开预填原始参数的只读详情对话框
+  const [viewLog, setViewLog] = useState<ReclassifyLog | null>(null)
   // 汇总抵消调整（仅作用于汇总主体口径，单体报表不受影响）
   const [consolidationOpen, setConsolidationOpen] = useState(false)
 
@@ -327,13 +336,6 @@ export default function DataPage() {
                     )}
                     {isAllRowsExpanded ? '全部折叠' : '全部展开'}
                   </Button>
-                  <ReclassifyMenu
-                    canSubject={canReclassifySubject}
-                    canCompany={canReclassifyCompany}
-                    onSubject={() => setAdjustSubjectOpen(true)}
-                    onCompany={() => setReclassifyCompanyOpen(true)}
-                    onConsolidation={() => setConsolidationOpen(true)}
-                  />
                   {canExport && (
                     <Button variant="outline" size="sm" onClick={handleBrowseExport}>
                       <Download className="mr-2 h-4 w-4" />
@@ -366,7 +368,7 @@ export default function DataPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex flex-wrap items-center justify-between gap-2">
-                <span>重分类记录</span>
+                <span>重分类管理</span>
                 <ReclassifyMenu
                   canSubject={canReclassifySubject}
                   canCompany={canReclassifyCompany}
@@ -377,7 +379,15 @@ export default function DataPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <ReclassifyLogsPanel canRevert={canReclassifyCompany} />
+              <ReclassifyLogsPanel
+                canRevert={canReclassifyCompany}
+                onReapply={(log) => {
+                  setReapplyLog(log)
+                  if (log.type === 'company') setReclassifyCompanyOpen(true)
+                  else setAdjustSubjectOpen(true)
+                }}
+                onViewDetail={(log) => setViewLog(log)}
+              />
             </CardContent>
           </Card>
 
@@ -456,12 +466,22 @@ export default function DataPage() {
                   canDelete={can('data:subject', 'delete')}
                 />
               )}
+              {boardSubTab === 'expense' && (
+                <ExpenseMappingPanel
+                  canCreate={can('data:subject', 'create')}
+                  canUpdate={can('data:subject', 'update')}
+                  canDelete={can('data:subject', 'delete')}
+                />
+              )}
               {boardSubTab === 'subject' && (
                 <SubjectBudgetPanel
                   canCreate={can('data:subject', 'create')}
                   canUpdate={can('data:subject', 'update')}
                   canDelete={can('data:subject', 'delete')}
                 />
+              )}
+              {boardSubTab === 'budget-ratio' && (
+                <BudgetRatioPanel canUpdate={can('data:subject', 'update')} />
               )}
             </CardContent>
           </Card>
@@ -489,23 +509,83 @@ export default function DataPage() {
       )}
     </div>
 
-      {/* 同公司科目间调整（预填当前指标类型与单选公司） */}
-      <ReclassifySubjectDialog
-        key={`adjust-${browseSubjectType}-${singleBrowseCompany ?? 'all'}`}
-        open={adjustSubjectOpen}
-        onClose={() => setAdjustSubjectOpen(false)}
-        defaultTemplateType={browseSubjectType}
-        defaultCompany={singleBrowseCompany}
-      />
+      {/* 日志 → 对话框预填参数与只读元信息（company/subject_adjust 共用；subject 换父类型无表单参数） */}
+      {(() => {
+        const log = viewLog ?? reapplyLog
+        const templateTypeOf = (l: ReclassifyLog): 'operating' | 'static' | 'budget' =>
+          l.templateType === 'static' || l.templateType === 'budget' ? l.templateType : 'operating'
+        const metaOf = (l: ReclassifyLog): ReclassifyLogMeta => ({
+          operator: l.operator,
+          createdAt: l.createdAt,
+          affectedRows: l.affectedRows,
+          revertedAt: l.revertedAt,
+          revertedBy: l.revertedBy,
+          invalidatedAt: l.invalidatedAt,
+          invalidatedReason: l.invalidatedReason,
+          invalidation: l.invalidation,
+        })
+        const closeLog = () => { setReapplyLog(null); setViewLog(null) }
+        return (
+          <>
+            {/* 同公司科目间调整（编辑/重新应用/只读查看共用；key 重挂载使 preset 生效） */}
+            <ReclassifySubjectDialog
+              key={`adjust-${browseSubjectType}-${singleBrowseCompany ?? 'all'}-${log?.id ?? 'none'}`}
+              open={adjustSubjectOpen}
+              onClose={() => { setAdjustSubjectOpen(false); closeLog() }}
+              defaultTemplateType={browseSubjectType}
+              defaultCompany={singleBrowseCompany}
+              preset={log?.type === 'subject_adjust' ? {
+                templateType: templateTypeOf(log),
+                companyCode: log.sourceCompany ?? '',
+                adjustMode: log.detail?.adjustMode ?? 'both',
+                sourceAccountCode: log.sourceSubject ?? undefined,
+                targetAccountCode: log.targetSubject ?? undefined,
+                decreaseAmount: log.detail?.decreaseAmount ?? undefined,
+                increaseAmount: log.detail?.increaseAmount ?? undefined,
+                period: log.period ?? log.periodFrom ?? '',
+                reason: log.detail?.reason ?? '',
+              } : undefined}
+              readonly={!!viewLog}
+              meta={viewLog ? metaOf(viewLog) : undefined}
+            />
 
-      {/* 跨公司重分类（预填当前指标类型与单选源公司） */}
-      <ReclassifyCompanyDialog
-        key={`reclassify-${browseSubjectType}-${singleBrowseCompany ?? 'all'}`}
-        open={reclassifyCompanyOpen}
-        onClose={() => setReclassifyCompanyOpen(false)}
-        defaultTemplateType={browseSubjectType}
-        defaultSourceCompany={singleBrowseCompany}
-      />
+            {/* 跨公司重分类（编辑/重新应用/只读查看共用；key 重挂载使 preset 生效） */}
+            <ReclassifyCompanyDialog
+              key={`reclassify-${browseSubjectType}-${singleBrowseCompany ?? 'all'}-${log?.id ?? 'none'}`}
+              open={reclassifyCompanyOpen}
+              onClose={() => { setReclassifyCompanyOpen(false); closeLog() }}
+              defaultTemplateType={browseSubjectType}
+              defaultSourceCompany={singleBrowseCompany}
+              preset={log?.type === 'company' ? {
+                templateType: templateTypeOf(log),
+                sourceCompanyCode: log.sourceCompany ?? '',
+                targetCompanyCode: log.targetCompany ?? '',
+                transferMode: log.detail?.transferMode ?? 'all',
+                ratio: log.detail?.ratio ?? undefined,
+                amount: log.detail?.amount ?? undefined,
+                period: log.period ?? log.periodFrom ?? '',
+                accountCodes: log.detail?.accountCodes ?? [],
+              } : undefined}
+              readonly={!!viewLog}
+              meta={viewLog ? metaOf(viewLog) : undefined}
+            />
+
+            {/* 科目归类（换父）记录：无调整表单，仅只读展示操作留痕 */}
+            <Dialog open={!!viewLog && viewLog.type === 'subject'} onOpenChange={(o) => !o && setViewLog(null)}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>科目归类调整详情</DialogTitle>
+                  <DialogDescription>
+                    科目归类调整（换父）在科目树中执行，此处仅展示操作留痕
+                    {viewLog?.type === 'subject' && <ReadonlyLogMeta meta={metaOf(viewLog)} />}
+                  </DialogDescription>
+                </DialogHeader>
+                <p className="text-sm text-muted-foreground">请在「维度/科目体系」的科目树中查看该科目的当前归属与调整历史。</p>
+              </DialogContent>
+            </Dialog>
+          </>
+        )
+      })()}
 
       {/* 汇总抵消调整（仅作用于汇总主体口径，单体报表不受影响） */}
       <ConsolidationAdjustDialog

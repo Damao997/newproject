@@ -38,10 +38,10 @@ function companyDto(c: { id: string; code: string; name: string; shortName: stri
 export interface AggregationMapDto { id: string; summaryCompanyCode: string; summaryCompanyName: string; singleCompanyCode: string; singleCompanyName: string; isInternalElimination: boolean }
 
 // ---------------- 科目 ----------------
-export interface SubjectDto { id: string; code: string; name: string; type: string; level: number; parentCode: string | null; category: string; direction: string; valueType: string; isLeaf: boolean; status: string }
+export interface SubjectDto { id: string; code: string; name: string; type: string; level: number; parentCode: string | null; category: string; direction: string; valueType: string; isLeaf: boolean; status: string; dataType?: string }
 
-function subjectDto(s: { id: string; code: string; name: string; subjectType: string; level: number; parentCode: string | null; category: string; direction: string; valueType: string; isLeaf: boolean; status: string }): SubjectDto {
-  return { id: s.id, code: s.code, name: s.name, type: s.subjectType, level: s.level, parentCode: s.parentCode, category: s.category, direction: s.direction, valueType: s.valueType, isLeaf: s.isLeaf, status: s.status }
+function subjectDto(s: { id: string; code: string; name: string; subjectType: string; level: number; parentCode: string | null; category: string; direction: string; valueType: string; isLeaf: boolean; status: string }, dataType?: string): SubjectDto {
+  return { id: s.id, code: s.code, name: s.name, type: s.subjectType, level: s.level, parentCode: s.parentCode, category: s.category, direction: s.direction, valueType: s.valueType, isLeaf: s.isLeaf, status: s.status, dataType }
 }
 
 /** 校验并归一化值类型入参；非法/缺省返回 undefined（update 不改动） */
@@ -265,7 +265,12 @@ export const DataService = {
       prisma.accountSubject.findMany({ where, orderBy: { orderNo: 'asc' }, skip: (params.page - 1) * params.pageSize, take: params.pageSize }),
       prisma.accountSubject.count({ where }),
     ])
-    return { items: rows.map(subjectDto), total, page: params.page, pageSize: params.pageSize, totalPages: Math.ceil(total / params.pageSize) }
+    // 指标类型（data/calc/display）与科目同编码关联：供调整模块过滤计算类/展示类科目
+    const metrics = rows.length > 0
+      ? await prisma.metric.findMany({ where: { code: { in: rows.map((r) => r.code) } }, select: { code: true, dataType: true } })
+      : []
+    const dataTypeByCode = new Map(metrics.map((m) => [m.code, m.dataType]))
+    return { items: rows.map((s) => subjectDto(s, dataTypeByCode.get(s.code))), total, page: params.page, pageSize: params.pageSize, totalPages: Math.ceil(total / params.pageSize) }
   },
 
   async createSubject(input: { code: string; name: string; type?: string; level?: number; parentCode?: string | null; category?: string; direction?: string; valueType?: string; isLeaf?: boolean }, ctx: AuditCtx): Promise<SubjectDto> {

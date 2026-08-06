@@ -225,6 +225,21 @@ model ProductCategory {
   @@map("product_category")
 }
 
+// 3.4-1 运营费用映射表（运营费用分析：展示指标 ↔ 经营科目编码集合，支持科目树变化后由管理员维护）
+model ExpenseSubjectMapping {
+  id           String       @id @default(uuid())
+  code         String       @unique
+  name         String
+  subjectCodes String[]     @map("subject_codes")
+  sortOrder    Int          @default(0) @map("sort_order")
+  status       RecordStatus @default(active)
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@map("expense_subject_mapping")
+}
+
 // 3.5 主体展示配置表（主体预算达成分析：配置展示的主体/排序/启停，支持公司变化后由管理员维护）
 model SubjectBudgetConfig {
   id          String       @id @default(uuid())
@@ -236,6 +251,17 @@ model SubjectBudgetConfig {
 
   @@index([status])
   @@map("subject_budget_config")
+}
+
+// 3.5-1 预算月度占比配置表（看板月度预算按占比拆分；未配置财年回退默认占比）
+model BudgetRatioConfig {
+  id         String   @id @default(uuid())
+  fiscalYear String   @unique @map("fiscal_year") // FY2026
+  ratios     Json     @map("ratios") @db.JsonB    // 12 项，按财年 4月~次年3月顺序，和为 100
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("budget_ratio_config")
 }
 
 // 3.6 期间维度表
@@ -406,6 +432,10 @@ model ReclassificationLog {
   operatedBy    String    @map("operated_by")
   revertedAt    DateTime? @map("reverted_at")
   revertedBy    String?   @map("reverted_by")
+  // 批次替换/归档/清除导致快照引用失效时由批次变更流程联动标记（reason: rows_replaced | batch_inactive）
+  invalidatedAt    DateTime? @map("invalidated_at")
+  invalidatedBy    String?   @map("invalidated_by")
+  invalidatedReason String?  @map("invalidated_reason")
   detail        Json?     @db.JsonB
   createdAt     DateTime  @default(now()) @map("created_at")
 

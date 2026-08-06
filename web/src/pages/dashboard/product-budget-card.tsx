@@ -15,7 +15,7 @@ interface ProductBudgetCardProps {
   subjectName?: string
 }
 
-/** 金额口径：本月实际 / 本年累计（预算口径随金额口径联动：月度=年度/12，累计=年度总额） */
+/** 金额口径：本月实际 / 本年累计（预算口径随金额口径联动：月度=占比拆分后的当月预算，累计=年度总额） */
 type AmountMode = 'month' | 'ytd'
 
 /** 达成率红绿灯三档（与 kpi-card 一致）：≥75 达标绿 / 60-75 预警黄 / <60 未达标红；无预算灰 */
@@ -60,9 +60,9 @@ export function ProductBudgetCard({ period, companyCode, subjectName }: ProductB
   const rows = data?.rows ?? []
   const isEmpty = !isLoading && rows.length === 0
 
-  // 按当前金额口径取单指标组的展示值：月度金额↔月度预算（年度/12），累计金额↔年度预算
+  // 按当前金额口径取单指标组的展示值：月度金额↔占比拆分后的当月预算（缺失回退年度/12），累计金额↔年度预算
   const displayOf = (m: ProductBudgetMetric) => ({
-    budget: amountMode === 'month' ? m.budget / 12 : m.budget,
+    budget: amountMode === 'month' ? (m.monthBudget ?? m.budget / 12) : m.budget,
     amount: amountMode === 'month' ? m.monthActual : m.ytdActual,
     rate: amountMode === 'month' ? m.monthRate : m.ytdRate,
     yoy: amountMode === 'month' ? m.monthYoy : m.ytdYoy,

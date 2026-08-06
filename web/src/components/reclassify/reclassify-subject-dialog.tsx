@@ -24,7 +24,7 @@ import {
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { formatMoney, formatQuantity, cn } from '@/lib/utils'
 import { Equal, MinusCircle, PlusCircle } from 'lucide-react'
-import { TEMPLATE_LABEL, FeedbackAlert, PreviewStats, SubjectPicker, SectionTitle, type PreviewStatItem } from './shared'
+import { TEMPLATE_LABEL, FeedbackAlert, PreviewStats, SubjectPicker, SectionTitle, ReadonlyLogMeta, type ReclassifyLogMeta, type PreviewStatItem } from './shared'
 
 interface ReclassifySubjectDialogProps {
   open: boolean
@@ -33,6 +33,24 @@ interface ReclassifySubjectDialogProps {
   defaultTemplateType?: 'operating' | 'static'
   /** 预填公司（来自指标页当前主体） */
   defaultCompany?: string
+  /** 完整预填参数（来自失效/已撤销日志的「重新应用」或只读查看）：父级以 key 强制重挂载使其生效 */
+  preset?: ReclassifySubjectPreset
+  /** 只读查看模式：预填 preset 展示原始操作参数，禁止修改与提交（不触发任何写接口） */
+  readonly?: boolean
+  /** 只读模式下展示的日志元信息（操作人/时间/状态） */
+  meta?: ReclassifyLogMeta
+}
+
+export interface ReclassifySubjectPreset {
+  templateType: 'operating' | 'static' | 'budget'
+  companyCode: string
+  adjustMode: AdjustMode
+  sourceAccountCode?: string | null
+  targetAccountCode?: string | null
+  decreaseAmount?: number
+  increaseAmount?: number
+  period: string
+  reason?: string
 }
 
 interface PreviewData {
@@ -60,16 +78,16 @@ const ADJUST_MODE_LABEL: Record<AdjustMode, string> = {
  * 金额单位与事实数据一致（万元）。期间按单月必选（与后端口径一致）；
  * 本年累计由查询时按财年实时聚合，自动反映调整结果。
  */
-export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = 'operating', defaultCompany }: ReclassifySubjectDialogProps) {
-  const [templateType, setTemplateType] = useState<string>(defaultTemplateType)
-  const [companyCode, setCompanyCode] = useState<string>(defaultCompany ?? '')
-  const [adjustMode, setAdjustMode] = useState<AdjustMode>('both')
-  const [sourceAccountCode, setSourceAccountCode] = useState('')
-  const [targetAccountCode, setTargetAccountCode] = useState('')
-  const [decreaseInput, setDecreaseInput] = useState('')
-  const [increaseInput, setIncreaseInput] = useState('')
-  const [period, setPeriod] = useState('')
-  const [reason, setReason] = useState('')
+export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = 'operating', defaultCompany, preset, readonly = false, meta }: ReclassifySubjectDialogProps) {
+  const [templateType, setTemplateType] = useState<string>(preset?.templateType ?? defaultTemplateType)
+  const [companyCode, setCompanyCode] = useState<string>(preset?.companyCode ?? defaultCompany ?? '')
+  const [adjustMode, setAdjustMode] = useState<AdjustMode>(preset?.adjustMode ?? 'both')
+  const [sourceAccountCode, setSourceAccountCode] = useState(preset?.sourceAccountCode ?? '')
+  const [targetAccountCode, setTargetAccountCode] = useState(preset?.targetAccountCode ?? '')
+  const [decreaseInput, setDecreaseInput] = useState(() => (preset?.decreaseAmount != null ? String(preset.decreaseAmount) : ''))
+  const [increaseInput, setIncreaseInput] = useState(() => (preset?.increaseAmount != null ? String(preset.increaseAmount) : ''))
+  const [period, setPeriod] = useState(preset?.period ?? '')
+  const [reason, setReason] = useState(preset?.reason ?? '')
   const [reasonTouched, setReasonTouched] = useState(false)
   const [preview, setPreview] = useState<PreviewData | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -83,11 +101,11 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
   // 下拉选项跟随「显示简称」开关；确认弹窗文案仍用全称，保证高危操作确认的严谨性
   const { displayNameMap } = useCompanyDisplayName()
 
-  // 科目候选：静态模板取静态科目，否则取经营科目；比率类由公式计算，不可直接调整，从候选中排除
+  // 科目候选：静态模板取静态科目，否则取经营科目；比率类（公式计算）与 calc/display 类不可直接调整，从候选中排除
   const subjectType = templateType === 'static' ? 'static' : 'operating'
   const { data: subjectsData } = useSubjects({ type: subjectType, pageSize: 1000 })
   const subjectOptions = useMemo(
-    () => (subjectsData?.items ?? []).filter((s) => s.valueType !== 'ratio'),
+    () => (subjectsData?.items ?? []).filter((s) => s.valueType !== 'ratio' && s.dataType !== 'calc' && s.dataType !== 'display'),
     [subjectsData],
   )
 
@@ -263,8 +281,12 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>科目间金额调整</DialogTitle>
-          <DialogDescription>同一公司内按选定方式调整科目金额：可双向调整（调减+调增）、仅调减（如修正重复计算）或仅调增（如补录遗漏）；金额类科目单位为万元，数量类按整数调整。</DialogDescription>
+          <DialogTitle>{readonly ? '科目调整详情' : '科目间金额调整'}</DialogTitle>
+          {readonly ? (
+            <DialogDescription>原始操作参数只读展示{meta && <ReadonlyLogMeta meta={meta} />}</DialogDescription>
+          ) : (
+            <DialogDescription>同一公司内按选定方式调整科目金额：可双向调整（调减+调增）、仅调减（如修正重复计算）或仅调增（如补录遗漏）；金额类科目单位为万元，数量类按整数调整。</DialogDescription>
+          )}
         </DialogHeader>
 
         <div className="space-y-4">
@@ -274,7 +296,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label htmlFor="rs-template-type">模板类型</Label>
-                <Select value={templateType} onValueChange={(v) => { setTemplateType(v); reset(); setSourceAccountCode(''); setTargetAccountCode('') }}>
+                <Select value={templateType} disabled={readonly} onValueChange={(v) => { setTemplateType(v); reset(); setSourceAccountCode(''); setTargetAccountCode('') }}>
                   <SelectTrigger id="rs-template-type"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="operating">经营数据</SelectItem>
@@ -285,7 +307,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
               </div>
               <div className="space-y-1">
                 <Label htmlFor="rs-company">公司</Label>
-                <Select value={companyCode} onValueChange={(v) => { setCompanyCode(v); reset() }}>
+                <Select value={companyCode} disabled={readonly} onValueChange={(v) => { setCompanyCode(v); reset() }}>
                   <SelectTrigger id="rs-company"><SelectValue placeholder="选择公司" /></SelectTrigger>
                   <SelectContent className="max-h-[280px]">
                     {entityCompanies.map((c) => (
@@ -296,8 +318,14 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
               </div>
               <div className="space-y-1">
                 <Label>调整期间（单月） <span className="text-destructive">*</span></Label>
-                <MonthPicker className="w-full" value={period} onChange={(v) => { setPeriod(v); reset() }} availablePeriods={availablePeriods} placeholder="选择月份" />
-                {templateType === 'budget' && <p className="text-xs text-muted-foreground">预算数据按该月所属财年整体匹配。</p>}
+                {readonly
+                  ? <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">{period || '-'}</div>
+                  : (
+                    <>
+                      <MonthPicker className="w-full" value={period} onChange={(v) => { setPeriod(v); reset() }} availablePeriods={availablePeriods} placeholder="选择月份" />
+                      {templateType === 'budget' && <p className="text-xs text-muted-foreground">预算数据按该月所属财年整体匹配。</p>}
+                    </>
+                  )}
               </div>
             </div>
           </section>
@@ -307,7 +335,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
             <SectionTitle>调整设置</SectionTitle>
             <div className="space-y-1">
               <Label htmlFor="rs-adjust-mode">调整方式</Label>
-              <Select value={adjustMode} onValueChange={(v) => handleModeChange(v as AdjustMode)}>
+              <Select value={adjustMode} disabled={readonly} onValueChange={(v) => handleModeChange(v as AdjustMode)}>
                 <SelectTrigger id="rs-adjust-mode"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {(Object.keys(ADJUST_MODE_LABEL) as AdjustMode[]).map((m) => (
@@ -326,13 +354,22 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                 </p>
                 <div className="space-y-1">
                   <Label>源科目 <span className="text-destructive">*</span></Label>
-                  <SubjectPicker
-                    options={sourceOptions}
-                    value={sourceAccountCode}
-                    onChange={(code) => { setSourceAccountCode(code); reset() }}
-                    excludeCode={targetAccountCode}
-                    placeholder="选择要调减的科目"
-                  />
+                  {readonly
+                    ? (sourceAccountCode
+                        ? <div className="flex h-9 items-center gap-2 rounded-md border bg-muted/40 px-3 text-sm">
+                            <span className="font-mono text-xs text-muted-foreground">{sourceAccountCode}</span>
+                            <span className="truncate">{subjectOptions.find((s) => s.code === sourceAccountCode)?.name ?? sourceAccountCode}</span>
+                          </div>
+                        : <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground">-</div>)
+                    : (
+                      <SubjectPicker
+                        options={sourceOptions}
+                        value={sourceAccountCode}
+                        onChange={(code) => { setSourceAccountCode(code); reset() }}
+                        excludeCode={targetAccountCode}
+                        placeholder="选择要调减的科目"
+                      />
+                    )}
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="rs-decrease">{decSideQty ? '调减数量（整数）' : '调减金额（万元）'} <span className="text-destructive">*</span></Label>
@@ -343,6 +380,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                     step={decSideQty ? 1 : '0.01'}
                     placeholder={decSideQty ? '如 10' : '如 50'}
                     value={decreaseInput}
+                    disabled={readonly}
                     aria-invalid={!!decreaseError}
                     className={cn('bg-background', decreaseError && 'border-destructive focus-visible:ring-destructive')}
                     onChange={(e) => { setDecreaseInput(e.target.value); reset() }}
@@ -360,7 +398,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                     <PlusCircle className="h-4 w-4" />
                     调增侧（目标科目）
                   </p>
-                  {adjustMode === 'both' && (
+                  {!readonly && adjustMode === 'both' && (
                     <button
                       type="button"
                       className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-primary transition-colors hover:bg-primary/10 disabled:pointer-events-none disabled:opacity-40"
@@ -375,13 +413,22 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                 </div>
                 <div className="space-y-1">
                   <Label>目标科目 <span className="text-destructive">*</span></Label>
-                  <SubjectPicker
-                    options={targetOptions}
-                    value={targetAccountCode}
-                    onChange={(code) => { setTargetAccountCode(code); reset() }}
-                    excludeCode={sourceAccountCode}
-                    placeholder="选择要调增的科目"
-                  />
+                  {readonly
+                    ? (targetAccountCode
+                        ? <div className="flex h-9 items-center gap-2 rounded-md border bg-muted/40 px-3 text-sm">
+                            <span className="font-mono text-xs text-muted-foreground">{targetAccountCode}</span>
+                            <span className="truncate">{subjectOptions.find((s) => s.code === targetAccountCode)?.name ?? targetAccountCode}</span>
+                          </div>
+                        : <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground">-</div>)
+                    : (
+                      <SubjectPicker
+                        options={targetOptions}
+                        value={targetAccountCode}
+                        onChange={(code) => { setTargetAccountCode(code); reset() }}
+                        excludeCode={sourceAccountCode}
+                        placeholder="选择要调增的科目"
+                      />
+                    )}
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="rs-increase">{incSideQty ? '调增数量（整数）' : '调增金额（万元）'} <span className="text-destructive">*</span></Label>
@@ -392,6 +439,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                     step={incSideQty ? 1 : '0.01'}
                     placeholder={incSideQty ? '如 10' : '如 50'}
                     value={increaseInput}
+                    disabled={readonly}
                     aria-invalid={!!increaseError}
                     className={cn('bg-background', increaseError && 'border-destructive focus-visible:ring-destructive')}
                     onChange={(e) => { setIncreaseInput(e.target.value); reset() }}
@@ -402,8 +450,8 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
               )}
             </div>
 
-            {/* 实时净变动提示（无需等预览） */}
-            {(decValue > 0 || incValue > 0) && (
+            {/* 实时净变动提示（无需等预览；只读模式隐藏） */}
+            {!readonly && (decValue > 0 || incValue > 0) && (
               <div
                 className={cn(
                   'rounded-md border p-2.5 text-sm',
@@ -420,55 +468,65 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
           {/* ===== 调整原因 ===== */}
           <section className="space-y-1">
             <Label htmlFor="rs-reason">调整原因 <span className="text-destructive">*</span></Label>
-            <Textarea
-              id="rs-reason"
-              rows={2}
-              placeholder="如：××科目 5 月数据重复计算，调减重复部分"
-              value={reason}
-              aria-invalid={!!reasonError}
-              className={cn(reasonError && 'border-destructive focus-visible:ring-destructive')}
-              onChange={(e) => setReason(e.target.value)}
-              onBlur={() => setReasonTouched(true)}
-            />
+            {readonly
+              ? <div className="min-h-9 rounded-md border bg-muted/40 px-3 py-2 text-sm">{reason || '-'}</div>
+              : (
+                <Textarea
+                  id="rs-reason"
+                  rows={2}
+                  placeholder="如：××科目 5 月数据重复计算，调减重复部分"
+                  value={reason}
+                  aria-invalid={!!reasonError}
+                  className={cn(reasonError && 'border-destructive focus-visible:ring-destructive')}
+                  onChange={(e) => setReason(e.target.value)}
+                  onBlur={() => setReasonTouched(true)}
+                />
+              )}
             {reasonError && <p className="text-xs text-destructive">{reasonError}</p>}
           </section>
 
-          {/* ===== 预览与执行 ===== */}
-          <section className="space-y-2">
-            <SectionTitle>预览与执行</SectionTitle>
-            {!preview && !done && !error && (
-              <p className="text-xs text-muted-foreground">设置完成后点击「预览影响」查看源科目匹配情况与金额变化。</p>
-            )}
-            {preview && (preview.affectedRows === 0
-              ? <PreviewStats items={[]} empty />
-              : <PreviewStats
-                  items={previewItems}
-                  warning={preview.netChange !== 0 ? <>本次调整将使公司总额净变动 <span className="font-num font-semibold">{fmt(preview.netChange, previewQty)}</span>，请确认业务依据。</> : undefined}
-                />)}
-            {done && <FeedbackAlert kind="success">{done}</FeedbackAlert>}
-            {error && <FeedbackAlert kind="error">{error}</FeedbackAlert>}
-          </section>
+          {/* ===== 预览与执行（只读模式隐藏） ===== */}
+          {!readonly && (
+            <section className="space-y-2">
+              <SectionTitle>预览与执行</SectionTitle>
+              {!preview && !done && !error && (
+                <p className="text-xs text-muted-foreground">设置完成后点击「预览影响」查看源科目匹配情况与金额变化。</p>
+              )}
+              {preview && (preview.affectedRows === 0
+                ? <PreviewStats items={[]} empty />
+                : <PreviewStats
+                    items={previewItems}
+                    warning={preview.netChange !== 0 ? <>本次调整将使公司总额净变动 <span className="font-num font-semibold">{fmt(preview.netChange, previewQty)}</span>，请确认业务依据。</> : undefined}
+                  />)}
+              {done && <FeedbackAlert kind="success">{done}</FeedbackAlert>}
+              {error && <FeedbackAlert kind="error">{error}</FeedbackAlert>}
+            </section>
+          )}
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
           <div className="flex flex-1 items-center">
-            {submitDisabledReason && <span className="text-xs text-muted-foreground">{submitDisabledReason}</span>}
+            {!readonly && submitDisabledReason && <span className="text-xs text-muted-foreground">{submitDisabledReason}</span>}
           </div>
           <Button variant="outline" onClick={onClose}>关闭</Button>
-          <Button
-            variant="outline"
-            onClick={handlePreview}
-            disabled={
-              previewMutation.isPending || !companyCode || !period
-              || (adjustMode !== 'increase' && (!sourceAccountCode || !decreaseInput))
-              || (adjustMode !== 'decrease' && (!targetAccountCode || !increaseInput))
-            }
-          >
-            {previewMutation.isPending ? '预览中...' : '预览影响'}
-          </Button>
-          <Button variant="destructive" onClick={handleSubmit} disabled={!preview || preview.affectedRows === 0 || !reason.trim() || adjustMutation.isPending}>
-            {adjustMutation.isPending ? '调整中...' : '执行调整'}
-          </Button>
+          {!readonly && (
+            <>
+              <Button
+                variant="outline"
+                onClick={handlePreview}
+                disabled={
+                  previewMutation.isPending || !companyCode || !period
+                  || (adjustMode !== 'increase' && (!sourceAccountCode || !decreaseInput))
+                  || (adjustMode !== 'decrease' && (!targetAccountCode || !increaseInput))
+                }
+              >
+                {previewMutation.isPending ? '预览中...' : '预览影响'}
+              </Button>
+              <Button variant="destructive" onClick={handleSubmit} disabled={!preview || preview.affectedRows === 0 || !reason.trim() || adjustMutation.isPending}>
+                {adjustMutation.isPending ? '调整中...' : '执行调整'}
+              </Button>
+            </>
+          )}
         </DialogFooter>
         {confirmElement}
       </DialogContent>

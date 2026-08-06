@@ -71,6 +71,8 @@ export interface TransactionAgingState {
   party: string
   /** 'type' | 'counterparty' */
   groupBy: string
+  /** 仅显示小计：隐藏明细数据行，仅保留各组小计与合计行 */
+  subtotalOnly: boolean
 }
 
 export interface TransactionInternalState {
@@ -181,6 +183,7 @@ const defaultAging: TransactionAgingState = {
   accounts: [],
   party: 'external',
   groupBy: 'type',
+  subtotalOnly: false,
 }
 
 const defaultInternal: TransactionInternalState = { company: 'all' }

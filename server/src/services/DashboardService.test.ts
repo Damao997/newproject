@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { changeRate, rateOf, findInCategory, monthlyBudgetSeries, budgetAnnualTotal, fallbackBudgetSeries, ytdBudgetSeries, mapAlertRow, alertScopeWhere, productMetric, matchProductCategories } from './DashboardService'
+import { changeRate, rateOf, findInCategory, monthlyBudgetSeries, budgetAnnualTotal, fallbackBudgetSeries, ytdBudgetSeries, mapAlertRow, alertScopeWhere, productMetric, matchProductCategories, matchExpenseMappings } from './DashboardService'
 import { OPERATING_DIMS } from '../lib/metric-values'
 import type { ValueNode } from './AggregationService'
 import { Prisma } from '@prisma/client'
@@ -100,6 +100,35 @@ describe('DashboardService 纯函数', () => {
       expect(monthlyBudgetSeries([{ accountCode: 'Z', period: '2026-01', value: 9 }], ['A'], months)).toEqual([null, null, null])
       expect(monthlyBudgetSeries([], ['A'], months)).toEqual([null, null, null])
     })
+    it('无月度粒度且配置完整占比时返回全 null（占比拆分交由 fallbackBudgetSeries）', () => {
+      const rows = [{ accountCode: 'A', period: 'FY2026', value: 1200 }]
+      const fy = ['2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11', '2026-12', '2027-01', '2027-02', '2027-03']
+      const ratios = [3, 8, 11, 4, 7, 12, 7, 10, 13, 5, 8, 12]
+      expect(monthlyBudgetSeries(rows, ['A'], fy, ratios)).toEqual(fy.map(() => null))
+    })
+    it('无月度粒度、配置占比但 months 不足 12 时保持均摊（占比仅对完整财年序列生效）', () => {
+      const rows = [{ accountCode: 'A', period: 'FY2026', value: 1200 }]
+      expect(monthlyBudgetSeries(rows, ['A'], months, [3, 8, 11])).toEqual([100, 100, 100])
+    })
+    it('有月度粒度行时行值优先，占比不参与', () => {
+      const rows = [
+        { accountCode: 'A', period: '2026-01', value: 100 },
+        { accountCode: 'A', period: '2026-03', value: 120 },
+      ]
+      expect(monthlyBudgetSeries(rows, ['A'], months, [3, 8, 11])).toEqual([100, null, 120])
+    })
+    it('组合链路（模拟 buildDashboardData）：annual 行 + 完整占比 → fallback 按占比拆分且 Σ=年度总额', () => {
+      const rows = [{ accountCode: 'A', period: 'FY2026', value: 12000 }]
+      const fy = ['2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11', '2026-12', '2027-01', '2027-02', '2027-03']
+      const ratios = [3, 8, 11, 4, 7, 12, 7, 10, 13, 5, 8, 12]
+      const series = monthlyBudgetSeries(rows, ['A'], fy, ratios)
+      expect(series).toEqual(fy.map(() => null))
+      const out = fallbackBudgetSeries(series, 12000, fy, ratios)
+      expect(out[0]).toBe(360) // 4月 3%
+      expect(out[5]).toBe(1440) // 9月 12%
+      expect(out[8]).toBe(1560) // 12月 13%
+      expect(out.reduce((s, v) => s + (v ?? 0), 0)).toBe(12000)
+    })
   })
 
   describe('budgetAnnualTotal 指标年度预算总额（含计算类指标树预算回退）', () => {
@@ -129,6 +158,23 @@ describe('DashboardService 纯函数', () => {
     it('全 null 时按年度/12 均摊', () => {
       const series = [null, null, null]
       expect(fallbackBudgetSeries(series, 1200, months)).toEqual([100, 100, 100])
+    })
+    it('months 不足 12 时占比不生效（仍按年度/12 均摊）', () => {
+      const series = [null, null, null]
+      expect(fallbackBudgetSeries(series, 1200, months, [3, 8, 11])).toEqual([100, 100, 100])
+    })
+    it('传入占比但序列非全 null 时保持原样（月度粒度预算优先，占比不生效）', () => {
+      const series = [100, null, 120]
+      expect(fallbackBudgetSeries(series, 10000, months, [3, 8, 11])).toEqual([100, null, 120])
+    })
+    it('传入占比但年度总额为 0 时保持全 null（无预算不伪造）', () => {
+      expect(fallbackBudgetSeries([null, null, null], 0, months, [3, 8, 11])).toEqual([null, null, null])
+    })
+    it('完整 12 个月财年序列按占比拆分且 Σ=年度总额（末月余差）', () => {
+      const fy = ['2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11', '2026-12', '2027-01', '2027-02', '2027-03']
+      const out = fallbackBudgetSeries(fy.map(() => null), 10000, fy, [3, 8, 11, 4, 7, 12, 7, 10, 13, 5, 8, 12])
+      expect(out.reduce((s, v) => s + (v ?? 0), 0)).toBe(10000)
+      expect(out[0]).toBe(300)
     })
     it('年度总额为 0 时保持全 null（无预算不伪造）', () => {
       expect(fallbackBudgetSeries([null, null, null], 0, months)).toEqual([null, null, null])
@@ -216,6 +262,24 @@ describe('DashboardService 纯函数', () => {
       expect(m.monthRate).toBeNull()
       expect(m.ytdRate).toBeNull()
       expect(m.monthYoy).toBe(0.25)
+    })
+    it('传入月度预算（monthBudget）时月度达成率按占比拆分值计算', () => {
+      const m = productMetric(node({ values: dims }), 300)
+      expect(m.monthRate).toBe(33.33) // 100 / 300 × 100
+      expect(m.ytdRate).toBe(41.67) // 累计口径不受影响
+    })
+    it('传入月度预算为 0/null 时月度达成率为 null（无预算不伪造）', () => {
+      expect(productMetric(node({ values: dims }), 0).monthRate).toBeNull()
+      expect(productMetric(node({ values: dims }), null).monthRate).toBeNull()
+    })
+    it('输出 monthBudget：传数值时按占比拆分值，未传回退年度/12', () => {
+      expect(productMetric(node({ values: dims }), 300).monthBudget).toBe(300)
+      expect(productMetric(node({ values: dims })).monthBudget).toBe(100) // 1200/12
+    })
+    it('monthBudget 传 0/null 时为 null（无预算），节点缺失时回退 /12 为 0', () => {
+      expect(productMetric(node({ values: dims }), 0).monthBudget).toBeNull()
+      expect(productMetric(node({ values: dims }), null).monthBudget).toBeNull()
+      expect(productMetric(undefined).monthBudget).toBe(0)
     })
     it('节点缺失返回全 0 / null（前端显示 "–"）', () => {
       const m = productMetric(undefined)
@@ -326,6 +390,97 @@ describe('DashboardService 纯函数', () => {
       expect(covered).toHaveLength(3)
       expect(covered[1].subjects).toEqual([])
       expect(covered[2].subjects).toEqual(['零值品类收入'])
+    })
+  })
+
+  describe('matchExpenseMappings 运营费用映射匹配', () => {
+    const fee = (code: string, name: string, monthActual: number, budget: number, samePeriod: number, ytd: number, ytdSame: number): ValueNode =>
+      node({
+        code, name, level: 4, category: '费用',
+        values: {
+          [OPERATING_DIMS.ACTUAL_MONTH]: monthActual,
+          [OPERATING_DIMS.BUDGET_AMOUNT]: budget,
+          [OPERATING_DIMS.SAME_PERIOD_ACTUAL]: samePeriod,
+          [OPERATING_DIMS.YTD_ACTUAL]: ytd,
+          [OPERATING_DIMS.SAME_PERIOD_YTD]: ytdSame,
+        },
+      })
+
+    it('多科目映射各维度求和（金额/预算/使用率/同比）', () => {
+      const mappings = [{ code: 'labor', name: '人力成本', subjectCodes: ['HR_A', 'HR_B'] }]
+      const tree = [
+        fee('HR_A', '人力成本-工资', 80, 1200, 70, 900, 800),
+        fee('HR_B', '人力成本-社保', 20, 600, 10, 200, 100),
+      ]
+      const [row] = matchExpenseMappings(mappings, tree)
+      expect(row.name).toBe('人力成本')
+      expect(row.monthActual).toBe(100) // 80 + 20
+      expect(row.budget).toBe(1800) // 1200 + 600
+      expect(row.monthRate).toBe(66.67) // 100 / (1800/12) × 100
+      expect(row.monthYoy).toBe(0.25) // (100-80)/80
+      expect(row.ytdActual).toBe(1100)
+      expect(row.ytdRate).toBe(61.11) // 1100/1800 × 100
+      expect(row.ytdYoy).toBe(0.22) // (1100-900)/900
+    })
+
+    it('映射引用的缺失编码静默跳过，其余科目正常聚合', () => {
+      const mappings = [{ code: 'mix', name: '混合', subjectCodes: ['A', 'GONE', 'B'] }]
+      const tree = [
+        fee('A', '科目A', 10, 120, 8, 100, 90),
+        fee('B', '科目B', 20, 240, 12, 200, 150),
+      ]
+      const [row] = matchExpenseMappings(mappings, tree)
+      expect(row.monthActual).toBe(30)
+      expect(row.budget).toBe(360)
+    })
+
+    it('金额与预算全为 0 的映射行不展示，无映射返回空数组', () => {
+      const mappings = [
+        { code: 'zero', name: '零值映射', subjectCodes: ['Z'] },
+        { code: 'active', name: '有效映射', subjectCodes: ['A'] },
+      ]
+      const tree = [
+        fee('Z', '零值科目', 0, 0, 0, 0, 0),
+        fee('A', '有效科目', 10, 120, 8, 100, 90),
+      ]
+      const rows = matchExpenseMappings(mappings, tree)
+      expect(rows.map((r) => r.code)).toEqual(['active'])
+      expect(matchExpenseMappings([], tree)).toEqual([])
+    })
+
+    it('映射按配置顺序输出（不做排序）', () => {
+      const mappings = [
+        { code: 'b', name: '后配置', subjectCodes: ['B'] },
+        { code: 'a', name: '先配置', subjectCodes: ['A'] },
+      ]
+      const tree = [
+        fee('A', '科目A', 10, 120, 8, 100, 90),
+        fee('B', '科目B', 20, 240, 12, 200, 150),
+      ]
+      expect(matchExpenseMappings(mappings, tree).map((r) => r.code)).toEqual(['b', 'a'])
+    })
+
+    it('传 ratios+monthIndex 时 monthRate 与 monthBudget 按占比拆分', () => {
+      const mappings = [{ code: 'labor', name: '人力成本', subjectCodes: ['HR_A', 'HR_B'] }]
+      const tree = [
+        fee('HR_A', '人力成本-工资', 80, 1200, 70, 900, 800),
+        fee('HR_B', '人力成本-社保', 20, 600, 10, 200, 100),
+      ]
+      const ratios = [3, 8, 11, 4, 7, 12, 7, 10, 13, 5, 8, 12]
+      const [row] = matchExpenseMappings(mappings, tree, ratios, 0) // 4月 3%
+      expect(row.monthBudget).toBe(54) // 1800 × 3%
+      expect(row.monthRate).toBe(185.19) // 100 / 54 × 100
+      expect(row.ytdRate).toBe(61.11) // 累计口径不受影响
+    })
+    it('不传 ratios 时保持 /12 口径（monthBudget = budget/12）', () => {
+      const mappings = [{ code: 'labor', name: '人力成本', subjectCodes: ['HR_A', 'HR_B'] }]
+      const tree = [
+        fee('HR_A', '人力成本-工资', 80, 1200, 70, 900, 800),
+        fee('HR_B', '人力成本-社保', 20, 600, 10, 200, 100),
+      ]
+      const [row] = matchExpenseMappings(mappings, tree)
+      expect(row.monthBudget).toBe(150) // 1800/12
+      expect(row.monthRate).toBe(66.67) // 100 / (1800/12) × 100
     })
   })
 })

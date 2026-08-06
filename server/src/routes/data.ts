@@ -10,7 +10,9 @@ import { recordAudit, clientIp } from '../middleware/audit'
 import { ImportService } from '../services/ImportService'
 import { DataService } from '../services/DataService'
 import { ProductCategoryService } from '../services/ProductCategoryService'
+import { ExpenseAnalysisService } from '../services/ExpenseAnalysisService'
 import { SubjectBudgetConfigService } from '../services/SubjectBudgetConfigService'
+import { BudgetRatioService } from '../services/BudgetRatioService'
 import { IndicatorsService } from '../services/IndicatorsService'
 import { ReclassificationService } from '../services/ReclassificationService'
 import { ConsolidationService } from '../services/ConsolidationService'
@@ -248,6 +250,28 @@ router.delete('/product-categories/:id', requirePermission('data:subject:delete'
   sendOk(res, null)
 }))
 
+// ===== 运营费用映射（运营费用分析）=====
+router.get('/expense-mappings', requirePermission('data:browse:view', 'view'), asyncHandler(async (_req, res) => {
+  sendOk(res, await ExpenseAnalysisService.list())
+}))
+
+router.get('/expense-mappings/check', requirePermission('data:browse:view', 'view'), asyncHandler(async (_req, res) => {
+  sendOk(res, await ExpenseAnalysisService.check())
+}))
+
+router.post('/expense-mappings', requirePermission('data:subject:create', 'create'), asyncHandler(async (req, res) => {
+  sendOk(res, await ExpenseAnalysisService.create(req.body ?? {}, ctxOf(req)))
+}))
+
+router.put('/expense-mappings/:id', requirePermission('data:subject:update', 'update'), asyncHandler(async (req, res) => {
+  sendOk(res, await ExpenseAnalysisService.update(req.params.id as string, req.body ?? {}, ctxOf(req)))
+}))
+
+router.delete('/expense-mappings/:id', requirePermission('data:subject:delete', 'delete'), asyncHandler(async (req, res) => {
+  await ExpenseAnalysisService.remove(req.params.id as string, ctxOf(req))
+  sendOk(res, null)
+}))
+
 // ===== 主体展示配置（主体预算达成分析）=====
 router.get('/subject-budget-configs', requirePermission('data:browse:view', 'view'), asyncHandler(async (_req, res) => {
   sendOk(res, await SubjectBudgetConfigService.list())
@@ -268,6 +292,15 @@ router.put('/subject-budget-configs/:id', requirePermission('data:subject:update
 router.delete('/subject-budget-configs/:id', requirePermission('data:subject:delete', 'delete'), asyncHandler(async (req, res) => {
   await SubjectBudgetConfigService.remove(req.params.id as string, ctxOf(req))
   sendOk(res, null)
+}))
+
+// ===== 预算月度占比（看板月度预算按占比拆分）=====
+router.get('/budget-ratios', requirePermission('data:browse:view', 'view'), asyncHandler(async (req, res) => {
+  sendOk(res, await BudgetRatioService.get(String(req.query.fiscalYear ?? '')))
+}))
+
+router.put('/budget-ratios/:fiscalYear', requirePermission('data:subject:update', 'update'), asyncHandler(async (req, res) => {
+  sendOk(res, await BudgetRatioService.update(req.params.fiscalYear as string, req.body?.ratios, ctxOf(req)))
 }))
 
 // ===== 指标 =====
@@ -437,9 +470,10 @@ router.post('/reclassify/subject', requirePermission('data:reclassify:subject', 
   sendOk(res, await ReclassificationService.adjustSubject(adjustSubjectBody(req.body ?? {}), scopeOf(req.authUser as AuthUserContext), ctxOf(req)))
 }))
 
-router.get('/reclassify/logs', requirePermission('data:reclassify:company', 'update'), asyncHandler(async (req, res) => {
+// 重分类/汇总抵消记录为只读审计视图：查看权限（data:browse:view）即可打开；写操作仍要求 data:reclassify:* update
+router.get('/reclassify/logs', requirePermission('data:browse:view', 'view'), asyncHandler(async (req, res) => {
   const { page, pageSize } = pageParams(req.query)
-  sendOk(res, await ReclassificationService.listLogs({ page, pageSize, type: req.query.type as string | undefined }))
+  sendOk(res, await ReclassificationService.listLogs({ page, pageSize, type: req.query.type as string | undefined }, scopeOf(req.authUser as AuthUserContext)))
 }))
 
 // 撤销重分类/科目调整（按日志快照逆向恢复）
@@ -469,7 +503,7 @@ function consolidationAdjustBody(b: any) {
   }
 }
 
-router.get('/consolidation/adjustments', requirePermission('data:reclassify:company', 'update'), asyncHandler(async (req, res) => {
+router.get('/consolidation/adjustments', requirePermission('data:browse:view', 'view'), asyncHandler(async (req, res) => {
   const { page, pageSize } = pageParams(req.query)
   sendOk(res, await ConsolidationService.listAdjustments({ page, pageSize }, scopeOf(req.authUser as AuthUserContext)))
 }))

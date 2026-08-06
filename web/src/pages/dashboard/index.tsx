@@ -14,6 +14,7 @@ import { usePageStore } from '@/stores/pageStateStore'
 import { TrendSection } from './trend-section'
 import { ProductBudgetCard } from './product-budget-card'
 import { SubjectBudgetCard } from './subject-budget-card'
+import { ExpenseAnalysisCard } from './expense-analysis-card'
 import { ReceivablesCard } from './receivables-card'
 import { InventoryPieCard } from './inventory-pie-card'
 import { AlertTriangle, Inbox, Loader2, RefreshCw } from 'lucide-react'
@@ -218,6 +219,9 @@ export default function DashboardPage() {
 
           {/* 公司预算达成（单期间，主体口径跟随顶部筛选：汇总主体展示成员明细行） */}
           <SubjectBudgetCard period={currentPeriod || undefined} companyCode={companyCode} subjectName={currentSubjectName} />
+
+          {/* 运营费用分析（单期间，主体口径跟随顶部筛选） */}
+          <ExpenseAnalysisCard period={currentPeriod || undefined} companyCode={companyCode} subjectName={currentSubjectName} />
 
           {/* 应收分布 + 存货占比（均跟随顶部主体筛选，期间跟随看板） */}
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">

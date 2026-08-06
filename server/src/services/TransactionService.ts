@@ -2,6 +2,7 @@
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
 import { getFiscalStartMonth, formatPeriod, periodsInRange, fiscalYearLabel } from '../lib/period'
+import { buildExcel } from '../lib/excel'
 
 /**
  * 往来分析服务：六大往来总览、明细查询、账龄分析、内部往来抵消。
@@ -13,14 +14,15 @@ const AGING_BUCKETS = ['1个月', '2个月', '3个月', '4个月', '5个月', '6
 
 const AGING_FIELDS = ['aging1m', 'aging2m', 'aging3m', 'aging4m', 'aging5m', 'aging6m', 'aging6mTo1y', 'aging1yTo2y', 'aging2yTo3y', 'aging3yPlus'] as const
 
-/** 账龄分析展示归集：10 段 → 7 段（1-3月按单月展开为 1/2/3 个月；半年以上 = 半年到1年段；1年至3年 = 1-2年 + 2-3年） */
+/** 账龄分析展示归集：10 段 → 8 段（1-3月按单月展开为 1/2/3 个月；半年以上 = 半年到1年段；1年至3年按年拆为 1-2 年 + 2-3 年） */
 const AGING_GROUP_DEFS: [string, (typeof AGING_FIELDS)[number][]][] = [
   ['1个月', ['aging1m']],
   ['2个月', ['aging2m']],
   ['3个月', ['aging3m']],
   ['4-6月', ['aging4m', 'aging5m', 'aging6m']],
   ['半年以上', ['aging6mTo1y']],
-  ['1年至3年', ['aging1yTo2y', 'aging2yTo3y']],
+  ['1年至2年', ['aging1yTo2y']],
+  ['2年至3年', ['aging2yTo3y']],
   ['3年以上', ['aging3yPlus']],
 ]
 
@@ -350,7 +352,7 @@ export const TransactionService = {
 
   /**
    * 账龄分析：按公司×往来类型×往来对象汇总账龄分布。
-   * 账龄 10 段归集为 7 段展示（1个月 / 2个月 / 3个月 / 4-6月 / 半年以上 / 1年至3年 / 3年以上）；
+   * 账龄 10 段归集为 8 段展示（1个月 / 2个月 / 3个月 / 4-6月 / 半年以上 / 1年至2年 / 2年至3年 / 3年以上）；
    * 支持 period 单期过滤（期末余额为时点数）与科目多选；固定排除零余额行（与 listDetails 口径一致）；
    * 结果按期末余额倒序。
    */
@@ -407,6 +409,59 @@ export const TransactionService = {
     })
     // 按期末余额倒序（从大到小）
     return result.sort((a, b) => (b.closingBalance as number) - (a.closingBalance as number))
+  },
+
+  /**
+   * 账龄分析 Excel 导出：复用 getAgingAnalysis 口径（零余额/科目排除/内部抵消/8 段归集），
+   * 按前端表格同规则重组为 数据行 + 公司小计 + 合计（subtotalOnly 时仅小计/合计），
+   * 数值以元为单位原值导出，保证导出内容 = 当前视图。
+   */
+  async exportAgingAnalysis(params: { companyCodes?: string[]; transactionType?: string; groupBy?: 'type' | 'counterparty' | 'account'; period?: string; accountCodes?: string[]; partyType?: string; subtotalOnly?: boolean }): Promise<Buffer> {
+    const groupBy = params.groupBy || 'type'
+    type ExportRow = AgingSummaryRow & { accountCode?: string; accountDesc?: string | null }
+    const rows = (await this.getAgingAnalysis(params)) as unknown as ExportRow[]
+
+    // 与前端表格一致：公司分组（编码升序）、组内余额倒序、逐组小计、表尾合计
+    const byCompany = new Map<string, ExportRow[]>()
+    for (const r of rows) {
+      if (!byCompany.has(r.companyCode)) byCompany.set(r.companyCode, [])
+      byCompany.get(r.companyCode)!.push(r)
+    }
+    const isDetailDim = groupBy === 'counterparty' || groupBy === 'account'
+    const columns = [
+      { header: '公司', key: 'company', width: 24 },
+      { header: '往来类型', key: 'transactionType', width: 14 },
+      ...(isDetailDim ? [{ header: groupBy === 'counterparty' ? '往来对象' : '科目', key: 'dimension', width: 24 }] : []),
+      { header: '期末余额', key: 'closingBalance', width: 16 },
+      ...AGING_GROUP_DEFS.map(([g]) => ({ header: g, key: g, width: 14 })),
+    ]
+
+    const out: Record<string, unknown>[] = []
+    const grand: { closingBalance: number; aging: Record<string, number> } = { closingBalance: 0, aging: {} }
+    const bucketKeys = AGING_GROUP_DEFS.map(([g]) => g)
+    for (const key of [...byCompany.keys()].sort()) {
+      const group = byCompany.get(key)!.slice().sort((a, b) => b.closingBalance - a.closingBalance)
+      const sub: { closingBalance: number; aging: Record<string, number> } = { closingBalance: 0, aging: {} }
+      const companyLabel = group[0].companyName || group[0].companyCode
+      for (const r of group) {
+        sub.closingBalance += r.closingBalance
+        for (const b of bucketKeys) sub.aging[b] = (sub.aging[b] || 0) + (r.aging[b] || 0)
+        if (!params.subtotalOnly) {
+          out.push({
+            company: companyLabel,
+            transactionType: r.transactionType,
+            ...(isDetailDim ? { dimension: groupBy === 'counterparty' ? (r.counterpartyName || r.counterpartyCode || '') : (r.accountDesc || r.accountCode || '') } : {}),
+            closingBalance: r.closingBalance,
+            ...r.aging,
+          })
+        }
+      }
+      out.push({ company: `${companyLabel} 小计`, transactionType: '', ...(isDetailDim ? { dimension: '' } : {}), closingBalance: sub.closingBalance, ...sub.aging })
+      grand.closingBalance += sub.closingBalance
+      for (const b of bucketKeys) grand.aging[b] = (grand.aging[b] || 0) + (sub.aging[b] || 0)
+    }
+    if (out.length > 0) out.push({ company: '合计', transactionType: '', ...(isDetailDim ? { dimension: '' } : {}), closingBalance: grand.closingBalance, ...grand.aging })
+    return buildExcel('账龄分析', columns, out)
   },
 
   /**

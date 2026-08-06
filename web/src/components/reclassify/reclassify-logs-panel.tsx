@@ -7,13 +7,17 @@ import { Pagination } from '@/components/data-table/pagination'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useCompanies, useSubjects, useReclassifyLogs, useRevertReclassifyLog } from '@/hooks/api-queries'
 import { formatMoney, formatQuantity, cn } from '@/lib/utils'
-import { ArrowRight, Undo2 } from 'lucide-react'
+import { ArrowRight, RotateCcw, Undo2 } from 'lucide-react'
 import { TYPE_LABEL, TEMPLATE_LABEL_SHORT } from './shared'
 import type { ReclassifyLog } from '@/types'
 
 interface ReclassifyLogsPanelProps {
   /** 是否可执行撤销（data:reclassify:company 权限） */
   canRevert: boolean
+  /** 失效/已撤销记录「重新应用」：由父级按类型打开对应对话框并预填原参数 */
+  onReapply?: (log: ReclassifyLog) => void
+  /** 点击记录行打开只读详情对话框（预填原始操作参数） */
+  onViewDetail?: (log: ReclassifyLog) => void
 }
 
 const PAGE_SIZE = 10
@@ -91,41 +95,19 @@ function AmountDetail({ log }: { log: ReclassifyLog }) {
   return <span className="text-muted-foreground">-</span>
 }
 
-/** 行展开明细：调整期间、原因、合并/新建行数、撤销留痕等 */
-function ExpandedDetail({ log }: { log: ReclassifyLog }) {
-  const d = log.detail
-  const period = log.period ?? (log.periodFrom || log.periodTo ? `${log.periodFrom ?? '不限'} ~ ${log.periodTo ?? '不限'}` : '全部期间')
-  return (
-    <div className="space-y-1 py-1 text-xs text-muted-foreground">
-      <p>调整期间：{period}</p>
-      {log.type === 'company' && d && (
-        <p>
-          合并 {d.mergedRows ?? 0} 行，新建 {d.createdRows ?? 0} 行
-          {d.accountCodes && d.accountCodes.length > 0 && <>；筛选科目：{d.accountCodes.join('、')}</>}
-        </p>
-      )}
-      {log.type === 'subject_adjust' && d && (
-        <>
-          <p>累加 {d.mergedRows ?? 0} 行，新建 {d.createdRows ?? 0} 行</p>
-          {d.reason && <p className="text-foreground">调整原因：{d.reason}</p>}
-        </>
-      )}
-      {log.revertedAt && (
-        <p className="text-warning-strong">已于 {new Date(log.revertedAt).toLocaleString('zh-CN')} 由 {log.revertedBy ?? '-'} 撤销。</p>
-      )}
-      {!d && <p>无更多明细（历史记录）。</p>}
-    </div>
-  )
+/** 失效原因文案（Badge title 共用）：rows_replaced=数据被替换，否则批次不再生效 */
+const invalidationText = (log: ReclassifyLog): string => {
+  const reason = log.invalidatedReason === 'rows_replaced' ? '相关数据已被批次替换' : '相关批次已不再生效'
+  return log.invalidation?.replacedByBatchId ? `${reason}（批次 ${log.invalidation.replacedByBatchId}）` : reason
 }
 
 /**
  * 重分类记录面板（内嵌于数据管理页）：分页展示跨公司/科目归类/科目调整历史，
  * 行点击展开查看原因与行数明细；含快照的记录支持一键撤销（逆向恢复事实行）。
  */
-export function ReclassifyLogsPanel({ canRevert }: ReclassifyLogsPanelProps) {
+export function ReclassifyLogsPanel({ canRevert, onReapply, onViewDetail }: ReclassifyLogsPanelProps) {
   const [type, setType] = useState('all')
   const [page, setPage] = useState(1)
-  const [expandedKeys, setExpandedKeys] = useState<Set<string | number>>(new Set())
   const [message, setMessage] = useState<string | null>(null)
   const { confirm, element: confirmElement } = useConfirm()
   const { data, isFetching } = useReclassifyLogs({ page, pageSize: PAGE_SIZE, type: type === 'all' ? undefined : type })
@@ -146,15 +128,6 @@ export function ReclassifyLogsPanel({ canRevert }: ReclassifyLogsPanelProps) {
 
   const items = (data?.items ?? []) as ReclassifyLog[]
   const total = data?.total ?? 0
-
-  const toggleExpanded = (row: ReclassifyLog) => {
-    setExpandedKeys((prev) => {
-      const next = new Set(prev)
-      if (next.has(row.id)) next.delete(row.id)
-      else next.add(row.id)
-      return next
-    })
-  }
 
   const handleRevert = async (log: ReclassifyLog) => {
     const ok = await confirm({
@@ -191,7 +164,9 @@ export function ReclassifyLogsPanel({ canRevert }: ReclassifyLogsPanelProps) {
       key: 'status', header: '状态',
       render: (r) => r.revertedAt
         ? <Badge variant="outline" className="border-transparent bg-muted text-muted-foreground">已撤销</Badge>
-        : <Badge variant="outline" className="border-transparent bg-success/10 text-success-strong">已生效</Badge>,
+        : r.invalidatedAt
+          ? <Badge variant="outline" title={invalidationText(r)} className="border-transparent bg-destructive/10 text-destructive">已失效</Badge>
+          : <Badge variant="outline" className="border-transparent bg-success/10 text-success-strong">已生效</Badge>,
     },
   ]
   if (canRevert) {
@@ -208,6 +183,16 @@ export function ReclassifyLogsPanel({ canRevert }: ReclassifyLogsPanelProps) {
           <Undo2 className="mr-1 h-4 w-4" />
           撤销
         </Button>
+      ) : (r.invalidatedAt || r.revertedAt) && (r.type === 'company' || r.type === 'subject_adjust') && onReapply ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          title="在最新数据上重新执行本次调整（参数可修改）"
+          onClick={(e) => { e.stopPropagation(); onReapply(r) }}
+        >
+          <RotateCcw className="mr-1 h-4 w-4" />
+          重新应用
+        </Button>
       ) : (
         <span className="text-xs text-muted-foreground">{r.revertedAt ? '已撤销' : '不可撤销'}</span>
       ),
@@ -218,7 +203,7 @@ export function ReclassifyLogsPanel({ canRevert }: ReclassifyLogsPanelProps) {
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <span className="text-sm text-muted-foreground">类型:</span>
-        <Select value={type} onValueChange={(v) => { setType(v); setPage(1); setExpandedKeys(new Set()) }}>
+        <Select value={type} onValueChange={(v) => { setType(v); setPage(1) }}>
           <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">全部</SelectItem>
@@ -237,9 +222,7 @@ export function ReclassifyLogsPanel({ canRevert }: ReclassifyLogsPanelProps) {
           data={items}
           rowKey={(r) => r.id}
           emptyText={isFetching ? '加载中...' : '暂无重分类记录'}
-          onRowClick={toggleExpanded}
-          expandedKeys={expandedKeys}
-          renderExpanded={(r) => <ExpandedDetail log={r} />}
+          onRowClick={(r) => onViewDetail?.(r)}
         />
       </div>
       <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />

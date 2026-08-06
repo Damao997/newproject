@@ -19,7 +19,7 @@ import type { AgingAnalysisRow } from '@/types'
 /**
  * 往来单项分析抽屉：针对 公司 × 往来类型 × 期间 撰写/编辑/删除分析结论（subjectType='transaction'）。
  * 分析对象编码为 TXN_*（六大往来类型粒度），与经营/静态科目（OP_/ST_）编码空间隔离；
- * metricContext 快照该公司该类型的期末余额与 7 段账龄分布（来自 /transactions/aging）。
+ * metricContext 快照该公司该类型的期末余额与 8 段账龄分布（来自 /transactions/aging）。
  */
 
 /** 六大往来类型 → 单项分析对象编码（与后端 TRANSACTION_SUBJECTS 保持一致） */
@@ -32,7 +32,7 @@ const TXN_SUBJECT_CODE: Record<string, string> = {
   预付账款: 'TXN_PER_AP',
 }
 
-const AGING_GROUPS = ['1个月', '2个月', '3个月', '4-6月', '半年以上', '1年至3年', '3年以上']
+const AGING_GROUPS = ['1个月', '2个月', '3个月', '4-6月', '半年以上', '1年至2年', '2年至3年', '3年以上']
 /** 往来类型选项（与 TXN_SUBJECT_CODE 键一致、固定展示顺序） */
 const TXN_TYPE_OPTIONS = ['应收账款', '其他应收款', '预收账款', '应付账款', '其他应付款', '预付账款']
 
@@ -89,7 +89,7 @@ export function TransactionAnalysisDrawer({ open, target, onClose }: Props) {
   )
   const existing = existingData?.items?.[0]
 
-  // 快照数据：该公司该类型的期末余额与 7 段账龄（groupBy=type 每公司一行）
+  // 快照数据：该公司该类型的期末余额与 8 段账龄（groupBy=type 每公司一行）
   const { data: agingRows } = useTransactionAging(
     { companyCode: companyCode || undefined, transactionType: txnType || undefined, groupBy: 'type', period: target?.period },
     { enabled: open && !!companyCode && !!txnType },
@@ -219,7 +219,7 @@ export function TransactionAnalysisDrawer({ open, target, onClose }: Props) {
           </div>
           {companyCode && txnType && (
             snapshot ? (
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-3">
                 <ContextChip label="期末余额(万)" value={formatMoneyWan(snapshot.closingBalance / 10000)} />
                 {AGING_GROUPS.map((g) => (
                   <ContextChip key={g} label={`${g}(万)`} value={formatMoneyWan((snapshot.aging[g] ?? 0) / 10000)} />

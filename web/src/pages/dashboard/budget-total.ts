@@ -1,13 +1,13 @@
 import type { ProductBudgetMetric } from '@/types'
 
 /**
- * 预算达成分析表格的合计行计算（品类/主体两卡共用）：
- * 预算、金额直接求和；达成率按预算加权（Σ金额/Σ预算，月度口径用 Σ月均预算）；
+ * 预算达成分析表格的合计行计算（品类/主体/运营费用三卡共用）：
+ * 预算、金额直接求和；月度达成率按 Σ当月预算加权（Σ金额/Σ月预算，月度预算为占比拆分后的当月值）；
  * 同比按合计金额重算（Σ本期 - Σ同期）/ |Σ同期|，避免简单平均偏差；基期为负时按绝对值分母，方向不反转。
  */
 
-/** 金额/预算原始字段（不含派生比率） */
-const RAW_KEYS = ['budget', 'monthActual', 'monthSame', 'ytdActual', 'ytdSame'] as const
+/** 金额/预算原始字段（不含派生比率）；monthBudget 为占比拆分后的当月预算（null=无预算） */
+const RAW_KEYS = ['budget', 'monthBudget', 'monthActual', 'monthSame', 'ytdActual', 'ytdSame'] as const
 
 const round2 = (n: number): number => Math.round(n * 100) / 100
 
@@ -25,15 +25,17 @@ type Side = 'income' | 'profit' | 'netProfit'
 function totalMetric(rows: MetricRow[], side: Side): ProductBudgetMetric {
   const sum = (key: (typeof RAW_KEYS)[number]): number => rows.reduce((acc, r) => acc + (r[side]?.[key] ?? 0), 0)
   const budget = sum('budget')
+  const monthBudget = sum('monthBudget')
   const monthActual = sum('monthActual')
   const monthSame = sum('monthSame')
   const ytdActual = sum('ytdActual')
   const ytdSame = sum('ytdSame')
   return {
     budget,
+    monthBudget,
     monthActual,
     monthSame,
-    monthRate: budget ? round2((monthActual / (budget / 12)) * 100) : null,
+    monthRate: monthBudget ? round2((monthActual / monthBudget) * 100) : null,
     monthYoy: yoyRate(monthActual, monthSame),
     ytdActual,
     ytdSame,
@@ -49,5 +51,28 @@ export function totalOf(rows: MetricRow[]): MetricRow {
     income: totalMetric(rows, 'income'),
     profit: totalMetric(rows, 'profit'),
     ...(hasNetProfit ? { netProfit: totalMetric(rows, 'netProfit') } : {}),
+  }
+}
+
+/** 单指标组数组合计（运营费用分析卡用）：预算/金额直接求和，使用率按预算加权，同比按合计金额重算 */
+export function totalMetrics(rows: ProductBudgetMetric[]): ProductBudgetMetric {
+  const sum = (key: (typeof RAW_KEYS)[number]): number => rows.reduce((acc, r) => acc + (r[key] ?? 0), 0)
+  const budget = sum('budget')
+  const monthBudget = sum('monthBudget')
+  const monthActual = sum('monthActual')
+  const monthSame = sum('monthSame')
+  const ytdActual = sum('ytdActual')
+  const ytdSame = sum('ytdSame')
+  return {
+    budget,
+    monthBudget,
+    monthActual,
+    monthSame,
+    monthRate: monthBudget ? round2((monthActual / monthBudget) * 100) : null,
+    monthYoy: yoyRate(monthActual, monthSame),
+    ytdActual,
+    ytdSame,
+    ytdRate: budget ? round2((ytdActual / budget) * 100) : null,
+    ytdYoy: yoyRate(ytdActual, ytdSame),
   }
 }

@@ -28,6 +28,9 @@ let TGT2 = ''
 const QTY_SRC = `QTYA${suffix}`.toUpperCase()
 const QTY_TGT = `QTYB${suffix}`.toUpperCase()
 const RATIO_SUBJ = `RATIO${suffix}`.toUpperCase()
+// 计算类/展示类科目（metric.dataType calc/display 与科目同编码，不可直接调整）
+const CALC_SUBJ = `CALCA${suffix}`.toUpperCase()
+const DISPLAY_SUBJ = `DSPA${suffix}`.toUpperCase()
 
 const scope = { companyCode: null, scopeValue: null, dataScopeCodes: [CA, CB] }
 const ctx = { userId }
@@ -69,6 +72,15 @@ beforeAll(async () => {
         { code: QTY_SRC, name: `数量源${suffix}`, subjectType: 'operating', level: 1, category: '测试', direction: 'debit', valueType: 'quantity', isLeaf: true },
         { code: QTY_TGT, name: `数量目标${suffix}`, subjectType: 'operating', level: 1, category: '测试', direction: 'debit', valueType: 'quantity', isLeaf: true },
         { code: RATIO_SUBJ, name: `比率测试${suffix}`, subjectType: 'operating', level: 1, category: '测试', direction: 'debit', valueType: 'ratio', isLeaf: true },
+        { code: CALC_SUBJ, name: `计算类${suffix}`, subjectType: 'operating', level: 1, category: '测试', direction: 'debit', valueType: 'amount', isLeaf: true },
+        { code: DISPLAY_SUBJ, name: `展示类${suffix}`, subjectType: 'operating', level: 1, category: '测试', direction: 'debit', valueType: 'amount', isLeaf: true },
+      ],
+    })
+    // 计算类/展示类指标（与科目同编码，dataType 驱动调整模块过滤）
+    await basePrisma.metric.createMany({
+      data: [
+        { code: CALC_SUBJ, name: `计算类${suffix}`, category: '测试', dataType: 'calc', formula: `${QTY_SRC}+0` },
+        { code: DISPLAY_SUBJ, name: `展示类${suffix}`, category: '测试', dataType: 'display' },
       ],
     })
 
@@ -101,7 +113,8 @@ afterAll(async () => {
   await basePrisma.factOperating.deleteMany({ where: { batchId } }).catch(() => undefined)
   await basePrisma.importBatch.delete({ where: { id: batchId } }).catch(() => undefined)
   await basePrisma.company.deleteMany({ where: { code: { in: [CA, CB] } } }).catch(() => undefined)
-  await basePrisma.accountSubject.deleteMany({ where: { code: { in: [QTY_SRC, QTY_TGT, RATIO_SUBJ] } } }).catch(() => undefined)
+  await basePrisma.metric.deleteMany({ where: { code: { in: [CALC_SUBJ, DISPLAY_SUBJ] } } }).catch(() => undefined)
+  await basePrisma.accountSubject.deleteMany({ where: { code: { in: [QTY_SRC, QTY_TGT, RATIO_SUBJ, CALC_SUBJ, DISPLAY_SUBJ] } } }).catch(() => undefined)
 })
 
 describe('adjustSubject 三种调整方式（真实 DB）', () => {
@@ -233,5 +246,30 @@ describe('adjustSubject 值类型分型（数量/比率，真实 DB）', () => {
         scope, ctx,
       ),
     ).rejects.toThrow('源科目与目标科目的值类型必须一致')
+  })
+
+  it('计算类/展示类科目拒绝金额调整（metric.dataType 校验）', async () => {
+    if (!dbReady) return
+    await expect(
+      ReclassificationService.adjustSubject(
+        { templateType: 'operating', companyCode: CA, adjustMode: 'decrease', sourceAccountCode: CALC_SUBJ, decreaseAmount: 1, period, reason: '计算类测试' },
+        scope, ctx,
+      ),
+    ).rejects.toThrow('计算类/展示类科目不支持金额调整')
+    await expect(
+      ReclassificationService.adjustSubject(
+        { templateType: 'operating', companyCode: CA, adjustMode: 'decrease', sourceAccountCode: DISPLAY_SUBJ, decreaseAmount: 1, period, reason: '展示类测试' },
+        scope, ctx,
+      ),
+    ).rejects.toThrow('计算类/展示类科目不支持金额调整')
+  })
+
+  it('跨公司重分类预览与执行均拒绝计算类科目（accountCodes 校验）', async () => {
+    if (!dbReady) return
+    const p: ReclassificationService.ReclassifyCompanyParams = {
+      templateType: 'operating', sourceCompanyCode: CA, targetCompanyCode: CB, accountCodes: [CALC_SUBJ], period, transferMode: 'all',
+    }
+    await expect(ReclassificationService.previewCompany(p, scope)).rejects.toThrow('以下科目不可重分类（比率/计算/展示类）')
+    await expect(ReclassificationService.reclassifyCompany(p, scope, ctx)).rejects.toThrow('以下科目不可重分类（比率/计算/展示类）')
   })
 })
