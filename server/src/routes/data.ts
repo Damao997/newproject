@@ -209,7 +209,7 @@ router.get('/subjects/tree', requirePermission('data:browse:view', 'view'), asyn
 
 router.post('/subjects', requirePermission('data:subject:create', 'create'), asyncHandler(async (req, res) => {
   const b = req.body ?? {}
-  if (!b.code || !b.name) throw errors.badRequest('科目编码与名称必填')
+  if (!b.name) throw errors.badRequest('科目名称必填（编码由系统按层级自动生成）')
   const dto = await DataService.createSubject(b, ctxOf(req))
   sendOk(res, dto)
 }))

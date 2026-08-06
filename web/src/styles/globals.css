@@ -23,7 +23,7 @@
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
     --success: 160 84% 39%;
-    --warning: 38 92% 50%;
+    --warning: 45 100% 50%;
     /* strong 变体：用于白底上的小字号文本，保证 AA 对比度（base 值仅用于图标/填充） */
     --success-strong: 160 84% 26%;
     --warning-strong: 32 90% 36%;

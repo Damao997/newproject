@@ -52,7 +52,7 @@ export const FINANCIAL_COLORS = {
   GREEN_DOWN: '#34C759',
   // 与 globals.css 的 --success / --warning / --destructive 保持一致
   BUDGET_ACHIEVED: '#10B981',
-  BUDGET_WARNING: '#F59E0B',
+  BUDGET_WARNING: '#FFD700',
   BUDGET_DEVIATION: '#EF4444',
 } as const
 

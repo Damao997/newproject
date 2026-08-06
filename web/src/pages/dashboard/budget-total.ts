@@ -3,11 +3,13 @@ import type { ProductBudgetMetric } from '@/types'
 /**
  * 预算达成分析表格的合计行计算（品类/主体/运营费用三卡共用）：
  * 预算、金额直接求和；月度达成率按 Σ当月预算加权（Σ金额/Σ月预算，月度预算为占比拆分后的当月值）；
+ * 累计达成率按 Σ年度预算加权（Σ累计金额/Σ年度预算，看板展示口径）；
+ * 累计预算口径达成率按 Σ累计预算加权（Σ累计金额/Σ累计预算，供预警判断）；
  * 同比按合计金额重算（Σ本期 - Σ同期）/ |Σ同期|，避免简单平均偏差；基期为负时按绝对值分母，方向不反转。
  */
 
-/** 金额/预算原始字段（不含派生比率）；monthBudget 为占比拆分后的当月预算（null=无预算） */
-const RAW_KEYS = ['budget', 'monthBudget', 'monthActual', 'monthSame', 'ytdActual', 'ytdSame'] as const
+/** 金额/预算原始字段（不含派生比率）；monthBudget 为占比拆分后的当月预算，ytdBudget 为预警用占比累计预算（null=无预算） */
+const RAW_KEYS = ['budget', 'monthBudget', 'monthActual', 'monthSame', 'ytdActual', 'ytdSame', 'ytdBudget'] as const
 
 const round2 = (n: number): number => Math.round(n * 100) / 100
 
@@ -30,6 +32,7 @@ function totalMetric(rows: MetricRow[], side: Side): ProductBudgetMetric {
   const monthSame = sum('monthSame')
   const ytdActual = sum('ytdActual')
   const ytdSame = sum('ytdSame')
+  const ytdBudget = sum('ytdBudget')
   return {
     budget,
     monthBudget,
@@ -39,7 +42,9 @@ function totalMetric(rows: MetricRow[], side: Side): ProductBudgetMetric {
     monthYoy: yoyRate(monthActual, monthSame),
     ytdActual,
     ytdSame,
+    ytdBudget,
     ytdRate: budget ? round2((ytdActual / budget) * 100) : null,
+    ytdCumRate: ytdBudget ? round2((ytdActual / ytdBudget) * 100) : null,
     ytdYoy: yoyRate(ytdActual, ytdSame),
   }
 }
@@ -63,6 +68,7 @@ export function totalMetrics(rows: ProductBudgetMetric[]): ProductBudgetMetric {
   const monthSame = sum('monthSame')
   const ytdActual = sum('ytdActual')
   const ytdSame = sum('ytdSame')
+  const ytdBudget = sum('ytdBudget')
   return {
     budget,
     monthBudget,
@@ -72,7 +78,9 @@ export function totalMetrics(rows: ProductBudgetMetric[]): ProductBudgetMetric {
     monthYoy: yoyRate(monthActual, monthSame),
     ytdActual,
     ytdSame,
+    ytdBudget,
     ytdRate: budget ? round2((ytdActual / budget) * 100) : null,
+    ytdCumRate: ytdBudget ? round2((ytdActual / ytdBudget) * 100) : null,
     ytdYoy: yoyRate(ytdActual, ytdSame),
   }
 }

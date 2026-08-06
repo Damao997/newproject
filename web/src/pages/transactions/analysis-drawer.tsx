@@ -60,8 +60,17 @@ function ContextChip({ label, value }: { label: string; value: string }) {
 }
 
 export function TransactionAnalysisDrawer({ open, target, onClose }: Props) {
-  const [companyCode, setCompanyCode] = useState('')
-  const [txnType, setTxnType] = useState('')
+  // 以 往来类型×期间×默认公司 为键重挂载表单：目标切换时所有 state 从零初始化，
+  // 避免上一会话的公司/类型/正文残留（旧实现由 effect 异步重置 state，打开瞬间查询键仍命中旧缓存）。
+  const targetKey = open && target ? `${target.transactionType ?? ''}|${target.period}|${target.defaultCompanyCode ?? ''}` : 'closed'
+  if (!open || !target) return null
+  return <TransactionDrawerBody key={targetKey} target={target} onClose={onClose} />
+}
+
+/** 抽屉表单主体：随 target 键重建；公司与往来类型初始值直接从 target 派生，抽屉内可再切换 */
+function TransactionDrawerBody({ target, onClose }: { target: TransactionAnalysisTarget; onClose: () => void }) {
+  const [companyCode, setCompanyCode] = useState(target.defaultCompanyCode ?? '')
+  const [txnType, setTxnType] = useState(target.transactionType ?? '')
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [existingId, setExistingId] = useState<string | null>(null)
@@ -73,34 +82,24 @@ export function TransactionAnalysisDrawer({ open, target, onClose }: Props) {
 
   const subjectCode = TXN_SUBJECT_CODE[txnType] ?? ''
 
-  // 打开时初始化公司与往来类型（从 target 预填）
-  useEffect(() => {
-    if (!open || !target) return
-    setCompanyCode(target.defaultCompanyCode ?? '')
-    setTxnType(target.transactionType ?? '')
-    setFeedback(null)
-  }, [open, target?.transactionType, target?.period, target?.defaultCompanyCode])
-
-  // 读取该 公司×往来类型×期间 既有分析（幂等键与后端唯一键一致）
+  // 读取该 公司×往来类型×期间 既有分析（幂等键与后端唯一键一致；未选公司/类型时不查询）
   const { data: existingData } = useAnalyses(
-    open && target && companyCode && subjectCode
-      ? { companyCode, subjectCode, period: target.period }
-      : { companyCode: '__none__' },
+    { companyCode, subjectCode, period: target.period },
+    { enabled: !!companyCode && !!subjectCode },
   )
   const existing = existingData?.items?.[0]
 
   // 快照数据：该公司该类型的期末余额与 8 段账龄（groupBy=type 每公司一行）
   const { data: agingRows } = useTransactionAging(
-    { companyCode: companyCode || undefined, transactionType: txnType || undefined, groupBy: 'type', period: target?.period },
-    { enabled: open && !!companyCode && !!txnType },
+    { companyCode: companyCode || undefined, transactionType: txnType || undefined, groupBy: 'type', period: target.period },
+    { enabled: !!companyCode && !!txnType },
   )
   const snapshot = ((agingRows || []) as AgingAnalysisRow[]).find(
     (r) => r.companyCode === companyCode && r.transactionType === txnType,
   )
 
-  // 公司/类型/既有分析变化时回填表单
+  // 公司/类型/既有分析变化时回填表单（目标切换由外层 key 重建组件，不存在旧目标状态）
   useEffect(() => {
-    if (!open || !target) return
     if (existing) {
       setExistingId(existing.id)
       setTitle(existing.title)
@@ -111,14 +110,14 @@ export function TransactionAnalysisDrawer({ open, target, onClose }: Props) {
       setTitle(companyCode && txnType ? `${companyLabel}${target.period}${txnType}分析` : '')
       setContent('')
     }
-  }, [open, companyCode, txnType, existing?.id, target?.period])
+    setFeedback(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyCode, txnType, existing?.id, target.period])
 
   const createMutation = useCreateAnalysis()
   const updateMutation = useUpdateAnalysis()
   const deleteMutation = useDeleteAnalysis()
   const busy = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending
-
-  if (!open || !target) return null
 
   const metricContext = snapshot
     ? { closingBalance: snapshot.closingBalance, aging: snapshot.aging, cutPeriod: target.period }
@@ -258,7 +257,7 @@ export function TransactionAnalysisDrawer({ open, target, onClose }: Props) {
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={onClose} disabled={busy}>取消</Button>
             <Button size="sm" onClick={handleSave} disabled={busy || !companyCode || !txnType || !title.trim()}>
-              <Save className="mr-1 h-4 w-4" /> {existingId ? '保存修改' : '新增分析'}
+              <Save className="mr-1 h-4 w-4" /> 保存
             </Button>
           </div>
         </div>

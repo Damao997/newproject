@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import { useCreateSubject, useUpdateSubject, useReclassifySubject, useMetrics, useConvertMetric, type SubjectTreeItem } from '@/hooks/api-queries'
 import { useConfirm } from '@/components/ui/confirm-dialog'
+import { nextChildSubjectCode, nextRootSubjectCode, type CodePreviewSubject } from '@/lib/subject-tree'
 import type { Metric } from '@/types'
 
 interface SubjectDialogProps {
@@ -23,6 +24,8 @@ interface SubjectDialogProps {
   subject?: SubjectTreeItem | null
   /** 同类全部科目（用于选择上级科目） */
   flat: SubjectTreeItem[]
+  /** 含已停用科目的全集（用于新建编码预览与后端序号对齐；缺省时仅用 flat） */
+  allSubjects?: CodePreviewSubject[]
   /** 是否可进行指标类型转换（data:metric:convert，仅 superadmin）；缺省 false 时类型选择只读 */
   canConvert?: boolean
   onClose: () => void
@@ -42,7 +45,7 @@ function inferValueType(name: string): SubjectValueType {
  * 科目新增/编辑弹窗。编码仅新增可填（编码不可变）；名称/类别/上级/叶子/值类型可编辑；
  * 编辑模式下可切换指标类型（计算类/数据类/展示类，需 canConvert 权限，dataType 存于 metric 表）。
  */
-export function SubjectDialog({ open, mode, type, subject, flat, canConvert = false, onClose }: SubjectDialogProps) {
+export function SubjectDialog({ open, mode, type, subject, flat, allSubjects, canConvert = false, onClose }: SubjectDialogProps) {
   const createSubject = useCreateSubject()
   const updateSubject = useUpdateSubject()
   const reclassifySubject = useReclassifySubject()
@@ -71,6 +74,26 @@ export function SubjectDialog({ open, mode, type, subject, flat, canConvert = fa
   // 类型切换后果提示（内联展示）
   const [typeHint, setTypeHint] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // 新建编码预览全集：flat（active）+ allSubjects（含 inactive）按 code 合并去重，保证序号与后端一致
+  const previewSubjects = useMemo(() => {
+    const map = new Map<string, CodePreviewSubject>()
+    for (const f of flat) map.set(f.code, f)
+    for (const s of allSubjects ?? []) if (!map.has(s.code)) map.set(s.code, s)
+    return [...map.values()]
+  }, [flat, allSubjects])
+
+  /** 新建模式编码预览（系统自动生成，只读展示；编辑模式沿用 subject.code） */
+  const generatedCode = useMemo(() => {
+    if (mode !== 'create') return null
+    const pc = parentCode === 'none' ? null : parentCode
+    if (!pc) {
+      const trimmed = name.trim()
+      if (!trimmed) return ''
+      return nextRootSubjectCode(type === 'operating' ? 'OP' : 'ST', trimmed, previewSubjects).code
+    }
+    return nextChildSubjectCode(pc, previewSubjects)
+  }, [mode, parentCode, name, type, previewSubjects])
 
   /** 向上追溯到 level0 根，返回根名作为 category（成为根时用自身名） */
   const deriveRootCategory = (pc: string | null, selfName: string): string => {
@@ -144,11 +167,7 @@ export function SubjectDialog({ open, mode, type, subject, flat, canConvert = fa
     setError(null)
     try {
       if (mode === 'create') {
-        if (!code.trim()) {
-          setError('科目编码必填')
-          return
-        }
-        const parent = flat.find((f) => f.code === parentCode)
+        // 编码由系统按层级自动生成（后端权威赋码），提交不携带 code/level
         const payload: Record<string, unknown> = {
           name: name.trim(),
           type,
@@ -156,8 +175,6 @@ export function SubjectDialog({ open, mode, type, subject, flat, canConvert = fa
           parentCode: parentCode === 'none' ? null : parentCode,
           isLeaf: isLeaf === 'true',
           valueType,
-          code: code.trim(),
-          level: parent ? parent.level + 1 : 0,
         }
         await createSubject.mutateAsync(payload)
       } else if (subject) {
@@ -232,7 +249,22 @@ export function SubjectDialog({ open, mode, type, subject, flat, canConvert = fa
         <div className="space-y-3">
           <div className="space-y-1">
             <Label htmlFor="subject-code">科目编码</Label>
-            <Input id="subject-code" value={code} onChange={(e) => setCode(e.target.value)} disabled={mode === 'edit'} placeholder="如：OP_0201010102（编码不可修改）" />
+            <Input
+              id="subject-code"
+              value={mode === 'create' ? generatedCode ?? '' : code}
+              readOnly
+              disabled={mode === 'edit'}
+              placeholder={mode === 'create' ? '系统自动生成' : '如：OP_0201010102（编码不可修改）'}
+            />
+            {mode === 'create' && (
+              <p className="text-xs text-muted-foreground">
+                {parentCode === 'none'
+                  ? name.trim()
+                    ? '系统自动生成根科目段位编码（名称未登记段位时自动分配）'
+                    : '填写名称后由系统自动生成编码'
+                  : '系统自动生成：父码 + 同级下一序号（每级 2 位）'}
+              </p>
+            )}
           </div>
           <div className="space-y-1">
             <Label htmlFor="subject-name">科目名称</Label>

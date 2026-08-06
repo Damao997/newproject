@@ -51,7 +51,8 @@ interface Trend {
   collectionActual: number | null
 }
 
-/** 品类预算达成的单指标组（收入/毛利各一组）：预算为年度总额；monthBudget 为当月预算金额（按占比拆分，无预算 null） */
+/** 品类预算达成的单指标组（收入/毛利各一组）：预算为年度总额；monthBudget 为当月预算金额（按占比拆分，无预算 null）；
+ * ytdBudget 为预警专用的累计预算（按占比前缀和累计，不参与看板展示，无预算 null） */
 interface ProductBudgetMetric {
   budget: number
   monthBudget: number | null
@@ -63,7 +64,12 @@ interface ProductBudgetMetric {
   ytdActual: number
   /** 上年同期累计（供合计行同比按 Σ金额重算） */
   ytdSame: number
+  /** 预警专用：按月度占比累计的预算值（年度总额 × 从年初到当期占比累计；无预算 null），不参与看板展示 */
+  ytdBudget: number | null
+  /** 累计预算达成率（%，累计实际/年度预算总额，看板展示口径） */
   ytdRate: number | null
+  /** 累计预算口径达成率（%，累计实际/累计预算，供预警判断；未配置占比时回退展示口径） */
+  ytdCumRate: number | null
   ytdYoy: number
 }
 
@@ -138,6 +144,23 @@ export function changeRate(cur: number, base: number): number {
 export function rateOf(actualVal: number, budgetVal: number, divisor = 1): number | null {
   if (!budgetVal) return null
   return round2((actualVal / (budgetVal / divisor)) * 100)
+}
+
+/**
+ * 主体展示排序（主体预算达成卡共用）：配置 sortOrder 升序（未配置排最后）→ 公司 orderNo 升序 → 编码兜底，
+ * 保证 sortOrder 相等（如多主体同号/未维护）时顺序完全确定，与配置管理界面一致。
+ */
+export function orderSubjectsByConfig<T extends { code: string; orderNo: number }>(
+  subjects: T[],
+  sortOrderByCode: Map<string, number>,
+): T[] {
+  return [...subjects].sort((a, b) => {
+    const so = (sortOrderByCode.get(a.code) ?? Number.MAX_SAFE_INTEGER) - (sortOrderByCode.get(b.code) ?? Number.MAX_SAFE_INTEGER)
+    if (so !== 0) return so
+    const no = a.orderNo - b.orderNo
+    if (no !== 0) return no
+    return a.code.localeCompare(b.code)
+  })
 }
 
 /** 在指定 level0 类别子树内按名称关键字 DFS 查找科目（如「经营指标」下的净利润） */
@@ -294,11 +317,20 @@ export function fallbackBudgetSeries(series: (number | null)[], annualTotal: num
 }
 
 /**
- * 累计预算序列：预算无累计粒度，恒为年度总额水平线（与品类预算表“累计=年度预算”口径一致）；
- * 年度总额为 0（无预算）时返回全 null。
+ * 累计预算序列：预算无累计粒度，由月度预算序列逐月累加得到（配置占比时即年度总额 × 从年初到当期占比累计，
+ * 未配置时按均摊比例累计，月度粒度行按行值累加）；monthlyBudget 缺失/全 null（无预算）时回退年度总额水平线
+ * （与品类预算表旧"累计=年度预算"口径一致）；年度总额为 0（无预算）时返回全 null。
  */
-export function ytdBudgetSeries(annualTotal: number, months: string[]): (number | null)[] {
+export function ytdBudgetSeries(annualTotal: number, months: string[], monthlyBudget?: (number | null)[]): (number | null)[] {
   if (!annualTotal) return months.map(() => null)
+  if (monthlyBudget && monthlyBudget.some((v) => v !== null)) {
+    // 逐月累加：null 月（无该月预算行）维持此前累计值不中断，保证累计线连续
+    let acc = 0
+    return monthlyBudget.map((v) => {
+      if (v !== null) acc += v
+      return round2(acc)
+    })
+  }
   return months.map(() => round2(annualTotal))
 }
 
@@ -316,8 +348,10 @@ async function budgetRowsOf(companyCodes: string[], fiscalYear: string): Promise
 
 /** 单指标组口径取值：本月/累计预算达成率 + 单月/累计同比；节点缺失时全 0/null。
  * monthBudget 传入（含 null=当月无预算）时月度预算与达成率按该值计算（占比拆分后的当月预算），
- * 未传（undefined）回退年度/12 折算（monthBudget = budget/12，保持旧口径）。 */
-export function productMetric(node?: ValueNode, monthBudget?: number | null): ProductBudgetMetric {
+ * 未传（undefined）回退年度/12 折算（monthBudget = budget/12，保持旧口径）；
+ * ytdBudget 传入（含 null=当期无累计预算）时累计预算口径达成率 ytdCumRate 按该值计算（占比前缀和累计，供预警判断），
+ * 未传（undefined）时 ytdCumRate 回退展示口径；ytdRate 恒为累计实际/年度预算总额（看板展示口径，与占比无关）。 */
+export function productMetric(node?: ValueNode, monthBudget?: number | null, ytdBudget?: number | null): ProductBudgetMetric {
   return {
     budget: round2(budget(node)),
     monthBudget: monthBudget === undefined ? round2(budget(node) / 12) : (monthBudget || null),
@@ -327,7 +361,9 @@ export function productMetric(node?: ValueNode, monthBudget?: number | null): Pr
     monthYoy: changeRate(actual(node), samePeriod(node)),
     ytdActual: round2(ytd(node)),
     ytdSame: round2(node?.values[OPERATING_DIMS.SAME_PERIOD_YTD] ?? 0),
+    ytdBudget: ytdBudget === undefined ? round2(budget(node)) : (ytdBudget || null),
     ytdRate: rateOf(ytd(node), budget(node)),
+    ytdCumRate: ytdBudget === undefined ? rateOf(ytd(node), budget(node)) : rateOf(ytd(node), ytdBudget ?? 0),
     ytdYoy: changeRate(ytd(node), node?.values[OPERATING_DIMS.SAME_PERIOD_YTD] ?? 0),
   }
 }
@@ -383,7 +419,8 @@ export function matchExpenseMappings(mappings: ExpenseMappingRow[], tree: ValueN
     }
     return acc
   }
-  // 月度预算：按占比拆分后的当月预算（ratios/monthIndex 缺失回退 undefined，调用方保持年度/12 折算）
+  // 月度预算：按占比拆分后的当月预算（ratios/monthIndex 缺失回退 undefined，调用方保持年度/12 折算）；
+  // 累计预算：按占比前缀和累计（ratios 缺失回退均摊累计，口径与月度拆分一致）
   const monthBudgetOf = (values: Record<string, number>): number | null | undefined => {
     if (!ratios || monthIndex === undefined || monthIndex < 0 || monthIndex >= ratios.length) return undefined
     const annual = values[OPERATING_DIMS.BUDGET_AMOUNT] ?? 0
@@ -392,7 +429,7 @@ export function matchExpenseMappings(mappings: ExpenseMappingRow[], tree: ValueN
   const rows: ExpenseAnalysisRow[] = []
   for (const m of mappings) {
     const values = sumValues(m.subjectCodes)
-    const metric = productMetric(nodeOf(values), monthBudgetOf(values))
+    const metric = productMetric(nodeOf(values), monthBudgetOf(values), ytdBudgetOf(values[OPERATING_DIMS.BUDGET_AMOUNT] ?? 0, ratios ?? null, monthIndex ?? -1))
     const hasData = metric.budget !== 0 || metric.monthActual !== 0 || metric.ytdActual !== 0
     if (hasData) rows.push({ code: m.code, name: m.name, ...metric })
   }
@@ -431,20 +468,25 @@ export function matchProductCategories(
     }
     return acc
   }
-  // 月度预算：按占比拆分后的当月预算（ratios/monthIndex 缺失回退 undefined，调用方保持年度/12 折算）
+  // 月度预算：按占比拆分后的当月预算（ratios/monthIndex 缺失回退 undefined，调用方保持年度/12 折算）；
+  // 累计预算：按占比前缀和累计（ratios 缺失回退均摊累计，口径与月度拆分一致）
   const monthBudgetOf = (nodes: ValueNode[]): number | null | undefined => {
     if (!ratios || monthIndex === undefined || monthIndex < 0 || monthIndex >= ratios.length) return undefined
     const annual = nodes.reduce((s, n) => s + (n.values[OPERATING_DIMS.BUDGET_AMOUNT] ?? 0), 0)
     return annual ? round2((annual * ratios[monthIndex]) / 100) : 0
   }
+  const ytdBudgetOfNodes = (nodes: ValueNode[]): number | null | undefined => {
+    const annual = nodes.reduce((s, n) => s + (n.values[OPERATING_DIMS.BUDGET_AMOUNT] ?? 0), 0)
+    return ytdBudgetOf(annual, ratios ?? null, monthIndex ?? -1)
+  }
   for (const cat of categories) {
     const hits = allNodes.filter((n) => n.name.includes(cat.subjectKeyword))
     for (const h of hits) matchedNames.add(h.name)
-    const income = productMetric(hits.length > 0 ? nodeOf(sumValues(hits)) : undefined, monthBudgetOf(hits))
+    const income = productMetric(hits.length > 0 ? nodeOf(sumValues(hits)) : undefined, monthBudgetOf(hits), ytdBudgetOfNodes(hits))
     const profitHits = hits
       .map((h) => profitByName.get(profitMirrorName(h.name)))
       .filter((n): n is ValueNode => !!n)
-    const profit = productMetric(profitHits.length > 0 ? nodeOf(sumValues(profitHits)) : undefined, monthBudgetOf(profitHits))
+    const profit = productMetric(profitHits.length > 0 ? nodeOf(sumValues(profitHits)) : undefined, monthBudgetOf(profitHits), ytdBudgetOfNodes(profitHits))
     const row: ProductBudgetRow = { category: cat.name, income, profit }
     // 金额与预算全为 0 的品类不展示（无导入数据/无预算）
     const hasData = row.income.monthActual !== 0 || row.income.ytdActual !== 0 || row.income.budget !== 0
@@ -469,6 +511,20 @@ export function matchProductCategories(
 export function monthBudgetOf(node: ValueNode | undefined, ratios: number[] | null, monthIndex: number): number | null | undefined {
   if (!ratios || monthIndex < 0 || monthIndex >= ratios.length) return undefined
   return node ? round2((budget(node) * ratios[monthIndex]) / 100) : undefined
+}
+
+/** 累计预算（截至当前月）：配置占比时按年度总额 × 从年初到当期占比前缀和累计；
+ * ratios 缺失/越界回退均摊累计（年度总额 × (monthIndex+1)/12，与"月度=年度/12"拆分一致）；
+ * monthIndex < 0 返回 undefined（调用方保持旧口径）；年度总额为 0 返回 0（productMetric 归一为 null） */
+export function ytdBudgetOf(annual: number, ratios: number[] | null, monthIndex: number): number | null | undefined {
+  if (monthIndex < 0) return undefined
+  if (!annual) return 0
+  if (ratios && monthIndex < ratios.length) {
+    let sum = 0
+    for (let i = 0; i <= monthIndex; i++) sum += ratios[i]
+    return round2((annual * sum) / 100)
+  }
+  return round2((annual * (monthIndex + 1)) / 12)
 }
 
 /**
@@ -501,7 +557,8 @@ async function buildDashboardData(companyCodes: string[], period: string, availa
   const revenueBudget = fallbackBudgetSeries(monthlyBudgetSeries(budgetRows, revenueLeafCodes, fyMonths, ratios), revenueAnnual, fyMonths, ratios)
   const profitBudget = fallbackBudgetSeries(monthlyBudgetSeries(budgetRows, profitLeafCodes, fyMonths, ratios), profitAnnual, fyMonths, ratios)
   const netProfitBudget = fallbackBudgetSeries(monthlyBudgetSeries(budgetRows, netProfitLeafCodes, fyMonths, ratios), netProfitAnnual, fyMonths, ratios)
-  // 累计预算：预算无累计粒度，独立生成为年度总额水平线（不复用月度序列，避免累计模式误显月均均摊值）
+  // 累计预算线（看板展示）：预算无累计粒度，独立生成为年度总额水平线（展示口径，不按占比累计）；
+  // 按占比累计的预警口径由 ytdBudgetOf 在品类/主体/运营费用接口中单独计算
   const revenueYtdBudget = ytdBudgetSeries(revenueAnnual, fyMonths)
   const profitYtdBudget = ytdBudgetSeries(profitAnnual, fyMonths)
   const netProfitYtdBudget = ytdBudgetSeries(netProfitAnnual, fyMonths)
@@ -538,7 +595,7 @@ async function buildDashboardData(companyCodes: string[], period: string, availa
   const monthBudgetOfTrend = (field: 'revenueBudget' | 'profitBudget' | 'netProfitBudget'): number | null | undefined =>
     periodIdx >= 0 ? trendData[periodIdx][field] : undefined
 
-  // monthRate 按当月预算计算（与趋势图月度预算线同口径），无预算为 null
+  // monthRate 按当月预算计算（与趋势图月度预算线同口径），ytdRate 按年度总额计算（与累计预算线同口径），无预算为 null
   const kpiOf = (title: string, icon: string, node: ValueNode | undefined, key: 'revenueActual' | 'profitActual' | 'netProfitActual' | 'collectionActual', monthBudget?: number | null): Kpi => ({
     title,
     icon,
@@ -712,7 +769,8 @@ export const DashboardService = {
     }
     const mode: 'single' | 'summary' = params.mode === 'summary' ? 'summary' : 'single'
     const period = (params.period && periods.includes(params.period) ? params.period : periods[periods.length - 1]) ?? (await latestOperatingPeriod())
-    // 月度达成率口径：按财年月度占比拆分后的当月预算（无配置回退 undefined，保持年度/12 折算）
+    // 月度达成率口径：按财年月度占比拆分后的当月预算（无配置回退 undefined，保持年度/12 折算）；
+    // 累计预算口径：按占比前缀和累计（无配置回退均摊累计，与月度拆分一致）
     const [ratios] = await Promise.all([BudgetRatioService.budgetRatiosOf(fiscalYearLabel(period))])
     const monthIndex = periodsInRange(fiscalYearStartPeriod(period), period).length - 1
     // 指定主体：汇总主体展开为成员明细（每成员一行，供公司分析展示）；单体公司返回自身一行；
@@ -723,20 +781,29 @@ export const DashboardService = {
         return { period, mode, rows: [] }
       }
       if (eff.companyType === 'summary') {
-        // 汇总主体：eff.codes 即展开后的成员单体，逐成员构建
-        const members = await prisma.company.findMany({
-          where: { code: { in: eff.codes }, status: 'active' },
-          select: { code: true, name: true, shortName: true },
-        })
-        const rows = (await Promise.all(members.map(async (m): Promise<SubjectBudgetRow | null> => {
+        // 汇总主体：eff.codes 即展开后的成员单体，逐成员构建；
+        // 成员排序：已配置的主体按配置 sortOrder，未配置按公司 orderNo 兜底
+        const [members, memberConfigs] = await Promise.all([
+          prisma.company.findMany({
+            where: { code: { in: eff.codes }, status: 'active' },
+            select: { code: true, name: true, shortName: true, orderNo: true },
+          }),
+          prisma.subjectBudgetConfig.findMany({
+            where: { companyCode: { in: eff.codes } },
+            select: { companyCode: true, sortOrder: true },
+          }),
+        ])
+        const memberOrder = new Map(memberConfigs.map((c) => [c.companyCode, c.sortOrder]))
+        const orderedMembers = orderSubjectsByConfig(members, memberOrder)
+        const rows = (await Promise.all(orderedMembers.map(async (m): Promise<SubjectBudgetRow | null> => {
           const tree = await AggregationService.buildOperatingTree([m.code], period)
           const nodes = metricNodes(tree)
           const row: SubjectBudgetRow = {
             code: m.code,
             name: m.shortName ?? m.name,
-            income: productMetric(nodes.revenue, monthBudgetOf(nodes.revenue, ratios, monthIndex)),
-            profit: productMetric(nodes.profit, monthBudgetOf(nodes.profit, ratios, monthIndex)),
-            netProfit: productMetric(nodes.netProfit, monthBudgetOf(nodes.netProfit, ratios, monthIndex)),
+            income: productMetric(nodes.revenue, monthBudgetOf(nodes.revenue, ratios, monthIndex), ytdBudgetOf(budget(nodes.revenue), ratios, monthIndex)),
+            profit: productMetric(nodes.profit, monthBudgetOf(nodes.profit, ratios, monthIndex), ytdBudgetOf(budget(nodes.profit), ratios, monthIndex)),
+            netProfit: productMetric(nodes.netProfit, monthBudgetOf(nodes.netProfit, ratios, monthIndex), ytdBudgetOf(budget(nodes.netProfit), ratios, monthIndex)),
           }
           const hasData = row.income.monthActual !== 0 || row.income.ytdActual !== 0 || row.income.budget !== 0
             || row.profit.monthActual !== 0 || row.profit.ytdActual !== 0 || row.profit.budget !== 0
@@ -754,9 +821,9 @@ export const DashboardService = {
         rows: [{
           code: eff.companyCode,
           name: eff.companyName ?? eff.companyCode,
-          income: productMetric(nodes.revenue, monthBudgetOf(nodes.revenue, ratios, monthIndex)),
-          profit: productMetric(nodes.profit, monthBudgetOf(nodes.profit, ratios, monthIndex)),
-          netProfit: productMetric(nodes.netProfit, monthBudgetOf(nodes.netProfit, ratios, monthIndex)),
+          income: productMetric(nodes.revenue, monthBudgetOf(nodes.revenue, ratios, monthIndex), ytdBudgetOf(budget(nodes.revenue), ratios, monthIndex)),
+          profit: productMetric(nodes.profit, monthBudgetOf(nodes.profit, ratios, monthIndex), ytdBudgetOf(budget(nodes.profit), ratios, monthIndex)),
+          netProfit: productMetric(nodes.netProfit, monthBudgetOf(nodes.netProfit, ratios, monthIndex), ytdBudgetOf(budget(nodes.netProfit), ratios, monthIndex)),
         }],
       }
     }
@@ -786,9 +853,9 @@ export const DashboardService = {
       const row: SubjectBudgetRow = {
         code: s.code,
         name: s.shortName ?? s.name,
-        income: productMetric(nodes.revenue, monthBudgetOf(nodes.revenue, ratios, monthIndex)),
-        profit: productMetric(nodes.profit, monthBudgetOf(nodes.profit, ratios, monthIndex)),
-        netProfit: productMetric(nodes.netProfit, monthBudgetOf(nodes.netProfit, ratios, monthIndex)),
+        income: productMetric(nodes.revenue, monthBudgetOf(nodes.revenue, ratios, monthIndex), ytdBudgetOf(budget(nodes.revenue), ratios, monthIndex)),
+        profit: productMetric(nodes.profit, monthBudgetOf(nodes.profit, ratios, monthIndex), ytdBudgetOf(budget(nodes.profit), ratios, monthIndex)),
+        netProfit: productMetric(nodes.netProfit, monthBudgetOf(nodes.netProfit, ratios, monthIndex), ytdBudgetOf(budget(nodes.netProfit), ratios, monthIndex)),
       }
       const hasData = row.income.monthActual !== 0 || row.income.ytdActual !== 0 || row.income.budget !== 0
         || row.profit.monthActual !== 0 || row.profit.ytdActual !== 0 || row.profit.budget !== 0

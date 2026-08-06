@@ -61,15 +61,39 @@ async function createTempSubject(code: string): Promise<void> {
 describe('科目 CRUD', () => {
   it('创建→更新→软删除（未引用科目）', async () => {
     if (!dbReady) return
-    const code = `OP_TEST_${Date.now().toString(36)}`
-    const created = await DataService.createSubject({ code, name: '测试科目', type: 'operating', level: 1, parentCode: 'OP_02', isLeaf: true }, ctx())
-    expect(created.code).toBe(code)
+    // 编码由系统自动生成（父码 OP_02 + 同级下一序号），不再接受客户端 code
+    const created = await DataService.createSubject({ name: '测试科目', type: 'operating', parentCode: 'OP_02', isLeaf: true }, ctx())
+    expect(created.code).toMatch(/^OP_02\d{2}$/)
     const updated = await DataService.updateSubject(created.id, { name: '测试科目改' }, ctx())
     expect(updated.name).toBe('测试科目改')
     await DataService.deleteSubject(created.id, ctx())
     const after = await basePrisma.accountSubject.findUnique({ where: { id: created.id }, select: { status: true } })
     expect(after?.status).toBe('inactive')
-    await basePrisma.accountSubject.deleteMany({ where: { code } }).catch(() => undefined)
+    await basePrisma.accountSubject.deleteMany({ where: { code: created.code } }).catch(() => undefined)
+  })
+
+  it('停用同级科目后新增不撞码（含 inactive 防撞占位）；停用父级下不可新增', async () => {
+    if (!dbReady) return
+    const suffix = Date.now().toString(36)
+    // 1) 新建子科目 A（同级下一序号）
+    const a = await DataService.createSubject({ name: `防撞测试A_${suffix}`, type: 'operating', parentCode: 'OP_02', isLeaf: true }, ctx())
+    // 2) 软删除 A（status→inactive，仍占用序号）
+    await DataService.deleteSubject(a.id, ctx())
+    // 3) 同父级再新增 B：必须跳过被停用的 A 的序号，否则 P2002 且重试同码必报冲突
+    const b = await DataService.createSubject({ name: `防撞测试B_${suffix}`, type: 'operating', parentCode: 'OP_02', isLeaf: true }, ctx())
+    const seqOf = (code: string) => Number(code.match(/^OP_02(\d{2})$/)![1])
+    expect(seqOf(b.code)).toBeGreaterThan(seqOf(a.code))
+    expect(b.code).not.toBe(a.code)
+    // 4) 临时父科目停用后，其下不可新增（上级科目已停用 → 拒绝）
+    const p = await DataService.createSubject({ name: `防撞测试父_${suffix}`, type: 'operating', parentCode: 'OP_02', isLeaf: false }, ctx())
+    const c1 = await DataService.createSubject({ name: `防撞测试子1_${suffix}`, type: 'operating', parentCode: p.code, isLeaf: true }, ctx())
+    await DataService.deleteSubject(c1.id, ctx())
+    await DataService.deleteSubject(p.id, ctx())
+    await expect(
+      DataService.createSubject({ name: `防撞测试子2_${suffix}`, type: 'operating', parentCode: p.code, isLeaf: true }, ctx()),
+    ).rejects.toThrow('上级科目不存在或已停用')
+    // 清理：硬删本用例创建的科目（含软删的 A/B/c1/p）
+    await basePrisma.accountSubject.deleteMany({ where: { code: { in: [a.code, b.code, c1.code, p.code] } } }).catch(() => undefined)
   })
 
   it('删除被事实引用的科目 → conflict', async () => {
@@ -424,12 +448,15 @@ describe('公式试算递归展开 calc 依赖', () => {
     if (!latest) return
     const period = latest.period
     const suffix = Date.now().toString(36)
-    const dataCode = `OP_TCD_${suffix}`
-    const calcCode = `OP_TCC_${suffix}`
-    tempMetricCodes.push(dataCode, calcCode)
+    let dataCode = ''
+    let calcCode = ''
     try {
-      await DataService.createSubject({ code: dataCode, name: '试算数据叶', type: 'operating', level: 1, parentCode: 'OP_02', isLeaf: true }, ctx())
-      await DataService.createSubject({ code: calcCode, name: '试算计算项', type: 'operating', level: 1, parentCode: 'OP_02', isLeaf: true }, ctx())
+      // 科目编码由系统自动生成，创建后从返回值取 code 继续流程
+      const dataSubj = await DataService.createSubject({ name: `试算数据叶_${suffix}`, type: 'operating', parentCode: 'OP_02', isLeaf: true }, ctx())
+      const calcSubj = await DataService.createSubject({ name: `试算计算项_${suffix}`, type: 'operating', parentCode: 'OP_02', isLeaf: true }, ctx())
+      dataCode = dataSubj.code
+      calcCode = calcSubj.code
+      tempMetricCodes.push(dataCode, calcCode)
       await DataService.createMetric({ code: dataCode, name: '试算数据叶', dataType: 'data', category: '自定义' }, ctx())
       await DataService.createMetric({ code: calcCode, name: '试算计算项', dataType: 'calc', formula: `{${dataCode}}`, category: '自定义' }, ctx())
       await basePrisma.factOperating.create({

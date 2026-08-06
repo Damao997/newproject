@@ -133,15 +133,16 @@ export async function seedDomain(prisma: PrismaClient): Promise<void> {
   }
   console.log(`[seed] 期间维度 ${PERIOD_DIMENSIONS.length} 条 完成`)
 
-  // 2) 品类配置（品类预算达成分析，按 code 幂等）
-  for (const pc of PRODUCT_CATEGORIES) {
-    await prisma.productCategory.upsert({
-      where: { code: pc.code },
-      update: { name: pc.name, subjectKeyword: pc.subjectKeyword, sortOrder: pc.sortOrder, status: 'active' },
-      create: pc,
-    })
+  // 2) 品类配置（品类预算达成分析，按 code 幂等：仅创建缺失的品类，
+  // 不覆盖管理员对既有配置的修改（名称/关键词/排序/状态）——seed 重复执行不得重置业务配置）
+  const existingProductCodes = new Set(
+    (await prisma.productCategory.findMany({ select: { code: true } })).map((c) => c.code),
+  )
+  const productToCreate = PRODUCT_CATEGORIES.filter((pc) => !existingProductCodes.has(pc.code))
+  for (const pc of productToCreate) {
+    await prisma.productCategory.create({ data: pc })
   }
-  console.log(`[seed] 品类配置 ${PRODUCT_CATEGORIES.length} 条 完成`)
+  console.log(`[seed] 品类配置 新增 ${productToCreate.length} 条（既有 ${existingProductCodes.size} 条保留） 完成`)
 
   // 3) 主体展示配置（主体预算达成分析，按 companyCode 幂等：全量 active 主体默认展示）
   const activeSubjects = await prisma.company.findMany({
@@ -196,6 +197,7 @@ export async function seedDomain(prisma: PrismaClient): Promise<void> {
 
   // 6-1) 运营费用映射（运营费用分析，按 code 幂等：默认叶子科目一对一，管理员可归并/停用）。
   // 仅创建缺失的映射，不覆盖管理员对既有映射的归并（subjectCodes）与停用（status）修改。
+  // 注：被管理员删除的默认映射会按默认配置重新创建（无墓碑标记，长期删除需知悉此行为）。
   const feeSubjects = await prisma.accountSubject.findMany({
     where: { subjectType: 'operating', category: '费用', status: 'active' },
     select: { code: true, name: true },

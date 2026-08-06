@@ -71,6 +71,47 @@ function childSubjectCodeOf(parentCode: string, seq: number): string {
   return `${parentCode}${String(seq).padStart(2, '0')}`
 }
 
+/** 解析 父码+2位序号 编码的尾部序号；非规则编码视为 0 */
+function subjectSeqOf(code: string, parentCode: string): number {
+  const esc = parentCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const m = code.match(new RegExp(`^${esc}(\\d{2})$`))
+  return m ? Number(m[1]) : 0
+}
+
+/** 该类型段位表登记值（经营 01-08 / 静态 10+，与 SUBJECT_SEGMENT_MAP 注释口径一致） */
+function registeredSegmentsOf(prefix: 'OP' | 'ST'): number[] {
+  return Object.values(SUBJECT_SEGMENT_MAP)
+    .map((s) => Number(s))
+    .filter((s) => (prefix === 'OP' ? s <= 8 : s >= 10))
+}
+
+/** 编码预览所需的最小科目结构（兼容 FlatSubjectItem / SubjectTreeItem / AccountSubject） */
+export interface CodePreviewSubject {
+  code: string
+  parentCode?: string | null
+  level: number
+}
+
+/** 新增子科目编码预览：父码 + 同级最大序�?+ 1（与后端生成规则一致；>99 返回 null 由调用方提示上限） */
+export function nextChildSubjectCode(parentCode: string, flat: CodePreviewSubject[]): string | null {
+  const maxSeq = Math.max(0, ...flat.filter((f) => f.parentCode === parentCode).map((f) => subjectSeqOf(f.code, parentCode)))
+  const seq = maxSeq + 1
+  return seq > 99 ? null : childSubjectCodeOf(parentCode, seq)
+}
+
+/** 新增根科目编码预览：名称命中段位表（且段位属于该类型区间）用登记段位；未命中自动分配该类型下一未用段位；>99 返回 null */
+export function nextRootSubjectCode(prefix: 'OP' | 'ST', name: string, flat: CodePreviewSubject[]): { code: string | null; registered: boolean } {
+  const registered = SUBJECT_SEGMENT_MAP[name]
+  if (registered && registeredSegmentsOf(prefix).includes(Number(registered))) return { code: `${prefix}_${registered}`, registered: true }
+  const usedSegs = flat.filter((f) => f.level === 0).map((f) => Number(f.code.split('_')[1])).filter((n) => Number.isFinite(n))
+  const regs = registeredSegmentsOf(prefix)
+  const base = regs.length > 0 || usedSegs.length > 0 ? Math.max(...regs, ...usedSegs) : 0
+  let next = base + 1
+  while (usedSegs.includes(next)) next++
+  if (next > 99) return { code: null, registered: false }
+  return { code: `${prefix}_${String(next).padStart(2, '0')}`, registered: false }
+}
+
 /** 前序遍历装饰原始树：级联赋码（level0 段位 + 子级父码拼接）、level=深度、category=level0 根名 */
 export function decorateTree(raw: RawSubjectNode[], prefix = 'OP'): SubjectNode[] {
   const walk = (nodes: RawSubjectNode[], level: number, parentCode: string | null, category: string): SubjectNode[] => {

@@ -69,9 +69,9 @@ export function SubjectTreePanel({
   const { data, isLoading } = useSubjectTree(type)
   const deleteSubject = useDeleteSubject()
   const updateSubject = useUpdateSubject()
-  // 有管理权限的用户（canUpdate/canDelete）均可查看已停用科目
+  // 有管理权限的用户（canUpdate/canDelete）均可查看已停用科目；可创建者也需要全量（含 inactive）编码预览
   const showInactive = canUpdate || canDelete
-  const { data: allSubjects } = useSubjects({ type, pageSize: 1000, includeInactive: 'true' }, { enabled: showInactive })
+  const { data: allSubjects } = useSubjects({ type, pageSize: 1000, includeInactive: 'true' }, { enabled: showInactive || canCreate })
   const inactiveSubjects = useMemo(
     () => (showInactive ? (allSubjects?.items ?? []).filter((s) => s.status === 'inactive') : []),
     [showInactive, allSubjects],
@@ -260,6 +260,7 @@ export function SubjectTreePanel({
         type={type}
         subject={dialog.subject}
         flat={flat}
+        allSubjects={allSubjects?.items}
         canConvert={canConvert}
         onClose={() => setDialog((d) => ({ ...d, open: false }))}
       />

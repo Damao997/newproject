@@ -51,6 +51,15 @@ function ContextChip({ label, value }: { label: string; value: string }) {
 }
 
 export function AnalysisDrawer({ open, target, onClose }: AnalysisDrawerProps) {
+  // 以 公司×科目×期间 为键重挂载表单：目标切换时所有 state（标题/正文/既有ID/反馈/AI 流）从零初始化，
+  // 避免上一科目的内容残留到新科目（旧实现依赖异步查询结果回填，查询键命中缓存时会写入旧内容）。
+  const targetKey = open && target ? `${target.companyCode}|${target.subjectCode}|${target.period}` : 'closed'
+  if (!open || !target) return null
+  return <DrawerBody key={targetKey} target={target} onClose={onClose} />
+}
+
+/** 抽屉表单主体：随 target 键重建，挂载后查询既有分析并一次性回填 */
+function DrawerBody({ target, onClose }: { target: AnalysisTarget; onClose: () => void }) {
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [existingId, setExistingId] = useState<string | null>(null)
@@ -62,15 +71,18 @@ export function AnalysisDrawer({ open, target, onClose }: AnalysisDrawerProps) {
   const [aiError, setAiError] = useState<string | null>(null)
   const aiCtrlRef = useRef<StreamController | null>(null)
 
-  // 读取该 公司×科目×期间 既有分析
+  // 卸载时中止 AI 流（目标切换重建组件或关闭抽屉时，旧流不再写回状态）
+  useEffect(() => () => aiCtrlRef.current?.abort(), [])
+
+  // 读取该 公司×科目×期间 既有分析（组件挂载后查询一次）
   const { data } = useAnalyses(
-    open && target ? { companyCode: target.companyCode, subjectCode: target.subjectCode, period: target.period } : { companyCode: '__none__' },
+    { companyCode: target.companyCode, subjectCode: target.subjectCode, period: target.period },
+    { enabled: true },
   )
   const existing = data?.items?.[0]
 
-  // 目标切换 / 打开时回填表单
+  // 查询结果到达时一次性回填（目标切换由外层 key 重建组件，不存在旧目标状态）
   useEffect(() => {
-    if (!open || !target) return
     if (existing) {
       setExistingId(existing.id)
       setTitle(existing.title)
@@ -78,10 +90,10 @@ export function AnalysisDrawer({ open, target, onClose }: AnalysisDrawerProps) {
     } else {
       setExistingId(null)
       setTitle(`${target.subjectName} 分析`)
-      setContent('')
     }
     setFeedback(null)
-  }, [open, target?.companyCode, target?.subjectCode, target?.period, existing?.id])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existing?.id])
 
   const createMutation = useCreateAnalysis()
   const updateMutation = useUpdateAnalysis()
@@ -89,7 +101,7 @@ export function AnalysisDrawer({ open, target, onClose }: AnalysisDrawerProps) {
   const busy = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending
 
   const metricContext = useMemo(() => {
-    if (!target?.metric) return null
+    if (!target.metric) return null
     const m = target.metric
     // 无预算场景（如库存分析）：快照不含 budget/achievement，避免依赖全年预算口径
     return target.showBudget === false
@@ -99,8 +111,6 @@ export function AnalysisDrawer({ open, target, onClose }: AnalysisDrawerProps) {
           yoy: calcYoy(m), achievement: calcAchievement(m),
         }
   }, [target?.metric, target?.showBudget])
-
-  if (!open || !target) return null
 
   const handleGenerateDraft = () => {
     setAiError(null)
@@ -266,7 +276,7 @@ export function AnalysisDrawer({ open, target, onClose }: AnalysisDrawerProps) {
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={onClose} disabled={busy}>取消</Button>
             <Button size="sm" onClick={handleSave} disabled={busy || !title.trim()}>
-              <Save className="mr-1 h-4 w-4" /> {existingId ? '保存修改' : '新增分析'}
+              <Save className="mr-1 h-4 w-4" /> 保存
             </Button>
           </div>
         </div>

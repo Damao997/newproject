@@ -63,6 +63,11 @@ export interface AccountSubject {
   type: 'operating' | 'static'
   level: number
   parentId?: string
+  /** 上级科目编码（后端 SubjectDto 透出，供同级序号计算） */
+  parentCode?: string | null
+  category?: string
+  direction?: string
+  isLeaf?: boolean
   status: 'active' | 'inactive'
   /** 值类型：金额（万元）/ 数量（整数）/ 比率（公式计算，不可直接调整） */
   valueType?: 'amount' | 'quantity' | 'ratio'
@@ -295,7 +300,12 @@ export interface ProductBudgetMetric {
   ytdActual: number
   /** 上年同期累计（供合计行同比按 Σ金额重算） */
   ytdSame: number
+  /** 预警专用：按月度占比累计的预算值（年度总额 × 从年初到当期占比累计；无预算为 null），不参与看板展示 */
+  ytdBudget: number | null
+  /** 累计预算达成率（%，YTD 实际/年度预算总额，看板展示口径） */
   ytdRate: number | null
+  /** 累计预算口径达成率（%，YTD 实际/累计预算，供预警判断；未配置占比时回退展示口径） */
+  ytdCumRate: number | null
   ytdYoy: number
 }
 

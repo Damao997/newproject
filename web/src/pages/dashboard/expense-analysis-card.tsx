@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useExpenseAnalysis } from '@/hooks/api-queries'
 import { totalMetrics } from './budget-total'
+import { RateBar } from '@/components/ui/rate-bar'
 import { formatMoneyWan, formatPercent, cn } from '@/lib/utils'
 import type { ExpenseAnalysisRow } from '@/types'
 
@@ -13,19 +14,11 @@ interface ExpenseAnalysisCardProps {
   subjectName?: string
 }
 
-/** 费用类使用率红绿灯三档（与收入类达成率规则相反：费用越低越安全）：<75 绿 / 75-100 黄 / >100 红；无预算灰 */
-function rateColorClass(rate: number | null): string {
-  if (rate === null) return 'text-muted-foreground'
-  if (rate < 75) return 'text-success-strong'
-  if (rate <= 100) return 'text-warning-strong'
-  return 'text-destructive'
-}
-
 /** 预警红绿灯圆点：使用率 <75 绿 / 75-100 黄 / >100 红；无预算（null）灰灯 */
 function RateLight({ rate }: { rate: number | null }) {
   const cls = rate === null ? 'bg-muted-foreground/40'
     : rate < 75 ? 'bg-success-strong'
-    : rate <= 100 ? 'bg-warning-strong'
+    : rate <= 100 ? 'bg-warning'
     : 'bg-destructive'
   return <span className={cn('inline-block h-2.5 w-2.5 rounded-full', cls)} title={rate === null ? '无预算' : `使用率 ${formatPercent(rate / 100)}`} />
 }
@@ -46,11 +39,6 @@ function YoYBadge({ value }: { value: number }) {
   )
 }
 
-/** 使用率单元格：null（无预算）显示 "–" */
-function rateText(rate: number | null): string {
-  return rate === null ? '–' : formatPercent(rate / 100)
-}
-
 const TH_CLS = 'px-3 py-2 text-right text-xs font-medium text-muted-foreground'
 const TD_CLS = 'px-3 py-2 text-right font-num text-sm text-foreground'
 
@@ -61,7 +49,8 @@ type MetricOf = Omit<ExpenseAnalysisRow, 'code' | 'name'>
  * 运营费用分析卡（单期间）：按映射配置（看板管理 > 运营费用映射）聚合的运营费用科目，
  * 同时展示月度完成情况（月度预算/本月金额/使用率/预警/同期金额/同比）与
  * 财年累计完成情况（年度预算/累计金额/使用率/预警/同期累计金额/财年同比）。
- * 预警按费用类红绿灯：使用率 <75 绿 / 75-100 黄 / >100 红。主体口径跟随看板顶部筛选。
+ * 使用率以橙色进度条展示；预警按费用类红绿灯：使用率 <75 绿 / 75-100 黄 / >100 红，
+ * 月度用月度使用率、累计用累计预算口径使用率（ytdCumRate）判断。主体口径跟随看板顶部筛选。
  */
 export function ExpenseAnalysisCard({ period, companyCode, subjectName }: ExpenseAnalysisCardProps) {
   const { data, isLoading } = useExpenseAnalysis({ period, companyCode })
@@ -73,20 +62,21 @@ export function ExpenseAnalysisCard({ period, companyCode, subjectName }: Expens
     <>
       <td className={TD_CLS}>{formatMoneyWan(m.monthBudget ?? m.budget / 12)}</td>
       <td className={TD_CLS}>{formatMoneyWan(m.monthActual)}</td>
-      <td className={cn(TD_CLS, rateColorClass(m.monthRate))}>{rateText(m.monthRate)}</td>
+      <td className={TD_CLS}><RateBar rate={m.monthRate} /></td>
       <td className={cn(TD_CLS, 'text-center')}><RateLight rate={m.monthRate} /></td>
       <td className={TD_CLS}>{formatMoneyWan(m.monthSame)}</td>
       <td className={TD_CLS}><YoYBadge value={m.monthYoy} /></td>
     </>
   )
 
-  /** 财年累计完成情况 6 列（年度预算/累计金额/使用率/预警/同期累计金额/财年同比） */
+  /** 财年累计完成情况 6 列（年度预算/累计金额/使用率/预警/同期累计金额/财年同比）；
+   * 预警按累计预算口径使用率（ytdCumRate）判断（费用类反向规则） */
   const renderYtdCells = (m: MetricOf) => (
     <>
       <td className={cn(TD_CLS, 'border-l border-border/60')}>{formatMoneyWan(m.budget)}</td>
       <td className={TD_CLS}>{formatMoneyWan(m.ytdActual)}</td>
-      <td className={cn(TD_CLS, rateColorClass(m.ytdRate))}>{rateText(m.ytdRate)}</td>
-      <td className={cn(TD_CLS, 'text-center')}><RateLight rate={m.ytdRate} /></td>
+      <td className={TD_CLS}><RateBar rate={m.ytdRate} /></td>
+      <td className={cn(TD_CLS, 'text-center')}><RateLight rate={m.ytdCumRate} /></td>
       <td className={TD_CLS}>{formatMoneyWan(m.ytdSame)}</td>
       <td className={TD_CLS}><YoYBadge value={m.ytdYoy} /></td>
     </>

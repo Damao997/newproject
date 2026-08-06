@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { changeRate, rateOf, findInCategory, monthlyBudgetSeries, budgetAnnualTotal, fallbackBudgetSeries, ytdBudgetSeries, mapAlertRow, alertScopeWhere, productMetric, matchProductCategories, matchExpenseMappings } from './DashboardService'
+import { changeRate, rateOf, findInCategory, monthlyBudgetSeries, budgetAnnualTotal, fallbackBudgetSeries, ytdBudgetSeries, ytdBudgetOf, mapAlertRow, alertScopeWhere, productMetric, matchProductCategories, matchExpenseMappings } from './DashboardService'
 import { OPERATING_DIMS } from '../lib/metric-values'
+import { splitMonthlyBudget } from './BudgetRatioService'
 import type { ValueNode } from './AggregationService'
 import { Prisma } from '@prisma/client'
 
@@ -181,13 +182,52 @@ describe('DashboardService 纯函数', () => {
     })
   })
 
-  describe('ytdBudgetSeries 累计预算序列（年度总额水平线）', () => {
+  describe('ytdBudgetSeries 累计预算序列（月度序列逐月累加）', () => {
     const months = ['2026-04', '2026-05', '2026-06']
-    it('有年度总额时各月均为总额（水平线，与品类表“累计=年度预算”口径一致）', () => {
+    it('无月度序列时回退年度总额水平线（旧口径）', () => {
       expect(ytdBudgetSeries(1200, months)).toEqual([1200, 1200, 1200])
+    })
+    it('占比拆分序列逐月累加：4/5/6 月各 10% 时 6 月累计 = 总额 × 30%', () => {
+      const fy = ['2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11', '2026-12', '2027-01', '2027-02', '2027-03']
+      const ratios = [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 0, 0]
+      const monthly = splitMonthlyBudget(1200, ratios, fy)
+      expect(monthly[0]).toBe(120) // 4 月 10%
+      const ytd = ytdBudgetSeries(1200, fy, monthly)
+      expect(ytd[0]).toBe(120)
+      expect(ytd[1]).toBe(240)
+      expect(ytd[2]).toBe(360) // 1200 × (10%+10%+10%)
+    })
+    it('均摊月度序列累加：n 个月累计 = 总额 × n/12', () => {
+      const monthly = [100, 100, 100]
+      expect(ytdBudgetSeries(1200, months, monthly)).toEqual([100, 200, 300])
+    })
+    it('部分月份无预算行（null）时维持此前累计值不中断', () => {
+      expect(ytdBudgetSeries(1200, months, [120, null, 120])).toEqual([120, 120, 240])
     })
     it('年度总额为 0 时返回全 null（无预算不伪造）', () => {
       expect(ytdBudgetSeries(0, months)).toEqual([null, null, null])
+      expect(ytdBudgetSeries(0, months, [100, 100, 100])).toEqual([null, null, null])
+    })
+  })
+
+  describe('ytdBudgetOf 累计预算（占比前缀和 / 均摊累计）', () => {
+    it('配置占比时按年度总额 × 从年初到当期占比前缀和', () => {
+      const ratios = [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 0, 0]
+      expect(ytdBudgetOf(1200, ratios, 0)).toBe(120)
+      expect(ytdBudgetOf(1200, ratios, 2)).toBe(360) // 1200 × 30%
+      expect(ytdBudgetOf(1200, ratios, 11)).toBe(1200) // 全年 100%
+    })
+    it('ratios 缺失时按均摊累计（年度总额 × (monthIndex+1)/12）', () => {
+      expect(ytdBudgetOf(1200, null, 2)).toBe(300)
+      expect(ytdBudgetOf(1200, null, 0)).toBe(100)
+    })
+    it('ratios 越界（monthIndex 超出项数）时回退均摊累计', () => {
+      expect(ytdBudgetOf(1200, [3, 8], 2)).toBe(300) // 越界走均摊 1200×3/12
+      expect(ytdBudgetOf(1200, [3, 8], 1)).toBe(132) // 未越界仍按前缀和 1200×(3%+8%)
+    })
+    it('monthIndex < 0 返回 undefined（调用方保持旧口径）；年度总额为 0 返回 0（归一为 null）', () => {
+      expect(ytdBudgetOf(1200, [3, 8, 11], -1)).toBeUndefined()
+      expect(ytdBudgetOf(0, [3, 8, 11], 2)).toBe(0)
     })
   })
 
@@ -267,6 +307,24 @@ describe('DashboardService 纯函数', () => {
       const m = productMetric(node({ values: dims }), 300)
       expect(m.monthRate).toBe(33.33) // 100 / 300 × 100
       expect(m.ytdRate).toBe(41.67) // 累计口径不受影响
+    })
+    it('传入累计预算（ytdBudget）时 ytdCumRate 按累计预算计算，ytdRate 保持年度总额口径', () => {
+      const m = productMetric(node({ values: dims }), undefined, 360)
+      expect(m.ytdBudget).toBe(360)
+      expect(m.ytdRate).toBe(41.67) // 500 / 1200 × 100，看板展示口径不受 ytdBudget 影响
+      expect(m.ytdCumRate).toBe(138.89) // 500 / 360 × 100，预警口径按占比前缀和
+      expect(m.monthRate).toBe(100) // 月度口径不受影响
+    })
+    it('传入累计预算为 0/null 时 ytdCumRate 为 null，输出 ytdBudget 为 null（无预算不伪造）', () => {
+      expect(productMetric(node({ values: dims }), undefined, 0).ytdCumRate).toBeNull()
+      expect(productMetric(node({ values: dims }), undefined, 0).ytdBudget).toBeNull()
+      expect(productMetric(node({ values: dims }), undefined, 0).ytdRate).toBe(41.67) // 展示口径仍按年度预算
+      expect(productMetric(node({ values: dims }), undefined, null).ytdBudget).toBeNull()
+    })
+    it('输出 ytdBudget/ytdCumRate：未传时回退年度总额（保持旧口径）', () => {
+      expect(productMetric(node({ values: dims })).ytdBudget).toBe(1200)
+      expect(productMetric(node({ values: dims }), undefined, 360).ytdBudget).toBe(360)
+      expect(productMetric(node({ values: dims })).ytdCumRate).toBe(41.67) // 回退展示口径 500/1200
     })
     it('传入月度预算为 0/null 时月度达成率为 null（无预算不伪造）', () => {
       expect(productMetric(node({ values: dims }), 0).monthRate).toBeNull()
@@ -460,7 +518,7 @@ describe('DashboardService 纯函数', () => {
       expect(matchExpenseMappings(mappings, tree).map((r) => r.code)).toEqual(['b', 'a'])
     })
 
-    it('传 ratios+monthIndex 时 monthRate 与 monthBudget 按占比拆分', () => {
+    it('传 ratios+monthIndex 时 monthRate/monthBudget 按占比拆分，累计预警口径按占比前缀和', () => {
       const mappings = [{ code: 'labor', name: '人力成本', subjectCodes: ['HR_A', 'HR_B'] }]
       const tree = [
         fee('HR_A', '人力成本-工资', 80, 1200, 70, 900, 800),
@@ -470,7 +528,9 @@ describe('DashboardService 纯函数', () => {
       const [row] = matchExpenseMappings(mappings, tree, ratios, 0) // 4月 3%
       expect(row.monthBudget).toBe(54) // 1800 × 3%
       expect(row.monthRate).toBe(185.19) // 100 / 54 × 100
-      expect(row.ytdRate).toBe(61.11) // 累计口径不受影响
+      expect(row.ytdBudget).toBe(54) // 1800 × 3%（截至 4 月的占比累计）
+      expect(row.ytdRate).toBe(61.11) // 1100/1800，展示口径按年度预算
+      expect(row.ytdCumRate).toBe(2037.04) // 1100 / 54 × 100，预警口径按占比前缀和
     })
     it('不传 ratios 时保持 /12 口径（monthBudget = budget/12）', () => {
       const mappings = [{ code: 'labor', name: '人力成本', subjectCodes: ['HR_A', 'HR_B'] }]

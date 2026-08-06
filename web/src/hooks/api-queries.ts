@@ -894,10 +894,11 @@ export function useRejectMetric() {
 // ---------------- 分析报告：单项分析 ----------------
 export type { AnalysisItem, AnalysisInput, ReportDetail, ReportListItem, ReportSectionInput, ReportVersionItem, ReportExportData }
 
-export function useAnalyses(params: { companyCode?: string; subjectCode?: string; period?: string; keyword?: string; includeInactive?: boolean; page?: number; pageSize?: number }) {
+export function useAnalyses(params: { companyCode?: string; subjectCode?: string; period?: string; keyword?: string; includeInactive?: boolean; page?: number; pageSize?: number }, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['reports', 'analyses', params] as const,
     queryFn: () => api.listAnalyses(params),
+    enabled: options?.enabled,
   })
 }
 
@@ -905,7 +906,9 @@ export function useCreateAnalysis() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: AnalysisInput) => api.createAnalysis(data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['reports', 'analyses'] }),
+    // refetchType:'all'：同时刷新 inactive 缓存键（抽屉关闭后仍保留的历史查询），
+    // 避免保存后重开同一科目时先展示保存前的旧内容
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['reports', 'analyses'], refetchType: 'all' }),
   })
 }
 
@@ -914,7 +917,7 @@ export function useUpdateAnalysis() {
   return useMutation({
     mutationFn: (vars: { id: string; data: { title?: string; content?: string; metricContext?: Record<string, unknown> | null } }) =>
       api.updateAnalysis(vars.id, vars.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['reports', 'analyses'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['reports', 'analyses'], refetchType: 'all' }),
   })
 }
 
@@ -922,7 +925,7 @@ export function useDeleteAnalysis() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => api.deleteAnalysis(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['reports', 'analyses'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['reports', 'analyses'], refetchType: 'all' }),
   })
 }
 
@@ -930,7 +933,7 @@ export function useRestoreAnalysis() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => api.restoreAnalysis(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['reports', 'analyses'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['reports', 'analyses'], refetchType: 'all' }),
   })
 }
 

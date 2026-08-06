@@ -3,7 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useProductBudget } from '@/hooks/api-queries'
 import { totalOf } from './budget-total'
-import { formatMoneyWan, formatPercent, cn } from '@/lib/utils'
+import { RateBar } from '@/components/ui/rate-bar'
+import { AlertLight } from '@/components/ui/alert-light'
+import { formatMoneyWan, cn } from '@/lib/utils'
 import type { ProductBudgetMetric } from '@/types'
 
 interface ProductBudgetCardProps {
@@ -15,16 +17,8 @@ interface ProductBudgetCardProps {
   subjectName?: string
 }
 
-/** 金额口径：本月实际 / 本年累计（预算口径随金额口径联动：月度=占比拆分后的当月预算，累计=年度总额） */
+/** 金额口径：本月实际 / 本年累计（预算口径随金额口径联动：月度=占比拆分后的当月预算，累计=年度预算总额） */
 type AmountMode = 'month' | 'ytd'
-
-/** 达成率红绿灯三档（与 kpi-card 一致）：≥75 达标绿 / 60-75 预警黄 / <60 未达标红；无预算灰 */
-function rateColorClass(rate: number | null): string {
-  if (rate === null) return 'text-muted-foreground'
-  if (rate >= 75) return 'text-success-strong'
-  if (rate >= 60) return 'text-warning-strong'
-  return 'text-destructive'
-}
 
 /** 同比单元格：红涨绿跌（A 股/国内财报习惯），持平灰；正值不带 "+"，负值保留 "-" */
 function YoYBadge({ value }: { value: number }) {
@@ -42,17 +36,14 @@ function YoYBadge({ value }: { value: number }) {
   )
 }
 
-/** 达成率单元格：null（无预算）显示 "–" */
-function rateText(rate: number | null): string {
-  return rate === null ? '–' : formatPercent(rate / 100)
-}
-
 const TH_CLS = 'px-3 py-2 text-right text-xs font-medium text-muted-foreground'
 const TD_CLS = 'px-3 py-2 text-right font-num text-sm text-foreground'
 
 /**
  * 品类预算达成分析卡（单期间）：收入/毛利品类的预算、本月/累计金额、预算达成率与同比。
- * 切换器：月度/累计（金额口径）；预算口径自动联动（月度=年度预算/12，累计=年度预算）。主体口径跟随看板顶部筛选。
+ * 切换器：月度/累计（金额口径）；预算口径自动联动（月度=占比拆分后的当月预算，累计=年度预算总额）。
+ * 完成率以橙色进度条展示；预警列按达成率红黄绿三档（月度用月度达成率，累计用累计预算口径达成率）。
+ * 主体口径跟随看板顶部筛选。
  */
 export function ProductBudgetCard({ period, companyCode, subjectName }: ProductBudgetCardProps) {
   const [amountMode, setAmountMode] = useState<AmountMode>('month')
@@ -60,11 +51,14 @@ export function ProductBudgetCard({ period, companyCode, subjectName }: ProductB
   const rows = data?.rows ?? []
   const isEmpty = !isLoading && rows.length === 0
 
-  // 按当前金额口径取单指标组的展示值：月度金额↔占比拆分后的当月预算（缺失回退年度/12），累计金额↔年度预算
+  // 按当前金额口径取单指标组的展示值：月度金额↔占比拆分后的当月预算（缺失回退年度/12），
+  // 累计金额↔年度预算总额；预警口径：月度用月度达成率，累计用累计预算口径达成率
   const displayOf = (m: ProductBudgetMetric) => ({
     budget: amountMode === 'month' ? (m.monthBudget ?? m.budget / 12) : m.budget,
     amount: amountMode === 'month' ? m.monthActual : m.ytdActual,
+    same: amountMode === 'month' ? m.monthSame : m.ytdSame,
     rate: amountMode === 'month' ? m.monthRate : m.ytdRate,
+    alertRate: amountMode === 'month' ? m.monthRate : m.ytdCumRate,
     yoy: amountMode === 'month' ? m.monthYoy : m.ytdYoy,
   })
 
@@ -98,17 +92,21 @@ export function ProductBudgetCard({ period, companyCode, subjectName }: ProductB
               <thead>
                 <tr className="border-b border-border">
                   <th rowSpan={2} className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">品类</th>
-                  <th colSpan={4} className="border-l border-border px-3 py-2 text-center text-xs font-semibold text-foreground">收入</th>
-                  <th colSpan={4} className="border-l border-border px-3 py-2 text-center text-xs font-semibold text-foreground">毛利</th>
+                  <th colSpan={6} className="border-l border-border px-3 py-2 text-center text-xs font-semibold text-foreground">收入</th>
+                  <th colSpan={6} className="border-l border-border px-3 py-2 text-center text-xs font-semibold text-foreground">毛利</th>
                 </tr>
                 <tr className="border-b border-border">
                   <th className={TH_CLS}>{amountMode === 'month' ? '月度预算' : '年度预算'}</th>
                   <th className={TH_CLS}>{amountMode === 'month' ? '本月金额' : '累计金额'}</th>
+                  <th className={TH_CLS}>{amountMode === 'month' ? '同期金额' : '同期累计'}</th>
                   <th className={TH_CLS}>预算完成率</th>
+                  <th className={TH_CLS}>预警</th>
                   <th className={TH_CLS}>同比增长</th>
                   <th className={cn(TH_CLS, 'border-l border-border')}>{amountMode === 'month' ? '月度预算' : '年度预算'}</th>
                   <th className={TH_CLS}>{amountMode === 'month' ? '本月金额' : '累计金额'}</th>
+                  <th className={TH_CLS}>{amountMode === 'month' ? '同期金额' : '同期累计'}</th>
                   <th className={TH_CLS}>预算完成率</th>
+                  <th className={TH_CLS}>预警</th>
                   <th className={TH_CLS}>同比增长</th>
                 </tr>
               </thead>
@@ -121,11 +119,15 @@ export function ProductBudgetCard({ period, companyCode, subjectName }: ProductB
                       <td className="px-3 py-2 text-left text-sm font-medium text-foreground">{row.category}</td>
                       <td className={TD_CLS}>{formatMoneyWan(income.budget)}</td>
                       <td className={TD_CLS}>{formatMoneyWan(income.amount)}</td>
-                      <td className={cn(TD_CLS, rateColorClass(income.rate))}>{rateText(income.rate)}</td>
+                      <td className={cn(TD_CLS, 'text-muted-foreground')}>{formatMoneyWan(income.same)}</td>
+                      <td className={TD_CLS}><RateBar rate={income.rate} /></td>
+                      <td className={cn(TD_CLS, 'text-center')}><AlertLight rate={income.alertRate} /></td>
                       <td className={TD_CLS}><YoYBadge value={income.yoy} /></td>
                       <td className={cn(TD_CLS, 'border-l border-border/60')}>{formatMoneyWan(profit.budget)}</td>
                       <td className={TD_CLS}>{formatMoneyWan(profit.amount)}</td>
-                      <td className={cn(TD_CLS, rateColorClass(profit.rate))}>{rateText(profit.rate)}</td>
+                      <td className={cn(TD_CLS, 'text-muted-foreground')}>{formatMoneyWan(profit.same)}</td>
+                      <td className={TD_CLS}><RateBar rate={profit.rate} /></td>
+                      <td className={cn(TD_CLS, 'text-center')}><AlertLight rate={profit.alertRate} /></td>
                       <td className={TD_CLS}><YoYBadge value={profit.yoy} /></td>
                     </tr>
                   )
@@ -142,11 +144,15 @@ export function ProductBudgetCard({ period, companyCode, subjectName }: ProductB
                         <td className="px-3 py-2 text-left text-sm font-semibold text-foreground">合计</td>
                         <td className={cn(TD_CLS, 'font-semibold')}>{formatMoneyWan(income.budget)}</td>
                         <td className={cn(TD_CLS, 'font-semibold')}>{formatMoneyWan(income.amount)}</td>
-                        <td className={cn(TD_CLS, 'font-semibold', rateColorClass(income.rate))}>{rateText(income.rate)}</td>
+                        <td className={cn(TD_CLS, 'font-semibold text-muted-foreground')}>{formatMoneyWan(income.same)}</td>
+                        <td className={TD_CLS}><RateBar rate={income.rate} /></td>
+                        <td className={cn(TD_CLS, 'text-center')}><AlertLight rate={income.alertRate} /></td>
                         <td className={cn(TD_CLS, 'font-semibold')}><YoYBadge value={income.yoy} /></td>
                         <td className={cn(TD_CLS, 'border-l border-border/60 font-semibold')}>{formatMoneyWan(profit.budget)}</td>
                         <td className={cn(TD_CLS, 'font-semibold')}>{formatMoneyWan(profit.amount)}</td>
-                        <td className={cn(TD_CLS, 'font-semibold', rateColorClass(profit.rate))}>{rateText(profit.rate)}</td>
+                        <td className={cn(TD_CLS, 'font-semibold text-muted-foreground')}>{formatMoneyWan(profit.same)}</td>
+                        <td className={TD_CLS}><RateBar rate={profit.rate} /></td>
+                        <td className={cn(TD_CLS, 'text-center')}><AlertLight rate={profit.alertRate} /></td>
                         <td className={cn(TD_CLS, 'font-semibold')}><YoYBadge value={profit.yoy} /></td>
                       </tr>
                     )

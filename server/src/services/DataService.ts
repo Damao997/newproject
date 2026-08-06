@@ -9,6 +9,7 @@ import { fiscalYearStartPeriod, fiscalYearOpeningSnapshotPeriod, periodMinusYear
 import { buildExcel } from '../lib/excel'
 import { effectiveScope, type ScopeInput } from '../lib/scope-guard'
 import { withoutScope } from '../middleware/scope-context'
+import { SUBJECT_SEGMENT_MAP, childSubjectCodeOf } from '../../prisma/seed-data/subject-trees'
 import type { Prisma } from '@prisma/client'
 
 /**
@@ -47,6 +48,53 @@ function subjectDto(s: { id: string; code: string; name: string; subjectType: st
 /** 校验并归一化值类型入参；非法/缺省返回 undefined（update 不改动） */
 function normalizeValueType(v?: string): 'amount' | 'quantity' | 'ratio' | undefined {
   return v === 'amount' || v === 'quantity' || v === 'ratio' ? v : undefined
+}
+
+// ---------------- 科目编码生成（级联赋码：根=段位表/自动分配，子=父码+同级最大序号+1） ----------------
+
+/** 解析 父码+2位序号 编码的尾部序号；非规则编码视为 0 */
+function subjectSeqOf(code: string, parentCode: string): number {
+  const esc = parentCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const m = code.match(new RegExp(`^${esc}(\\d{2})$`))
+  return m ? Number(m[1]) : 0
+}
+
+/** 该类型段位表登记值（经营 01-08 / 静态 10+，与 SUBJECT_SEGMENT_MAP 注释口径一致） */
+function registeredSegmentsOf(prefix: 'OP' | 'ST'): number[] {
+  return Object.values(SUBJECT_SEGMENT_MAP)
+    .map((s) => Number(s))
+    .filter((s) => (prefix === 'OP' ? s <= 8 : s >= 10))
+}
+
+/** 子科目编码：父码 + 同级最大序号 + 1（含 inactive，避免与停用科目撞码；>99 抛错） */
+async function nextChildSubjectCode(parentCode: string): Promise<string> {
+  // 显式声明 status 绕过软删除中间件自动注入（只统计 active 会与停用科目撞码）
+  const siblings = await prisma.accountSubject.findMany({
+    where: { parentCode, status: { in: ['active', 'inactive'] } },
+    select: { code: true },
+  })
+  const maxSeq = Math.max(0, ...siblings.map((s) => subjectSeqOf(s.code, parentCode)))
+  const seq = maxSeq + 1
+  if (seq > 99) throw errors.badRequest('同级科目数量已达上限（99），无法继续新增')
+  return childSubjectCodeOf(parentCode, seq)
+}
+
+/** 根科目编码：名称命中段位表（且段位属于该类型区间）用登记段位；未命中自动分配该类型下一未用段位；>99 抛错 */
+async function nextRootSubjectCode(prefix: 'OP' | 'ST', name: string): Promise<string> {
+  const registered = SUBJECT_SEGMENT_MAP[name]
+  if (registered && registeredSegmentsOf(prefix).includes(Number(registered))) return `${prefix}_${registered}`
+  // 显式声明 status 绕过软删除中间件自动注入（复用停用根科目的段位会撞码）
+  const used = await prisma.accountSubject.findMany({
+    where: { subjectType: prefix === 'OP' ? 'operating' : 'static', level: 0, status: { in: ['active', 'inactive'] } },
+    select: { code: true },
+  })
+  const usedSegs = used.map((u) => Number(u.code.split('_')[1])).filter((n) => Number.isFinite(n))
+  const regs = registeredSegmentsOf(prefix)
+  const base = regs.length > 0 || usedSegs.length > 0 ? Math.max(...regs, ...usedSegs) : 0
+  let next = base + 1
+  while (usedSegs.includes(next)) next++
+  if (next > 99) throw errors.badRequest('该类型根科目段位已达上限（99），无法继续新增')
+  return `${prefix}_${String(next).padStart(2, '0')}`
 }
 
 // ---------------- 指标 ----------------
@@ -262,7 +310,7 @@ export const DataService = {
     // 显式声明 status 以绕过 soft-delete 中间件自动注入（见 soft-delete.ts 注释）
     if (params.includeInactive) where.status = { in: ['active', 'inactive'] }
     const [rows, total] = await Promise.all([
-      prisma.accountSubject.findMany({ where, orderBy: { orderNo: 'asc' }, skip: (params.page - 1) * params.pageSize, take: params.pageSize }),
+      prisma.accountSubject.findMany({ where, orderBy: { code: 'asc' }, skip: (params.page - 1) * params.pageSize, take: params.pageSize }),
       prisma.accountSubject.count({ where }),
     ])
     // 指标类型（data/calc/display）与科目同编码关联：供调整模块过滤计算类/展示类科目
@@ -273,23 +321,50 @@ export const DataService = {
     return { items: rows.map((s) => subjectDto(s, dataTypeByCode.get(s.code))), total, page: params.page, pageSize: params.pageSize, totalPages: Math.ceil(total / params.pageSize) }
   },
 
-  async createSubject(input: { code: string; name: string; type?: string; level?: number; parentCode?: string | null; category?: string; direction?: string; valueType?: string; isLeaf?: boolean }, ctx: AuditCtx): Promise<SubjectDto> {
-    const exists = await prisma.accountSubject.findUnique({ where: { code: input.code } })
-    if (exists) throw errors.conflict('科目编码已存在')
-    const created = await prisma.accountSubject.create({
-      data: {
-        code: input.code, name: input.name,
-        subjectType: (input.type === 'static' ? 'static' : 'operating'),
-        level: input.level ?? 0,
-        parentCode: input.parentCode ?? null,
-        category: input.category ?? input.name,
-        direction: (input.direction === 'credit' ? 'credit' : 'debit'),
-        valueType: normalizeValueType(input.valueType) ?? 'amount',
-        isLeaf: input.isLeaf ?? true,
-      },
-    })
-    await recordAudit({ userId: ctx.userId, module: 'data', action: 'create', targetId: created.code, detail: { entity: 'subject' } }, ctx.traceId)
-    return subjectDto(created)
+  /**
+   * 新增科目：编码由系统按级联赋码机制自动生成（不信任客户端 code/level）——
+   * 根科目 = 段位表登记段位（未登记自动分配下一未用段位）；子科目 = 父码 + 同级最大序号 + 1。
+   * level 由上级层级推导；并发下唯一冲突时重新计算重试（段位表路径编码不变则直接报冲突）。
+   */
+  async createSubject(input: { name: string; type?: string; parentCode?: string | null; category?: string; direction?: string; valueType?: string; isLeaf?: boolean }, ctx: AuditCtx): Promise<SubjectDto> {
+    const subjectType = input.type === 'static' ? 'static' : 'operating'
+    const prefix = subjectType === 'static' ? 'ST' : 'OP'
+    const parentCode = input.parentCode ?? null
+    let level = 0
+    if (parentCode) {
+      // findFirst 显式过滤 status（软删除中间件不注入 findUnique，避免挂到已停用父级下）
+      const parent = await prisma.accountSubject.findFirst({ where: { code: parentCode, status: 'active' } })
+      if (!parent) throw errors.badRequest('上级科目不存在或已停用')
+      if (parent.subjectType !== subjectType) throw errors.badRequest('不能跨科目类型（经营/静态）新增')
+      level = parent.level + 1
+    }
+    let lastCode: string | null = null
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const code = parentCode ? await nextChildSubjectCode(parentCode) : await nextRootSubjectCode(prefix, input.name)
+      // 两次计算结果相同仍冲突（段位表路径撞同名根科目）：无需重试，直接报冲突
+      if (attempt > 0 && code === lastCode) throw errors.conflict('科目编码已存在')
+      lastCode = code
+      try {
+        const created = await prisma.accountSubject.create({
+          data: {
+            code, name: input.name,
+            subjectType,
+            level,
+            parentCode,
+            category: input.category ?? input.name,
+            direction: (input.direction === 'credit' ? 'credit' : 'debit'),
+            valueType: normalizeValueType(input.valueType) ?? 'amount',
+            isLeaf: input.isLeaf ?? true,
+          },
+        })
+        await recordAudit({ userId: ctx.userId, module: 'data', action: 'create', targetId: created.code, detail: { entity: 'subject' } }, ctx.traceId)
+        return subjectDto(created)
+      } catch (e) {
+        // 唯一约束冲突：并发下同级序号被抢占，重新计算编码后重试
+        if ((e as { code?: string }).code !== 'P2002') throw e
+      }
+    }
+    throw errors.conflict('科目编码已存在')
   },
 
   async updateSubject(id: string, input: { name?: string; category?: string; direction?: string; valueType?: string; isLeaf?: boolean; parentCode?: string | null; status?: string }, ctx: AuditCtx): Promise<SubjectDto> {
@@ -446,7 +521,7 @@ export const DataService = {
 
   /** 科目树（扁平列表，含 dataType/valueType）：取该 type 全部 active 科目 + 左联 metric 取 dataType */
   async getSubjectTree(type: 'operating' | 'static'): Promise<{ id: string; code: string; name: string; level: number; parentCode: string | null; category: string; direction: string; valueType: string; isLeaf: boolean; dataType: string }[]> {
-    const subjects = await prisma.accountSubject.findMany({ where: { subjectType: type, status: 'active' }, orderBy: { orderNo: 'asc' } })
+    const subjects = await prisma.accountSubject.findMany({ where: { subjectType: type, status: 'active' }, orderBy: { code: 'asc' } })
     const codes = subjects.map((s) => s.code)
     const metrics = await prisma.metric.findMany({ where: { code: { in: codes } }, select: { code: true, dataType: true } })
     const dtMap = new Map(metrics.map((m) => [m.code, m.dataType as string]))
@@ -1029,7 +1104,7 @@ export const DataService = {
   // ===== 导出（科目体系） =====
   async exportSubjects(type?: string): Promise<Buffer> {
     const where = type ? { subjectType: type as 'operating' | 'static' } : {}
-    const rows = await prisma.accountSubject.findMany({ where, orderBy: { orderNo: 'asc' } })
+    const rows = await prisma.accountSubject.findMany({ where, orderBy: { code: 'asc' } })
     return buildExcel('科目体系', [
       { header: '编码', key: 'code' }, { header: '名称', key: 'name', width: 28 },
       { header: '类型', key: 'type' }, { header: '层级', key: 'level' },
