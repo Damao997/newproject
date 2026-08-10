@@ -256,7 +256,7 @@ formatMoneyWan(value) // → "1,234.56"（财务指标/数据管理，纯数值�
 | **写 Prisma schema/migration/seed** | Read `docs/references/db.md` + `docs/plans/数据模型规范.md` |
 | **写认证/权限/安全配置** | Read `docs/references/security.md` + `docs/plans/安全与权限规范.md` |
 | **写 AI 润色/分析/脱敏** | Read `docs/plans/AI模块规范.md` |
-| **配 Docker/Nginx/备份/部署** | Read `docs/references/devops.md` + `docs/plans/部署运维规范.md` |
+| **配 Docker/Nginx/备份/部署/环境分离** | Read `docs/plans/环境管理规范.md`（当前实际方案，权威）+ `docs/references/devops.md` + `docs/plans/部署运维规范.md` |
 | **配错误码/响应格式/异常处理** | Read `docs/references/errorcode.md` |
 | **配日志/traceId/监控** | Read `docs/references/observability.md` |
 | **配性能优化/缓存** | Read `docs/references/performance.md` |
@@ -283,3 +283,5 @@ formatMoneyWan(value) // → "1,234.56"（财务指标/数据管理，纯数值�
 | `docs/plans/安全与权限规范.md` | 5 角色 × 8 模块 × 6 操作完整矩阵、中间件代码 |
 | `docs/plans/AI模块规范.md` | 双管道脱敏、四层 Prompt 防护、事实约束注入 |
 | `docs/plans/部署运维规范.md` | docker-compose、nginx、备份脚本、监控 |
+| `docs/plans/环境管理规范.md` | **开发与生产环境分离总纲**：分支管理、物理隔离、数据库分离、部署/备份/恢复、安全与运维规范（当前实际方案） |
+| `docs/plans/标准操作流程手册.md` | **场景化操作手册**：开发/修bug/提交/发布/脚本使用/数据流向/异常恢复的逐步操作（与规范互补） |

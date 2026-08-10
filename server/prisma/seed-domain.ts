@@ -197,7 +197,7 @@ export async function seedDomain(prisma: PrismaClient): Promise<void> {
 
   // 6-1) 运营费用映射（运营费用分析，按 code 幂等：默认叶子科目一对一，管理员可归并/停用）。
   // 仅创建缺失的映射，不覆盖管理员对既有映射的归并（subjectCodes）与停用（status）修改。
-  // 注：被管理员删除的默认映射会按默认配置重新创建（无墓碑标记，长期删除需知悉此行为）。
+  // 注：删除为软删除（墓碑，见 ExpenseAnalysisService.remove），被管理员删除的默认映射不随 seed 复活。
   const feeSubjects = await prisma.accountSubject.findMany({
     where: { subjectType: 'operating', category: '费用', status: 'active' },
     select: { code: true, name: true },
@@ -206,10 +206,11 @@ export async function seedDomain(prisma: PrismaClient): Promise<void> {
   const expenseMappings = EXPENSE_SUBJECT_NAMES
     .filter((n) => feeNameToCode.has(n))
     .map((n, i) => ({ code: feeNameToCode.get(n) as string, name: n, sortOrder: i + 1 }))
-  const existingCodes = new Set(
-    (await prisma.expenseSubjectMapping.findMany({ select: { code: true } })).map((m) => m.code),
-  )
-  const toCreate = expenseMappings.filter((em) => !existingCodes.has(em.code))
+  const mappingRows = await prisma.expenseSubjectMapping.findMany({ select: { code: true, deletedAt: true } })
+  // 排除墓碑（软删除）code：管理员删除的默认映射不随 seed 复活（无墓碑标记时方按默认配置创建）
+  const existingCodes = new Set(mappingRows.filter((m) => !m.deletedAt).map((m) => m.code))
+  const tombstoneCodes = new Set(mappingRows.filter((m) => m.deletedAt).map((m) => m.code))
+  const toCreate = expenseMappings.filter((em) => !existingCodes.has(em.code) && !tombstoneCodes.has(em.code))
   for (const em of toCreate) {
     await prisma.expenseSubjectMapping.create({
       data: { code: em.code, name: em.name, subjectCodes: [em.code], sortOrder: em.sortOrder, status: 'active' },

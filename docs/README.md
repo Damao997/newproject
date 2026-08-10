@@ -72,7 +72,7 @@
 | 项目概述（本页） | `docs/README.md` | 平台定位、特性、术语表、技术栈 |
 | AI Agent 入口 | `CLAUDE.md`（根目录） | 开发规范、裁决总纲、按场景路由的文档索引表 |
 | 引用（12 篇） | `docs/references/` | 前端/后端/数据库/安全/错误码/并发/导入边界/运维/可观测性/性能/测试/版本控制 |
-| 方案（6 篇） | `docs/plans/` | 整体方案v3 / 前端设计方案v3 / 数据模型规范 / 安全与权限规范 / AI模块规范 / 部署运维规范 |
+| 方案（8 篇） | `docs/plans/` | 整体方案v3 / 前端设计方案v3 / 数据模型规范 / 安全与权限规范 / AI模块规范 / 部署运维规范 / 环境管理规范 / 标准操作流程手册 |
 | 数据模版 | `docs/data-templates/samples/` | 示例 Excel 数据文件（分析主体/经营数据/静态数据/年度预算） |
 | 历史归档 | `docs/archive/` | 旧版本文档与设计审查报告（归档索引见 [archive/index.md](archive/index.md)） |
 | 功能规划 | `docs/superpowers/` | 高级功能实施计划（plans/）与设计规格（specs/） |
@@ -92,7 +92,7 @@
 │   ├── references/              # 引用：模块化快速参考（12 篇）
 │   ├── data-templates/          # 数据模版：示例 Excel 数据
 │   │   └── samples/
-│   ├── plans/                   # 方案：权威深度规范与设计文档（6 篇）
+│   ├── plans/                   # 方案：权威深度规范与设计文档（8 篇）
 │   ├── superpowers/             # 高级功能规划（plans/）与设计规格（specs/）
 │   │   ├── plans/
 │   │   └── specs/

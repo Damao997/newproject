@@ -9,6 +9,7 @@ import { errors } from '../lib/errors'
 import { AppError } from '../lib/errors'
 import { AIProxyService } from '../services/AIProxyService'
 import { ReportService } from '../services/ReportService'
+import type { OperatingRow, StaticRow } from '../services/IndicatorsService'
 import type { Response } from 'express'
 import type { AuthUserContext } from '../types/express'
 
@@ -127,6 +128,65 @@ router.post(
     }
   }),
 )
+
+// AI 全局预分析（当前显示主体的经营+静态指标 → SSE 流式生成预分析报告）
+router.post(
+  '/overview',
+  requirePermission('reports:create', 'create'),
+  aiRateLimiter,
+  asyncHandler(async (req, res) => {
+    const authUser = req.authUser as AuthUserContext
+    const b = req.body ?? {}
+    const operating = normalizeOverviewRows(Array.isArray(b.operating) ? (b.operating as OperatingRow[]) : [], OP_NUMERIC_KEYS)
+    const staticRows = normalizeOverviewRows(Array.isArray(b.static) ? (b.static as StaticRow[]) : [], ST_NUMERIC_KEYS)
+    // 行数上限防 payload 滥用（前端全量行远低于该值，超限视为异常请求）
+    if (operating.length > 500 || staticRows.length > 500) throw errors.badRequest('指标数据超出单次分析上限')
+    initSSE(res)
+    try {
+      const { finalText } = await AIProxyService.overviewStream(
+        {
+          companyCode: typeof b.companyCode === 'string' && b.companyCode ? b.companyCode : undefined,
+          period: typeof b.period === 'string' ? b.period : undefined,
+          operating,
+          static: staticRows,
+          userId: authUser.userId,
+          traceId: req.traceId,
+        },
+        (delta) => sseWrite(res, { type: 'token', content: delta }),
+      )
+      sseWrite(res, { type: 'done', finalText })
+    } catch (err) {
+      const message = err instanceof AppError ? err.message : 'AI 预分析生成失败'
+      sseWrite(res, { type: 'error', error: message })
+    } finally {
+      res.end()
+    }
+  }),
+)
+
+/** 经营行数值字段（归一化用） */
+const OP_NUMERIC_KEYS = ['budget', 'actual', 'samePeriod', 'ytd', 'samePeriodYtd', 'yoy', 'achievement', 'ytdYoy'] as const
+/** 静态行数值字段（归一化用） */
+const ST_NUMERIC_KEYS = ['current', 'yearStart', 'samePeriod', 'lastYearStart', 'yoy'] as const
+
+/**
+ * 行内字段轻量归一：数值字段非法值（NaN/字符串/缺省）归 0、名称截断至 100 字、level 收敛为非负整数。
+ * 防异常 payload 破坏服务端筛选排序（Math.abs/toFixed 抛错被兜底吞掉）或污染注入 prompt。
+ */
+function normalizeOverviewRows<T>(rows: T[], numericKeys: readonly string[]): T[] {
+  return rows
+    .filter((r) => !!r && typeof r === 'object')
+    .map((r) => {
+      const n = { ...(r as Record<string, unknown>) }
+      for (const k of numericKeys) {
+        const v = Number(n[k])
+        n[k] = Number.isFinite(v) ? v : 0
+      }
+      n.name = String(n.name ?? '').slice(0, 100)
+      n.level = Number.isFinite(Number(n.level)) ? Math.max(0, Math.floor(Number(n.level))) : 0
+      return n as T
+    })
+}
 
 // 单条 AI 公式生成（DeepSeek，限流）
 router.post(

@@ -745,7 +745,7 @@ export const DashboardService = {
     const [tree, mappings, ratios] = await Promise.all([
       AggregationService.buildOperatingTree(eff.codes, period, { consolidationSummaryCode: eff.companyType === 'summary' ? eff.companyCode : null }),
       prisma.expenseSubjectMapping.findMany({
-        where: { status: 'active' },
+        where: { status: 'active', deletedAt: null },
         orderBy: { sortOrder: 'asc' },
       }),
       BudgetRatioService.budgetRatiosOf(fiscalYearLabel(period)),

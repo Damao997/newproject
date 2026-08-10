@@ -45,6 +45,7 @@ const BUSINESS_TABLES = [
 ]
 
 // 主数据表：保留（仅统计行数验证）
+// 含配置型主数据：品类配置/运营费用映射/主体展示配置/预算占比配置/报告模板
 const MASTER_TABLES = [
   'company',
   'company_aggregation_map',
@@ -60,6 +61,11 @@ const MASTER_TABLES = [
   'role',
   'permission',
   'ai_desensitize_config',
+  'product_category',
+  'expense_subject_mapping',
+  'subject_budget_config',
+  'budget_ratio_config',
+  'report_template',
 ]
 
 async function countRows(table: string): Promise<number> {

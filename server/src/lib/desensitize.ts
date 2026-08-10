@@ -3,7 +3,7 @@ import { prisma } from './prisma'
 /**
  * 脱敏服务（见 AI模块规范 §二、§三）。数据出内网前必须脱敏：
  * - 公司名称/编码 → 动态代号（公司A/B/C…），每次请求从 company 表重建；
- * - 绝对金额 → 区间标签（分档）；百分比/趋势方向不脱敏。
+ * - 金额、百分比、趋势方向等数值数据一律不脱敏，保持原始状态。
  * polish 管道用公司映射脱敏输入，并在输出侧反向还原；analyze 管道仅注入脱敏后事实。
  */
 
@@ -87,26 +87,3 @@ export function restoreCompanyMap(text: string, map: CompanyMap): string {
   return replaceOnce(text, map.reverse)
 }
 
-/** 金额分档区间（单位：元），闭下开上；见 AI模块规范 §2.2 */
-const AMOUNT_INTERVALS: { min: number; max: number; label: string }[] = [
-  { min: -Infinity, max: 100_000, label: '小额' },
-  { min: 100_000, max: 1_000_000, label: '十万级' },
-  { min: 1_000_000, max: 5_000_000, label: '百万级' },
-  { min: 5_000_000, max: 10_000_000, label: '五百万级' },
-  { min: 10_000_000, max: 50_000_000, label: '千万级' },
-  { min: 50_000_000, max: 100_000_000, label: '五千万级' },
-  { min: 100_000_000, max: 500_000_000, label: '亿级' },
-  { min: 500_000_000, max: 1_000_000_000, label: '五亿级' },
-  { min: 1_000_000_000, max: Infinity, label: '十亿级以上' },
-]
-
-/**
- * 将绝对金额映射为区间标签。入参单位为万元（平台统一口径），内部换算为元后分档。
- */
-export function desensitizeAmountWan(valueWan: number): string {
-  const yuan = Math.abs(valueWan) * 10_000
-  for (const interval of AMOUNT_INTERVALS) {
-    if (yuan >= interval.min && yuan < interval.max) return interval.label
-  }
-  return '未知量级'
-}

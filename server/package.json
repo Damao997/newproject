@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/server.js",
+    "start": "node dist/src/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
@@ -16,6 +16,9 @@
     "prisma:seed": "tsx prisma/seed.ts",
     "prisma:studio": "prisma studio",
     "db:local": "tsx scripts/local-db.ts",
+    "mapping:export": "tsx scripts/export-expense-mappings.ts",
+    "mapping:import": "tsx scripts/import-expense-mappings.ts",
+    "db:prod": "tsx scripts/prod-db.ts",
     "check:naming": "node scripts/check-schema-naming.mjs",
     "setup": "npm run db:local && npm run prisma:generate && npm run prisma:migrate && npm run prisma:seed"
   },
@@ -33,6 +36,7 @@
     "helmet": "^7.2.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
+    "pg-copy-streams": "^7.0.0",
     "sanitize-html": "^2.17.6",
     "xlsx": "^0.18.5",
     "zod": "^3.24.1"

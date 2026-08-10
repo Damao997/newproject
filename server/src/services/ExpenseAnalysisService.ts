@@ -175,9 +175,9 @@ function toDto(row: {
 }
 
 export const ExpenseAnalysisService = {
-  /** 全部映射（sortOrder 升序） */
+  /** 全部映射（sortOrder 升序；不含墓碑行） */
   async list(): Promise<ExpenseMappingDto[]> {
-    const rows = await prisma.expenseSubjectMapping.findMany({ orderBy: { sortOrder: 'asc' } })
+    const rows = await prisma.expenseSubjectMapping.findMany({ where: { deletedAt: null }, orderBy: { sortOrder: 'asc' } })
     return rows.map(toDto)
   },
 
@@ -189,7 +189,18 @@ export const ExpenseAnalysisService = {
     if (!isValidMappingCode(code)) throw errors.badRequest('映射编码需为科目编码（OP_ 前缀）或 EXP_ 前缀小写英文（如 EXP_rd_expense）')
     if (subjectCodes.length === 0) throw errors.badRequest('至少选择 1 个运营费用科目')
     const exists = await prisma.expenseSubjectMapping.findUnique({ where: { code } })
-    if (exists) throw errors.conflict('映射编码已存在')
+    if (exists) {
+      // 墓碑行（软删除）同 code 重建视为复活：清除墓碑标记并按新输入更新
+      if (exists.deletedAt) {
+        const revived = await prisma.expenseSubjectMapping.update({
+          where: { id: exists.id },
+          data: { name, subjectCodes, sortOrder: input.sortOrder ?? 0, status: input.status === 'inactive' ? 'inactive' : 'active', deletedAt: null },
+        })
+        await recordAudit({ userId: ctx.userId, module: 'data', action: 'create', targetId: revived.code, detail: { entity: 'expense_subject_mapping', revived: true } }, ctx.traceId)
+        return toDto(revived)
+      }
+      throw errors.conflict('映射编码已存在')
+    }
     const created = await prisma.expenseSubjectMapping.create({
       data: {
         code,
@@ -205,7 +216,8 @@ export const ExpenseAnalysisService = {
 
   async update(id: string, input: { name?: string; subjectCodes?: string[]; sortOrder?: number; status?: string }, ctx: AuditCtx): Promise<ExpenseMappingDto> {
     const found = await prisma.expenseSubjectMapping.findUnique({ where: { id } })
-    if (!found) throw errors.notFound('运营费用映射不存在')
+    // 墓碑行（已软删除）不可再编辑：列表/看板均不可见，持 id 直调也应拒绝
+    if (!found || found.deletedAt) throw errors.notFound('运营费用映射不存在')
     // code 不可变（被看板展示引用）
     const subjectCodes = input.subjectCodes !== undefined
       ? input.subjectCodes.map((c) => String(c).trim()).filter(Boolean)
@@ -227,7 +239,8 @@ export const ExpenseAnalysisService = {
   async remove(id: string, ctx: AuditCtx): Promise<void> {
     const found = await prisma.expenseSubjectMapping.findUnique({ where: { id } })
     if (!found) throw errors.notFound('运营费用映射不存在')
-    await prisma.expenseSubjectMapping.delete({ where: { id } })
+    // 软删除（墓碑）：避免 seed 重跑时按默认配置复活；list/check/看板均过滤 deleted_at 行
+    await prisma.expenseSubjectMapping.update({ where: { id }, data: { deletedAt: new Date() } })
     await recordAudit({ userId: ctx.userId, module: 'data', action: 'delete', targetId: found.code, detail: { entity: 'expense_subject_mapping' } }, ctx.traceId)
   },
 
@@ -242,7 +255,7 @@ export const ExpenseAnalysisService = {
       select: { code: true, name: true, category: true, level: true, parentCode: true },
     })
     const candidates = expenseCandidates(subjects)
-    const mappings = await prisma.expenseSubjectMapping.findMany({ orderBy: { sortOrder: 'asc' } })
+    const mappings = await prisma.expenseSubjectMapping.findMany({ where: { deletedAt: null }, orderBy: { sortOrder: 'asc' } })
     const { matchedSubjects, uncoveredSubjects, brokenCodes } = expenseMappingHealth(mappings, candidates)
 
     // hasData：跨 active 经营/预算批次一次取全量科目编码集合（与看板取数口径一致：预算与经营任一存在即视为有数据）

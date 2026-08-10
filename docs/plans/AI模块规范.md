@@ -55,44 +55,21 @@
 |----------|----------|------|
 | **变化率（百分比）** | **不脱敏** | "环比 +12.3%" 直接透传，百分比不泄露绝对金额，保留趋势语义 |
 | **趋势方向** | **不脱敏** | "上升"/"下降"/"持平" 透传 |
-| **绝对金额** | **分档替换为区间** | 见下方金额区间表 |
+| **绝对金额** | **不脱敏** | 金额数据保持原始值，不做区间分档（v1.2 起） |
 | **公司名称** | **动态映射为代号** | 从 company 表动态生成（公司 A/B/C...），每次请求重新生成 |
-| **往来方名称** | **动态映射为代号** | counterparty A/B/C... |
-| **科目名称** | **可选，非敏感保留** | 科目名称通常不敏感，默认保留；可配置为脱敏 |
+| **往来方名称** | **不脱敏** | v1.2 起仅公司名称脱敏，往来方名称保持原样 |
+| **科目名称** | **不脱敏** | 科目名称通常不敏感，默认保留 |
 
-### 2.2 金额区间映射表
+> **v1.2 策略收敛**：脱敏策略仅对公司名称进行动态映射脱敏；金额、百分比、趋势方向等数值数据一律保持原始状态（原"绝对金额分档替换为区间"规则已移除，`desensitizeAmountWan` 已从代码库删除）。
+
+### 2.2 数值数据不脱敏说明
 
 ```typescript
-// config/desensitize.config.ts
-
-/**
- * 金额分档规则 — 将绝对金额替换为区间描述
- *
- * 边界值可通过 ai_desensitize_config 表动态配置。
- */
-export const AMOUNT_INTERVALS = [
-  { min: -Infinity,   max: 100_000,       label: '小额'      },
-  { min: 100_000,     max: 1_000_000,     label: '十万级'     },
-  { min: 1_000_000,   max: 5_000_000,     label: '百万级'     },
-  { min: 5_000_000,   max: 10_000_000,    label: '五百万级'    },
-  { min: 10_000_000,  max: 50_000_000,    label: '千万级'     },
-  { min: 50_000_000,  max: 100_000_000,   label: '五千万级'    },
-  { min: 100_000_000, max: 500_000_000,   label: '亿级'       },
-  { min: 500_000_000, max: 1_000_000_000, label: '五亿级'      },
-  { min: 1_000_000_000, max: Infinity,    label: '十亿级以上'    },
-];
-
-/**
- * 将绝对金额映射到区间标签
- */
-export function desensitizeAmount(amount: number): string {
-  for (const interval of AMOUNT_INTERVALS) {
-    if (amount >= interval.min && amount < interval.max) {
-      return interval.label;
-    }
-  }
-  return '未知量级';
-}
+// 原金额区间映射表（AMOUNT_INTERVALS / desensitizeAmountWan）已于 v1.2 移除。
+// 当前脱敏仅依赖 lib/desensitize.ts 的公司名动态映射：
+//   applyCompanyMap(text, map)   —— 公司名/编码 → 公司A/B/C…
+//   restoreCompanyMap(text, map) —— 公司A/B/C → 真实公司名（polish/analyze 输出侧还原）
+// 金额（"1,234.5 万元"）、百分比（"同比 +12.3%"）、趋势方向（"上升"/"下降"）原样透传。
 ```
 
 ### 2.3 动态公司名映射
@@ -213,7 +190,7 @@ export function buildReverseMap(companyMap: Map<string, string>): Map<string, st
 返回前端 ──► 还原公司名（analyze 管道亦经 restoreCompanyMap，与 polish 一致）
 ```
 
-> **绝对金额口径（v1.1 澄清）**：实现中 Analyze 管道**根本不发送绝对金额** —— `AIProxyService.analyzeStream` 经 `IndicatorsService.getByCode` 仅取同比/环比/达成率/累计同比等**比率**与趋势方向作为事实约束注入。因此 §2 的"金额分档脱敏"（`desensitizeAmountWan`）在本管道**不适用**；该函数用于确有金额需外发的场景（当前无调用方，作为能力保留）。
+> **数值数据口径（v1.2 更新）**：Analyze 管道**不发送绝对金额** —— `AIProxyService.analyzeStream` 经 `IndicatorsService.getByCode` 仅取同比/环比/达成率/累计同比等**比率**与趋势方向作为事实约束注入。金额、百分比、趋势方向均**不脱敏**（保持原始值）；金额分档函数 `desensitizeAmountWan` 已随 v1.2 策略收敛从代码库移除，不再保留。
 >
 > **事实约束注入的价值**：不仅是脱敏手段，更是**防幻觉**手段 —— 把后端算好的真实变化率作为"已确认事实"写入 prompt，使 AI 只做定性归因表述，不自行编造数值。
 
@@ -256,6 +233,16 @@ import { deepseekClient } from './deepseekClient'; // ESLint 报错
 import { aiProxyService } from './aiProxy.service';
 await aiProxyService.polish({ text, style, userId });
 ```
+
+### 3.6 输出模板配置（v1.5 新增）
+
+analyze（追加分析）与 overview（全局预分析）管道的**输出分节结构**由独立模板配置控制，改模板无需改动管道代码：
+
+- **模板文件**：`server/src/config/ai-templates.ts`
+- **模板结构**（`AiSectionTemplate`）：每节 = `title`（节标题，LLM 输出的节首行）+ `requirement`（该节内容要求）；`AI_TEMPLATES` 内置 `overview`（四节）/ `analyze`（三节）两份模板。
+- **组装方式**：`AIProxyService.buildTemplatePrompt(basePrompt, sections)` 将模板注入 system prompt（基础约束在前，随后是"输出必须严格按以下分节结构组织，每节以对应标题开头"指令）。
+- **自定义步骤**：修改 `ai-templates.ts` 中对应模板的 `sections`（增删节 / 改标题 / 改要求）→ 重启后端服务 → 生效。
+- **范围**：仅 overview / analyze 支持模板；polish / summarize / formula 管道暂不支持。
 
 ---
 
@@ -582,45 +569,28 @@ async function checkDeepSeekQuota(): Promise<void> {
 -- AI 脱敏配置表 (P2 可配置化预留)
 CREATE TABLE IF NOT EXISTS ai_desensitize_config (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  config_key  VARCHAR(100) NOT NULL UNIQUE,   -- 配置键
-  config_value JSONB NOT NULL,                -- 配置值 (JSON)
-  description TEXT,                           -- 配置说明
-  updated_by  UUID REFERENCES "user"(id),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  config_type VARCHAR(50) NOT NULL,            -- amount / counterparty / subject
+  pattern     TEXT NOT NULL,                   -- 匹配模式（金额正则等）
+  replacement TEXT NOT NULL,                   -- 替换文本
+  enabled     BOOLEAN NOT NULL DEFAULT true,   -- 是否启用
+  priority    INTEGER NOT NULL DEFAULT 0,      -- 优先级
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL
 );
 
--- 默认配置数据
-INSERT INTO ai_desensitize_config (config_key, config_value, description) VALUES
-(
-  'amount_intervals',
-  '[
-    {"min": null,        "max": 100000,       "label": "小额"},
-    {"min": 100000,      "max": 1000000,      "label": "十万级"},
-    {"min": 1000000,     "max": 5000000,      "label": "百万级"},
-    {"min": 5000000,     "max": 10000000,     "label": "五百万级"},
-    {"min": 10000000,    "max": 50000000,     "label": "千万级"},
-    {"min": 50000000,    "max": 100000000,    "label": "五千万级"},
-    {"min": 100000000,   "max": 500000000,    "label": "亿级"},
-    {"min": 500000000,   "max": 1000000000,   "label": "五亿级"},
-    {"min": 1000000000,  "max": null,         "label": "十亿级以上"}
-  ]'::jsonb,
-  '金额区间映射规则（min 为闭区间, max 为开区间, null 表示无穷）'
-),
-(
-  'desensitize_fields',
-  '{"company_name": true, "counterparty_name": true, "subject_name": false}'::jsonb,
-  '需脱敏的字段开关'
-);
+-- v1.2 起：脱敏策略仅公司名称动态映射；金额分档规则一律禁用（enabled=false）
+INSERT INTO ai_desensitize_config (id, config_type, pattern, replacement, enabled, priority, created_at, updated_at)
+SELECT gen_random_uuid(), 'amount', '', '', false, 0, NOW(), NOW()
+WHERE NOT EXISTS (SELECT 1 FROM ai_desensitize_config WHERE config_type = 'amount');
 ```
 
 ### 8.2 动态映射配置
 
-公司名和往来方名映射**不需要配置**，每次请求从对应数据库表动态生成：
+公司名映射**不需要配置**，每次请求从 company 表动态生成（v1.2 起仅公司名脱敏，往来方不再映射）：
 
 | 映射类型 | 数据来源 | 生成方式 |
 |----------|----------|----------|
 | 公司名 → 公司A/B/C | `company` 表 | 按 code 排序后分配字母序号 |
-| 往来方名 → 往来方A/B/C | `counterparty` 表 | 按 code 排序后分配字母序号 |
 
 ---
 
@@ -733,7 +703,7 @@ export const DEEPSEEK_CONFIG = {
   baseURL: process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com/v1',
   apiKey: process.env.DEEPSEEK_API_KEY,
   model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash', // 可选 deepseek-v4-pro；旧名 deepseek-chat 已废弃(400)
-  maxTokens: 4096,
+  maxTokens: 32768,
   temperature: 0.3,      // 财务场景低温度, 减少随机性
   topP: 0.9,
   // 超时按调用形态分设（实现见 lib/deepseek.ts）：
@@ -745,6 +715,8 @@ export const DEEPSEEK_CONFIG = {
 ```
 
 > **超时（v1.1 更正）**：v1.0 曾写 `timeout: 300_000`（5 分钟）。实现改为 60s/90s 双档，避免异常连接长期占用 Node 事件循环与上游配额；财务场景的正常响应远低于该阈值。
+>
+> **maxTokens（v1.4 更正）**：v1.1 曾写 `maxTokens: 4096`、v1.3 曾写 8192。deepseek-v4-flash/pro 为**推理模型**：流式输出先 `reasoning_content`（思考）后 `content`（正文），`max_tokens` 须同时覆盖两者；v1.2 曾因实现硬编码 1024 导致复杂任务（如 AI 全局预分析）推理耗尽配额、正文从未输出且静默空返回（`finish_reason=length`）。实现已提升为 **32768**（为复杂推理任务留足空间），且 `chatStream` 在流结束无正文输出时显式抛 502（不再静默）。
 
 ### 附录 B: 网络出口
 
@@ -843,6 +815,35 @@ data: {"type":"error","error":"频率限制超出"}
 ---
 
 ## 变更记录
+
+### v1.5（2026-08-07）
+
+**输出模板配置（以实现为准）**：
+- 新增 §3.6 **输出模板配置**：analyze / overview 管道的输出分节结构由 `server/src/config/ai-templates.ts` 控制（`AiSectionTemplate` = 节标题 + 内容要求）；改模板（增删节/改标题/改要求）重启后端即生效，无需改管道代码。
+- 实现：`AIProxyService.buildTemplatePrompt(basePrompt, sections)` 组装分节指令注入 system prompt；OVERVIEW_SYSTEM_PROMPT 原分节要求移除（迁入模板），基础约束（事实约束/防幻觉/来源标注）保留；ANALYZE_SYSTEM_PROMPT 追加 analyze 模板分节（本期表现概览 / 同比与预算分析 / 趋势研判与建议）。
+- 范围：polish / summarize / formula 管道暂不支持模板。
+
+### v1.4（2026-08-07）
+
+**max_tokens 二次扩容（以实现为准）**：
+- 附录 A：`maxTokens: 8192` → **32768**，支持更复杂推理任务（如大范围全局预分析），为推理 + 正文留足空间。
+- 实现（`lib/deepseek.ts`）：`MAX_TOKENS` 常量 8192 → 32768，`chatComplete`/`chatStream` 共用一处生效。
+
+### v1.3（2026-08-07）
+
+**推理模型输出配额修复（以实现为准）**：
+- 附录 A：`maxTokens: 4096` → **8192**；补注 deepseek-v4-flash/pro 为推理模型，流式输出先 `reasoning_content` 后 `content`，`max_tokens` 须同时覆盖推理与正文。
+- 实现修复（`lib/deepseek.ts`）：`max_tokens` 由硬编码 1024 提升为 8192（原 1024 会被复杂任务推理过程耗尽，`finish_reason=length` 导致正文从未输出）；`chatStream` 流结束无正文输出时显式抛 502 并记录 reasoning_tokens 告警日志，替代静默空返回。影响面：polish / analyze / report-summary / overview 全部流式管道与公式生成（chatComplete）。
+
+### v1.2（2026-08-07）
+
+**脱敏策略收敛：仅公司名称脱敏，数值数据不脱敏（以实现为准）**：
+- §2.1 分层脱敏矩阵：**绝对金额**由"分档替换为区间"改为**不脱敏**（保持原始值）；往来方名称、科目名称均不再脱敏。
+- §2.2 原"金额区间映射表"整节替换为"数值数据不脱敏说明"：`AMOUNT_INTERVALS` / `desensitizeAmountWan` 已从 `lib/desensitize.ts` 移除，不再保留。
+- §3.3 澄清段更新：`desensitizeAmountWan` 随策略收敛移除，不再"作为能力保留"；金额、百分比、趋势方向均不脱敏。
+- §8.1 配置表结构同步为实际 schema（config_type/pattern/replacement/enabled/priority）；金额分档规则一律 `enabled=false`（迁移 `20260807120000_desensitize_company_only`）。
+- §8.2 动态映射仅保留公司名（往来方映射移除）。
+- 实现：polish / analyze / summarize 三管道均仅做公司名动态映射与输出侧反向还原，金额/百分比/趋势原样透传。
 
 ### v1.1（2026-07-30）
 

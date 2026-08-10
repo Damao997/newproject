@@ -10,8 +10,143 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../lib/deepseek', () => ({ chatComplete: mocks.chatComplete, chatStream: mocks.chatStream }))
 vi.mock('../middleware/audit', () => ({ recordAudit: mocks.recordAudit, clientIp: vi.fn(() => '127.0.0.1') }))
 
-import { AIProxyService, parseFormulaOutput, buildAnalyzeFactBlock } from './AIProxyService'
-import type { OperatingRow } from './IndicatorsService'
+import { AIProxyService, parseFormulaOutput, buildAnalyzeFactBlock, buildOverviewFactBlock, selectOverviewRows, buildTemplatePrompt } from './AIProxyService'
+import type { OperatingRow, StaticRow } from './IndicatorsService'
+
+/** 构造经营行（缺省 level 2 叶子、全 0 无数据） */
+function opRow(partial: Partial<OperatingRow>): OperatingRow {
+  return {
+    code: 'OP_X', name: '指标', level: 2, category: '', dataType: 'data', valueType: 'amount', isLeaf: true,
+    budget: 0, actual: 0, samePeriod: 0, ytd: 0, samePeriodYtd: 0, yoy: 0, achievement: 0, ytdYoy: 0,
+    ...partial,
+  }
+}
+
+/** 构造静态行（缺省 level 2 叶子、全 0 无数据） */
+function stRow(partial: Partial<StaticRow>): StaticRow {
+  return {
+    code: 'ST_X', name: '静态指标', level: 2, category: '', dataType: 'data', valueType: 'amount', isLeaf: true,
+    current: 0, yearStart: 0, samePeriod: 0, lastYearStart: 0, yoy: 0,
+    ...partial,
+  }
+}
+
+describe('buildOverviewFactBlock', () => {
+  it('金额原样带万、百分比 toFixed(1)%、公司别名与期间齐全', () => {
+    const operating = [opRow({
+      code: 'OP_01', name: '燃气具收入', valueType: 'amount',
+      actual: 1234.5, budget: 1500, samePeriod: 1100, yoy: 12.3,
+      ytd: 7000, samePeriodYtd: 6080, ytdYoy: 15.1, achievement: 63.6,
+    })]
+    const staticRows = [stRow({ code: 'ST_01', name: '燃气设备余额', current: 500, samePeriod: 480, yoy: 4.2 })]
+    const block = buildOverviewFactBlock('公司A', '2026-06', operating, staticRows)
+    expect(block).toContain('【分析主体】公司A')
+    expect(block).toContain('【期间】2026-06')
+    expect(block).toContain('【经营指标】')
+    expect(block).toContain('本月实际 1234.5万')
+    expect(block).toContain('预算 1500.0万')
+    expect(block).toContain('同比 12.3%')
+    expect(block).toContain('累计同比 15.1%')
+    expect(block).toContain('达成率 63.6%')
+    expect(block).toContain('【静态指标】')
+    expect(block).toContain('本期 500.0万')
+    expect(block).toContain('变动率 4.2%')
+  })
+
+  it('比率/数量类不标注万，金额原样透传', () => {
+    const operating = [opRow({ code: 'OP_R', name: '毛利率', valueType: 'ratio', actual: 0.856, ytd: 0.82, achievement: 100 })]
+    const block = buildOverviewFactBlock('公司A', undefined, operating, [])
+    expect(block).toContain('本月实际 0.9')
+    expect(block).not.toContain('万')
+  })
+})
+
+describe('selectOverviewRows', () => {
+  it('剔除无数据行并保留 level≤1 汇总行', () => {
+    const op = [
+      opRow({ code: 'ROOT', level: 0, name: '收入', actual: 500, ytd: 3000 }),
+      opRow({ code: 'L1', level: 1, name: '燃气具', actual: 100, ytd: 600 }),
+      opRow({ code: 'EMPTY', level: 2 }),
+      opRow({ code: 'FLAT', level: 2, actual: 50, samePeriod: 50, ytd: 300, samePeriodYtd: 300, achievement: 100 }),
+    ]
+    const { operating } = selectOverviewRows(op, [])
+    expect(operating.map((r) => r.code)).toEqual(['ROOT', 'L1'])
+  })
+
+  it('显著变化行保留，不显著行剔除', () => {
+    const op = [
+      opRow({ code: 'BIG', actual: 120, samePeriod: 100, yoy: 25, ytd: 600, samePeriodYtd: 600, achievement: 100 }),
+      opRow({ code: 'SMALL', actual: 100, samePeriod: 95, yoy: 5, ytd: 600, samePeriodYtd: 600, achievement: 100 }),
+      opRow({ code: 'BIG_YTD', actual: 100, samePeriod: 100, yoy: 0, ytd: 800, samePeriodYtd: 600, ytdYoy: 33.3, achievement: 100 }),
+    ]
+    const { operating } = selectOverviewRows(op, [])
+    // 显著度降序：BIG_YTD（max(0,33.3,0)=33.3）在 BIG（max(25,0,0)=25）之前
+    expect(operating.map((r) => r.code)).toEqual(['BIG_YTD', 'BIG'])
+  })
+
+  it('达成率异常（<70% / >120%）行保留，按显著度降序', () => {
+    const op = [
+      opRow({ code: 'LOW', actual: 100, ytd: 600, budget: 1000, achievement: 60 }),
+      opRow({ code: 'HIGH', actual: 100, ytd: 600, budget: 400, achievement: 150 }),
+      opRow({ code: 'OK', actual: 100, ytd: 600, budget: 600, achievement: 100 }),
+    ]
+    const { operating } = selectOverviewRows(op, [])
+    // HIGH 偏离 100% 达 50，LOW 偏离 40，按显著度降序
+    expect(operating.map((r) => r.code)).toEqual(['HIGH', 'LOW'])
+  })
+
+  it('经营行数上限 40、静态行数上限 20', () => {
+    const op = Array.from({ length: 60 }, (_, i) => opRow({ code: `SIG${i}`, actual: 100, samePeriod: 1, yoy: 100, ytd: 100, samePeriodYtd: 1 }))
+    const st = Array.from({ length: 30 }, (_, i) => stRow({ code: `ST${i}`, current: 100, samePeriod: 1, yoy: 50 }))
+    const { operating, static: out } = selectOverviewRows(op, st)
+    expect(operating.length).toBe(40)
+    expect(out.length).toBe(20)
+  })
+
+  it('静态按 |yoy|≥20 筛选并保留汇总行', () => {
+    const st = [
+      stRow({ code: 'ROOT', level: 0, name: '资产', current: 1000, samePeriod: 1000 }),
+      stRow({ code: 'BIG', current: 120, samePeriod: 100, yoy: 25 }),
+      stRow({ code: 'SMALL', current: 100, samePeriod: 95, yoy: 5 }),
+      stRow({ code: 'EMPTY' }),
+    ]
+    const { static: out } = selectOverviewRows([], st)
+    expect(out.map((r) => r.code)).toEqual(['ROOT', 'BIG'])
+  })
+})
+
+describe('buildTemplatePrompt', () => {
+  const base = '你是一个专业的财务分析助手。'
+
+  it('分节标题与中文序号正确注入，基础 prompt 保留在前部', () => {
+    const out = buildTemplatePrompt(base, [
+      { title: '整体指标趋势概览', requirement: '总结整体经营态势' },
+      { title: '关键指标变化识别', requirement: '识别大幅变化指标' },
+    ])
+    expect(out.startsWith(base)).toBe(true)
+    expect(out).toContain('一、整体指标趋势概览：总结整体经营态势')
+    expect(out).toContain('二、关键指标变化识别：识别大幅变化指标')
+    expect(out).toContain('每节以对应标题开头')
+  })
+
+  it('requirement 为空时仅输出标题', () => {
+    const out = buildTemplatePrompt(base, [{ title: '引言', requirement: '' }])
+    expect(out).toContain('一、引言')
+    expect(out).not.toContain('一、引言：')
+  })
+
+  it('空 sections 时仅返回基础 prompt', () => {
+    expect(buildTemplatePrompt(base, [])).toBe(base)
+  })
+
+  it('超过五节序号回退为数字', () => {
+    const sections = Array.from({ length: 7 }, (_, i) => ({ title: `节${i + 1}`, requirement: '' }))
+    const out = buildTemplatePrompt(base, sections)
+    expect(out).toContain('五、节5')
+    expect(out).toContain('6、节6')
+    expect(out).toContain('7、节7')
+  })
+})
 
 describe('buildAnalyzeFactBlock', () => {
   it('百分数值直接拼单位，不再 ×100 二次缩放', () => {

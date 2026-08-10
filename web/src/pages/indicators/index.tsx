@@ -14,6 +14,7 @@ import {
 import { PageContainer } from '@/components/layout/page-container'
 import { MetricTree } from '@/components/subject-tree/metric-tree'
 import { AnalysisDrawer, type AnalysisTarget } from '@/components/indicators/analysis-drawer'
+import { AiOverviewPanel } from '@/components/indicators/ai-overview-panel'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { usePermission } from '@/hooks/usePermission'
@@ -23,7 +24,7 @@ import { usePageStore } from '@/stores/pageStateStore'
 import { exportToExcel } from '@/lib/export'
 import { cn } from '@/lib/utils'
 import type { MetricValue } from '@/lib/metric-values'
-import { Download, ChevronsDownUp, ChevronsUpDown, History, Eye } from 'lucide-react'
+import { Download, ChevronsDownUp, ChevronsUpDown, History, Eye, Sparkles } from 'lucide-react'
 import type { SubjectNode } from '@/types'
 
 /** 收集含子节点的科目编码（用于全部展开） */
@@ -207,6 +208,19 @@ export default function IndicatorsPage() {
     })
   }
 
+  /** AI 全局预分析：筛选栏入口按钮触发面板自动生成（令牌递增） */
+  const [overviewAutoRun, setOverviewAutoRun] = useState(0)
+  // 预分析数据：经营+静态两体系同时取（两 query 恒挂载，与当前 tab 无关），扁平化为行数组
+  const overviewOperatingRows = useMemo(
+    () => flattenForExport((operatingQuery.data?.items ?? []) as Row[]).map(({ row }) => row),
+    [operatingQuery.data?.items],
+  )
+  const overviewStaticRows = useMemo(
+    () => flattenForExport((staticQuery.data?.items ?? []) as Row[]).map(({ row }) => row),
+    [staticQuery.data?.items],
+  )
+  const hasOverviewData = overviewOperatingRows.length + overviewStaticRows.length > 0
+
   const handleExport = async () => {
     const pct = (v: number) => `${v.toFixed(1)}%`
     // 分型导出：比率列乘 100 加 %，数量取整，金额保持数值；同比统一按增长率百分比（后端已按增长率返回）
@@ -270,6 +284,12 @@ export default function IndicatorsPage() {
       className="space-y-3"
       actions={
         <div className="flex items-center gap-2">
+          {can('reports', 'create') ? (
+            <Button variant="outline" size="sm" onClick={() => setOverviewAutoRun((n) => n + 1)} disabled={isLoading || !hasOverviewData}>
+              <Sparkles className="mr-2 h-4 w-4" />
+              AI 预分析
+            </Button>
+          ) : null}
           {can('indicators', 'export') ? (
             <Button variant="outline" size="sm" onClick={handleExport} disabled={isLoading || activeItems.length === 0}>
               <Download className="mr-2 h-4 w-4" />
@@ -344,6 +364,19 @@ export default function IndicatorsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* AI 全局预分析面板（权限控制显示；key 重建保证筛选变化时旧流中止、数据随新筛选） */}
+      {can('reports', 'create') ? (
+        <AiOverviewPanel
+          key={`${companyCode ?? 'all'}|${period ?? 'all'}`}
+          companyCode={companyCode}
+          period={period ?? periods[periods.length - 1]}
+          operatingRows={overviewOperatingRows}
+          staticRows={overviewStaticRows}
+          disabled={isLoading}
+          autoRunToken={overviewAutoRun}
+        />
+      ) : null}
 
       {/* 去重分类模拟口径提示条 */}
       {excludeReclassify && (

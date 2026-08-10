@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { applyCompanyMap, restoreCompanyMap, desensitizeAmountWan, type CompanyMap } from './desensitize'
+import { applyCompanyMap, restoreCompanyMap, type CompanyMap } from './desensitize'
 
 /** 手工构造公司映射，避免依赖 DB */
 function fakeMap(): CompanyMap {
@@ -38,35 +38,21 @@ describe('desensitize 公司名映射', () => {
   })
 })
 
-describe('desensitizeAmountWan 金额分档（入参万元）', () => {
-  it('按区间映射为标签', () => {
-    expect(desensitizeAmountWan(5)).toBe('小额') // 5万=5万元<10万
-    expect(desensitizeAmountWan(50)).toBe('十万级') // 50万=50万元
-    expect(desensitizeAmountWan(300)).toBe('百万级') // 300万=3,000,000元 ∈[1e6,5e6)
-    expect(desensitizeAmountWan(700)).toBe('五百万级') // 700万=7,000,000元 ∈[5e6,1e7)
-    expect(desensitizeAmountWan(20000)).toBe('亿级') // 20000万=2亿
-  })
-
-  it('负数取绝对值', () => {
-    expect(desensitizeAmountWan(-50)).toBe('十万级')
-  })
-
-  it('覆盖每个区间下界的精确取值', () => {
-    // 入参万元；换算为元后落在对应区间 [min, max)
-    expect(desensitizeAmountWan(0)).toBe('小额') // 0 元
-    expect(desensitizeAmountWan(10)).toBe('十万级') // 10万=100,000 元 = 下界
-    expect(desensitizeAmountWan(100)).toBe('百万级') // 100万=1,000,000 元
-    expect(desensitizeAmountWan(500)).toBe('五百万级') // 500万=5,000,000 元
-    expect(desensitizeAmountWan(1000)).toBe('千万级') // 1000万=10,000,000 元
-    expect(desensitizeAmountWan(5000)).toBe('五千万级') // 5000万=50,000,000 元
-    expect(desensitizeAmountWan(10000)).toBe('亿级') // 10000万=100,000,000 元
-    expect(desensitizeAmountWan(50000)).toBe('五亿级') // 50000万=500,000,000 元
-    expect(desensitizeAmountWan(100000)).toBe('十亿级以上') // 100000万=1,000,000,000 元
-  })
-
-  it('NaN 返回未知量级，超大有限值落入顶档', () => {
-    expect(desensitizeAmountWan(NaN)).toBe('未知量级')
-    expect(desensitizeAmountWan(1e12)).toBe('十亿级以上') // 极大有限值仍应归入顶档
+describe('desensitize 数值数据不脱敏', () => {
+  it('金额、百分比、趋势方向等数值原样透传', () => {
+    const map = fakeMap()
+    const text = '浙江壹品慧杭州分公司收入 1,234.5 万元，同比 +12.3%，环比 -0.5%，趋势上升'
+    const out = applyCompanyMap(text, map)
+    // 公司名被脱敏
+    expect(out).not.toContain('浙江壹品慧杭州分公司')
+    // 数值数据保持原始状态
+    expect(out).toContain('1,234.5 万元')
+    expect(out).toContain('+12.3%')
+    expect(out).toContain('-0.5%')
+    expect(out).toContain('趋势上升')
+    expect(out).not.toContain('小额')
+    expect(out).not.toContain('百万级')
+    expect(out).not.toContain('未知量级')
   })
 })
 

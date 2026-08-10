@@ -1,0 +1,22 @@
+#!/usr/bin/env sh
+# 本地 main 推送保护（生产分支）
+#
+# 背景：GitHub 免费个人账户的私有仓库不强制执行 rulesets/分支保护，
+# 此钩子在本机推送侧实现等效拦截：禁止把 refs/heads/main 直接推送到远程。
+#
+# 临时放行（不推荐）：ZJYPH_ALLOW_MAIN_PUSH=1 git push origin main
+# 正常发布路径：develop → GitHub PR 合并进 main（网页操作，不受本钩子影响）
+if [ "$ZJYPH_ALLOW_MAIN_PUSH" = "1" ]; then
+  exit 0
+fi
+
+while read local_ref local_sha remote_ref remote_sha; do
+  if [ "$remote_ref" = "refs/heads/main" ]; then
+    echo "❌ 已拦截：禁止直接推送 main（生产分支）。"
+    echo "   正确做法：走 GitHub PR 合并（develop → main）。"
+    echo "   如确需强制推送（不推荐）：ZJYPH_ALLOW_MAIN_PUSH=1 git push origin main"
+    exit 1
+  fi
+done
+
+exit 0

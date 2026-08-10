@@ -1,6 +1,9 @@
 import EmbeddedPostgres from 'embedded-postgres'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
+import dotenv from 'dotenv'
+
+dotenv.config()
 
 /**
  * 本地开发数据库：以 embedded-postgres 在用户态启动真实 PostgreSQL，
@@ -10,7 +13,19 @@ import path from 'node:path'
  *   npm run db:local        # 前台启动，Ctrl+C 停止
  * 连接串（与 .env 对齐）：
  *   postgresql://postgres:postgres@localhost:5432/yipinhui_finance
+ *
+ * 警告：仅限本地开发使用。严禁在生产目录（如 D:\ZJYPH-prod\server）执行本命令。
+ * 生产数据库由 PM2 托管（zjyph-postgres，端口 5433，数据目录 D:\ZJYPH-data），
+ * 管理请使用 pm2 / npm run db:prod / deploy-zjyph.ps1 / backup-zjyph.ps1。
  */
+
+// 生产防护：生产 server/.env 的 NODE_ENV=production，加载后立即拒绝启动，
+// 防止在生产目录误执行 db:local 创建孤立的空数据实例（2026-08-10 事故）。
+if (process.env.NODE_ENV === 'production') {
+  console.error('[db] 拒绝启动：db:local 仅用于本地开发，禁止在生产环境执行。')
+  console.error('[db] 生产数据库由 PM2 托管（zjyph-postgres），请使用 pm2 / npm run db:prod。')
+  process.exit(1)
+}
 
 const dataDir = path.resolve(__dirname, '../.pgdata')
 const DB_NAME = 'yipinhui_finance'
