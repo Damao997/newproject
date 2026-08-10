@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { Header } from './header'
 import { Sidebar } from './sidebar'
 import { ChangePasswordDialog } from './change-password-dialog'
+import { VersionNotice } from './version-notice'
 
 const SIDEBAR_COLLAPSED_KEY = 'sidebar-collapsed'
 
@@ -55,6 +56,8 @@ export function MainLayout() {
       </div>
       {/* 修改密码对话框（全局唯一实例：用户菜单主动改密 + 强制改密） */}
       <ChangePasswordDialog />
+      {/* 版本更新公告（发现新版本横幅 + 欢迎公告弹窗） */}
+      <VersionNotice />
     </div>
   )
 }

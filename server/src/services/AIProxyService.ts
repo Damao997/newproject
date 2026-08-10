@@ -6,7 +6,10 @@ import { chatComplete, chatStream } from '../lib/deepseek'
 import { buildCompanyMap, applyCompanyMap, restoreCompanyMap } from '../lib/desensitize'
 import { AI_TEMPLATES, type AiSectionTemplate } from '../config/ai-templates'
 import { IndicatorsService, type OperatingRow, type StaticRow } from './IndicatorsService'
+import { SubjectAnalysisService, ALL_COMPANY_CODE } from './SubjectAnalysisService'
+import { resolveCompanyCodes } from './AggregationService'
 import { extractCodes, validateFormula } from './FormulaRuleService'
+import { logger } from '../lib/logger'
 import type { AuthUserContext } from '../types/express'
 
 /**
@@ -232,14 +235,21 @@ export const AIProxyService = {
       static: StaticRow[]
       userId: string
       traceId?: string
+      /** 操作者数据范围（归档写前校验：非 ALL 公司须在范围内，越权 403） */
+      scope: Pick<AuthUserContext, 'companyCode' | 'scopeValue' | 'dataScopeCodes'>
     },
     onToken: (delta: string) => void,
   ): Promise<{ finalText: string }> {
-    const { companyCode, period, userId, traceId } = params
+    const { companyCode, period, userId, traceId, scope } = params
     const operating = Array.isArray(params.operating) ? params.operating : []
     const staticRows = Array.isArray(params.static) ? params.static : []
     const { operating: opRows, static: stRows } = selectOverviewRows(operating, staticRows)
     if (opRows.length === 0 && stRows.length === 0) throw errors.badRequest('当前筛选无指标数据，无法生成预分析')
+
+    // 归档写前 scope 校验：非 ALL 公司须在操作者数据范围内（汇总主体按「全有或全无」展开，越权 403）
+    if (companyCode && companyCode !== ALL_COMPANY_CODE) {
+      await resolveCompanyCodes(scope, companyCode)
+    }
 
     const map = await buildCompanyMap()
     // 分析主体：单一公司/汇总主体映射为代号；全部主体（scope 汇总）以“本公司”表述（与 analyze 一致）
@@ -254,7 +264,25 @@ export const AIProxyService = {
 
     const filtered = filterOutput(full)
     const finalText = restoreCompanyMap(filtered.sanitized, map)
-    await recordAudit({ userId, module: 'ai', action: 'overview', detail: { companyCode: companyCode ?? null, period: period ?? null, operatingCount: opRows.length, staticCount: stRows.length, leaks: filtered.leaks } }, traceId)
+
+    // 归档到单项分析表（持久化，主体×全局预分析×期间 幂等覆盖；失败不影响 SSE 响应，仅告警）
+    // 期间为空（全部期间口径）时不归档
+    let archived = false
+    if (finalText.trim() && period) {
+      try {
+        await SubjectAnalysisService.archiveOverview({
+          companyCode,
+          period,
+          content: finalText,
+          metricContext: { operatingCount: opRows.length, staticCount: stRows.length },
+          userId,
+        })
+        archived = true
+      } catch (e) {
+        logger.warn(traceId, 'AI 预分析归档失败', (e as Error).message)
+      }
+    }
+    await recordAudit({ userId, module: 'ai', action: 'overview', detail: { companyCode: companyCode ?? null, period: period ?? null, operatingCount: opRows.length, staticCount: stRows.length, archived, leaks: filtered.leaks } }, traceId)
     return { finalText }
   },
 }

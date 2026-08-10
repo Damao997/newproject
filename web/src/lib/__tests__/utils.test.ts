@@ -14,8 +14,10 @@ describe('formatMoney', () => {
     expect(formatMoney(1234.5)).toBe('1,234.50 万')
   })
 
-  it('处理零值', () => {
-    expect(formatMoney(0)).toBe('0.00 万')
+  it('处理零值：统一显示 -', () => {
+    expect(formatMoney(0)).toBe('-')
+    // -0 与 0 等价，同样显示 -
+    expect(formatMoney(-0)).toBe('-')
   })
 
   it('处理负值', () => {
@@ -26,6 +28,10 @@ describe('formatMoney', () => {
 describe('formatMoneyWan', () => {
   it('保留两位小数且不带后缀', () => {
     expect(formatMoneyWan(1234.5)).toBe('1,234.50')
+  })
+
+  it('零值显示 -', () => {
+    expect(formatMoneyWan(0)).toBe('-')
   })
 })
 
@@ -38,12 +44,20 @@ describe('formatPercent', () => {
   it('处理整数百分比', () => {
     expect(formatPercent(1)).toBe('100.0%')
   })
+
+  it('零值显示 -', () => {
+    expect(formatPercent(0)).toBe('-')
+  })
 })
 
 describe('formatQuantity', () => {
   it('千分位整数，不带小数', () => {
     expect(formatQuantity(12345.67)).toBe('12,346')
     expect(formatQuantity(3)).toBe('3')
+  })
+
+  it('零值显示 -', () => {
+    expect(formatQuantity(0)).toBe('-')
   })
 })
 
@@ -59,6 +73,13 @@ describe('formatMetricValue', () => {
 
   it('比率百分比（1 位小数）', () => {
     expect(formatMetricValue(0.235, 'ratio')).toBe('23.5%')
+  })
+
+  it('零值显示 -（金额/数量/比率均一致）', () => {
+    expect(formatMetricValue(0)).toBe('-')
+    expect(formatMetricValue(0, 'amount')).toBe('-')
+    expect(formatMetricValue(0, 'quantity')).toBe('-')
+    expect(formatMetricValue(0, 'ratio')).toBe('-')
   })
 })
 

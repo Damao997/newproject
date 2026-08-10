@@ -65,10 +65,31 @@ export async function resolveScopeCompanyCodes(scope: Scope): Promise<string[]> 
   return []
 }
 
-/** 校验并收敛请求的公司编码到用户 scope 内；越权抛 403 */
+/** 解析用户可见的汇总主体编码集合（companies 范围下授权 dataScope 中的汇总主体；与指标页聚合口径对齐） */
+export async function resolveScopeSummaryCodes(scope: Scope): Promise<string[]> {
+  const s = currentScope() ?? (await resolveScope(prisma, scope))
+  if (s.type === 'all') {
+    const all = await prisma.company.findMany({ where: { entityType: 'summary', status: 'active' }, select: { code: true } })
+    return all.map((c) => c.code)
+  }
+  if (s.type === 'companies') return s.summaryCodes
+  return []
+}
+
+/** 用户是否为全量数据范围（scopeValue '*'）——ALL 归档（含跨公司汇总金额）仅全量用户可见可操作 */
+export async function isFullScope(scope: Scope): Promise<boolean> {
+  const s = currentScope() ?? (await resolveScope(prisma, scope))
+  return s.type === 'all'
+}
+
+/** 校验并收敛请求的公司编码到用户 scope 内；越权抛 403。ALL 归档属全局资产：仅全量数据范围用户可操作 */
 async function assertCompanyInScope(scope: Scope, companyCode: string): Promise<void> {
-  const allowed = await resolveScopeCompanyCodes(scope)
-  if (!allowed.includes(companyCode)) {
+  if (companyCode === ALL_COMPANY_CODE) {
+    if (!(await isFullScope(scope))) throw errors.forbidden('无权操作全局预分析归档（需要全部数据范围）')
+    return
+  }
+  const [allowed, summaryCodes] = await Promise.all([resolveScopeCompanyCodes(scope), resolveScopeSummaryCodes(scope)])
+  if (!allowed.includes(companyCode) && !summaryCodes.includes(companyCode)) {
     throw errors.forbidden('无权操作该公司的分析数据')
   }
 }
@@ -83,8 +104,16 @@ export const TRANSACTION_SUBJECTS: Record<string, string> = {
   TXN_PER_AP: '预付账款',
 }
 
-/** 推断科目类型（operating/static/transaction），优先取入参，缺省查科目表 */
-async function resolveSubjectType(subjectCode: string, given?: string): Promise<'operating' | 'static' | 'transaction'> {
+/** AI 全局预分析归档的约定科目编码（subject_analysis.subject_code），展示名映射见 enrich */
+export const OVERVIEW_SUBJECT_CODE = 'OVERVIEW'
+export const OVERVIEW_SUBJECT_NAME = '全局预分析'
+/** 全部主体归档时的约定公司编码（company_code 无 FK 约束，可存约定值） */
+export const ALL_COMPANY_CODE = 'ALL'
+export const ALL_COMPANY_NAME = '全部主体'
+
+/** 推断科目类型（operating/static/transaction/overview），优先取入参，缺省查科目表 */
+async function resolveSubjectType(subjectCode: string, given?: string): Promise<'operating' | 'static' | 'transaction' | 'overview'> {
+  if (given === 'overview') return 'overview'
   if (given === 'transaction') {
     if (!TRANSACTION_SUBJECTS[subjectCode]) throw errors.badRequest(`往来分析对象不存在：${subjectCode}`)
     return 'transaction'
@@ -97,11 +126,26 @@ async function resolveSubjectType(subjectCode: string, given?: string): Promise<
   return subject.subjectType
 }
 
+/** 纯文本转义 HTML 特殊字符（归档富文本转换前使用） */
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+/** AI 预分析纯文本 → 富文本 HTML：按行转 <p>，分节标题行（"一、…"）加粗 */
+export function plainTextToRichHtml(text: string): string {
+  return text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((l) => (/^[一二三四五六七八九十]+、/.test(l) ? `<p><strong>${escapeHtml(l)}</strong></p>` : `<p>${escapeHtml(l)}</p>`))
+    .join('')
+}
+
 function toDTO(row: {
   id: string
   companyCode: string
   subjectCode: string
-  subjectType: 'operating' | 'static' | 'transaction'
+  subjectType: 'operating' | 'static' | 'transaction' | 'overview'
   fiscalYear: string
   period: string
   title: string
@@ -143,8 +187,14 @@ async function enrich(rows: Awaited<ReturnType<typeof prisma.subjectAnalysis.fin
   ])
   const cMap = new Map(companies.map((c) => [c.code, c.name]))
   const sMap = new Map(subjects.map((s) => [s.code, s.name]))
-  // 往来分析对象（TXN_*）不在科目表中，名称取静态映射
-  return rows.map((r) => toDTO(r, cMap.get(r.companyCode) ?? null, sMap.get(r.subjectCode) ?? TRANSACTION_SUBJECTS[r.subjectCode] ?? null))
+  // 往来分析对象（TXN_*）不在科目表中，名称取静态映射；全局预分析（OVERVIEW）与全部主体（ALL）取约定名称
+  return rows.map((r) =>
+    toDTO(
+      r,
+      cMap.get(r.companyCode) ?? (r.companyCode === ALL_COMPANY_CODE ? ALL_COMPANY_NAME : null),
+      sMap.get(r.subjectCode) ?? TRANSACTION_SUBJECTS[r.subjectCode] ?? (r.subjectCode === OVERVIEW_SUBJECT_CODE ? OVERVIEW_SUBJECT_NAME : null),
+    ),
+  )
 }
 
 export const SubjectAnalysisService = {
@@ -156,6 +206,8 @@ export const SubjectAnalysisService = {
     companyCode?: string
     subjectCode?: string
     period?: string
+    /** 分析类型过滤：'overview' = 仅 AI 全局预分析归档；'normal' = 排除预分析；缺省不限 */
+    subjectType?: 'overview' | 'normal'
     keyword?: string
     includeInactive?: boolean
     page?: number
@@ -165,10 +217,18 @@ export const SubjectAnalysisService = {
     const pageSize = Math.min(100, Math.max(1, filter.pageSize ?? 20))
     const keyword = filter.keyword?.trim()
     const allowed = await resolveScopeCompanyCodes(scope)
-    const companyCodes = filter.companyCode ? allowed.filter((c) => c === filter.companyCode) : allowed
+    const summaryCodes = await resolveScopeSummaryCodes(scope)
+    const visibleCodes = [...new Set([...allowed, ...summaryCodes])]
+    // 全部主体的预分析归档（ALL）含跨公司汇总金额：仅全量数据范围用户可见
+    const companyCodes = filter.companyCode
+      ? visibleCodes.filter((c) => c === filter.companyCode)
+      : ((await isFullScope(scope)) ? [...visibleCodes, ALL_COMPANY_CODE] : visibleCodes)
     const where = {
       companyCode: { in: companyCodes },
       ...(filter.subjectCode ? { subjectCode: filter.subjectCode } : {}),
+      // 分析类型：AI 预分析归档（OVERVIEW）与普通科目分析互斥
+      ...(filter.subjectType === 'overview' ? { subjectCode: OVERVIEW_SUBJECT_CODE } : {}),
+      ...(filter.subjectType === 'normal' ? { subjectCode: { not: OVERVIEW_SUBJECT_CODE } } : {}),
       ...(filter.period ? { period: filter.period } : {}),
       ...(keyword ? { OR: [{ title: { contains: keyword } }, { content: { contains: keyword } }] } : {}),
       // 显式声明 status 即接管软删除过滤（见 middleware/soft-delete.ts hasStatusFilter）
@@ -311,11 +371,59 @@ export const SubjectAnalysisService = {
     const rows = await prisma.subjectAnalysis.findMany({
       where: {
         companyCode: { in: resolvedCompanyCodes },
+        // 排除 AI 全局预分析归档（OVERVIEW）：报告章节自动填充只取科目级分析
+        subjectCode: { not: OVERVIEW_SUBJECT_CODE },
         ...(params.period ? { period: params.period } : {}),
       },
       orderBy: [{ companyCode: 'asc' }, { subjectCode: 'asc' }],
     })
     const items = await enrich(rows)
     return { items, resolvedCompanyCodes }
+  },
+
+  /**
+   * AI 全局预分析归档（供 AIProxyService 调用）：主体（全部主体=ALL）× 全局预分析 × 期间 幂等覆盖。
+   * 纯文本报告转富文本 HTML 存储；复用 subject_analysis 的软删除与列表管理机制。
+   */
+  async archiveOverview(params: {
+    companyCode?: string
+    period: string
+    content: string
+    metricContext?: Record<string, unknown> | null
+    userId: string
+  }): Promise<AnalysisDTO> {
+    const { period, userId } = params
+    if (!period || !params.content?.trim()) throw errors.badRequest('期间与内容为必填项')
+    const companyCode = params.companyCode?.trim() || ALL_COMPANY_CODE
+    if (companyCode !== ALL_COMPANY_CODE) {
+      const company = await prisma.company.findUnique({ where: { code: companyCode }, select: { code: true } })
+      if (!company) throw errors.badRequest(`公司不存在：${companyCode}`)
+    }
+    const content = sanitizeRichText(plainTextToRichHtml(params.content))
+    const data = {
+      companyCode,
+      subjectCode: OVERVIEW_SUBJECT_CODE,
+      subjectType: 'overview' as const,
+      fiscalYear: period.slice(0, 4),
+      period,
+      title: OVERVIEW_SUBJECT_NAME,
+      content,
+      metricContext: (params.metricContext ?? undefined) as never,
+      status: 'active' as const,
+      updatedBy: userId,
+    }
+    const row = await prisma.subjectAnalysis.upsert({
+      where: {
+        companyCode_subjectCode_period: {
+          companyCode,
+          subjectCode: OVERVIEW_SUBJECT_CODE,
+          period,
+        },
+      },
+      create: { ...data, createdBy: userId },
+      update: data,
+    })
+    const [dto] = await enrich([row])
+    return dto
   },
 }

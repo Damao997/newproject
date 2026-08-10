@@ -4,7 +4,7 @@ import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
 import { Bold, Italic, Heading2, Heading3, List, ListOrdered, Quote, Undo, Redo, Link as LinkIcon, RemoveFormatting, Sparkles, X, Check, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { streamAI, type StreamController } from '@/lib/ai-stream'
+import { useAiStream } from '@/hooks/use-ai-stream'
 
 /**
  * TipTap 富文本编辑器（受控）。
@@ -27,6 +27,7 @@ function ToolButton({ onClick, active, disabled, title, children }: { onClick: (
     <button
       type="button"
       title={title}
+      aria-label={title}
       onClick={onClick}
       disabled={disabled}
       className={cn(
@@ -95,33 +96,28 @@ function PolishPanel({
   onClose: () => void
 }) {
   const [style, setStyle] = useState<PolishStyle>('formal')
-  const [streaming, setStreaming] = useState(false)
-  const [preview, setPreview] = useState('')
   const [finalText, setFinalText] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const ctrlRef = useRef<StreamController | null>(null)
+  const styleRef = useRef<PolishStyle>('formal')
+  // body 用函数形式：start 发起时求值，保证切换风格后立即生效（不依赖重渲染时序）
+  const ai = useAiStream({
+    path: '/ai/polish',
+    body: () => ({ text: original, style: styleRef.current }),
+    onDone: (ft) => setFinalText(ft || ''),
+  })
 
   const run = (s: PolishStyle) => {
+    styleRef.current = s
     setStyle(s)
-    setStreaming(true)
-    setPreview('')
     setFinalText('')
-    setError(null)
-    ctrlRef.current?.abort()
-    ctrlRef.current = streamAI('/ai/polish', { text: original, style: s }, {
-      onToken: (d) => setPreview((p) => p + d),
-      onDone: (ft) => { setFinalText(ft || ''); setStreaming(false) },
-      onError: (msg) => { setError(msg); setStreaming(false) },
-    })
+    ai.start()
   }
 
   useEffect(() => {
     run('formal')
-    return () => ctrlRef.current?.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const result = finalText || preview
+  const result = finalText || ai.preview
   return (
     <div className="flex w-72 shrink-0 flex-col border-l bg-muted/20">
       <div className="flex items-center justify-between border-b px-3 py-2">
@@ -133,7 +129,7 @@ function PolishPanel({
           <button
             key={s}
             type="button"
-            disabled={streaming}
+            disabled={ai.streaming}
             onClick={() => run(s)}
             className={cn('rounded px-2 py-0.5 text-[12px] transition-colors', style === s ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}
           >
@@ -141,9 +137,9 @@ function PolishPanel({
           </button>
         ))}
       </div>
-      <div className="flex-1 overflow-y-auto px-3 py-2 text-[13px] leading-relaxed text-foreground">
-        {error ? (
-          <span className="text-finance-red">{error}</span>
+      <div className="flex-1 overflow-y-auto px-3 py-2 text-[13px] leading-relaxed text-foreground" aria-live="polite">
+        {ai.error ? (
+          <span className="text-finance-red">{ai.error}</span>
         ) : result ? (
           <p className="whitespace-pre-wrap">{result}</p>
         ) : (
@@ -154,7 +150,7 @@ function PolishPanel({
         <button type="button" onClick={onClose} className="rounded px-2 py-1 text-[12px] text-muted-foreground hover:bg-muted">取消</button>
         <button
           type="button"
-          disabled={streaming || !finalText}
+          disabled={ai.streaming || !finalText}
           onClick={() => onApply(finalText)}
           className="flex items-center gap-1 rounded bg-primary px-2 py-1 text-[12px] text-primary-foreground disabled:opacity-40"
         >

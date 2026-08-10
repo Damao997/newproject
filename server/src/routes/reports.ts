@@ -34,13 +34,15 @@ router.get('/analyses/batch', requirePermission('reports:view', 'view'), asyncHa
   sendOk(res, data)
 }))
 
-// 列表（管理视图：关键词/分页/含已删除，附引用情况）
+// 列表（管理视图：关键词/分页/含已删除，附引用情况；subjectType=overview/normal 互斥过滤）
 router.get('/analyses', requirePermission('reports:view', 'view'), asyncHandler(async (req, res) => {
   const authUser = req.authUser as AuthUserContext
+  const q = req.query.subjectType
   const data = await SubjectAnalysisService.list(scopeOf(authUser), {
     companyCode: req.query.companyCode as string | undefined,
     subjectCode: req.query.subjectCode as string | undefined,
     period: req.query.period as string | undefined,
+    subjectType: q === 'overview' || q === 'normal' ? q : undefined,
     keyword: req.query.keyword as string | undefined,
     includeInactive: req.query.includeInactive === '1' || req.query.includeInactive === 'true',
     page: req.query.page ? Number(req.query.page) : undefined,

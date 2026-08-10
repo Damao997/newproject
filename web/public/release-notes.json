@@ -1,0 +1,17 @@
+{
+  "releases": [
+    {
+      "version": "v2026.08.1",
+      "publishedAt": "2026-08-07",
+      "title": "首个生产版本",
+      "notes": [
+        { "type": "feature", "text": "首页经营看板：关键指标、预算达成、月度趋势总览" },
+        { "type": "feature", "text": "财务指标分析：科目树浏览、同比/环比、预算达成率" },
+        { "type": "feature", "text": "往来分析：应收/应付账龄、单项分析、期间趋势图" },
+        { "type": "feature", "text": "数据管理：Excel 导入、静态科目与指标公式维护" },
+        { "type": "feature", "text": "分析报告：按公司/汇总主体编制报告，支持 AI 辅助生成" },
+        { "type": "feature", "text": "权限管理：角色权限矩阵、用户管理、审计日志" }
+      ]
+    }
+  ]
+}

@@ -359,7 +359,7 @@ router.post('/metrics/trial-calc', requirePermission('data:metric:create', 'crea
   if (req.body?.period !== undefined && req.body?.period !== null && req.body?.period !== '' && !PERIOD_RE.test(String(req.body.period))) {
     throw errors.badRequest('请选择有效期间（YYYY-MM）')
   }
-  sendOk(res, await DataService.trialCalc({ formula, companyCode: req.body?.companyCode, period: req.body?.period }))
+  sendOk(res, await DataService.trialCalc({ formula, companyCode: req.body?.companyCode, period: req.body?.period }, req.authUser))
 }))
 
 router.get('/metrics/:id/dependencies', requirePermission('data:metric:update', 'update'), asyncHandler(async (req, res) => {

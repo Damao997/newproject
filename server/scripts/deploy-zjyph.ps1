@@ -110,17 +110,25 @@ try {
 }
 finally { Pop-Location; Remove-Item Env:VITE_API_BASE_URL -ErrorAction SilentlyContinue }
 
-# 版本标识：构建后向 index.html 注入当前 tag（线上版本可查）
+# 版本标识：构建后向 index.html 注入/更新 meta app-version（线上版本可查）
 $tag = git -C $ProdDir describe --tags 2>$null
 if ($tag) {
+  # 非纯 tag（tag 后带提交数/哈希，如 v2026.08.1-3-g2a3b4c5）时取主版本段，保证前端版本号可解析
+  $tag = $tag -replace '^(.+?)-[0-9]+-g[0-9a-f]+$', '$1'
   $index = Join-Path $webDir 'dist\index.html'
   if (Test-Path $index) {
     $html = [System.IO.File]::ReadAllText($index, [System.Text.Encoding]::UTF8)
-    if ($html -notmatch 'name="app-version"') {
-      $html = $html -replace '<head>', "<head>`n  <meta name=""app-version"" content=""$tag"">"
-      [System.IO.File]::WriteAllText($index, $html, (New-Object System.Text.UTF8Encoding($true)))
+    if ($html -imatch 'name="app-version"\s+content="([^"]*)"') {
+      # 已存在 meta：更新 value（重复部署/升级 tag 时与当前版本保持一致）
+      $html = $html -ireplace 'name="app-version"\s+content="[^"]*"', "name=""app-version"" content=""$tag"""
+      Write-Host "版本标识已更新：$tag"
+    } elseif ($html -imatch '<head>') {
+      $html = $html -ireplace '<head>', "<head>`n  <meta name=""app-version"" content=""$tag"">"
       Write-Host "版本标识已注入：$tag"
+    } else {
+      Write-Host '版本标识注入失败：未找到 <head> 标签' -ForegroundColor Yellow
     }
+    [System.IO.File]::WriteAllText($index, $html, (New-Object System.Text.UTF8Encoding($true)))
   }
 }
 

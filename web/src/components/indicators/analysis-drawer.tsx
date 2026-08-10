@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { X, Save, Trash2, FileText, Sparkles, Loader2 } from 'lucide-react'
+import { X, Save, Trash2, FileText, Sparkles, Loader2, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RichTextEditor } from '@/components/editor/rich-text-editor'
-import { useAnalyses, useCreateAnalysis, useUpdateAnalysis, useDeleteAnalysis } from '@/hooks/api-queries'
-import { streamAI, type StreamController } from '@/lib/ai-stream'
+import { ContextChip } from '@/components/analysis/context-chip'
+import { useConfirm } from '@/components/ui/confirm-dialog'
+import { useAiStream } from '@/hooks/use-ai-stream'
+import { useAnalysisForm } from '@/hooks/use-analysis-form'
 import { formatMetricValue, formatPercent, type MetricValueType } from '@/lib/utils'
 import { calcYoy, calcAchievement, type MetricValue } from '@/lib/metric-values'
 
@@ -41,15 +43,6 @@ interface AnalysisDrawerProps {
   onClose: () => void
 }
 
-function ContextChip({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-col rounded-md border bg-muted/30 px-3 py-1.5">
-      <span className="text-[11px] text-muted-foreground">{label}</span>
-      <span className="font-num text-[13px] text-foreground">{value}</span>
-    </div>
-  )
-}
-
 export function AnalysisDrawer({ open, target, onClose }: AnalysisDrawerProps) {
   // 以 公司×科目×期间 为键重挂载表单：目标切换时所有 state（标题/正文/既有ID/反馈/AI 流）从零初始化，
   // 避免上一科目的内容残留到新科目（旧实现依赖异步查询结果回填，查询键命中缓存时会写入旧内容）。
@@ -60,45 +53,18 @@ export function AnalysisDrawer({ open, target, onClose }: AnalysisDrawerProps) {
 
 /** 抽屉表单主体：随 target 键重建，挂载后查询既有分析并一次性回填 */
 function DrawerBody({ target, onClose }: { target: AnalysisTarget; onClose: () => void }) {
-  const [title, setTitle] = useState('')
-  const [content, setContent] = useState('')
-  const [existingId, setExistingId] = useState<string | null>(null)
-  const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null)
-
-  // AI 初稿流式状态
-  const [aiStreaming, setAiStreaming] = useState(false)
-  const [aiPreview, setAiPreview] = useState('')
-  const [aiError, setAiError] = useState<string | null>(null)
-  const aiCtrlRef = useRef<StreamController | null>(null)
-
-  // 卸载时中止 AI 流（目标切换重建组件或关闭抽屉时，旧流不再写回状态）
-  useEffect(() => () => aiCtrlRef.current?.abort(), [])
-
-  // 读取该 公司×科目×期间 既有分析（组件挂载后查询一次）
-  const { data } = useAnalyses(
-    { companyCode: target.companyCode, subjectCode: target.subjectCode, period: target.period },
-    { enabled: true },
-  )
-  const existing = data?.items?.[0]
-
-  // 查询结果到达时一次性回填（目标切换由外层 key 重建组件，不存在旧目标状态）
-  useEffect(() => {
-    if (existing) {
-      setExistingId(existing.id)
-      setTitle(existing.title)
-      setContent(existing.content)
-    } else {
-      setExistingId(null)
-      setTitle(`${target.subjectName} 分析`)
-    }
-    setFeedback(null)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [existing?.id])
-
-  const createMutation = useCreateAnalysis()
-  const updateMutation = useUpdateAnalysis()
-  const deleteMutation = useDeleteAnalysis()
-  const busy = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending
+  // AI 初稿：流式预览 → 完成后"确认插入"正文（与润色预览→确认模式一致，不自动覆盖编辑器）
+  const [aiDraft, setAiDraft] = useState('')
+  const ai = useAiStream({
+    path: '/ai/analyze',
+    body: {
+      companyCode: target.companyCode,
+      subjectCode: target.subjectCode,
+      subjectType: target.subjectType,
+      period: target.period,
+    },
+    onDone: (finalText) => setAiDraft((finalText || '').trim()),
+  })
 
   const metricContext = useMemo(() => {
     if (!target.metric) return null
@@ -112,71 +78,79 @@ function DrawerBody({ target, onClose }: { target: AnalysisTarget; onClose: () =
         }
   }, [target?.metric, target?.showBudget])
 
-  const handleGenerateDraft = () => {
-    setAiError(null)
-    setAiPreview('')
-    setAiStreaming(true)
-    aiCtrlRef.current?.abort()
-    aiCtrlRef.current = streamAI('/ai/analyze', {
+  // 表单状态机（既有查询回填/保存/删除）与往来抽屉共用
+  const form = useAnalysisForm({
+    fetchParams: { companyCode: target.companyCode, subjectCode: target.subjectCode, period: target.period },
+    buildPayload: (title, content) => ({
       companyCode: target.companyCode,
       subjectCode: target.subjectCode,
       subjectType: target.subjectType,
+      fiscalYear: target.fiscalYear,
       period: target.period,
-    }, {
-      onToken: (d) => setAiPreview((p) => p + d),
-      onDone: (finalText) => {
-        setAiStreaming(false)
-        const draft = (finalText || '').trim()
-        if (draft) setContent((prev) => `${prev ?? ''}${wrapAiDraft(draft)}`)
-      },
-      onError: (msg) => { setAiError(msg); setAiStreaming(false) },
-    })
+      title,
+      content,
+      metricContext,
+    }),
+    defaultTitle: () => `${target.subjectName} 分析`,
+  })
+
+  const handleGenerateDraft = () => {
+    setAiDraft('')
+    ai.start()
   }
 
-  const handleSave = async () => {
-    setFeedback(null)
-    try {
-      if (existingId) {
-        await updateMutation.mutateAsync({ id: existingId, data: { title, content, metricContext } })
-        setFeedback({ type: 'ok', msg: '已保存修改' })
-      } else {
-        const created = await createMutation.mutateAsync({
-          companyCode: target.companyCode,
-          subjectCode: target.subjectCode,
-          subjectType: target.subjectType,
-          fiscalYear: target.fiscalYear,
-          period: target.period,
-          title,
-          content,
-          metricContext,
-        })
-        setExistingId(created.id)
-        setFeedback({ type: 'ok', msg: '已新增分析' })
-      }
-    } catch (e) {
-      setFeedback({ type: 'err', msg: (e as Error).message || '保存失败' })
-    }
+  /** 确认插入：将已生成的初稿追加到正文编辑器（带 data-ai-suggested 标识） */
+  const handleInsertDraft = () => {
+    if (!aiDraft) return
+    form.setContent(`${form.content ?? ''}${wrapAiDraft(aiDraft)}`)
+    setAiDraft('')
   }
 
-  const handleDelete = async () => {
-    if (!existingId) return
-    if (!window.confirm('确认删除该单项分析？删除后引用它的报告章节将标记为“原文已删除”。')) return
-    setFeedback(null)
-    try {
-      await deleteMutation.mutateAsync(existingId)
-      setExistingId(null)
-      setTitle(`${target.subjectName} 分析`)
-      setContent('')
-      setFeedback({ type: 'ok', msg: '已删除' })
-    } catch (e) {
-      setFeedback({ type: 'err', msg: (e as Error).message || '删除失败' })
+  // 已保存内容快照：回填完成（title 首次非空）与保存成功后记录；与当前值对比判断是否有未保存修改
+  const savedRef = useRef<{ title: string; content: string } | null>(null)
+  // 注意：依赖仅 [form.title] 是有意为之——title/content 变化不应刷新快照（否则保存后继续编辑会把未保存值误记为已保存）
+  useEffect(() => {
+    if (!savedRef.current && form.title) {
+      savedRef.current = { title: form.title, content: form.content }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.title])
+  useEffect(() => {
+    if (form.feedback?.type === 'ok') {
+      savedRef.current = { title: form.title, content: form.content }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.feedback])
+  const isDirty = savedRef.current !== null && (form.title !== savedRef.current.title || form.content !== savedRef.current.content)
+
+  // 统一关闭流程：有未保存修改时先确认（X/遮罩/Escape/取消按钮均走此路径）
+  const { confirm, element } = useConfirm()
+  const handleClose = async () => {
+    if (isDirty) {
+      const ok = await confirm({
+        title: '放弃未保存内容？',
+        description: '关闭将丢失尚未保存的标题或正文修改。',
+        confirmText: '放弃修改',
+      })
+      if (!ok) return
+    }
+    onClose()
   }
+  const handleCloseRef = useRef(handleClose)
+  handleCloseRef.current = handleClose
+  // Escape 键关闭（与 X/遮罩/取消一致，先确认未保存修改）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') void handleCloseRef.current()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const m = target.metric
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-black/40 animate-fade-in" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40 animate-fade-in" onClick={() => void handleClose()} />
       <div className="relative flex h-full w-full max-w-xl flex-col border-l bg-background shadow-xl animate-in slide-in-from-right duration-200">
         {/* 头部 */}
         <div className="flex items-start justify-between border-b px-5 py-4">
@@ -189,7 +163,7 @@ function DrawerBody({ target, onClose }: { target: AnalysisTarget; onClose: () =
               </p>
             </div>
           </div>
-          <button type="button" onClick={onClose} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
+          <button type="button" onClick={() => void handleClose()} aria-label="关闭" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -227,7 +201,7 @@ function DrawerBody({ target, onClose }: { target: AnalysisTarget; onClose: () =
         <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
           <div className="space-y-1.5">
             <Label htmlFor="analysis-title">分析标题</Label>
-            <Input id="analysis-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="如：灶具收入分析" />
+            <Input id="analysis-title" value={form.title} onChange={(e) => form.setTitle(e.target.value)} placeholder="如：灶具收入分析" />
           </div>
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
@@ -236,51 +210,59 @@ function DrawerBody({ target, onClose }: { target: AnalysisTarget; onClose: () =
                 variant="outline"
                 size="sm"
                 onClick={handleGenerateDraft}
-                disabled={aiStreaming}
+                disabled={ai.streaming}
+                aria-busy={ai.streaming}
                 className="h-7 text-primary"
               >
-                {aiStreaming ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1 h-3.5 w-3.5" />}
+                {ai.streaming ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1 h-3.5 w-3.5" />}
                 AI 生成初稿
               </Button>
             </div>
-            {(aiStreaming || aiPreview || aiError) && (
-              <div className="rounded-md border bg-muted/20 px-3 py-2 text-[13px] leading-relaxed">
-                {aiError ? (
-                  <span className="text-finance-red">{aiError}</span>
+            {(ai.streaming || ai.preview || aiDraft || ai.error) && (
+              <div className="rounded-md border bg-muted/20 px-3 py-2 text-[13px] leading-relaxed" aria-live="polite">
+                {ai.error ? (
+                  <span className="text-finance-red">{ai.error}</span>
                 ) : (
                   <>
                     <p className="mb-1 flex items-center gap-1 text-[11px] text-muted-foreground">
-                      <Sparkles className="h-3 w-3 text-primary" /> AI 初稿预览{aiStreaming ? '（生成中…）' : '（已完成，自动插入下方编辑器）'}
+                      <Sparkles className="h-3 w-3 text-primary" />
+                      {ai.streaming ? 'AI 初稿生成中…（模型推理通常需 10-40 秒）' : 'AI 初稿已生成（预览确认后插入正文）'}
                     </p>
-                    <p className="whitespace-pre-wrap text-foreground">{aiPreview || '…'}</p>
+                    <p className="whitespace-pre-wrap text-foreground">{ai.preview || aiDraft || '…'}</p>
+                    {aiDraft && !ai.streaming && (
+                      <Button variant="outline" size="sm" onClick={handleInsertDraft} className="mt-2 h-7 text-primary">
+                        <Check className="mr-1 h-3.5 w-3.5" /> 插入正文
+                      </Button>
+                    )}
                   </>
                 )}
               </div>
             )}
-            <RichTextEditor value={content} onChange={setContent} placeholder="撰写该指标的分析结论…" polishEnabled />
+            <RichTextEditor value={form.content} onChange={form.setContent} placeholder="撰写该指标的分析结论…" polishEnabled />
           </div>
-          {feedback && (
-            <p className={feedback.type === 'ok' ? 'text-[13px] text-finance-green' : 'text-[13px] text-finance-red'}>{feedback.msg}</p>
+          {form.feedback && (
+            <p className={form.feedback.type === 'ok' ? 'text-[13px] text-finance-green' : 'text-[13px] text-finance-red'}>{form.feedback.msg}</p>
           )}
         </div>
 
         {/* 底部操作 */}
         <div className="flex items-center justify-between border-t px-5 py-3">
           <div>
-            {existingId && (
-              <Button variant="outline" size="sm" onClick={handleDelete} disabled={busy} className="text-finance-red">
+            {form.existingId && (
+              <Button variant="outline" size="sm" onClick={form.remove} disabled={form.busy} className="text-finance-red">
                 <Trash2 className="mr-1 h-4 w-4" /> 删除
               </Button>
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={onClose} disabled={busy}>取消</Button>
-            <Button size="sm" onClick={handleSave} disabled={busy || !title.trim()}>
+            <Button variant="outline" size="sm" onClick={() => void handleClose()} disabled={form.busy}>取消</Button>
+            <Button size="sm" onClick={form.save} disabled={form.busy || !form.title.trim()}>
               <Save className="mr-1 h-4 w-4" /> 保存
             </Button>
           </div>
         </div>
       </div>
+      {element}
     </div>
   )
 }

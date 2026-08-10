@@ -31,7 +31,7 @@ function YoYBadge({ value }: { value: number }) {
         isFlat ? 'text-muted-foreground' : isPositive ? 'text-finance-red' : 'text-finance-green',
       )}
     >
-      <span className="font-num">{value < 0 ? '-' : ''}{(Math.abs(value) * 100).toFixed(1)}%</span>
+      <span className="font-num">{value === 0 ? '-' : `${value < 0 ? '-' : ''}${(Math.abs(value) * 100).toFixed(1)}%`}</span>
     </span>
   )
 }

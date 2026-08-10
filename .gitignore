@@ -46,6 +46,8 @@ review-diff*.txt
 .qoder/_review_part*.diff
 .qoder/_rv_*
 .qoder/aging-table-*.png
+.qoder/verify-*
+.qoder/edge-profile-*
 .qoder/mcp.json
 
 # 诊断脚本与请求体（可能含测试口令，不入库）

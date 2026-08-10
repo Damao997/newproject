@@ -14,7 +14,7 @@ import {
 import { PageContainer } from '@/components/layout/page-container'
 import { MetricTree } from '@/components/subject-tree/metric-tree'
 import { AnalysisDrawer, type AnalysisTarget } from '@/components/indicators/analysis-drawer'
-import { AiOverviewPanel } from '@/components/indicators/ai-overview-panel'
+import { AiOverviewDialog } from '@/components/indicators/ai-overview-panel'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { usePermission } from '@/hooks/usePermission'
@@ -23,8 +23,9 @@ import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { usePageStore } from '@/stores/pageStateStore'
 import { exportToExcel } from '@/lib/export'
 import { cn } from '@/lib/utils'
+import { Skeleton } from '@/components/ui/skeleton'
 import type { MetricValue } from '@/lib/metric-values'
-import { Download, ChevronsDownUp, ChevronsUpDown, History, Eye, Sparkles } from 'lucide-react'
+import { Download, ChevronsDownUp, ChevronsUpDown, History, Eye, Sparkles, Loader2 } from 'lucide-react'
 import type { SubjectNode } from '@/types'
 
 /** 收集含子节点的科目编码（用于全部展开） */
@@ -88,6 +89,8 @@ export default function IndicatorsPage() {
   const excludeReclassify = usePageStore((s) => s.indicators.excludeReclassify)
   const expandedCodes = usePageStore((s) => s.indicators.expandedCodes)
   const [analysisTarget, setAnalysisTarget] = useState<AnalysisTarget | null>(null)
+  // AI 预分析弹窗开关（数据就绪后令牌递增，由弹窗内自动打开）
+  const [overviewOpen, setOverviewOpen] = useState(false)
   const setDimFilter = useCallback((v: string) => setIndicators({ dimFilter: v }), [setIndicators])
   const setPeriodFilter = useCallback((v: string) => setIndicators({ periodFilter: v }), [setIndicators])
   const setExcludeReclassify = useCallback((v: boolean) => setIndicators({ excludeReclassify: v }), [setIndicators])
@@ -134,8 +137,16 @@ export default function IndicatorsPage() {
     const code = cur.startsWith('company:') || cur.startsWith('summary:') ? cur.slice('company:'.length) : undefined
     if (!code || !valid.has(code)) setDimFilter('all')
   }, [companies, setDimFilter])
-  const operatingQuery = useOperatingIndicators({ companyCode, period, excludeReclassify: excludeReclassify || undefined })
-  const staticQuery = useStaticIndicators({ companyCode, period, excludeReclassify: excludeReclassify || undefined })
+  // AI 预分析需要两体系数据：当前 tab 的 query 恒挂载，另一体系在触发预分析时按需拉取（静态懒加载）
+  const [aiNeedData, setAiNeedData] = useState(false)
+  const operatingQuery = useOperatingIndicators(
+    { companyCode, period, excludeReclassify: excludeReclassify || undefined },
+    { enabled: isOperating || aiNeedData },
+  )
+  const staticQuery = useStaticIndicators(
+    { companyCode, period, excludeReclassify: excludeReclassify || undefined },
+    { enabled: !isOperating || aiNeedData },
+  )
 
   const entityCompanies = useMemo(() => (companies ?? []).filter((c) => c.type === 'entity'), [companies])
   const summaryEntities = useMemo(() => (companies ?? []).filter((c) => c.type === 'summary'), [companies])
@@ -187,12 +198,10 @@ export default function IndicatorsPage() {
       return new Set([...prev, ...activeExpandable])
     })
 
-  /** 打开单项分析抽屉：需先选中单一公司主体 */
+  /** 打开单项分析抽屉：需先选中单一公司主体（未选择时按钮已在表格中禁用并提示） */
   const handleAnalyze = (node: SubjectNode) => {
-    if (!companyCode) {
-      window.alert('请先在「主体维度」中选择单一公司，再对该公司的科目撰写单项分析。')
-      return
-    }
+    // 安全兜底：未选单一公司时不打开（正常流程按钮已禁用，此处防类型窄化丢失）
+    if (!companyCode) return
     const companyName = entityCompanies.find((c) => c.code === companyCode)?.name ?? companyCode
     const effectivePeriod = period ?? periods[periods.length - 1] ?? ''
     setAnalysisTarget({
@@ -210,7 +219,17 @@ export default function IndicatorsPage() {
 
   /** AI 全局预分析：筛选栏入口按钮触发面板自动生成（令牌递增） */
   const [overviewAutoRun, setOverviewAutoRun] = useState(0)
-  // 预分析数据：经营+静态两体系同时取（两 query 恒挂载，与当前 tab 无关），扁平化为行数组
+  // 两体系数据均就绪（对象存在即视为已加载，即使 items 为空）→ 递增令牌触发面板生成
+  const bothReady = operatingQuery.data !== undefined && staticQuery.data !== undefined
+  // 数据准备中：AI 已触发但另一体系数据仍在拉取（顶部按钮 loading 反馈）
+  const overviewPreparing = aiNeedData && !bothReady
+  useEffect(() => {
+    if (aiNeedData && bothReady) {
+      setAiNeedData(false)
+      setOverviewAutoRun((n) => n + 1)
+    }
+  }, [aiNeedData, bothReady])
+  // 预分析数据：经营+静态两体系；未加载的另一体系为空数组（触发预分析时按需拉取后自动生成）
   const overviewOperatingRows = useMemo(
     () => flattenForExport((operatingQuery.data?.items ?? []) as Row[]).map(({ row }) => row),
     [operatingQuery.data?.items],
@@ -220,6 +239,13 @@ export default function IndicatorsPage() {
     [staticQuery.data?.items],
   )
   const hasOverviewData = overviewOperatingRows.length + overviewStaticRows.length > 0
+
+  /** 重置筛选：恢复默认主体/期间/重分类口径（空状态引导动作） */
+  const handleResetFilters = () => {
+    setDimFilter('all')
+    setPeriodFilter('')
+    setExcludeReclassify(false)
+  }
 
   const handleExport = async () => {
     const pct = (v: number) => `${v.toFixed(1)}%`
@@ -278,55 +304,37 @@ export default function IndicatorsPage() {
   }
 
   return (
-    <PageContainer
-      title="财务指标"
-      description="按科目层级查看经营指标和静态指标数据"
-      className="space-y-3"
-      actions={
-        <div className="flex items-center gap-2">
-          {can('reports', 'create') ? (
-            <Button variant="outline" size="sm" onClick={() => setOverviewAutoRun((n) => n + 1)} disabled={isLoading || !hasOverviewData}>
-              <Sparkles className="mr-2 h-4 w-4" />
-              AI 预分析
-            </Button>
-          ) : null}
-          {can('indicators', 'export') ? (
-            <Button variant="outline" size="sm" onClick={handleExport} disabled={isLoading || activeItems.length === 0}>
-              <Download className="mr-2 h-4 w-4" />
-              导出Excel
-            </Button>
-          ) : null}
-        </div>
-      }
-    >
-      {/* 筛选栏 */}
+    <PageContainer title="财务指标" description="按科目层级查看经营指标和静态指标数据" className="space-y-3">
+      {/* 筛选与操作控制条 */}
       <Card className="animate-fade-in">
         <CardContent className="p-4">
-          <div className="flex flex-col space-y-3 lg:flex-row lg:items-center lg:justify-end lg:space-y-0">
-            <div className="flex flex-col space-y-2 sm:flex-row sm:items-center sm:space-x-2 sm:space-y-0">
-              <Select value={dimFilter} onValueChange={setDimFilter}>
-                <SelectTrigger className="w-full sm:w-[220px]">
-                  <SelectValue placeholder="选择主体维度" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全部主体</SelectItem>
-                  <SelectGroup>
-                    <SelectLabel>公司</SelectLabel>
-                    {entityCompanies.map((c) => (
-                      <SelectItem key={c.code} value={`company:${c.code}`}>{c.name}</SelectItem>
-                    ))}
-                  </SelectGroup>
-                  <SelectGroup>
-                    <SelectLabel>汇总主体</SelectLabel>
-                    {summaryEntities.map((c) => (
-                      <SelectItem key={c.code} value={`summary:${c.code}`}>{c.name}</SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+            {/* 左侧：主体维度选择（加宽，保证公司名称完整显示） */}
+            <Select value={dimFilter} onValueChange={setDimFilter}>
+              <SelectTrigger className="h-8 w-full lg:w-[280px]" aria-label="主体维度">
+                <SelectValue placeholder="选择主体维度" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部主体</SelectItem>
+                <SelectGroup>
+                  <SelectLabel>公司</SelectLabel>
+                  {entityCompanies.map((c) => (
+                    <SelectItem key={c.code} value={`company:${c.code}`}>{c.name}</SelectItem>
+                  ))}
+                </SelectGroup>
+                <SelectGroup>
+                  <SelectLabel>汇总主体</SelectLabel>
+                  {summaryEntities.map((c) => (
+                    <SelectItem key={c.code} value={`summary:${c.code}`}>{c.name}</SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
 
+            {/* 右侧：期间 + 重分类 + 操作按钮组（lg 以上靠右对齐） */}
+            <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
               <Select value={periodFilter} onValueChange={setPeriodFilter}>
-                <SelectTrigger className="w-full sm:w-[160px]">
+                <SelectTrigger className="h-8 w-full sm:w-[160px]" aria-label="期间">
                   <SelectValue placeholder="选择期间" />
                 </SelectTrigger>
                 <SelectContent>
@@ -338,43 +346,67 @@ export default function IndicatorsPage() {
               </Select>
 
               <div
-                className="flex items-center space-x-2"
+                className="flex items-center gap-1.5"
                 title="按重分类日志快照回溯展示调整前口径，仅供对比查看，不修改数据"
               >
                 <Switch id="exclude-reclassify" checked={excludeReclassify} onCheckedChange={setExcludeReclassify} />
-                <Label htmlFor="exclude-reclassify" className="cursor-pointer whitespace-nowrap text-sm">去除重分类影响</Label>
+                <Label htmlFor="exclude-reclassify" className="cursor-pointer whitespace-nowrap text-[13px]">去除重分类影响</Label>
               </div>
 
-              <div className="flex items-center space-x-2">
-                {can('reports', 'view') && (
-                  <Button variant="outline" size="sm" onClick={() => navigate('/reports?tab=analyses')}>
-                    <Eye className="mr-2 h-4 w-4" /> 查看分析
-                  </Button>
-                )}
-                <Button variant="outline" size="sm" onClick={toggleExpandAll}>
-                  {isAllExpanded ? (
-                    <ChevronsDownUp className="mr-2 h-4 w-4" />
-                  ) : (
-                    <ChevronsUpDown className="mr-2 h-4 w-4" />
-                  )}
-                  {isAllExpanded ? '全部折叠' : '全部展开'}
+              <div className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
+
+              {/* AI 预分析：点击后弹出分析窗口（数据就绪后自动生成） */}
+              {can('reports', 'create') ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAiNeedData(true)}
+                  disabled={isLoading || !hasOverviewData || overviewPreparing}
+                >
+                  {overviewPreparing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1 h-3.5 w-3.5" />}
+                  {overviewPreparing ? '数据准备中…' : 'AI 预分析'}
                 </Button>
-              </div>
+              ) : null}
+
+              {/* 查看分析：跳转单项分析管理页 */}
+              {can('reports', 'view') ? (
+                <Button variant="outline" size="sm" onClick={() => navigate('/reports?tab=analyses')}>
+                  <Eye className="mr-1 h-3.5 w-3.5" /> 查看分析
+                </Button>
+              ) : null}
+
+              {/* 展开/折叠全部 */}
+              <Button variant="outline" size="sm" onClick={toggleExpandAll}>
+                {isAllExpanded ? <ChevronsDownUp className="mr-1 h-3.5 w-3.5" /> : <ChevronsUpDown className="mr-1 h-3.5 w-3.5" />}
+                {isAllExpanded ? '全部折叠' : '全部展开'}
+              </Button>
+
+              {/* 导出 Excel */}
+              {can('indicators', 'export') ? (
+                <Button variant="outline" size="sm" onClick={handleExport} disabled={isLoading || activeItems.length === 0}>
+                  <Download className="mr-1 h-3.5 w-3.5" /> 导出 Excel
+                </Button>
+              ) : null}
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* AI 全局预分析面板（权限控制显示；key 重建保证筛选变化时旧流中止、数据随新筛选） */}
+      {/* AI 全局预分析弹窗（权限控制显示；key 重建保证筛选变化时旧流中止、数据随新筛选；关闭不中断后台生成） */}
       {can('reports', 'create') ? (
-        <AiOverviewPanel
+        <AiOverviewDialog
           key={`${companyCode ?? 'all'}|${period ?? 'all'}`}
+          open={overviewOpen}
+          onOpenChange={setOverviewOpen}
+          onViewAnalyses={() => navigate('/reports?tab=analyses')}
+          slotKey={`${companyCode ?? 'all'}|${period ?? 'all'}`}
           companyCode={companyCode}
           period={period ?? periods[periods.length - 1]}
           operatingRows={overviewOperatingRows}
           staticRows={overviewStaticRows}
           disabled={isLoading}
           autoRunToken={overviewAutoRun}
+          onNeedData={() => setAiNeedData(true)}
         />
       ) : null}
 
@@ -393,9 +425,30 @@ export default function IndicatorsPage() {
       <Card className="animate-fade-in">
         <CardContent className="min-h-[420px] px-4 py-3">
           {isLoading ? (
-            <div className="py-16 text-center text-sm text-muted-foreground">数据加载中...</div>
+            /* 加载骨架：保持表格占位高度，避免内容区塌陷再撑回导致跳动 */
+            <div className="py-3">
+              <div className="flex gap-3">
+                {Array.from({ length: isOperating ? 10 : 5 }).map((_, c) => (
+                  <Skeleton key={c} className="h-11 flex-1" />
+                ))}
+              </div>
+              {Array.from({ length: 6 }).map((_, r) => (
+                <div key={r} className="mt-2 flex gap-3">
+                  {Array.from({ length: isOperating ? 10 : 5 }).map((_, c) => (
+                    <Skeleton key={c} className="h-10 flex-1" />
+                  ))}
+                </div>
+              ))}
+            </div>
           ) : activeTree.length === 0 ? (
-            <div className="py-16 text-center text-sm text-muted-foreground">当前筛选无数据</div>
+            /* 空状态：引导调整筛选或一键重置 */
+            <div className="py-16 text-center">
+              <p className="text-sm text-muted-foreground">当前筛选无数据</p>
+              <p className="mt-1 text-xs text-muted-foreground/70">请调整主体维度或期间后重试。</p>
+              <Button variant="outline" size="sm" className="mt-3" onClick={handleResetFilters}>
+                重置筛选
+              </Button>
+            </div>
           ) : (
             <div className={cn('transition-opacity duration-200', isFetching && 'opacity-60')}>
               <MetricTree
@@ -406,6 +459,8 @@ export default function IndicatorsPage() {
                 expandedCodes={expandedSet}
                 onToggle={handleToggle}
                 onAnalyze={can('reports', 'create') ? handleAnalyze : undefined}
+                analyzeDisabled={!companyCode}
+                analyzeHint="请先在「主体维度」选择单一公司，再对该公司的科目撰写单项分析"
               />
             </div>
           )}

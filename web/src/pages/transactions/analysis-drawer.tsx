@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { X, Save, Trash2, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,7 +11,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { RichTextEditor } from '@/components/editor/rich-text-editor'
-import { useAnalyses, useCreateAnalysis, useUpdateAnalysis, useDeleteAnalysis, useCompanies, useTransactionAging } from '@/hooks/api-queries'
+import { ContextChip } from '@/components/analysis/context-chip'
+import { useCompanies, useTransactionAging } from '@/hooks/api-queries'
+import { useAnalysisForm } from '@/hooks/use-analysis-form'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { formatMoneyWan } from '@/lib/utils'
 import type { AgingAnalysisRow } from '@/types'
@@ -50,15 +52,6 @@ interface Props {
   onClose: () => void
 }
 
-function ContextChip({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-col rounded-md border bg-muted/30 px-3 py-1.5">
-      <span className="text-[11px] text-muted-foreground">{label}</span>
-      <span className="font-num text-[13px] text-foreground">{value}</span>
-    </div>
-  )
-}
-
 export function TransactionAnalysisDrawer({ open, target, onClose }: Props) {
   // 以 往来类型×期间×默认公司 为键重挂载表单：目标切换时所有 state 从零初始化，
   // 避免上一会话的公司/类型/正文残留（旧实现由 effect 异步重置 state，打开瞬间查询键仍命中旧缓存）。
@@ -71,23 +64,12 @@ export function TransactionAnalysisDrawer({ open, target, onClose }: Props) {
 function TransactionDrawerBody({ target, onClose }: { target: TransactionAnalysisTarget; onClose: () => void }) {
   const [companyCode, setCompanyCode] = useState(target.defaultCompanyCode ?? '')
   const [txnType, setTxnType] = useState(target.transactionType ?? '')
-  const [title, setTitle] = useState('')
-  const [content, setContent] = useState('')
-  const [existingId, setExistingId] = useState<string | null>(null)
-  const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null)
 
   const { data: companies } = useCompanies()
   const { getDisplayName, displayNameMap } = useCompanyDisplayName()
   const singleCompanies = (companies || []).filter((c) => c.entityType === 'single')
 
   const subjectCode = TXN_SUBJECT_CODE[txnType] ?? ''
-
-  // 读取该 公司×往来类型×期间 既有分析（幂等键与后端唯一键一致；未选公司/类型时不查询）
-  const { data: existingData } = useAnalyses(
-    { companyCode, subjectCode, period: target.period },
-    { enabled: !!companyCode && !!subjectCode },
-  )
-  const existing = existingData?.items?.[0]
 
   // 快照数据：该公司该类型的期末余额与 8 段账龄（groupBy=type 每公司一行）
   const { data: agingRows } = useTransactionAging(
@@ -98,77 +80,34 @@ function TransactionDrawerBody({ target, onClose }: { target: TransactionAnalysi
     (r) => r.companyCode === companyCode && r.transactionType === txnType,
   )
 
-  // 公司/类型/既有分析变化时回填表单（目标切换由外层 key 重建组件，不存在旧目标状态）
-  useEffect(() => {
-    if (existing) {
-      setExistingId(existing.id)
-      setTitle(existing.title)
-      setContent(existing.content)
-    } else {
-      setExistingId(null)
-      const companyLabel = companyCode ? (displayNameMap.get(companyCode) ?? companyCode) : ''
-      setTitle(companyCode && txnType ? `${companyLabel}${target.period}${txnType}分析` : '')
-      setContent('')
-    }
-    setFeedback(null)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyCode, txnType, existing?.id, target.period])
-
-  const createMutation = useCreateAnalysis()
-  const updateMutation = useUpdateAnalysis()
-  const deleteMutation = useDeleteAnalysis()
-  const busy = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending
-
   const metricContext = snapshot
     ? { closingBalance: snapshot.closingBalance, aging: snapshot.aging, cutPeriod: target.period }
     : null
 
-  const handleSave = async () => {
-    if (!companyCode) {
-      setFeedback({ type: 'err', msg: '请先选择公司' })
-      return
-    }
-    if (!txnType) {
-      setFeedback({ type: 'err', msg: '请先选择往来类型' })
-      return
-    }
-    setFeedback(null)
-    try {
-      if (existingId) {
-        await updateMutation.mutateAsync({ id: existingId, data: { title, content, metricContext } })
-        setFeedback({ type: 'ok', msg: '已保存修改' })
-      } else {
-        const created = await createMutation.mutateAsync({
-          companyCode,
-          subjectCode,
-          subjectType: 'transaction',
-          fiscalYear: target.period.slice(0, 4),
-          period: target.period,
-          title,
-          content,
-          metricContext,
-        })
-        setExistingId(created.id)
-        setFeedback({ type: 'ok', msg: '已新增分析' })
+  // 表单状态机（既有查询回填/保存/删除）与指标抽屉共用；公司/类型切换触发重置
+  const form = useAnalysisForm({
+    fetchParams: { companyCode, subjectCode, period: target.period },
+    fetchEnabled: !!companyCode && !!subjectCode,
+    buildPayload: (title, content) => {
+      if (!companyCode) throw new Error('请先选择公司')
+      if (!txnType) throw new Error('请先选择往来类型')
+      return {
+        companyCode,
+        subjectCode,
+        subjectType: 'transaction',
+        fiscalYear: target.period.slice(0, 4),
+        period: target.period,
+        title,
+        content,
+        metricContext,
       }
-    } catch (e) {
-      setFeedback({ type: 'err', msg: (e as Error).message || '保存失败' })
-    }
-  }
-
-  const handleDelete = async () => {
-    if (!existingId) return
-    if (!window.confirm('确认删除该单项分析？删除后引用它的报告章节将标记为“原文已删除”。')) return
-    setFeedback(null)
-    try {
-      await deleteMutation.mutateAsync(existingId)
-      setExistingId(null)
-      setContent('')
-      setFeedback({ type: 'ok', msg: '已删除' })
-    } catch (e) {
-      setFeedback({ type: 'err', msg: (e as Error).message || '删除失败' })
-    }
-  }
+    },
+    defaultTitle: () => {
+      if (!companyCode || !txnType) return ''
+      const companyLabel = displayNameMap.get(companyCode) ?? companyCode
+      return `${companyLabel}${target.period}${txnType}分析`
+    },
+  })
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -234,29 +173,29 @@ function TransactionDrawerBody({ target, onClose }: { target: TransactionAnalysi
         <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
           <div className="space-y-1.5">
             <Label htmlFor="txn-analysis-title">分析标题</Label>
-            <Input id="txn-analysis-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="如：华东公司应收账款分析" />
+            <Input id="txn-analysis-title" value={form.title} onChange={(e) => form.setTitle(e.target.value)} placeholder="如：华东公司应收账款分析" />
           </div>
           <div className="space-y-1.5">
             <Label>分析内容</Label>
-            <RichTextEditor value={content} onChange={setContent} placeholder="撰写该往来类型的分析结论（余额构成、账龄结构、风险与催收建议等）…" polishEnabled />
+            <RichTextEditor value={form.content} onChange={form.setContent} placeholder="撰写该往来类型的分析结论（余额构成、账龄结构、风险与催收建议等）…" polishEnabled />
           </div>
-          {feedback && (
-            <p className={feedback.type === 'ok' ? 'text-[13px] text-finance-green' : 'text-[13px] text-finance-red'}>{feedback.msg}</p>
+          {form.feedback && (
+            <p className={form.feedback.type === 'ok' ? 'text-[13px] text-finance-green' : 'text-[13px] text-finance-red'}>{form.feedback.msg}</p>
           )}
         </div>
 
         {/* 底部操作 */}
         <div className="flex items-center justify-between border-t px-5 py-3">
           <div>
-            {existingId && (
-              <Button variant="outline" size="sm" onClick={handleDelete} disabled={busy} className="text-finance-red">
+            {form.existingId && (
+              <Button variant="outline" size="sm" onClick={form.remove} disabled={form.busy} className="text-finance-red">
                 <Trash2 className="mr-1 h-4 w-4" /> 删除
               </Button>
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={onClose} disabled={busy}>取消</Button>
-            <Button size="sm" onClick={handleSave} disabled={busy || !companyCode || !txnType || !title.trim()}>
+            <Button variant="outline" size="sm" onClick={onClose} disabled={form.busy}>取消</Button>
+            <Button size="sm" onClick={form.save} disabled={form.busy || !companyCode || !txnType || !form.title.trim()}>
               <Save className="mr-1 h-4 w-4" /> 保存
             </Button>
           </div>

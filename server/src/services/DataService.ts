@@ -2,14 +2,15 @@ import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
 import { validateFormulaChange, extractCodes, extractOperandRefs, PSEUDO_OPERANDS } from './FormulaRuleService'
-import { resolveCompanyCodes } from './AggregationService'
-import { evaluateFormula, topoSortMetrics } from '../lib/formula'
-import { OPERATING_DIMS } from '../lib/metric-values'
-import { fiscalYearStartPeriod, fiscalYearOpeningSnapshotPeriod, periodMinusYears, fiscalYtdDays } from '../lib/period'
+import { AggregationService, resolveCompanyCodes, flattenValueTree } from './AggregationService'
+import { evaluateFormula } from '../lib/formula'
+import { OPERATING_DIMS, STATIC_DIMS } from '../lib/metric-values'
+import { periodMinusYears, fiscalYtdDays } from '../lib/period'
 import { buildExcel } from '../lib/excel'
 import { effectiveScope, type ScopeInput } from '../lib/scope-guard'
 import { withoutScope } from '../middleware/scope-context'
 import { SUBJECT_SEGMENT_MAP, childSubjectCodeOf } from '../../prisma/seed-data/subject-trees'
+import type { AuthUserContext } from '../types/express'
 import type { Prisma } from '@prisma/client'
 
 /**
@@ -833,11 +834,16 @@ export const DataService = {
   },
 
   /**
-   * 公式试算：用指定公司/期间的本月实际值代入公式求值。
-   * 跨维度引用（{CODE@维度}）支持 calc 指标：被引用指标为计算类时，
-   * 按目标维度上下文重算其依赖链（如 {ST_13@YEAR_START} 取子科目年初快照之和）。
+   * 公式试算：用指定公司/期间的聚合树值代入公式求值。
+   * 数据源与指标页/存货页完全同口径：buildOperatingTree/buildStaticTree 输出
+   * （父=子求和 + DAG 计算层 + scope 过滤），覆盖跨树引用（静态比率引用经营科目）、
+   * 跨维度引用（{CODE@维度} 复合键）与无公式 calc 聚合节点（如「存货」「成本」子树根）。
+   * 公司缺省 = 当前用户数据权限范围全部单体；汇总主体按「全有或全无」展开为成员。
    */
-  async trialCalc(input: { formula: string; companyCode?: string; period?: string }): Promise<{ value: number | null; period: string | null; operands: { code: string; name: string; value: number; hasData: boolean }[]; batchInfo: { id: string; filename: string; activatedAt: string } | null }> {
+  async trialCalc(
+    input: { formula: string; companyCode?: string; period?: string },
+    authUser?: Pick<AuthUserContext, 'companyCode' | 'scopeValue' | 'dataScopeCodes'>,
+  ): Promise<{ value: number | null; period: string | null; operands: { code: string; name: string; value: number; hasData: boolean }[]; batchInfo: { id: string; filename: string; activatedAt: string } | null }> {
     const codes = extractCodes(input.formula)
     if (codes.length === 0) return { value: null, period: null, operands: [], batchInfo: null }
     const batch = await prisma.importBatch.findFirst({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true, fileName: true, updatedAt: true } })
@@ -849,178 +855,56 @@ export const DataService = {
     }
     if (!period) return { value: null, period: null, operands: [], batchInfo: null }
 
-    // 汇总主体 → 展开为单体成员（与 indicators/transactions 同口径：成员求和；
-    // 越权汇总主体按「全有或全无」拒绝 403；非请求链路视为全量，与现状一致）
-    let companyCodes: string[] | undefined
-    if (input.companyCode) {
-      companyCodes = await resolveCompanyCodes({ companyCode: null, scopeValue: '*' }, input.companyCode)
-    }
+    // 公司：缺省 = 数据权限范围全部单体；指定公司（单体/汇总主体）经映射展开（越权 403）
+    const user = authUser ?? { companyCode: null, scopeValue: '*', dataScopeCodes: null }
+    const companyCodes = await resolveCompanyCodes(user, input.companyCode ?? undefined)
 
-    // 1）递归展开 calc 依赖：先取全部计算类指标公式，再从直接 code 出发逐层收集传递依赖
-    const calcMetrics = await prisma.metric.findMany({
-      where: { dataType: 'calc', formula: { not: null }, status: 'active' },
-      select: { code: true, formula: true },
-    })
-    const calcFormulaByCode = new Map(calcMetrics.map((m) => [m.code, m.formula as string]))
-    const allCodes = new Set<string>(codes)
-    const expandQueue = [...codes]
-    while (expandQueue.length > 0) {
-      const c = expandQueue.shift() as string
-      const f = calcFormulaByCode.get(c)
-      if (!f) continue
-      for (const dep of extractCodes(f)) {
-        if (!allCodes.has(dep)) {
-          allCodes.add(dep)
-          expandQueue.push(dep)
-        }
-      }
-    }
-    const allCodeList = [...allCodes]
-
-    // 2）一次性取全量 code 的事实值（经营科目取 ACTUAL_MONTH，静态科目取同期间快照月，支持跨类型公式如 ROA）
-    const where: Record<string, unknown> = { batchId: batch.id, period, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, accountCode: { in: allCodeList } }
-    if (companyCodes) where.companyCode = { in: companyCodes }
-    const facts = await prisma.factOperating.groupBy({ by: ['accountCode'], where, _sum: { value: true } })
-    const valueMap = new Map(facts.map((f) => [f.accountCode, Number(f._sum.value ?? 0)]))
-
-    // 2b）跨维度引用（{CODE@维度}/{DAYS_YTD}）：收集全部公式的复合键需求并逐维取值
-    const evalValues: Record<string, number> = {}
-    // 依赖链上有真实数据的 CODE@DIM（calc 派生与裸键原始值均登记，供操作数 hasData 回显）
-    const derivedKeys = new Set<string>()
-    const allFormulas = [input.formula, ...allCodeList.filter((c) => calcFormulaByCode.has(c)).map((c) => calcFormulaByCode.get(c) as string)]
+    // 操作数引用（仅输入公式：树已求值全部 calc 指标，无需手工展开依赖链）
     const dimRefs = new Map<string, Set<string>>() // 维度码 → 引用该维度的 code 集合
+    // 同期类维度：公式引用时 {DAYS_YTD} 按去年口径（对齐 buildStaticTree 同期列平移）
+    const SAME_DIM_CODES = new Set(['SAME_PERIOD_ACTUAL', 'SAME_PERIOD_YTD', 'SAME_PERIOD_AMOUNT', 'LAST_YEAR_START'])
     let needsDays = false
-    for (const f of allFormulas) {
-      for (const r of extractOperandRefs(f)) {
-        if (PSEUDO_OPERANDS.has(r.code)) { needsDays = true; continue }
-        if (!r.dim) continue
-        const set = dimRefs.get(r.dim) ?? new Set<string>()
-        set.add(r.code)
-        dimRefs.set(r.dim, set)
-      }
-    }
-    if (needsDays) evalValues.DAYS_YTD = fiscalYtdDays(period)
-    const prevPeriod = periodMinusYears(period, 1)
-    const fyStart = fiscalYearStartPeriod(period)
-    const prevFyStart = fiscalYearStartPeriod(prevPeriod)
-    // 经营维度复合键：单期（本月/同期）或区间求和（本年累计/同期累计）；预算维度试算不支持（记 0）
-    const opDimRanges: Record<string, { gte: string; lte: string }> = {
-      ACTUAL_MONTH: { gte: period, lte: period },
-      SAME_PERIOD_ACTUAL: { gte: prevPeriod, lte: prevPeriod },
-      YTD_ACTUAL: { gte: fyStart, lte: period },
-      SAME_PERIOD_YTD: { gte: prevFyStart, lte: prevPeriod },
-    }
-    // 各维度裸键原始值（供 2c 逐维度 calc 派生）
-    const opDimRaw: Record<string, Record<string, number>> = {}
-    const refDims = Array.from(dimRefs.keys())
-    for (const dim of refDims) {
-      const range = opDimRanges[dim]
-      // 该维度求值上下文需要全部展开 code 的原始值（calc 公式按裸键引用依赖叶子，如 OP_03={OP_0301}）
-      const opRefCodes = allCodeList.filter((c) => !c.startsWith('ST_'))
-      if (!range || opRefCodes.length === 0) continue
-      const dimWhere: Record<string, unknown> = { batchId: batch.id, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, period: range, accountCode: { in: opRefCodes } }
-      if (companyCodes) dimWhere.companyCode = { in: companyCodes }
-      const grouped = await prisma.factOperating.groupBy({ by: ['accountCode'], where: dimWhere, _sum: { value: true } })
-      const raw: Record<string, number> = {}
-      for (const g of grouped) {
-        const v = Number(g._sum.value ?? 0)
-        evalValues[`${g.accountCode}@${dim}`] = v
-        raw[g.accountCode] = v
-        // 维度裸键有真实数据即登记，与 calc 门槛解耦（仅维度引用公式的 hasData 依赖此处）
-        if (dimRefs.get(dim)?.has(g.accountCode)) derivedKeys.add(`${g.accountCode}@${dim}`)
-      }
-      opDimRaw[dim] = raw
-    }
-    // 静态维度复合键目标快照月（年初/上年年初 = 财年起始月前一月，即上年期末余额时点）
-    const opening = fiscalYearOpeningSnapshotPeriod(period)
-    const stDimMonths: Record<string, string> = {
-      CURRENT_AMOUNT: period,
-      YEAR_START: opening,
-      SAME_PERIOD_AMOUNT: prevPeriod,
-      LAST_YEAR_START: periodMinusYears(opening, 1),
-    }
-    // 静态各维度裸键原始值（供 2c 逐维度 calc 派生）
-    const stDimRaw: Record<string, Record<string, number>> = {}
-    const stCodes = allCodeList.filter((c) => c.startsWith('ST_'))
-    if (stCodes.length > 0) {
-      const stBatches = await prisma.importBatch.findMany({ where: { dataType: 'static', lifecycleStatus: 'active' }, select: { id: true } })
-      if (stBatches.length > 0) {
-        const stWhere: Record<string, unknown> = { batchId: { in: stBatches.map((b) => b.id) }, accountCode: { in: stCodes } }
-        if (companyCodes) stWhere.companyCode = { in: companyCodes }
-        const stFacts = await prisma.factStatic.groupBy({ by: ['accountCode', 'snapshotDate'], where: stWhere, _sum: { value: true } })
-        for (const g of stFacts) {
-          const d = g.snapshotDate as Date
-          const mon = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
-          if (mon === period) valueMap.set(g.accountCode, (valueMap.get(g.accountCode) ?? 0) + Number(g._sum.value ?? 0))
-          // 静态复合键：命中目标快照月的维度值累加（含 calc 派生所需的裸键原始值）
-          for (const [dim, mon2] of Object.entries(stDimMonths)) {
-            if (mon !== mon2) continue
-            const v = Number(g._sum.value ?? 0)
-            const raw = (stDimRaw[dim] ??= {})
-            raw[g.accountCode] = (raw[g.accountCode] ?? 0) + v
-            if (dimRefs.get(dim)?.has(g.accountCode)) {
-              const k = `${g.accountCode}@${dim}`
-              evalValues[k] = (evalValues[k] ?? 0) + v
-              // 静态裸键同样登记（与 calc 门槛解耦，保证仅维度引用公式的操作数 hasData 正确）
-              derivedKeys.add(k)
-            }
-          }
-        }
-      }
+    let samePeriodCtx = false
+    for (const r of extractOperandRefs(input.formula)) {
+      if (PSEUDO_OPERANDS.has(r.code)) { needsDays = true; continue }
+      if (!r.dim) continue
+      const set = dimRefs.get(r.dim) ?? new Set<string>()
+      set.add(r.code)
+      dimRefs.set(r.dim, set)
+      if (SAME_DIM_CODES.has(r.dim)) samePeriodCtx = true
     }
 
-    // 3）拓扑序（2c 逐维度派生与当前维度求值共用；环检测由 topoSortMetrics 负责）
-    const calcNodes = allCodeList
-      .filter((c) => calcFormulaByCode.has(c))
-      .map((c) => ({ code: c, dependsOn: extractCodes(calcFormulaByCode.get(c) as string) }))
-    let order: string[] = []
-    if (calcNodes.length > 0) order = topoSortMetrics(calcNodes)
-    // 2c）跨维度复合键 calc 派生：被引用指标为 calc 时（如 {ST_13@YEAR_START}），
-    // 在目标维度上下文按拓扑序重算其依赖链（树路径 applyCalcLayer 同款语义），
-    // 两趟收敛跨维引用；必须早于下方裸键铺底，避免当前维度值污染其他维度上下文。
-    // （derivedKeys 已在 2b 顶部声明，此处直接复用并继续登记 calc 派生键）
-    if (calcNodes.length > 0) {
-      for (let pass = 0; pass < 2; pass++) {
-        for (const dim of refDims) {
-          const ctx: Record<string, number> = { ...evalValues, ...(opDimRaw[dim] ?? {}), ...(stDimRaw[dim] ?? {}) }
-          const dimHas = new Map<string, boolean>()
-          for (const c of allCodeList) {
-            dimHas.set(c, Object.prototype.hasOwnProperty.call(opDimRaw[dim] ?? {}, c) || Object.prototype.hasOwnProperty.call(stDimRaw[dim] ?? {}, c))
-          }
-          for (const c of order) {
-            const f = calcFormulaByCode.get(c)
-            if (!f) continue
-            try {
-              ctx[c] = evaluateFormula(f, ctx)
-            } catch { /* 求值失败保底：保留上下文现值 */ }
-            dimHas.set(c, extractCodes(f).some((d) => dimHas.get(d) ?? false))
-          }
-          for (const code of dimRefs.get(dim) ?? []) {
-            const key = `${code}@${dim}`
-            evalValues[key] = ctx[code] ?? 0
-            if (dimHas.get(code)) derivedKeys.add(key)
-          }
-        }
+    // 数据源：聚合树（两树内部跨树引用由 skipExternal 打破，无递归）
+    const [opTree, stTree] = await Promise.all([
+      AggregationService.buildOperatingTree(companyCodes, period),
+      AggregationService.buildStaticTree(companyCodes, period),
+    ])
+    const opByCode = new Map(flattenValueTree(opTree).map((n) => [n.code, n]))
+    const stByCode = new Map(flattenValueTree(stTree).map((n) => [n.code, n]))
+    const nodeOf = (code: string) => (code.startsWith('ST_') ? stByCode : opByCode).get(code)
+
+    // 裸键 {CODE}：经营=本月实际、静态=本期金额（树聚合值，含无公式 calc 聚合节点的子求和）
+    const evalValues: Record<string, number> = {}
+    const hasDataMap = new Map<string, boolean>()
+    for (const c of codes) {
+      const dim = c.startsWith('ST_') ? STATIC_DIMS.CURRENT_AMOUNT : OPERATING_DIMS.ACTUAL_MONTH
+      const v = nodeOf(c)?.values[dim] ?? 0
+      evalValues[c] = v
+      hasDataMap.set(c, v !== 0)
+    }
+    // 复合键 {CODE@DIM}：按科目所属树取对应维度值（页面 crossDim 复合键同款语义）
+    const derivedKeys = new Set<string>()
+    for (const [dim, set] of dimRefs) {
+      for (const c of set) {
+        const v = nodeOf(c)?.values[dim] ?? 0
+        evalValues[`${c}@${dim}`] = v
+        if (v !== 0) derivedKeys.add(`${c}@${dim}`)
       }
     }
+    // 伪操作数 {DAYS_YTD}：本期语境=今年财年累计天数；公式引用同期类维度时按去年天数
+    if (needsDays) evalValues.DAYS_YTD = fiscalYtdDays(samePeriodCtx ? periodMinusYears(period, 1) : period)
 
-    // 4）当前维度：裸键铺底 + 拓扑序求值 calc 指标，写回 evalValues
-    for (const c of allCodeList) evalValues[c] = valueMap.get(c) ?? 0
-    const hasDataMap = new Map<string, boolean>(allCodeList.map((c) => [c, valueMap.has(c)]))
-    if (calcNodes.length > 0) {
-      for (const c of order) {
-        const f = calcFormulaByCode.get(c) as string
-        try {
-          evalValues[c] = evaluateFormula(f, evalValues)
-        } catch {
-          evalValues[c] = 0
-        }
-        const deps = extractCodes(f)
-        hasDataMap.set(c, deps.some((d) => hasDataMap.get(d) ?? false))
-      }
-    }
-
-    // 5）操作数回显：按直接引用（含维度后缀/伪操作数）展示，value 取展开后的值
+    // 操作数回显：按直接引用（含维度后缀/伪操作数）展示，value 取展开后的值
     const DIM_LABELS: Record<string, string> = {
       BUDGET_AMOUNT: '预算', ACTUAL_MONTH: '本月实际', SAME_PERIOD_ACTUAL: '同期实际', YTD_ACTUAL: '本年累计', SAME_PERIOD_YTD: '同期累计',
       CURRENT_AMOUNT: '本期', YEAR_START: '年初', SAME_PERIOD_AMOUNT: '同期', LAST_YEAR_START: '上年年初',
@@ -1045,9 +929,11 @@ export const DataService = {
         hasData: r.dim ? derivedKeys.has(key) : (hasDataMap.get(r.code) ?? false),
       })
     }
+    // 除零/非有限结果兜底：无法计算返回 null（前端显示「无法计算」）
     let value: number | null = null
     try {
-      value = Number(evaluateFormula(input.formula, evalValues).toFixed(2))
+      const v = evaluateFormula(input.formula, evalValues)
+      value = Number.isFinite(v) ? Number(v.toFixed(2)) : null
     } catch {
       value = null
     }

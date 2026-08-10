@@ -59,7 +59,7 @@ function DiffTable({ rows, showOld, showNew }: { rows: ImportDiffRow[]; showOld:
                   {getChangePrefix(r.delta)}{formatMoneyWan(r.delta)}
                 </td>
                 <td className={cn('whitespace-nowrap px-3 py-1.5 text-right font-num', deltaColor)}>
-                  {r.deltaPercent !== null ? `${getChangePrefix(r.deltaPercent)}${r.deltaPercent.toFixed(1)}%` : '-'}
+                  {r.deltaPercent !== null ? (r.deltaPercent === 0 ? '-' : `${getChangePrefix(r.deltaPercent)}${r.deltaPercent.toFixed(1)}%`) : '-'}
                 </td>
               </tr>
             )

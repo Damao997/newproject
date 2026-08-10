@@ -118,7 +118,7 @@ export function KpiCard({ data, index = 0, onClick }: KpiCardProps) {
               ) : (
                 <ArrowDownRight className="h-3 w-3" />
               )}
-              <span className="font-num">{(Math.abs(data.yoy) * 100).toFixed(1)}%</span>
+              <span className="font-num">{data.yoy === 0 ? '-' : `${(Math.abs(data.yoy) * 100).toFixed(1)}%`}</span>
             </span>
           </div>
           <div className="flex items-center justify-between">

@@ -73,9 +73,9 @@ describe('KpiCard', () => {
     expect(badge.parentElement?.className).toContain('text-finance-green')
   })
 
-  it('同比持平：muted 徽标显示 0.0%', () => {
+  it('同比持平：muted 徽标显示 -（零值统一占位）', () => {
     render(<KpiCard data={noBudgetKpi} />)
-    const badge = screen.getByText('0.0%')
+    const badge = screen.getByText('-')
     expect(badge.parentElement?.className).toContain('text-muted-foreground')
   })
 

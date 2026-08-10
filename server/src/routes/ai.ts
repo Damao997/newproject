@@ -151,6 +151,7 @@ router.post(
           static: staticRows,
           userId: authUser.userId,
           traceId: req.traceId,
+          scope: { companyCode: authUser.companyCode, scopeValue: authUser.scopeValue, dataScopeCodes: authUser.dataScopeCodes },
         },
         (delta) => sseWrite(res, { type: 'token', content: delta }),
       )

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   ArrowLeft, ArrowUp, ArrowDown, Trash2, Plus, Save, History, FileDown, RefreshCw, Link2,
   Send, Undo2, Eye, Sparkles, Loader2, MoreHorizontal,
@@ -17,7 +17,7 @@ import {
 import { RichTextEditor } from '@/components/editor/rich-text-editor'
 import { sanitizeForDisplay } from '@/lib/sanitize'
 import { exportReportToDocx, exportReportToPdf } from '@/lib/report-export'
-import { streamAI, type StreamController } from '@/lib/ai-stream'
+import { useAiStream } from '@/hooks/use-ai-stream'
 import {
   useReport, useGenerateReportSections, useSetReportSections,
   useSaveReportVersion, useReportVersions, useUpdateReport,
@@ -481,32 +481,20 @@ function AISummaryDialog({ reportId, open, onOpenChange, onInsert }: {
   onInsert: (text: string) => void
 }) {
   const [text, setText] = useState('')
-  const [streaming, setStreaming] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const controllerRef = useRef<StreamController | null>(null)
+  const ai = useAiStream({
+    path: '/ai/report-summary',
+    body: { reportId },
+    onDone: (finalText) => {
+      if (finalText) setText(finalText)
+    },
+  })
 
   const start = () => {
     setText('')
-    setError(null)
-    setStreaming(true)
-    controllerRef.current = streamAI('/ai/report-summary', { reportId }, {
-      onToken: (delta) => setText((t) => t + delta),
-      onDone: (finalText) => {
-        setStreaming(false)
-        if (finalText) setText(finalText)
-      },
-      onError: (message) => {
-        setStreaming(false)
-        setError(message)
-      },
-    })
+    ai.start()
   }
 
-  const stop = () => {
-    controllerRef.current?.abort()
-    controllerRef.current = null
-    setStreaming(false)
-  }
+  const stop = ai.abort
 
   const handleOpenChange = (v: boolean) => {
     if (!v) stop()
@@ -520,18 +508,18 @@ function AISummaryDialog({ reportId, open, onOpenChange, onInsert }: {
           <DialogTitle>AI 总体概述</DialogTitle>
           <DialogDescription>基于报告各章节内容生成「总体概述」初稿（预览确认后插入，不直接修改报告）。</DialogDescription>
         </DialogHeader>
-        <div className="min-h-[160px] whitespace-pre-wrap rounded-md border bg-muted/20 p-3 text-[13px] leading-6 text-foreground">
-          {text || (streaming ? '生成中…' : '点击「开始生成」获取概述初稿。')}
-          {streaming && <Loader2 className="ml-1 inline h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+        <div aria-live="polite" className="min-h-[160px] whitespace-pre-wrap rounded-md border bg-muted/20 p-3 text-[13px] leading-6 text-foreground">
+          {text || ai.preview || (ai.streaming ? '生成中…' : '点击「开始生成」获取概述初稿。')}
+          {ai.streaming && <Loader2 className="ml-1 inline h-3.5 w-3.5 animate-spin text-muted-foreground" />}
         </div>
-        {error && <p className="text-[13px] text-finance-red">{error}</p>}
+        {ai.error && <p className="text-[13px] text-finance-red">{ai.error}</p>}
         <DialogFooter>
-          {streaming ? (
+          {ai.streaming ? (
             <Button variant="outline" onClick={stop}>停止</Button>
           ) : (
             <Button variant="outline" onClick={start}><Sparkles className="mr-1 h-4 w-4" /> {text ? '重新生成' : '开始生成'}</Button>
           )}
-          <Button onClick={() => onInsert(text)} disabled={!text || streaming}>插入为自由章节</Button>
+          <Button onClick={() => onInsert(text)} disabled={!text || ai.streaming}>插入为自由章节</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

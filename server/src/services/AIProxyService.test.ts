@@ -5,10 +5,16 @@ const mocks = vi.hoisted(() => ({
   chatComplete: vi.fn(),
   chatStream: vi.fn(),
   recordAudit: vi.fn(),
+  archiveOverview: vi.fn(),
 }))
 
 vi.mock('../lib/deepseek', () => ({ chatComplete: mocks.chatComplete, chatStream: mocks.chatStream }))
 vi.mock('../middleware/audit', () => ({ recordAudit: mocks.recordAudit, clientIp: vi.fn(() => '127.0.0.1') }))
+// 仅 mock archiveOverview：常量与纯函数保留真实实现（overviewStream 归档集成单测）
+vi.mock('./SubjectAnalysisService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./SubjectAnalysisService')>()
+  return { ...actual, SubjectAnalysisService: { ...actual.SubjectAnalysisService, archiveOverview: mocks.archiveOverview } }
+})
 
 import { AIProxyService, parseFormulaOutput, buildAnalyzeFactBlock, buildOverviewFactBlock, selectOverviewRows, buildTemplatePrompt } from './AIProxyService'
 import type { OperatingRow, StaticRow } from './IndicatorsService'
@@ -370,5 +376,63 @@ describe('AIProxyService.summarizeStream（mock chatStream）', () => {
     expect(finalText).not.toContain('OP_025')
     expect(finalText).toContain('[已隐藏]')
     expect(finalText).toContain('据指标表显示')
+  })
+})
+
+describe('AIProxyService.overviewStream 归档集成（mock chatStream + archiveOverview）', () => {
+  let dbReady = false
+  let realCompanyCode = ''
+
+  beforeAll(async () => {
+    try {
+      await basePrisma.$queryRaw`SELECT 1`
+      const c = await prisma.company.findFirst({ where: { entityType: 'single', status: 'active' }, select: { code: true } })
+      dbReady = !!c
+      realCompanyCode = c?.code ?? ''
+    } catch {
+      dbReady = false
+    }
+    mocks.chatStream.mockReset()
+    mocks.archiveOverview.mockReset()
+    mocks.archiveOverview.mockResolvedValue({ id: 'archived-1' })
+    mocks.recordAudit.mockResolvedValue(undefined)
+  })
+
+  const rows = [opRow({ code: 'OP_01', name: '收入总计', level: 0, actual: 100, ytd: 600, achievement: 100 })]
+
+  it('生成成功后归档（含主体/期间/内容），审计 archived=true', async () => {
+    if (!dbReady) return
+    mocks.chatStream.mockImplementation(async (_s: string, _u: string, onToken: (d: string) => void) => {
+      onToken('一、整体指标趋势概览')
+      onToken('收入稳步增长。')
+    })
+    const { finalText } = await AIProxyService.overviewStream(
+      { companyCode: realCompanyCode, period: '2026-07', operating: rows, static: [], userId: 'u1', scope: { companyCode: null, scopeValue: '*', dataScopeCodes: null } },
+      () => {},
+    )
+    expect(finalText).toContain('收入稳步增长')
+    expect(mocks.archiveOverview).toHaveBeenCalledWith(expect.objectContaining({ companyCode: realCompanyCode, period: '2026-07', userId: 'u1' }))
+    expect(mocks.recordAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'overview', detail: expect.objectContaining({ archived: true }) }), undefined)
+  })
+
+  it('finalText 为空（无正文输出）时不归档', async () => {
+    if (!dbReady) return
+    mocks.chatStream.mockImplementation(async () => {})
+    mocks.archiveOverview.mockClear()
+    const { finalText } = await AIProxyService.overviewStream({ period: '2026-07', operating: rows, static: [], userId: 'u1', scope: { companyCode: null, scopeValue: '*', dataScopeCodes: null } }, () => {})
+    expect(finalText).toBe('')
+    expect(mocks.archiveOverview).not.toHaveBeenCalled()
+  })
+
+  it('归档失败不影响 SSE 返回，审计 archived=false', async () => {
+    if (!dbReady) return
+    mocks.chatStream.mockImplementation(async (_s: string, _u: string, onToken: (d: string) => void) => {
+      onToken('一、整体指标趋势概览')
+      onToken('内容完整。')
+    })
+    mocks.archiveOverview.mockRejectedValue(new Error('归档失败'))
+    const { finalText } = await AIProxyService.overviewStream({ period: '2026-07', operating: rows, static: [], userId: 'u1', scope: { companyCode: null, scopeValue: '*', dataScopeCodes: null } }, () => {})
+    expect(finalText).toContain('内容完整')
+    expect(mocks.recordAudit).toHaveBeenCalledWith(expect.objectContaining({ detail: expect.objectContaining({ archived: false }) }), undefined)
   })
 })

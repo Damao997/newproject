@@ -1056,7 +1056,7 @@ class ApiClient {
   }
 
   // ============ 分析报告：单项分析（公司 × 科目 × 期间） ============
-  async listAnalyses(params: { companyCode?: string; subjectCode?: string; period?: string; keyword?: string; includeInactive?: boolean; page?: number; pageSize?: number }): Promise<{ items: AnalysisItem[]; total: number; page: number; pageSize: number }> {
+  async listAnalyses(params: { companyCode?: string; subjectCode?: string; period?: string; subjectType?: 'overview' | 'normal'; keyword?: string; includeInactive?: boolean; page?: number; pageSize?: number }): Promise<{ items: AnalysisItem[]; total: number; page: number; pageSize: number }> {
     return this.request({ method: 'GET', url: '/reports/analyses', params: { ...params, includeInactive: params.includeInactive ? '1' : undefined } })
   }
 

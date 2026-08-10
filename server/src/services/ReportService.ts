@@ -3,7 +3,7 @@ import { errors } from '../lib/errors'
 import { sanitizeRichText, richTextToPlainText } from '../lib/sanitize'
 import { resolveScope } from '../middleware/scope'
 import { currentScope } from '../middleware/scope-context'
-import { SubjectAnalysisService, resolveScopeCompanyCodes, type AnalysisDTO } from './SubjectAnalysisService'
+import { SubjectAnalysisService, resolveScopeCompanyCodes, OVERVIEW_SUBJECT_CODE, OVERVIEW_SUBJECT_NAME, ALL_COMPANY_CODE, ALL_COMPANY_NAME, type AnalysisDTO } from './SubjectAnalysisService'
 import type { AuthUserContext } from '../types/express'
 
 /**
@@ -243,10 +243,16 @@ export const ReportService = {
       return {
         id: r.id,
         orderNo: r.orderNo,
-        title: `${cMap.get(a.companyCode) ?? a.companyCode} · ${sMap.get(a.subjectCode) ?? a.subjectCode}`,
+        title: `${cMap.get(a.companyCode) ?? (a.companyCode === ALL_COMPANY_CODE ? ALL_COMPANY_NAME : a.companyCode)} · ${sMap.get(a.subjectCode) ?? (a.subjectCode === OVERVIEW_SUBJECT_CODE ? OVERVIEW_SUBJECT_NAME : a.subjectCode)}`,
         content: a.content,
         analysisId: a.id,
-        source: { companyCode: a.companyCode, companyName: cMap.get(a.companyCode) ?? null, subjectCode: a.subjectCode, subjectName: sMap.get(a.subjectCode) ?? null, period: a.period },
+        source: {
+          companyCode: a.companyCode,
+          companyName: cMap.get(a.companyCode) ?? (a.companyCode === ALL_COMPANY_CODE ? ALL_COMPANY_NAME : null),
+          subjectCode: a.subjectCode,
+          subjectName: sMap.get(a.subjectCode) ?? (a.subjectCode === OVERVIEW_SUBJECT_CODE ? OVERVIEW_SUBJECT_NAME : null),
+          period: a.period,
+        },
         missing: false,
       }
     })
@@ -374,7 +380,9 @@ export const ReportService = {
       for (const rid of newRefIds) {
         const a = refMap.get(rid)
         if (!a) throw errors.badRequest(`引用的单项分析不存在：${rid}`)
-        if (!allowed.has(a.companyCode)) throw errors.forbidden('无权引用该公司的单项分析')
+        // AI 全局预分析归档（OVERVIEW）为全局口径（'ALL' 主体无公司归属），任何用户可引用；
+        // 普通科目分析仍须在用户 scope 内
+        if (a.subjectCode !== OVERVIEW_SUBJECT_CODE && !allowed.has(a.companyCode)) throw errors.forbidden('无权引用该公司的单项分析')
       }
     }
 

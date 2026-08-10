@@ -18,11 +18,12 @@ import { PAGINATION } from '@/lib/constants'
 import {
   useAnalyses, useUpdateAnalysis, useDeleteAnalysis, useRestoreAnalysis,
   useCompanies, useSubjects, useAvailablePeriods,
+  useReports, useReport, useSetReportSections,
 } from '@/hooks/api-queries'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { usePermission } from '@/hooks/usePermission'
-import type { AnalysisItem } from '@/types'
-import { FileText, Search, Pencil, Trash2, RotateCcw, Link2 } from 'lucide-react'
+import type { AnalysisItem, ReportSectionInput } from '@/types'
+import { FileText, Search, Pencil, Trash2, RotateCcw, Link2, FilePlus2 } from 'lucide-react'
 
 /**
  * 单项分析集中管理：列表（筛选/搜索/分页）+ 引用情况 + 快速编辑/删除/恢复。
@@ -51,6 +52,8 @@ export function AnalysisManager() {
   const [companyCode, setCompanyCode] = useState(ALL)
   const [subjectType, setSubjectType] = useState(ALL)
   const [subjectCode, setSubjectCode] = useState(ALL)
+  /** 分析类型：'all' 全部分析 / 'overview' 仅 AI 全局预分析归档 / 'subject' 仅科目分析 */
+  const [analysisKind, setAnalysisKind] = useState<'all' | 'overview' | 'subject'>('all')
   const [period, setPeriod] = useState(ALL)
   const [keyword, setKeyword] = useState('')
   const [includeInactive, setIncludeInactive] = useState(false)
@@ -73,6 +76,8 @@ export function AnalysisManager() {
     companyCode: companyCode === ALL ? undefined : companyCode,
     subjectCode: subjectCode === ALL ? undefined : subjectCode,
     period: period === ALL ? undefined : period,
+    // 分析类型过滤：AI 预分析归档（OVERVIEW）与普通科目分析互斥
+    subjectType: analysisKind === 'overview' ? 'overview' : analysisKind === 'subject' ? 'normal' : undefined,
     keyword: keyword.trim() || undefined,
     includeInactive,
     page,
@@ -130,6 +135,37 @@ export function AnalysisManager() {
     }
   }
 
+  // 插入报告：将 AI 预分析归档追加为报告章节（实时引用，随重新生成更新）
+  const [insertTarget, setInsertTarget] = useState<AnalysisItem | null>(null)
+  const [insertReportId, setInsertReportId] = useState('')
+  const [inserting, setInserting] = useState(false)
+  const { data: draftReports } = useReports({ status: 'draft', pageSize: 100 })
+  const { data: insertReport } = useReport(insertTarget && insertReportId ? insertReportId : null)
+  const setReportSections = useSetReportSections()
+
+  const handleInsertToReport = async () => {
+    if (!insertTarget || !insertReport) return
+    setInserting(true)
+    try {
+      // 保留现有章节，追加预分析引用章节（全量提交，乐观锁沿用现有 mutation 封装）
+      const existingItems: ReportSectionInput[] = insertReport.sections.map((s) =>
+        s.analysisId ? { analysisId: s.analysisId } : { id: s.id, title: s.title, content: s.content },
+      )
+      await setReportSections.mutateAsync({
+        id: insertReport.id,
+        items: [...existingItems, { analysisId: insertTarget.id }],
+        expectedUpdatedAt: insertReport.updatedAt,
+      })
+      setInsertTarget(null)
+      setInsertReportId('')
+      flash('已插入报告章节（实时引用该预分析）')
+    } catch (e) {
+      flash((e as Error).message || '插入失败')
+    } finally {
+      setInserting(false)
+    }
+  }
+
   return (
     <Card className="animate-fade-in">
       <CardContent className="p-0">
@@ -142,7 +178,19 @@ export function AnalysisManager() {
               {entityCompanies.map((c) => <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Select value={subjectType} onValueChange={(v) => { setSubjectType(v); setSubjectCode(ALL); resetPage() }}>
+          <Select value={analysisKind} onValueChange={(v) => { setAnalysisKind(v as 'all' | 'overview' | 'subject'); resetPage() }}>
+            <SelectTrigger className="h-8 w-32"><SelectValue placeholder="分析类型" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部分析</SelectItem>
+              <SelectItem value="overview">AI 预分析</SelectItem>
+              <SelectItem value="subject">科目分析</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select
+            value={subjectType}
+            onValueChange={(v) => { setSubjectType(v); setSubjectCode(ALL); resetPage() }}
+            disabled={analysisKind === 'overview'}
+          >
             <SelectTrigger className="h-8 w-28"><SelectValue placeholder="科目类型" /></SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL}>全部类型</SelectItem>
@@ -151,7 +199,7 @@ export function AnalysisManager() {
               <SelectItem value="transaction">往来科目</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={subjectCode} onValueChange={(v) => { setSubjectCode(v); resetPage() }} disabled={subjectType === ALL}>
+          <Select value={subjectCode} onValueChange={(v) => { setSubjectCode(v); resetPage() }} disabled={subjectType === ALL || analysisKind === 'overview'}>
             <SelectTrigger className="h-8 w-44"><SelectValue placeholder={subjectType === ALL ? '先选科目类型' : '科目'} /></SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL}>全部科目</SelectItem>
@@ -214,7 +262,12 @@ export function AnalysisManager() {
                       <div className="font-mono text-[11px]">{a.companyCode}</div>
                     </td>
                     <td className="px-4 py-2.5 text-center text-muted-foreground">
-                      {a.subjectName ?? a.subjectCode}
+                      <span className="inline-flex items-center gap-1">
+                        {a.subjectName ?? a.subjectCode}
+                        {a.subjectCode === 'OVERVIEW' && (
+                          <Badge variant="outline" className="border-primary/40 px-1.5 py-0 text-[10px] text-primary">AI 预分析</Badge>
+                        )}
+                      </span>
                       <div className="font-mono text-[11px]">{a.subjectCode}</div>
                     </td>
                     <td className="px-4 py-2.5 text-center font-mono text-muted-foreground">{a.period}</td>
@@ -231,6 +284,11 @@ export function AnalysisManager() {
                     <td className="px-4 py-2.5 text-center text-muted-foreground">{new Date(a.updatedAt).toLocaleDateString('zh-CN')}</td>
                     <td className="px-4 py-2.5 text-center">
                       <div className="flex items-center justify-center gap-1">
+                        {!inactive && a.subjectCode === 'OVERVIEW' && canUpdate && (
+                          <Button variant="ghost" size="sm" onClick={() => { setInsertTarget(a); setInsertReportId('') }}>
+                            <Link2 className="mr-1 h-3.5 w-3.5" /> 插入报告
+                          </Button>
+                        )}
                         {!inactive && canUpdate && (
                           <Button variant="ghost" size="sm" onClick={() => setEditing(a)}><Pencil className="mr-1 h-3.5 w-3.5" /> 编辑</Button>
                         )}
@@ -277,6 +335,17 @@ export function AnalysisManager() {
             }
           }}
           saving={updateAnalysis.isPending}
+        />
+
+        {/* 插入报告（AI 预分析归档 → 追加为引用章节） */}
+        <InsertReportDialog
+          target={insertTarget}
+          reportId={insertReportId}
+          onReportIdChange={setInsertReportId}
+          reports={(draftReports?.items ?? []).map((r) => ({ id: r.id, title: r.title }))}
+          onConfirm={handleInsertToReport}
+          onClose={() => setInsertTarget(null)}
+          busy={inserting}
         />
         {confirmElement}
       </CardContent>
@@ -344,6 +413,52 @@ function EditAnalysisDialog({ item, onClose, onSave, saving }: {
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>取消</Button>
           <Button onClick={() => item && onSave(item.id, title, content)} disabled={saving || !title.trim()}>保存</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** 插入报告对话框：将 AI 预分析归档追加为指定草稿报告的引用章节（实时更新） */
+function InsertReportDialog({
+  target,
+  reportId,
+  onReportIdChange,
+  reports,
+  onConfirm,
+  onClose,
+  busy,
+}: {
+  target: AnalysisItem | null
+  reportId: string
+  onReportIdChange: (v: string) => void
+  reports: { id: string; title: string }[]
+  onConfirm: () => void
+  onClose: () => void
+  busy: boolean
+}) {
+  return (
+    <Dialog open={target !== null} onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>插入报告</DialogTitle>
+          <DialogDescription>
+            将「{target?.title}」作为引用章节追加到报告，章节实时展示该预分析最新内容（重新生成后自动更新）。
+          </DialogDescription>
+        </DialogHeader>
+        <Select value={reportId} onValueChange={onReportIdChange}>
+          <SelectTrigger className="h-9 w-full"><SelectValue placeholder="选择草稿报告" /></SelectTrigger>
+          <SelectContent>
+            {reports.length === 0 ? (
+              <SelectItem value="__none" disabled>暂无草稿报告</SelectItem>
+            ) : (
+              reports.map((r) => <SelectItem key={r.id} value={r.id}>{r.title}</SelectItem>)
+            )}
+          </SelectContent>
+        </Select>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={busy}>取消</Button>
+          <Button onClick={onConfirm} disabled={busy || !reportId}><FilePlus2 className="mr-1 h-4 w-4" /> 插入章节</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

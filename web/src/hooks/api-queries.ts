@@ -259,20 +259,22 @@ export interface StaticRow {
   current: number; yearStart: number; samePeriod: number; lastYearStart: number; yoy: number; children?: StaticRow[]
 }
 
-export function useOperatingIndicators(params: { companyCode?: string; period?: string; excludeReclassify?: boolean }) {
+export function useOperatingIndicators(params: { companyCode?: string; period?: string; excludeReclassify?: boolean }, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: queryKeys.indicatorsOperating(params),
     queryFn: () => api.getOperatingIndicators(params as FilterParams) as unknown as Promise<OperatingResult>,
     // 筛选切换时保留上一次数据，避免内容区塌陷再撑回导致整页抖动
     placeholderData: keepPreviousData,
+    enabled: options?.enabled ?? true,
   })
 }
 
-export function useStaticIndicators(params: { companyCode?: string; period?: string; excludeReclassify?: boolean }) {
+export function useStaticIndicators(params: { companyCode?: string; period?: string; excludeReclassify?: boolean }, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: queryKeys.indicatorsStatic(params),
     queryFn: () => api.getStaticIndicators(params as FilterParams) as unknown as Promise<StaticResult>,
     placeholderData: keepPreviousData,
+    enabled: options?.enabled ?? true,
   })
 }
 
@@ -894,7 +896,7 @@ export function useRejectMetric() {
 // ---------------- 分析报告：单项分析 ----------------
 export type { AnalysisItem, AnalysisInput, ReportDetail, ReportListItem, ReportSectionInput, ReportVersionItem, ReportExportData }
 
-export function useAnalyses(params: { companyCode?: string; subjectCode?: string; period?: string; keyword?: string; includeInactive?: boolean; page?: number; pageSize?: number }, options?: { enabled?: boolean }) {
+export function useAnalyses(params: { companyCode?: string; subjectCode?: string; period?: string; subjectType?: 'overview' | 'normal'; keyword?: string; includeInactive?: boolean; page?: number; pageSize?: number }, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['reports', 'analyses', params] as const,
     queryFn: () => api.listAnalyses(params),

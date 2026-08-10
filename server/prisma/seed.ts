@@ -1,13 +1,32 @@
 import { PrismaClient, type PermissionAction } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import dotenv from 'dotenv'
+import path from 'node:path'
 import { seedDomain } from './seed-domain'
 import { seedCompaniesAndMapping } from './seed-companies'
+
+// 显式指向 server/.env（与 cwd 解耦：从仓库根或其他目录执行 seed 时也能读到 NODE_ENV 生产防护）
+dotenv.config({ path: path.resolve(__dirname, '../.env') })
 
 // ============================================================
 // 种子数据：预置角色 + 完整权限矩阵 + 公司主体 + 演示用户
 // 依据 安全与权限规范 v1.1（9 模块 × 7 操作 × 6 角色）与数据模型规范 §7.2 / §8.3。
 // 幂等：所有写入按唯一键 upsert，可重复执行。
+// ⚠️ 生产环境严禁执行（含 Docker 首次部署后的手动 seed）：
+//   upsert 更新分支会覆盖生产手动修改的科目（名称/层级/类型/顺序）、
+//   公司（名称/类型/排序）、汇总映射（全量重建）等数据，且无任何报错。
+//   防护见下方 NODE_ENV=production 检查；确需同步默认数据时须显式设置
+//   ALLOW_SEED_IN_PROD=1，并先执行 backup-zjyph.ps1 备份。
 // ============================================================
+
+// 生产防护：seed 幂等 upsert 会静默覆盖生产手动修改，拒绝执行。
+// 仅当显式设置 ALLOW_SEED_IN_PROD=1 时放行（人工确认覆盖，须先备份）。
+if (process.env.NODE_ENV === 'production' && process.env.ALLOW_SEED_IN_PROD !== '1') {
+  console.error('[seed] 拒绝执行：生产环境禁止运行种子数据。')
+  console.error('[seed] upsert 会覆盖手动修改的科目（名称/层级/类型/顺序）、公司（名称/类型/排序）与汇总映射等数据。')
+  console.error('[seed] 确需同步默认数据：先执行 backup-zjyph.ps1 备份，再设置 ALLOW_SEED_IN_PROD=1 后重试。')
+  process.exit(1)
+}
 
 const prisma = new PrismaClient()
 

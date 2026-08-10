@@ -35,7 +35,7 @@ export const AI_TEMPLATES: Record<string, AiOutputTemplate> = {
       { title: '整体指标趋势概览', requirement: '总结主体整体经营态势与主要趋势方向' },
       { title: '关键指标变化识别', requirement: '识别同比/累计同比大幅增长或下降的指标，结合数据说明可能含义' },
       { title: '预算达成情况总结', requirement: '归纳达成率偏低或超额的指标及其影响' },
-      { title: '月度与累计对比分析', requirement: '比较本月实际同比与本年累计同比的差异，提示月度波动与累计走势的关系' },
+      { title: '月度与累计对比分析', requirement: '比较本月实际同比与本年累计同比的差异，提示月度波动与累计走势的关系；以分条列述，禁止使用 markdown 表格' },
     ],
   },
   analyze: {
@@ -43,7 +43,7 @@ export const AI_TEMPLATES: Record<string, AiOutputTemplate> = {
     name: '追加分析',
     sections: [
       { title: '本期表现概览', requirement: '概述该指标本月实际、同比与达成率的当期表现' },
-      { title: '同比与预算分析', requirement: '结合同期数据与预算达成情况分析增减原因' },
+      { title: '同比与预算分析', requirement: '结合同期数据与预算达成情况分析增减原因；以分条列述，禁止使用 markdown 表格' },
       { title: '趋势研判与建议', requirement: '结合累计同比判断趋势并给出经营建议' },
     ],
   },

@@ -225,13 +225,13 @@ function StatCard({ title, icon: Icon, value, sub, index, loading }: {
   )
 }
 
-/** 变动率徽标：红涨绿跌（国内财报习惯），分母为 0 显示 '-' */
+/** 变动率徽标：红涨绿跌（国内财报习惯），分母为 0 显示 '-'，变动为 0 也显示 '-' */
 function ChangeRate({ current, base }: { current: number; base: number }) {
   if (!base) return <span className="font-num text-muted-foreground">-</span>
   const rate = ((current - base) / base) * 100
   return (
     <span className={cn('font-num', getChangeColor(rate))}>
-      {getChangePrefix(rate)}{Math.abs(rate).toFixed(1)}%
+      {rate === 0 ? '-' : `${getChangePrefix(rate)}${Math.abs(rate).toFixed(1)}%`}
     </span>
   )
 }
@@ -827,7 +827,7 @@ export default function InventoryPage() {
                         <td className="px-2 py-2 text-right font-num">{formatMoneyWan(row.samePeriod)}</td>
                         <td className="px-2 py-2 text-right">
                           {row.samePeriod ? (
-                            <span className={cn('font-num', getChangeColor(row.yoy))}>{getChangePrefix(row.yoy)}{Math.abs(row.yoy).toFixed(1)}%</span>
+                            <span className={cn('font-num', getChangeColor(row.yoy))}>{row.yoy === 0 ? '-' : `${getChangePrefix(row.yoy)}${Math.abs(row.yoy).toFixed(1)}%`}</span>
                           ) : (
                             <span className="font-num text-muted-foreground">-</span>
                           )}

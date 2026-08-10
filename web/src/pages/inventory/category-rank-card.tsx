@@ -48,9 +48,9 @@ export function CategoryRankCard({ categories, loading, onCategoryClick }: {
             </div>`
           return titleSpan(`No.${row.rank} ${row.name}`)
             + line('本期金额', formatMoneyWan(row.current))
-            + line('占比', `${row.share.toFixed(1)}%`)
-            + line('同比', `${row.yoy >= 0 ? '+' : ''}${row.yoy.toFixed(1)}%`)
-            + line('较年初', `${yearStartChange >= 0 ? '+' : ''}${yearStartChange.toFixed(1)}%`)
+            + line('占比', row.share === 0 ? '-' : `${row.share.toFixed(1)}%`)
+            + line('同比', row.yoy === 0 ? '-' : `${row.yoy >= 0 ? '+' : ''}${row.yoy.toFixed(1)}%`)
+            + line('较年初', yearStartChange === 0 ? '-' : `${yearStartChange >= 0 ? '+' : ''}${yearStartChange.toFixed(1)}%`)
             + `<div style="margin-top:6px;color:${CHART_INK.axis};font-size:11px">点击钻取该品类明细</div>`
         },
       },

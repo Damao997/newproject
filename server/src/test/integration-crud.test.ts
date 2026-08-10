@@ -1,6 +1,7 @@
 ﻿import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { basePrisma, prisma } from '../lib/prisma'
 import { DataService } from '../services/DataService'
+import { AggregationService, flattenValueTree } from '../services/AggregationService'
 import { AdminService } from '../services/AdminService'
 import { ImportService } from '../services/ImportService'
 import { ReclassificationService } from '../services/ReclassificationService'
@@ -538,6 +539,92 @@ describe('公式试算递归展开 calc 依赖', () => {
     } finally {
       await basePrisma.factStatic.deleteMany({ where: { accountCode: { in: [stA, stB] } } }).catch(() => undefined)
       await basePrisma.factOperating.deleteMany({ where: { accountCode: opD } }).catch(() => undefined)
+      await basePrisma.metric.deleteMany({ where: { code: { in: allTemp } } }).catch(() => undefined)
+      await basePrisma.accountSubject.deleteMany({ where: { code: { in: allTemp } } }).catch(() => undefined)
+    }
+  })
+
+  it('引用无公式 calc 聚合节点时与 buildStaticTree 口径一致（父=子求和）', async () => {
+    if (!dbReady) return
+    const opBatch = await basePrisma.importBatch.findFirst({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true } })
+    const stBatch = await basePrisma.importBatch.findFirst({ where: { dataType: 'static', lifecycleStatus: 'active' }, select: { id: true } })
+    if (!opBatch || !stBatch) return
+    const latest = await basePrisma.factOperating.findFirst({ where: { batchId: opBatch.id }, orderBy: { period: 'desc' }, select: { period: true } })
+    if (!latest) return
+    const period = latest.period
+    const opening = fiscalYearOpeningSnapshotPeriod(period) // S=4：2026-04 → 2026-03
+    const suffix = Date.now().toString(36)
+    const stLeafA = `ST_TGA_${suffix}`
+    const stLeafB = `ST_TGB_${suffix}`
+    const stAgg = `ST_TGP_${suffix}` // 静态聚合父（calc 无公式、非叶子，种子「存货」同款形态）
+    const opLeaf = `OP_TGD_${suffix}`
+    const opAgg = `OP_TGP_${suffix}` // 经营聚合父（calc 无公式、非叶子，种子「成本」同款形态）
+    const allTemp = [stLeafA, stLeafB, stAgg, opLeaf, opAgg]
+    tempMetricCodes.push(...allTemp)
+    tempSubjectCodes.push(...allTemp)
+    const curA = 20
+    const curB = 30
+    const ysA = 12
+    const ysB = 18
+    const opV = 100
+    try {
+      await basePrisma.accountSubject.createMany({
+        data: [
+          { code: stLeafA, name: `临时_${stLeafA}`, subjectType: 'static', level: 2, parentCode: stAgg, category: '自定义', direction: 'credit', isLeaf: true },
+          { code: stLeafB, name: `临时_${stLeafB}`, subjectType: 'static', level: 2, parentCode: stAgg, category: '自定义', direction: 'credit', isLeaf: true },
+          { code: stAgg, name: `临时_${stAgg}`, subjectType: 'static', level: 1, parentCode: null, category: '自定义', direction: 'credit', isLeaf: false },
+          { code: opLeaf, name: `临时_${opLeaf}`, subjectType: 'operating', level: 2, parentCode: opAgg, category: '自定义', direction: 'credit', isLeaf: true },
+          { code: opAgg, name: `临时_${opAgg}`, subjectType: 'operating', level: 1, parentCode: null, category: '自定义', direction: 'credit', isLeaf: false },
+        ],
+      })
+      for (const code of [stLeafA, stLeafB, opLeaf]) {
+        await DataService.createMetric({ code, name: `临时_${code}`, dataType: 'data', category: '自定义' }, ctx())
+      }
+      // 聚合父为 calc 指标但无公式：树内按「父=子求和」聚合（applyCalcLayer 仅处理有公式的 calc）
+      for (const code of [stAgg, opAgg]) {
+        await DataService.createMetric({ code, name: `临时_${code}`, dataType: 'calc', category: '自定义' }, ctx())
+      }
+      // 静态快照：本期月 + 年初快照月（仅叶子有事实记录，父节点无直接记录）
+      await basePrisma.factStatic.createMany({
+        data: [
+          { batchId: stBatch.id, companyCode: 'EN330059', accountCode: stLeafA, snapshotDate: new Date(`${period}-28T00:00:00.000Z`), periodDimCode: STATIC_DIMS.CURRENT_AMOUNT, fiscalYear: `FY${period.slice(0, 4)}`, value: curA },
+          { batchId: stBatch.id, companyCode: 'EN330059', accountCode: stLeafB, snapshotDate: new Date(`${period}-28T00:00:00.000Z`), periodDimCode: STATIC_DIMS.CURRENT_AMOUNT, fiscalYear: `FY${period.slice(0, 4)}`, value: curB },
+          { batchId: stBatch.id, companyCode: 'EN330059', accountCode: stLeafA, snapshotDate: new Date(`${opening}-28T00:00:00.000Z`), periodDimCode: STATIC_DIMS.CURRENT_AMOUNT, fiscalYear: `FY${opening.slice(0, 4)}`, value: ysA },
+          { batchId: stBatch.id, companyCode: 'EN330059', accountCode: stLeafB, snapshotDate: new Date(`${opening}-28T00:00:00.000Z`), periodDimCode: STATIC_DIMS.CURRENT_AMOUNT, fiscalYear: `FY${opening.slice(0, 4)}`, value: ysB },
+        ],
+      })
+      // 经营事实：本期 ACTUAL_MONTH（YTD 区间 = 财年起..本期，单期场景即本期）
+      await basePrisma.factOperating.create({
+        data: { batchId: opBatch.id, companyCode: 'EN330059', accountCode: opLeaf, period, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: `FY${period.slice(0, 4)}`, value: opV },
+      })
+      // 对照口径：树聚合父节点值（父=子求和）
+      const stFlat = flattenValueTree(await AggregationService.buildStaticTree(['EN330059'], period))
+      const stAggNode = stFlat.find((n) => n.code === stAgg)
+      expect(stAggNode).toBeTruthy()
+      const opFlat = flattenValueTree(await AggregationService.buildOperatingTree(['EN330059'], period))
+      const opAggNode = opFlat.find((n) => n.code === opAgg)
+      expect(opAggNode).toBeTruthy()
+      const aggCurrent = stAggNode!.values[STATIC_DIMS.CURRENT_AMOUNT] // = curA + curB
+      const aggYearStart = stAggNode!.values[STATIC_DIMS.YEAR_START] // = ysA + ysB
+      const aggYtd = opAggNode!.values[OPERATING_DIMS.YTD_ACTUAL] // = opV
+      expect(aggCurrent).toBeCloseTo(curA + curB, 6)
+      expect(aggYearStart).toBeCloseTo(ysA + ysB, 6)
+
+      const formula = `({${stAgg}@YEAR_START} + {${stAgg}}) / 2 * {DAYS_YTD} / {${opAgg}@YTD_ACTUAL}`
+      const res = await DataService.trialCalc({ formula, companyCode: 'EN330059', period })
+      // 试算结果 = 树聚合口径（非 NaN），与页面 buildStaticTree 完全一致
+      expect(Number.isFinite(res.value)).toBe(true)
+      expect(res.value).toBeCloseTo(((aggYearStart + aggCurrent) / 2) * fiscalYtdDays(period) / aggYtd, 6)
+      // 操作数回显：聚合父裸键/复合键取树聚合值，hasData=true
+      const opMap = new Map(res.operands.map((o) => [o.code, o]))
+      expect(opMap.get(`${stAgg}@YEAR_START`)?.value).toBeCloseTo(aggYearStart, 6)
+      expect(opMap.get(`${stAgg}@YEAR_START`)?.hasData).toBe(true)
+      expect(opMap.get(stAgg)?.value).toBeCloseTo(aggCurrent, 6)
+      expect(opMap.get(`${opAgg}@YTD_ACTUAL`)?.value).toBeCloseTo(aggYtd, 6)
+      expect(opMap.get(`${opAgg}@YTD_ACTUAL`)?.hasData).toBe(true)
+    } finally {
+      await basePrisma.factStatic.deleteMany({ where: { accountCode: { in: [stLeafA, stLeafB] } } }).catch(() => undefined)
+      await basePrisma.factOperating.deleteMany({ where: { accountCode: opLeaf } }).catch(() => undefined)
       await basePrisma.metric.deleteMany({ where: { code: { in: allTemp } } }).catch(() => undefined)
       await basePrisma.accountSubject.deleteMany({ where: { code: { in: allTemp } } }).catch(() => undefined)
     }

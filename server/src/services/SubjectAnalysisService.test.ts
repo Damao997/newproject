@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { basePrisma, prisma } from '../lib/prisma'
-import { SubjectAnalysisService } from './SubjectAnalysisService'
+import { SubjectAnalysisService, OVERVIEW_SUBJECT_CODE, ALL_COMPANY_CODE } from './SubjectAnalysisService'
 import { ReportService } from './ReportService'
 
 /**
@@ -185,5 +185,87 @@ describe('SubjectAnalysisService（真实 DB）', () => {
     expect(restored.status).toBe('active')
     const after = await SubjectAnalysisService.list(adminScope, { period })
     expect(after.items.some((i) => i.id === createdIds[0])).toBe(true)
+  })
+})
+
+describe('archiveOverview（AI 全局预分析归档，真实 DB）', () => {
+  const overviewPeriod = `2099-${(Date.now() + 7).toString(36).slice(0, 2).padStart(2, '0')}`.slice(0, 7) // 独立唯一期间
+
+  it('归档创建成功：subjectType=overview、标题全局预分析、正文转富文本并净化', async () => {
+    if (!dbReady) return
+    const dto = await SubjectAnalysisService.archiveOverview({
+      companyCode,
+      period: overviewPeriod,
+      content: '一、整体指标趋势概览\n据指标表显示，主体收入稳步增长。<script>alert(1)</script>',
+      userId: adminId,
+    })
+    createdIds.push(dto.id)
+    expect(dto.companyCode).toBe(companyCode)
+    expect(dto.subjectCode).toBe(OVERVIEW_SUBJECT_CODE)
+    expect(dto.subjectType).toBe('overview')
+    expect(dto.title).toBe('全局预分析')
+    expect(dto.content).toContain('<strong>一、整体指标趋势概览</strong>')
+    expect(dto.content).toContain('据指标表显示')
+    expect(dto.content).not.toContain('<script')
+    expect(dto.subjectName).toBe('全局预分析')
+  })
+
+  it('幂等覆盖：同 主体×期间 再次归档更新内容不新增行', async () => {
+    if (!dbReady) return
+    const again = await SubjectAnalysisService.archiveOverview({
+      companyCode,
+      period: overviewPeriod,
+      content: '一、整体指标趋势概览\n更新后的报告内容',
+      userId: adminId,
+    })
+    const rows = await basePrisma.subjectAnalysis.findMany({
+      where: { companyCode, subjectCode: OVERVIEW_SUBJECT_CODE, period: overviewPeriod },
+      select: { id: true, content: true },
+    })
+    expect(rows.length).toBe(1)
+    expect(again.content).toContain('更新后的报告内容')
+    expect(rows[0].content).toContain('更新后的报告内容')
+  })
+
+  it('全部主体（companyCode 缺省）→ companyCode=ALL，列表可见且名称映射正确', async () => {
+    if (!dbReady) return
+    const allPeriod = `2099-${(Date.now() + 17).toString(36).slice(0, 2).padStart(2, '0')}`.slice(0, 7)
+    const dto = await SubjectAnalysisService.archiveOverview({
+      period: allPeriod,
+      content: '一、整体指标趋势概览\n全部主体口径分析',
+      userId: adminId,
+    })
+    createdIds.push(dto.id)
+    expect(dto.companyCode).toBe(ALL_COMPANY_CODE)
+    expect(dto.companyName).toBe('全部主体')
+    const list = await SubjectAnalysisService.list(adminScope, { period: allPeriod })
+    const item = list.items.find((i) => i.id === dto.id)
+    expect(item).toBeTruthy()
+    expect(item!.companyName).toBe('全部主体')
+    expect(item!.subjectName).toBe('全局预分析')
+  })
+
+  it('batchForCompanies 排除 OVERVIEW 归档（报告自动填充兼容）', async () => {
+    if (!dbReady) return
+    const { items } = await SubjectAnalysisService.batchForCompanies(adminScope, { companyCodes: [companyCode], period: overviewPeriod })
+    expect(items.some((i) => i.subjectCode === OVERVIEW_SUBJECT_CODE)).toBe(false)
+  })
+
+  it('软删除闭环：归档记录可软删除并在 includeInactive 可见、restore 恢复', async () => {
+    if (!dbReady) return
+    const dto = await SubjectAnalysisService.archiveOverview({
+      companyCode,
+      period: overviewPeriod,
+      content: '一、整体指标趋势概览\n软删除测试',
+      userId: adminId,
+    })
+    createdIds.push(dto.id)
+    await SubjectAnalysisService.remove(adminScope, dto.id, adminId)
+    const normal = await SubjectAnalysisService.list(adminScope, { period: overviewPeriod })
+    expect(normal.items.some((i) => i.id === dto.id)).toBe(false)
+    const withDeleted = await SubjectAnalysisService.list(adminScope, { period: overviewPeriod, includeInactive: true })
+    expect(withDeleted.items.find((i) => i.id === dto.id)?.status).toBe('inactive')
+    const restored = await SubjectAnalysisService.restore(adminScope, dto.id, adminId)
+    expect(restored.status).toBe('active')
   })
 })

@@ -816,6 +816,20 @@ data: {"type":"error","error":"频率限制超出"}
 
 ## 变更记录
 
+### v1.7（2026-08-10）
+
+**AI 预分析结果自动归档（以实现为准）**：
+- AI 全局预分析（overviewStream）生成成功后自动将报告归档到 `subject_analysis` 表（`subject_type='overview'`、`subject_code='OVERVIEW'`、全部主体 `company_code='ALL'`），按 主体×期间 幂等覆盖；归档失败仅告警不影响 SSE 响应（审计 detail 含 `archived`）。
+- 归档记录可在单项分析管理页查看/编辑/软删除；报告章节自动填充排除预分析记录。详见《数据模型规范》§7.7 与 `SubjectAnalysisService.archiveOverview`。
+
+### v1.6（2026-08-10）
+
+**AI 预分析后台完成机制（前端，以实现为准）**：
+- AI 全局预分析（overview）流式结果改由前端全局 store（`web/src/stores/aiOverviewStore.ts`）承载，按 `主体|期间` 分槽缓存；面板组件卸载不再 abort 请求，用户切换页面（SPA 路由）后分析在后台继续完成，返回时从 store 恢复（进行中的槽位实时更新）。
+- 竞态防护：每槽位请求序号递增，旧请求的写入（append/finish/fail）被忽略，筛选切换后旧结果不串入新槽位。
+- 边界：仅 SPA 内页面切换生效；刷新页面/关闭浏览器后内存清空需重新生成。后端零改动（SSE 长连接天然支持）。
+- 范围：仅 overview 面板；polish / analyze / summarize 前端行为不变。
+
 ### v1.5（2026-08-07）
 
 **输出模板配置（以实现为准）**：

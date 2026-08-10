@@ -11,6 +11,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import { getCurrentVersion } from '@/lib/app-version'
 
 interface SidebarProps {
   collapsed: boolean
@@ -416,6 +417,10 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onMobileClose
         <SidebarBrand collapsed={collapsed} className="border-b" />
         <NavList collapsed={collapsed} />
         <div className={cn('shrink-0 border-t p-2', collapsed && 'flex justify-center')}>
+          {/* 当前部署版本（部署脚本注入 meta app-version；开发环境显示 dev） */}
+          {!collapsed && (
+            <p className="mb-1 px-2 text-[11px] text-muted-foreground">版本 {getCurrentVersion()}</p>
+          )}
           {collapsed ? (
             <Tooltip>
               <TooltipTrigger asChild>

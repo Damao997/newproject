@@ -6,6 +6,8 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatMoney(value: number): string {
+  // 零值统一显示 '-'（仅显示层，不影响内部计算/存储）
+  if (value === 0) return '-'
   return new Intl.NumberFormat('zh-CN', {
     style: 'decimal',
     minimumFractionDigits: 2,
@@ -14,6 +16,7 @@ export function formatMoney(value: number): string {
 }
 
 export function formatMoneyWan(value: number): string {
+  if (value === 0) return '-'
   return new Intl.NumberFormat('zh-CN', {
     style: 'decimal',
     minimumFractionDigits: 2,
@@ -22,6 +25,7 @@ export function formatMoneyWan(value: number): string {
 }
 
 export function formatPercent(value: number): string {
+  if (value === 0) return '-'
   return (value * 100).toFixed(1) + '%'
 }
 
@@ -30,6 +34,7 @@ export type MetricValueType = 'amount' | 'quantity' | 'ratio'
 
 /** 数量：千分位整数（台数/户数/天数等不带小数） */
 export function formatQuantity(value: number): string {
+  if (value === 0) return '-'
   return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 0 }).format(value)
 }
 
