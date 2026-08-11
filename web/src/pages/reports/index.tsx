@@ -11,8 +11,9 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
 import {
-  Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
+import { CompanySelect } from '@/components/filters/company-select'
 import { PageContainer } from '@/components/layout/page-container'
 import { Pagination } from '@/components/data-table/pagination'
 import { PAGINATION } from '@/lib/constants'
@@ -203,7 +204,6 @@ function CreateReportDialog({ open, onOpenChange, onCreated }: { open: boolean; 
   const effectivePeriod = period || periods[0] || ''
   const effectiveFiscalYear = fiscalYear || fiscalYears[0] || ''
 
-  const entityCompanies = useMemo(() => (companies ?? []).filter((c) => c.type === 'entity'), [companies])
   const summaryEntities = useMemo(() => (companies ?? []).filter((c) => c.type === 'summary'), [companies])
 
   const handleCreate = async () => {
@@ -262,19 +262,7 @@ function CreateReportDialog({ open, onOpenChange, onCreated }: { open: boolean; 
           </div>
           <div className="space-y-1.5">
             <Label>主体范围</Label>
-            <Select value={scopeCode} onValueChange={setScopeCode}>
-              <SelectTrigger><SelectValue placeholder="选择公司或汇总主体" /></SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectLabel>公司</SelectLabel>
-                  {entityCompanies.map((c) => <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>)}
-                </SelectGroup>
-                <SelectGroup>
-                  <SelectLabel>汇总主体</SelectLabel>
-                  {summaryEntities.map((c) => <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>)}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+            <CompanySelect value={scopeCode} onChange={setScopeCode} allowAll={false} placeholder="选择公司或汇总主体" className="w-full" />
           </div>
           {error && <p className="text-[13px] text-finance-red">{error}</p>}
         </div>

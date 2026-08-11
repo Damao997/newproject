@@ -21,6 +21,8 @@ export interface IndicatorsState {
   excludeReclassify: boolean
   /** 展开科目编码（Set 序列化为数组便于持久化） */
   expandedCodes: string[]
+  /** 科目列关键字筛选（'' = 不过滤） */
+  subjectKeyword: string
 }
 
 export interface DataBrowseState {
@@ -150,6 +152,7 @@ const defaultIndicators: IndicatorsState = {
   periodFilter: '',
   excludeReclassify: false,
   expandedCodes: [],
+  subjectKeyword: '',
 }
 
 const defaultDataBrowse: DataBrowseState = {

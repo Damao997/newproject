@@ -1,31 +1,35 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { CompanySelect } from '@/components/filters/company-select'
 import { PageContainer } from '@/components/layout/page-container'
 import { MetricTree } from '@/components/subject-tree/metric-tree'
 import { AnalysisDrawer, type AnalysisTarget } from '@/components/indicators/analysis-drawer'
 import { AiOverviewDialog } from '@/components/indicators/ai-overview-panel'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { usePermission } from '@/hooks/usePermission'
+import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { useCompanies, useOperatingIndicators, useStaticIndicators, useAvailablePeriods, type OperatingRow, type StaticRow } from '@/hooks/api-queries'
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { usePageStore } from '@/stores/pageStateStore'
 import { exportToExcel } from '@/lib/export'
+import { filterTreeKeepSubtree } from '@/lib/subject-tree'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { MetricValue } from '@/lib/metric-values'
-import { Download, ChevronsDownUp, ChevronsUpDown, History, Eye, Sparkles, Loader2 } from 'lucide-react'
+import { Download, ChevronsDownUp, ChevronsUpDown, History, Eye, Sparkles, Loader2, Search, X, MoreHorizontal } from 'lucide-react'
 import type { SubjectNode } from '@/types'
 
 /** 收集含子节点的科目编码（用于全部展开） */
@@ -88,12 +92,28 @@ export default function IndicatorsPage() {
   const periodFilter = usePageStore((s) => s.indicators.periodFilter)
   const excludeReclassify = usePageStore((s) => s.indicators.excludeReclassify)
   const expandedCodes = usePageStore((s) => s.indicators.expandedCodes)
+  const subjectKeyword = usePageStore((s) => s.indicators.subjectKeyword)
   const [analysisTarget, setAnalysisTarget] = useState<AnalysisTarget | null>(null)
   // AI 预分析弹窗开关（数据就绪后令牌递增，由弹窗内自动打开）
   const [overviewOpen, setOverviewOpen] = useState(false)
+  // 吸顶筛选区高度：ResizeObserver 实时测量（响应式换行/内容变化），驱动表格容器吸顶偏移与表头固定
+  const headerRef = useRef<HTMLDivElement>(null)
+  const [headerHeight, setHeaderHeight] = useState(0)
+  useLayoutEffect(() => {
+    const el = headerRef.current
+    if (!el) return
+    const measure = () => setHeaderHeight(el.getBoundingClientRect().height)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
   const setDimFilter = useCallback((v: string) => setIndicators({ dimFilter: v }), [setIndicators])
   const setPeriodFilter = useCallback((v: string) => setIndicators({ periodFilter: v }), [setIndicators])
   const setExcludeReclassify = useCallback((v: boolean) => setIndicators({ excludeReclassify: v }), [setIndicators])
+  const setSubjectKeyword = useCallback((v: string) => setIndicators({ subjectKeyword: v }), [setIndicators])
+  // 小屏（<lg）搜索框浮层展开态（图标按钮点击切换）
+  const [searchOpen, setSearchOpen] = useState(false)
   // 展开集合由持久化数组派生（Set 不可序列化，store 以数组存储）
   const expandedSet = useMemo(() => new Set(expandedCodes), [expandedCodes])
   const setExpandedCodes = useCallback((updater: (prev: Set<string>) => Set<string>) => {
@@ -128,6 +148,8 @@ export default function IndicatorsPage() {
   const period = periodFilter === 'all' ? undefined : periodFilter
 
   const { data: companies } = useCompanies()
+  // 公司显示名：跟随全局「显示简称」开关（下拉选项/抽屉标题等所有展示处统一）
+  const { getDisplayName } = useCompanyDisplayName()
   // 持久化主体校验：编码已删除/超出数据权限时回退全部主体（候选加载后生效一次，用户手动切换后不再覆盖）
   useEffect(() => {
     if (!companies || companies.length === 0) return
@@ -149,7 +171,6 @@ export default function IndicatorsPage() {
   )
 
   const entityCompanies = useMemo(() => (companies ?? []).filter((c) => c.type === 'entity'), [companies])
-  const summaryEntities = useMemo(() => (companies ?? []).filter((c) => c.type === 'summary'), [companies])
 
   const activeItems = (isOperating ? operatingQuery.data?.items : staticQuery.data?.items) ?? []
   const isLoading = isOperating ? operatingQuery.isLoading : staticQuery.isLoading
@@ -164,6 +185,23 @@ export default function IndicatorsPage() {
   )
   const activeExpandable = useMemo(() => collectExpandableCodes(activeTree), [activeTree])
 
+  // 科目关键字过滤：命中节点保留整棵子树 + 祖先链；过滤时强制展开可见路径（清空后恢复用户展开态）
+  const visibleTree = useMemo(() => filterTreeKeepSubtree(activeTree, subjectKeyword), [activeTree, subjectKeyword])
+  const effectiveExpanded = useMemo(() => {
+    if (!subjectKeyword.trim()) return expandedSet
+    const next = new Set(expandedSet)
+    const collect = (ns: SubjectNode[]) => {
+      for (const n of ns) {
+        if (n.children.length > 0) {
+          next.add(n.code)
+          collect(n.children)
+        }
+      }
+    }
+    collect(visibleTree)
+    return next
+  }, [visibleTree, subjectKeyword, expandedSet])
+
   // 数据到达后默认展开 level0 根节点
   useEffect(() => {
     const roots = activeTree.map((n) => n.code)
@@ -177,6 +215,8 @@ export default function IndicatorsPage() {
   }, [activeTree])
 
   const handleToggle = (code: string) => {
+    // 过滤态下展开由 effectiveExpanded 强制托管：折叠操作不写持久化（避免清空关键字后用户展开态丢失）
+    if (subjectKeyword.trim()) return
     setExpandedCodes((prev) => {
       const next = new Set(prev)
       if (next.has(code)) next.delete(code)
@@ -188,7 +228,9 @@ export default function IndicatorsPage() {
   // 是否已全部展开：用于展开/折叠切换按钮的状态判断
   const isAllExpanded = activeExpandable.length > 0 && activeExpandable.every((code) => expandedSet.has(code))
 
-  const toggleExpandAll = () =>
+  const toggleExpandAll = () => {
+    // 过滤态下同样不写持久化（视觉展开由 effectiveExpanded 托管，按钮已在过滤态禁用，此处兜底）
+    if (subjectKeyword.trim()) return
     setExpandedCodes((prev) => {
       if (isAllExpanded) {
         const next = new Set(prev)
@@ -197,12 +239,13 @@ export default function IndicatorsPage() {
       }
       return new Set([...prev, ...activeExpandable])
     })
+  }
 
   /** 打开单项分析抽屉：需先选中单一公司主体（未选择时按钮已在表格中禁用并提示） */
   const handleAnalyze = (node: SubjectNode) => {
     // 安全兜底：未选单一公司时不打开（正常流程按钮已禁用，此处防类型窄化丢失）
     if (!companyCode) return
-    const companyName = entityCompanies.find((c) => c.code === companyCode)?.name ?? companyCode
+    const companyName = getDisplayName(companyCode, entityCompanies.find((c) => c.code === companyCode)?.name ?? companyCode)
     const effectivePeriod = period ?? periods[periods.length - 1] ?? ''
     setAnalysisTarget({
       companyCode,
@@ -240,11 +283,12 @@ export default function IndicatorsPage() {
   )
   const hasOverviewData = overviewOperatingRows.length + overviewStaticRows.length > 0
 
-  /** 重置筛选：恢复默认主体/期间/重分类口径（空状态引导动作） */
+  /** 重置筛选：恢复默认主体/期间/重分类口径/科目搜索（空状态引导动作） */
   const handleResetFilters = () => {
     setDimFilter('all')
     setPeriodFilter('')
     setExcludeReclassify(false)
+    setSubjectKeyword('')
   }
 
   const handleExport = async () => {
@@ -304,61 +348,162 @@ export default function IndicatorsPage() {
   }
 
   return (
-    <PageContainer title="财务指标" description="按科目层级查看经营指标和静态指标数据" className="space-y-3">
-      {/* 筛选与操作控制条 */}
-      <Card className="animate-fade-in">
-        <CardContent className="p-4">
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
-            {/* 左侧：主体维度选择（加宽，保证公司名称完整显示） */}
-            <Select value={dimFilter} onValueChange={setDimFilter}>
-              <SelectTrigger className="h-8 w-full lg:w-[280px]" aria-label="主体维度">
-                <SelectValue placeholder="选择主体维度" />
+    <PageContainer
+      title="财务指标"
+      description="按科目层级查看经营指标和静态指标数据"
+      className="space-y-3"
+      stickyHeader
+      headerRef={headerRef}
+      actionsFullWidth
+      actions={
+        // 筛选条响应式：全尺寸单行不横滚，超宽自然换行；控件宽度随断点缩小，极小屏搜索缩为图标浮层
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
+          {/* 左侧：主体维度选择（加宽，保证公司名称完整显示；选项前缀+简称跟随全局开关，触发器仅显名称） */}
+          <CompanySelect
+            value={dimFilter}
+            onChange={setDimFilter}
+            valueFormat="prefixed"
+            allLabel="全部主体"
+            ariaLabel="主体维度"
+            className="h-8 w-[120px] shrink-0 border-input/60 bg-page hover:bg-muted/60 sm:w-[140px] lg:w-[200px] min-[1680px]:w-[280px]"
+          />
+
+          {/* 右侧：科目搜索 + 期间 + 重分类 + 操作按钮组（lg 以上靠右对齐） */}
+          <div className="flex shrink-0 items-center gap-2 lg:ml-auto">
+            {/* 科目列关键字筛选：实时过滤科目树（命中节点保留整棵子树与祖先链） */}
+            <div className="relative shrink-0">
+              {/* >=1680px：完整输入框 */}
+              <div className="hidden min-[1680px]:block">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={subjectKeyword}
+                  onChange={(e) => setSubjectKeyword(e.target.value)}
+                  placeholder="搜索科目"
+                  aria-label="搜索科目"
+                  className="h-8 w-[100px] border-input/60 bg-page pl-8 pr-7 text-[13px] min-[1680px]:w-[170px]"
+                />
+                {subjectKeyword && (
+                  <button
+                    type="button"
+                    onClick={() => setSubjectKeyword('')}
+                    aria-label="清空科目搜索"
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              {/* <1680px：仅图标按钮，点击展开 Popover 浮层输入框（Portal 渲染，不受侧边栏/吸顶层级遮挡） */}
+              <div className="min-[1680px]:hidden">
+                <Popover open={searchOpen} onOpenChange={setSearchOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="fused"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      aria-label={searchOpen ? '收起科目搜索' : '搜索科目'}
+                      title="搜索科目"
+                    >
+                      <Search className="h-3.5 w-3.5" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" sideOffset={6} className="w-64 p-1.5">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        autoFocus
+                        value={subjectKeyword}
+                        onChange={(e) => setSubjectKeyword(e.target.value)}
+                        placeholder="搜索科目"
+                        aria-label="搜索科目"
+                        className="h-8 w-full border-input/60 bg-page pl-8 pr-7 text-[13px]"
+                      />
+                      {subjectKeyword && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSubjectKeyword('')
+                            setSearchOpen(false)
+                          }}
+                          aria-label="清空科目搜索"
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+
+            <Select value={periodFilter} onValueChange={setPeriodFilter}>
+              <SelectTrigger className="h-8 w-[100px] shrink-0 border-input/60 bg-page hover:bg-muted/60 min-[1680px]:w-[160px]" aria-label="期间">
+                <SelectValue placeholder="选择期间" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">全部主体</SelectItem>
-                <SelectGroup>
-                  <SelectLabel>公司</SelectLabel>
-                  {entityCompanies.map((c) => (
-                    <SelectItem key={c.code} value={`company:${c.code}`}>{c.name}</SelectItem>
-                  ))}
-                </SelectGroup>
-                <SelectGroup>
-                  <SelectLabel>汇总主体</SelectLabel>
-                  {summaryEntities.map((c) => (
-                    <SelectItem key={c.code} value={`summary:${c.code}`}>{c.name}</SelectItem>
-                  ))}
-                </SelectGroup>
+                <SelectItem value="all">全部期间</SelectItem>
+                {periods.map((p) => (
+                  <SelectItem key={p} value={p}>{p}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
 
-            {/* 右侧：期间 + 重分类 + 操作按钮组（lg 以上靠右对齐） */}
-            <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
-              <Select value={periodFilter} onValueChange={setPeriodFilter}>
-                <SelectTrigger className="h-8 w-full sm:w-[160px]" aria-label="期间">
-                  <SelectValue placeholder="选择期间" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全部期间</SelectItem>
-                  {periods.map((p) => (
-                    <SelectItem key={p} value={p}>{p}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div
+              className="flex shrink-0 items-center gap-1.5"
+              title="按重分类日志快照回溯展示调整前口径，仅供对比查看，不修改数据"
+            >
+              <Switch id="exclude-reclassify" aria-label="去除重分类影响" checked={excludeReclassify} onCheckedChange={setExcludeReclassify} />
+              <Label htmlFor="exclude-reclassify" className="hidden cursor-pointer whitespace-nowrap text-[13px] min-[1680px]:inline">去除重分类影响</Label>
+            </div>
 
-              <div
-                className="flex items-center gap-1.5"
-                title="按重分类日志快照回溯展示调整前口径，仅供对比查看，不修改数据"
-              >
-                <Switch id="exclude-reclassify" checked={excludeReclassify} onCheckedChange={setExcludeReclassify} />
-                <Label htmlFor="exclude-reclassify" className="cursor-pointer whitespace-nowrap text-[13px]">去除重分类影响</Label>
+            <div className="mx-1 h-5 w-px shrink-0 bg-border/60" aria-hidden="true" />
+
+            {/* 展开/折叠：lg+ 独立显示（<lg 时在下拉内）；过滤态下禁用（展开由 effectiveExpanded 托管，避免污染持久化展开态） */}
+            <Button variant="fused" size="sm" onClick={toggleExpandAll} disabled={!!subjectKeyword.trim()} className="hidden shrink-0 lg:inline-flex">
+              {isAllExpanded ? <ChevronsDownUp className="mr-1 h-3.5 w-3.5" /> : <ChevronsUpDown className="mr-1 h-3.5 w-3.5" />}
+              {isAllExpanded ? '全部折叠' : '全部展开'}
+            </Button>
+
+            {/* 小屏与中屏（<1680px）：AI 预分析 / 查看分析 / 导出 合并为「更多操作」下拉；<lg 时展开/折叠也在下拉内 */}
+            <div className="shrink-0 min-[1680px]:hidden">
+              <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="fused" size="sm">
+                      <MoreHorizontal className="mr-1 h-3.5 w-3.5" /> 更多操作
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-40">
+                    {/* 展开/折叠全部（仅 <lg 在下拉内，lg+ 已独立显示）；过滤态下禁用 */}
+                    <DropdownMenuItem onClick={toggleExpandAll} disabled={!!subjectKeyword.trim()} className="lg:hidden">
+                      {isAllExpanded ? <ChevronsDownUp className="mr-2 h-3.5 w-3.5" /> : <ChevronsUpDown className="mr-2 h-3.5 w-3.5" />}
+                      {isAllExpanded ? '全部折叠' : '全部展开'}
+                    </DropdownMenuItem>
+                    {can('reports', 'create') && (
+                      <DropdownMenuItem onClick={() => setAiNeedData(true)} disabled={isLoading || !hasOverviewData || overviewPreparing}>
+                        {overviewPreparing ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-2 h-3.5 w-3.5" />}
+                        {overviewPreparing ? '数据准备中…' : 'AI 预分析'}
+                      </DropdownMenuItem>
+                    )}
+                    {can('reports', 'view') && (
+                      <DropdownMenuItem onClick={() => navigate('/reports?tab=analyses')}>
+                        <Eye className="mr-2 h-3.5 w-3.5" /> 查看分析
+                      </DropdownMenuItem>
+                    )}
+                    {can('indicators', 'export') && (
+                      <DropdownMenuItem onClick={handleExport} disabled={isLoading || activeItems.length === 0}>
+                        <Download className="mr-2 h-3.5 w-3.5" /> 导出 Excel
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
 
-              <div className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
-
-              {/* AI 预分析：点击后弹出分析窗口（数据就绪后自动生成） */}
+            {/* 大屏（>=1680px）：AI 预分析 / 查看分析 / 导出 独立显示（展开/折叠已独立于上方） */}
+            <div className="hidden shrink-0 min-[1680px]:flex lg:items-center lg:gap-2">
               {can('reports', 'create') ? (
                 <Button
-                  variant="outline"
+                  variant="fused"
                   size="sm"
                   onClick={() => setAiNeedData(true)}
                   disabled={isLoading || !hasOverviewData || overviewPreparing}
@@ -367,30 +512,21 @@ export default function IndicatorsPage() {
                   {overviewPreparing ? '数据准备中…' : 'AI 预分析'}
                 </Button>
               ) : null}
-
-              {/* 查看分析：跳转单项分析管理页 */}
               {can('reports', 'view') ? (
-                <Button variant="outline" size="sm" onClick={() => navigate('/reports?tab=analyses')}>
+                <Button variant="fused" size="sm" onClick={() => navigate('/reports?tab=analyses')}>
                   <Eye className="mr-1 h-3.5 w-3.5" /> 查看分析
                 </Button>
               ) : null}
-
-              {/* 展开/折叠全部 */}
-              <Button variant="outline" size="sm" onClick={toggleExpandAll}>
-                {isAllExpanded ? <ChevronsDownUp className="mr-1 h-3.5 w-3.5" /> : <ChevronsUpDown className="mr-1 h-3.5 w-3.5" />}
-                {isAllExpanded ? '全部折叠' : '全部展开'}
-              </Button>
-
-              {/* 导出 Excel */}
               {can('indicators', 'export') ? (
-                <Button variant="outline" size="sm" onClick={handleExport} disabled={isLoading || activeItems.length === 0}>
+                <Button variant="fused" size="sm" onClick={handleExport} disabled={isLoading || activeItems.length === 0}>
                   <Download className="mr-1 h-3.5 w-3.5" /> 导出 Excel
                 </Button>
               ) : null}
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+        }
+      >
 
       {/* AI 全局预分析弹窗（权限控制显示；key 重建保证筛选变化时旧流中止、数据随新筛选；关闭不中断后台生成） */}
       {can('reports', 'create') ? (
@@ -445,22 +581,24 @@ export default function IndicatorsPage() {
             <div className="py-16 text-center">
               <p className="text-sm text-muted-foreground">当前筛选无数据</p>
               <p className="mt-1 text-xs text-muted-foreground/70">请调整主体维度或期间后重试。</p>
-              <Button variant="outline" size="sm" className="mt-3" onClick={handleResetFilters}>
+              <Button variant="fused" size="sm" className="mt-3" onClick={handleResetFilters}>
                 重置筛选
               </Button>
             </div>
           ) : (
             <div className={cn('transition-opacity duration-200', isFetching && 'opacity-60')}>
               <MetricTree
-                nodes={activeTree}
+                nodes={visibleTree}
                 valueMap={activeValueMap}
                 variant={activeTab}
                 categoryColumn={isOperating}
-                expandedCodes={expandedSet}
+                expandedCodes={effectiveExpanded}
                 onToggle={handleToggle}
                 onAnalyze={can('reports', 'create') ? handleAnalyze : undefined}
                 analyzeDisabled={!companyCode}
                 analyzeHint="请先在「主体维度」选择单一公司，再对该公司的科目撰写单项分析"
+                stickyHeaderTop={headerHeight}
+                emptyText={subjectKeyword.trim() ? '未找到匹配科目' : undefined}
               />
             </div>
           )}

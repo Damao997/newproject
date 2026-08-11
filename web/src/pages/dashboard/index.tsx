@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { CompanySelect } from '@/components/filters/company-select'
 import { KpiCard } from '@/components/charts/kpi-card'
 import { type TrendMetric, type TrendMode } from '@/components/charts/trend-metrics'
 import { PageContainer } from '@/components/layout/page-container'
@@ -120,30 +121,23 @@ export default function DashboardPage() {
             colored
             className="mr-1 hidden sm:inline-flex"
           />
-          <Select value={dimFilter} onValueChange={setDimFilter}>
-            <SelectTrigger className="h-9 w-[150px] sm:w-[180px]" title="选择主体维度（汇总主体自动展开为成员合并口径）">
-              <SelectValue placeholder="选择主体" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部主体</SelectItem>
-              <SelectGroup>
-                <SelectLabel>公司</SelectLabel>
-                {entityCompanies.map((c) => (
-                  <SelectItem key={c.code} value={`company:${c.code}`}>{c.name}</SelectItem>
-                ))}
-              </SelectGroup>
-              <SelectGroup>
-                <SelectLabel>汇总主体</SelectLabel>
-                {summaryEntities.map((c) => (
-                  <SelectItem key={c.code} value={`summary:${c.code}`}>{c.name}</SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
+          <CompanySelect
+            value={dimFilter}
+            onChange={setDimFilter}
+            valueFormat="prefixed"
+            allLabel="全部主体"
+            ariaLabel="选择主体维度（汇总主体自动展开为成员合并口径）"
+            title="选择主体维度（汇总主体自动展开为成员合并口径）"
+            className="h-9 w-[150px] border-input/60 bg-page hover:bg-muted/60 sm:w-[180px]"
+          />
           {periodOptions.length > 0 && (
             <div className="flex items-center gap-2">
-              <Select value={selectedPeriod || 'latest'} onValueChange={(v) => setSelectedPeriod(v === 'latest' ? '' : v)}>
-                <SelectTrigger className="h-9 w-[130px]" title="选择预览期间（KPI 按选定期计算）">
+              {/* 未选时直接回显最新期间实际值（YYYY-MM），而非占位符文本；'latest' 项仍保留「跟随最新」语义 */}
+              <Select
+                value={selectedPeriod || periodOptions[periodOptions.length - 1] || 'latest'}
+                onValueChange={(v) => setSelectedPeriod(v === 'latest' ? '' : v)}
+              >
+                <SelectTrigger className="h-9 w-[140px] border-input/60 bg-page hover:bg-muted/60" title="选择预览期间（KPI 按选定期计算）">
                   <SelectValue placeholder="最新期间" />
                 </SelectTrigger>
                 <SelectContent>

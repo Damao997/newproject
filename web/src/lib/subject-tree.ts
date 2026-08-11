@@ -209,6 +209,24 @@ export function filterTree(tree: SubjectNode[], keyword: string): SubjectNode[] 
   return filterNodes(tree)
 }
 
+/**
+ * 按关键字过滤树（命中保留整棵子树）：名称或编码命中的节点保留其全部后代（子树原样返回），
+ * 未命中但含命中后代的节点保留为祖先链（children 为过滤后结果）；关键字为空返回原树。
+ * 与 filterTree（命中仅保留过滤后子树）的差异：用于科目树"命中即展示该组全部明细"的场景。
+ */
+export function filterTreeKeepSubtree(tree: SubjectNode[], keyword: string): SubjectNode[] {
+  const q = keyword.trim().toLowerCase()
+  if (!q) return tree
+  const hit = (n: SubjectNode) => n.name.toLowerCase().includes(q) || n.code.toLowerCase().includes(q)
+  const walk = (ns: SubjectNode[]): SubjectNode[] =>
+    ns.flatMap((n) => {
+      if (hit(n)) return [{ ...n }]
+      const children = walk(n.children)
+      return children.length > 0 ? [{ ...n, children }] : []
+    })
+  return walk(tree)
+}
+
 /** 装饰后的完整经营分析树 */
 export const operatingAnalysisTree = decorateTree(rawOperatingAnalysis, 'OP')
 

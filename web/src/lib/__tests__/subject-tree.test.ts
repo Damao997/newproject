@@ -3,6 +3,7 @@ import {
   decorateTree,
   flattenTree,
   filterTree,
+  filterTreeKeepSubtree,
   operatingAnalysisTree,
   operatingAnalysisFlat,
   staticAnalysisTree,
@@ -71,6 +72,35 @@ describe('filterTree', () => {
 
   it('空关键字返回原树', () => {
     expect(filterTree(tree, '  ')).toBe(tree)
+  })
+})
+
+describe('filterTreeKeepSubtree', () => {
+  const tree = decorateTree(sampleRaw)
+
+  it('命中父节点保留整棵子树（含全部后代）', () => {
+    const result = filterTreeKeepSubtree(tree, '壹品慧收入')
+    expect(result).toHaveLength(1)
+    expect(result[0].name).toBe('收入')
+    // 命中节点后代原样保留（整棵子树）
+    expect(result[0].children[0].children.map((c) => c.name)).toEqual(['灶具收入'])
+  })
+
+  it('命中叶子仅保留祖先链（与 filterTree 一致路径）', () => {
+    const result = filterTreeKeepSubtree(tree, '灶具')
+    expect(result).toHaveLength(1)
+    expect(result[0].name).toBe('收入')
+    expect(result[0].children[0].children.map((c) => c.name)).toEqual(['灶具收入'])
+  })
+
+  it('可按编码过滤且大小写不敏感', () => {
+    const result = filterTreeKeepSubtree(tree, 'op_06')
+    expect(result).toHaveLength(1)
+    expect(result[0].name).toBe('经营指标')
+  })
+
+  it('空关键字返回原树（不复制）', () => {
+    expect(filterTreeKeepSubtree(tree, '  ')).toBe(tree)
   })
 })
 

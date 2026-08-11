@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger } from '@/components/ui/select'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -15,7 +15,7 @@ import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { cn } from '@/lib/utils'
 
 interface CompanySelectProps {
-  /** 'all' 表示全部公司，否则为公司编码 */
+  /** 'all' 表示全部公司，否则为公司编码（prefixed 模式为 'company:X' | 'summary:X'） */
   value: string
   onChange: (value: string) => void
   /** 仅列出单体公司（type === 'entity'），缺省列出全部公司 */
@@ -23,30 +23,73 @@ interface CompanySelectProps {
   /** 无值时的占位文案 */
   placeholder?: string
   className?: string
+  /** value 格式：'code' = 公司编码（默认）；'prefixed' = 'company:X' | 'summary:X'（主体维度场景） */
+  valueFormat?: 'code' | 'prefixed'
+  /** "全部"选项文案（prefixed 场景常用「全部主体」） */
+  allLabel?: string
+  /** 是否渲染「全部」选项（必选场景传 false） */
+  allowAll?: boolean
+  /** 触发器 aria-label（无障碍） */
+  ariaLabel?: string
+  /** 触发器悬停提示 */
+  title?: string
 }
 
 /**
  * 公司单选筛选器（共享实现）：内置"全部公司"项，名称跟随全局"显示简称"开关。
- * 替代各页面内联的 Select + useCompanies 重复写法。
+ * 选项按 单体公司/汇总主体 分组显示（前缀标识），选中后触发器仅显示名称（无前缀）。
  */
-export function CompanySelect({ value, onChange, entitiesOnly = false, placeholder = '选择公司', className }: CompanySelectProps) {
+export function CompanySelect({
+  value,
+  onChange,
+  entitiesOnly = false,
+  placeholder = '选择公司',
+  className,
+  valueFormat = 'code',
+  allLabel = '全部公司',
+  allowAll = true,
+  ariaLabel,
+  title,
+}: CompanySelectProps) {
   const { data: companies } = useCompanies()
   const { displayNameMap } = useCompanyDisplayName()
-  const options = useMemo(
-    () => (companies ?? []).filter((c) => !entitiesOnly || c.type === 'entity'),
-    [companies, entitiesOnly],
-  )
+  const entityOptions = useMemo(() => (companies ?? []).filter((c) => c.type === 'entity'), [companies])
+  // entitiesOnly 时隐藏汇总主体组
+  const summaryOptions = useMemo(() => (companies ?? []).filter((c) => c.type === 'summary' && !entitiesOnly), [companies, entitiesOnly])
+
+  // 触发器仅显示名称（无前缀）：'all' → allLabel；空值 → placeholder；已选 → 简称/全名
+  const selectedLabel = useMemo(() => {
+    if (value === 'all') return allLabel
+    if (!value) return placeholder
+    const code = valueFormat === 'prefixed' && value.includes(':') ? value.slice(value.indexOf(':') + 1) : value
+    return displayNameMap.get(code) ?? code
+  }, [value, allLabel, placeholder, displayNameMap, valueFormat])
 
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className={cn('w-[200px] max-w-full shrink-0', className)}>
-        <SelectValue placeholder={placeholder} />
+      <SelectTrigger className={cn('w-[200px] max-w-full shrink-0', className)} aria-label={ariaLabel} title={title}>
+        <span className={cn('truncate', !value && 'text-muted-foreground')}>{selectedLabel}</span>
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="all">全部公司</SelectItem>
-        {options.map((c) => (
-          <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
-        ))}
+        {allowAll && <SelectItem value="all">{allLabel}</SelectItem>}
+        {entityOptions.length > 0 && (
+          <SelectGroup>
+            {entityOptions.map((c) => (
+              <SelectItem key={c.code} value={valueFormat === 'prefixed' ? `company:${c.code}` : c.code}>
+                单体公司-{displayNameMap.get(c.code) ?? c.name}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        )}
+        {summaryOptions.length > 0 && (
+          <SelectGroup>
+            {summaryOptions.map((c) => (
+              <SelectItem key={c.code} value={valueFormat === 'prefixed' ? `summary:${c.code}` : c.code}>
+                汇总主体-{displayNameMap.get(c.code) ?? c.name}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        )}
       </SelectContent>
     </Select>
   )
@@ -66,14 +109,16 @@ interface CompanyMultiSelectProps {
 /**
  * 公司多选筛选器（共享实现）：DropdownMenu 复选框式，内置"全选/清空（全部公司）"，
  * 触发器文案"全部公司 / 首选名称 / 首选名称 等 N 家"，名称跟随全局"显示简称"开关。
+ * 选项按 单体公司/汇总主体 分组（前缀标识），触发器仅显示名称（无前缀）。
  */
 export function CompanyMultiSelect({ value, onChange, entitiesOnly = false, selectAllType = 'all', className }: CompanyMultiSelectProps) {
   const { data: companies } = useCompanies()
   const { displayNameMap } = useCompanyDisplayName()
-  const options = useMemo(
-    () => (companies ?? []).filter((c) => !entitiesOnly || c.type === 'entity'),
-    [companies, entitiesOnly],
+  const entityOptions = useMemo(
+    () => (companies ?? []).filter((c) => c.type === 'entity'),
+    [companies],
   )
+  const summaryOptions = useMemo(() => (companies ?? []).filter((c) => c.type === 'summary' && !entitiesOnly), [companies, entitiesOnly])
 
   const triggerLabel = useMemo(() => {
     if (value.length === 0) return '全部公司'
@@ -99,7 +144,7 @@ export function CompanyMultiSelect({ value, onChange, entitiesOnly = false, sele
       <DropdownMenuContent className="max-h-[320px] w-[240px] overflow-y-auto">
         <DropdownMenuItem
           className="text-xs text-muted-foreground"
-          onSelect={(e) => { e.preventDefault(); onChange(options.filter((c) => selectAllType === 'all' || c.type === selectAllType).map((c) => c.code)) }}
+          onSelect={(e) => { e.preventDefault(); onChange([...entityOptions, ...summaryOptions].filter((c) => selectAllType === 'all' || c.type === selectAllType).map((c) => c.code)) }}
         >
           全选
         </DropdownMenuItem>
@@ -110,14 +155,25 @@ export function CompanyMultiSelect({ value, onChange, entitiesOnly = false, sele
           清空（全部公司）
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        {options.map((company) => (
+        {entityOptions.map((company) => (
           <DropdownMenuCheckboxItem
             key={company.code}
             checked={value.includes(company.code)}
             onCheckedChange={(checked) => toggle(company.code, checked === true)}
             onSelect={(e) => e.preventDefault()}
           >
-            {displayNameMap.get(company.code) ?? company.name}
+            单体公司-{displayNameMap.get(company.code) ?? company.name}
+          </DropdownMenuCheckboxItem>
+        ))}
+        {entityOptions.length > 0 && summaryOptions.length > 0 && <DropdownMenuSeparator />}
+        {summaryOptions.map((company) => (
+          <DropdownMenuCheckboxItem
+            key={company.code}
+            checked={value.includes(company.code)}
+            onCheckedChange={(checked) => toggle(company.code, checked === true)}
+            onSelect={(e) => e.preventDefault()}
+          >
+            汇总主体-{displayNameMap.get(company.code) ?? company.name}
           </DropdownMenuCheckboxItem>
         ))}
       </DropdownMenuContent>

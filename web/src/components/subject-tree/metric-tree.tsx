@@ -24,6 +24,8 @@ interface MetricTreeProps {
   /** 分析操作禁用时的提示文案（title/tooltip） */
   analyzeHint?: string
   emptyText?: string
+  /** 吸顶筛选区高度（px）：>0 时表格容器吸顶于该偏移并内部滚动，表头 th 固定在容器顶部（配合 PageContainer stickyHeader 使用） */
+  stickyHeaderTop?: number
 }
 
 /** 涨跌彩色变化值（红涨绿跌、无箭头、等宽数字居中）：统一按相对增长率百分比显示；零值显示 '-' */
@@ -303,12 +305,21 @@ export function MetricTree({
   analyzeDisabled = false,
   analyzeHint,
   emptyText = '暂无数据',
+  stickyHeaderTop = 0,
 }: MetricTreeProps) {
   const isOperating = variant === 'operating'
   const colSpan = 1 + valueColCount(isOperating) + (categoryColumn ? 1 : 0)
-  const headBase = 'h-11 whitespace-nowrap border-b px-3 text-[13px] align-middle font-medium text-black'
+  // sticky top-0 + z-[2]：容器内部滚动时表头固定在容器顶（高于表体 sticky 列的 z-[1]）；bg-muted 保证吸顶时不透明遮挡下方行
+  const headBase = 'sticky top-0 z-[2] h-11 whitespace-nowrap border-b bg-muted px-3 text-[13px] align-middle font-medium text-black'
   return (
-    <div className="overflow-x-auto">
+    <div
+      className={cn('overflow-x-auto', stickyHeaderTop > 0 && 'overflow-y-auto')}
+      style={
+        stickyHeaderTop > 0
+          ? { position: 'sticky', top: stickyHeaderTop, maxHeight: `calc(100dvh - ${stickyHeaderTop}px - 24px)` }
+          : undefined
+      }
+    >
       {/* border-separate：sticky 单元格边框随滚动稳定跟随（collapse 模式下边框渲染异常） */}
       {/* minWidth 兜底：窄容器下表格保持完整列宽走横向滚动，列宽永不小于各列 min-w，杜绝浏览器压缩截断 */}
       <table
