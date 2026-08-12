@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { PageContainer } from '@/components/layout/page-container'
 import {
   ArrowLeft, ArrowUp, ArrowDown, Trash2, Plus, Save, History, FileDown, RefreshCw, Link2,
   Send, Undo2, Eye, Sparkles, Loader2, MoreHorizontal,
@@ -50,12 +52,14 @@ function plainTextToHtml(text: string): string {
     .join('')
 }
 
-export function ReportEditor({ reportId, onBack }: { reportId: string; onBack: () => void }) {
+export function ReportEditor() {
+  const { reportId = '' } = useParams<{ reportId: string }>()
+  const navigate = useNavigate()
   const { can } = usePermission()
   const canUpdate = can('reports', 'update')
   const canExport = can('reports', 'export')
 
-  const { data: report, isLoading } = useReport(reportId)
+  const { data: report, isLoading, isError } = useReport(reportId)
   const generateSections = useGenerateReportSections()
   const setSections = useSetReportSections()
   const saveVersion = useSaveReportVersion()
@@ -102,8 +106,24 @@ export function ReportEditor({ reportId, onBack }: { reportId: string; onBack: (
     return () => window.removeEventListener('beforeunload', handler)
   }, [dirty])
 
+  // 路由直达 /reports/:id/edit 时报告可能不存在（404/已删除）：显式错误态而非永久加载中
+  if (isError || (!report && !isLoading)) {
+    return (
+      <PageContainer title="报告编辑">
+        <div className="py-16 text-center">
+          <p className="text-sm text-muted-foreground">报告不存在或已删除</p>
+          <Button variant="fused" size="sm" className="mt-3" onClick={() => navigate('/reports')}>返回报告列表</Button>
+        </div>
+      </PageContainer>
+    )
+  }
+
   if (isLoading || !report) {
-    return <div className="py-16 text-center text-sm text-muted-foreground">加载中…</div>
+    return (
+      <PageContainer title="报告编辑">
+        <div className="py-16 text-center text-sm text-muted-foreground">加载中…</div>
+      </PageContainer>
+    )
   }
 
   const isDraft = report.status === 'draft'
@@ -126,7 +146,7 @@ export function ReportEditor({ reportId, onBack }: { reportId: string; onBack: (
       })
       if (!ok) return
     }
-    onBack()
+    navigate('/reports')
   }
 
   const move = (index: number, dir: -1 | 1) => {
@@ -238,7 +258,8 @@ export function ReportEditor({ reportId, onBack }: { reportId: string; onBack: (
   const busy = setSections.isPending || generateSections.isPending || saveVersion.isPending || updateReport.isPending || rollbackVersion.isPending
 
   return (
-    <div className="space-y-3">
+    <PageContainer title="报告编辑">
+      <div className="space-y-3">
       {/* 工具栏：主动作常驻（AI 概述/保存章节/发布），次动作收入「更多」菜单 */}
       <Card className="animate-fade-in">
         <CardContent className="flex flex-wrap items-center justify-between gap-2 p-4">
@@ -426,7 +447,8 @@ export function ReportEditor({ reportId, onBack }: { reportId: string; onBack: (
       />
 
       {confirmElement}
-    </div>
+      </div>
+    </PageContainer>
   )
 }
 

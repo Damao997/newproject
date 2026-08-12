@@ -1,11 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatMoneyWan, formatPercent } from '@/lib/utils'
 import { cn } from '@/lib/utils'
-import { 
-  TrendingUp, 
-  DollarSign, 
-  Wallet,
-  Banknote,
+import {
   ArrowUpRight,
   ArrowDownRight,
   Minus
@@ -19,21 +15,6 @@ interface KpiCardProps {
   /** 钻取回调：有值时卡片整体可点击（跳转指标分析等） */
   onClick?: () => void
 }
-
-const iconMap: Record<string, React.ElementType> = {
-  TrendingUp,
-  DollarSign,
-  Wallet,
-  Banknote,
-}
-
-/** 四色强调体系：橙 / 青蓝 / 翠绿 / 柔紫，按卡片序号轮换 */
-const ACCENTS = [
-  { icon: 'bg-chart-1/10 text-chart-1' },
-  { icon: 'bg-chart-2/10 text-chart-2' },
-  { icon: 'bg-chart-3/10 text-chart-3' },
-  { icon: 'bg-chart-5/10 text-chart-5' },
-]
 
 /** 达成率展示：null（无预算）显示 "–" */
 function rateText(rate: number | null): string {
@@ -53,11 +34,9 @@ function rateColorClass(rate: number | null): string {
  * 大字体 = 本月合计 + 月度预算达成率（分级色）；小字体 = 累计实际 / 同比 / 累计达成率。
  */
 export function KpiCard({ data, index = 0, onClick }: KpiCardProps) {
-  const Icon = iconMap[data.icon] || TrendingUp
   // 红涨绿跌（A 股/国内财报习惯）：正数红 finance.red / 负数绿 finance.green / 持平灰；方向由箭头图标表达，数值不再重复加 "+" 前缀
   const isPositive = data.yoy > 0
   const isFlat = data.yoy === 0
-  const accent = ACCENTS[index % ACCENTS.length]
 
   return (
     <Card
@@ -69,13 +48,10 @@ export function KpiCard({ data, index = 0, onClick }: KpiCardProps) {
       onClick={onClick}
       title={onClick ? '点击查看财务指标明细' : undefined}
     >
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 px-5 pb-1 pt-5">
-        <CardTitle className="text-xs font-medium tracking-wide text-muted-foreground">
+      <CardHeader className="px-5 pb-1 pt-5">
+        <CardTitle className="text-sm font-semibold tracking-tight text-foreground">
           {data.title}
         </CardTitle>
-        <div className={cn('flex h-8 w-8 items-center justify-center rounded-lg', accent.icon)}>
-          <Icon className="h-4 w-4" />
-        </div>
       </CardHeader>
       <CardContent className="px-5 pb-4">
         {/* 大字体区：本月合计 + 月度达成率（分级色） */}

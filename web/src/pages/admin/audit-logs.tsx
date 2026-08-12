@@ -1,13 +1,13 @@
 import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Card } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { PageContainer } from '@/components/layout/page-container'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { Pagination } from '@/components/data-table/pagination'
 import { useRoles, useAuditLogs, type RoleItem } from '@/hooks/api-queries'
 import { AUDIT_MODULE_LABELS, AUDIT_ACTION_LABELS } from '@/lib/constants'
-import { Activity, Search } from 'lucide-react'
+import { Search } from 'lucide-react'
 import type { AuditLog } from '@/types'
 
 const AUDIT_PAGE_SIZE = 20
@@ -50,16 +50,9 @@ export default function AuditLogsPage() {
 
   return (
     <PageContainer title="审计日志" description="查看系统操作日志、用户行为记录与安全审计信息">
-      <Card className="animate-fade-in">
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Activity className="mr-2 h-5 w-5" />
-            操作日志
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* 筛选行：角色 / 模块 / 时间范围 / 用户关键字（任一变化重置到第一页） */}
-          <div className="flex flex-col space-y-2 lg:flex-row lg:items-center lg:space-x-2 lg:space-y-0">
+      {/* 控制层：筛选工具条（筛选卡） */}
+      <Card className="rounded-card p-4">
+      <div className="flex flex-col space-y-2 lg:flex-row lg:items-center lg:space-x-2 lg:space-y-0">
             <Select value={auditRole} onValueChange={(v) => { setAuditRole(v); setAuditPage(1) }}>
               <SelectTrigger className="w-full lg:w-[160px]">
                 <SelectValue placeholder="选择角色" />
@@ -110,11 +103,17 @@ export default function AuditLogsPage() {
               />
             </div>
           </div>
-
-          <DataTable columns={auditColumns} data={auditLogs} rowKey={(log) => log.id} emptyText="暂无审计日志" />
-          <Pagination page={auditPage} pageSize={AUDIT_PAGE_SIZE} total={auditTotal} onPageChange={setAuditPage} />
-        </CardContent>
       </Card>
+
+          {/* 展示层：审计日志表格（表格卡） */}
+          <Card className="overflow-hidden rounded-card">
+          <div className="pt-2">
+            <DataTable columns={auditColumns} data={auditLogs} rowKey={(log) => log.id} emptyText="暂无审计日志" />
+            <div className="border-t px-4 py-2.5">
+              <Pagination page={auditPage} pageSize={AUDIT_PAGE_SIZE} total={auditTotal} onPageChange={setAuditPage} />
+            </div>
+          </div>
+          </Card>
     </PageContainer>
   )
 }

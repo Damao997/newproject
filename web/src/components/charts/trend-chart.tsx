@@ -2,7 +2,8 @@ import { useMemo } from 'react'
 import type { EChartsOption, SeriesOption } from 'echarts'
 import ReactECharts, { echarts } from './echarts-core'
 import { formatMoneyWan } from '@/lib/utils'
-import { CHART_FONT, CHART_INK, CHART_SERIES, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
+import { CHART_FONT, CHART_INK, getChartSeries, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
+import { useThemeStore } from '@/stores/themeStore'
 import { seriesOf, TREND_SERIES_LABELS, type TrendMetric, type TrendMode } from './trend-metrics'
 import type { TrendData } from '@/types'
 
@@ -13,15 +14,16 @@ interface TrendChartProps {
   mode?: TrendMode
 }
 
-const SERIES_COLORS = { actual: CHART_SERIES[0], same: CHART_SERIES[1], budget: CHART_SERIES[4] }
-
 /**
- * 财年趋势图：本月合计/累计实际（柱，品牌橙）+ 上年同期/同期累计（柱，青蓝）+ 预算（实线曲线，柔紫）。
+ * 财年趋势图：本月合计/累计实际（柱，品牌主色）+ 上年同期/同期累计（柱，青蓝）+ 预算（实线曲线，柔紫）。
  * X 轴为所选财年 12 个月，未导入数据的月份留空（null 断点）。
  */
 export function TrendChart({ data, metric, mode = 'month' }: TrendChartProps) {
-  // option 随 data/metric/mode 变化才重建，避免父组件无关状态更新触发图表全量重渲染
+  const theme = useThemeStore((s) => s.theme)
+  // option 随 data/metric/mode/theme 变化才重建，避免父组件无关状态更新触发图表全量重渲染
   const option: EChartsOption = useMemo(() => {
+    const seriesColors = getChartSeries(theme)
+    const SERIES_COLORS = { actual: seriesColors[0], same: seriesColors[1], budget: seriesColors[4] }
     const periods = data.map(d => d.period)
     const { actual, same, budget } = seriesOf(data, metric, mode)
     const labels = TREND_SERIES_LABELS[mode]
@@ -167,7 +169,7 @@ export function TrendChart({ data, metric, mode = 'month' }: TrendChartProps) {
       },
     ] as SeriesOption[],
     }
-  }, [data, metric, mode])
+  }, [data, metric, mode, theme])
 
   return (
     <div className="h-[260px] w-full lg:h-[320px]">

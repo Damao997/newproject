@@ -6,11 +6,11 @@ import type { SubjectNode } from '@/types'
 
 const dataTypeMeta: Record<
   SubjectNode['dataType'],
-  { label: string; variant: 'secondary' | 'default' | 'warning' }
+  { label: string; variant: 'secondary' | 'default' | 'info' }
 > = {
   data: { label: '数据类', variant: 'secondary' },
   calc: { label: '计算类', variant: 'default' },
-  display: { label: '展示类', variant: 'warning' },
+  display: { label: '展示类', variant: 'info' },
 }
 
 // 非金额值类型轻量徽标（金额为默认不标注，避免噪音）

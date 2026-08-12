@@ -18,7 +18,6 @@ type Scope = Pick<AuthUserContext, 'companyCode' | 'scopeValue'> & { dataScopeCo
 /** 核心 KPI 卡：本月合计 + 月度/累计预算达成率（%，null=无预算）+ 累计实际 + 同比 */
 interface Kpi {
   title: string
-  icon: string
   monthActual: number
   monthRate: number | null
   ytdActual: number
@@ -596,9 +595,8 @@ async function buildDashboardData(companyCodes: string[], period: string, availa
     periodIdx >= 0 ? trendData[periodIdx][field] : undefined
 
   // monthRate 按当月预算计算（与趋势图月度预算线同口径），ytdRate 按年度总额计算（与累计预算线同口径），无预算为 null
-  const kpiOf = (title: string, icon: string, node: ValueNode | undefined, key: 'revenueActual' | 'profitActual' | 'netProfitActual' | 'collectionActual', monthBudget?: number | null): Kpi => ({
+  const kpiOf = (title: string, node: ValueNode | undefined, key: 'revenueActual' | 'profitActual' | 'netProfitActual' | 'collectionActual', monthBudget?: number | null): Kpi => ({
     title,
-    icon,
     monthActual: round2(actual(node)),
     monthRate: monthBudget === undefined ? rateOf(actual(node), budget(node), 12) : rateOf(actual(node), monthBudget ?? 0),
     ytdActual: round2(ytd(node)),
@@ -608,10 +606,10 @@ async function buildDashboardData(companyCodes: string[], period: string, availa
   })
 
   const kpiData: Kpi[] = [
-    kpiOf('收入', 'TrendingUp', nodes.revenue, 'revenueActual', monthBudgetOfTrend('revenueBudget')),
-    kpiOf('毛利', 'DollarSign', nodes.profit, 'profitActual', monthBudgetOfTrend('profitBudget')),
-    kpiOf('净利润', 'Wallet', nodes.netProfit, 'netProfitActual', monthBudgetOfTrend('netProfitBudget')),
-    kpiOf('回款', 'Banknote', nodes.collection, 'collectionActual'),
+    kpiOf('收入', nodes.revenue, 'revenueActual', monthBudgetOfTrend('revenueBudget')),
+    kpiOf('毛利', nodes.profit, 'profitActual', monthBudgetOfTrend('profitBudget')),
+    kpiOf('净利润', nodes.netProfit, 'netProfitActual', monthBudgetOfTrend('netProfitBudget')),
+    kpiOf('回款', nodes.collection, 'collectionActual'),
   ]
   return { kpiData, trendData }
 }

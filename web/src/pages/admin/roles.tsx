@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { PageContainer } from '@/components/layout/page-container'
@@ -55,21 +55,18 @@ export default function RolesPage() {
         </Card>
       </div>
 
-      {/* 角色列表 */}
-      <Card className="animate-fade-in">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>角色列表</CardTitle>
-            {canCreateRole && (
-              <Button size="sm" onClick={() => setRoleDialog({ open: true, mode: 'create', role: null })}>
-                <Plus className="mr-2 h-4 w-4" />
-                新增角色
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {/* 角色列表（角色卡网格，卡片化形态保持；标题行） */}
+      <div className="animate-fade-in">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-semibold tracking-tight">角色列表</h3>
+          {canCreateRole && (
+            <Button size="sm" onClick={() => setRoleDialog({ open: true, mode: 'create', role: null })}>
+              <Plus className="mr-2 h-4 w-4" />
+              新增角色
+            </Button>
+          )}
+        </div>
+        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {roles.map((role) => (
               <Card key={role.id}>
                 <CardContent className="pt-6">
@@ -110,8 +107,7 @@ export default function RolesPage() {
               </Card>
             ))}
           </div>
-        </CardContent>
-      </Card>
+      </div>
 
       {/* 弹窗 */}
       <RoleDialog

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -266,29 +266,29 @@ export default function UsersPage() {
         </Card>
       </div>
 
-      {/* 用户列表 */}
-      <Card className="animate-fade-in">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>用户列表</CardTitle>
-            <div className="flex items-center space-x-2">
-              {canExportUser && (
-                <Button variant="outline" size="sm" onClick={handleExportUsers}>
-                  <Download className="mr-2 h-4 w-4" />
-                  导出
-                </Button>
-              )}
-              {canCreateUser && (
-                <Button size="sm" onClick={() => setUserDialog({ open: true, mode: 'create', user: null })}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  新增用户
-                </Button>
-              )}
-            </div>
+      {/* 用户列表（筛选卡 + 表格卡） */}
+      <Card className="animate-fade-in overflow-hidden rounded-card">
+        <div className="flex items-center justify-between border-b px-4 py-2.5">
+          <h3 className="text-base font-semibold tracking-tight">用户列表</h3>
+          <div className="flex items-center space-x-2">
+            {canExportUser && (
+              <Button variant="outline" size="sm" onClick={handleExportUsers}>
+                <Download className="mr-2 h-4 w-4" />
+                导出
+              </Button>
+            )}
+            {canCreateUser && (
+              <Button size="sm" onClick={() => setUserDialog({ open: true, mode: 'create', user: null })}>
+                <Plus className="mr-2 h-4 w-4" />
+                新增用户
+              </Button>
+            )}
           </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-col space-y-2 sm:flex-row sm:items-center sm:space-x-2 sm:space-y-0">
+        </div>
+
+        {/* 控制层：筛选工具条（筛选卡） */}
+        <Card className="m-4 rounded-card">
+        <div className="flex flex-col space-y-2 sm:flex-row sm:items-center sm:space-x-2 sm:space-y-0">
             <Select value={roleFilter} onValueChange={(v) => { setRoleFilter(v); resetPage() }}>
               <SelectTrigger className="w-full sm:w-[180px]">
                 <SelectValue placeholder="选择角色" />
@@ -322,8 +322,10 @@ export default function UsersPage() {
               />
             </div>
           </div>
+        </Card>
 
-          <div className="min-h-[360px]">
+          {/* 展示层：用户表格 */}
+          <div className="min-h-[360px] px-4 pb-4">
             {usersTruncated && (
               <p className="mb-2 text-sm text-warning-strong">
                 用户总数超过 {USER_FETCH_LIMIT}，当前仅展示前 {USER_FETCH_LIMIT} 条，请用搜索缩小范围
@@ -332,8 +334,9 @@ export default function UsersPage() {
             <DataTable columns={userColumns} data={pagedUsers} rowKey={(u) => u.id} emptyText="暂无用户" />
           </div>
 
-          <Pagination page={page} pageSize={USER_PAGE_SIZE} total={filteredUsers.length} onPageChange={setPage} />
-        </CardContent>
+          <div className="border-t px-4 py-2.5">
+            <Pagination page={page} pageSize={USER_PAGE_SIZE} total={filteredUsers.length} onPageChange={setPage} />
+          </div>
       </Card>
 
       {/* 弹窗 */}

@@ -6,9 +6,9 @@ import { Button } from '@/components/ui/button'
 import { useInventoryTrend } from '@/hooks/api-queries'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { formatMoneyWan } from '@/lib/utils'
-import { CHART_FONT, CHART_INK, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
+import { CHART_FONT, CHART_INK, getChartSeries, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
+import { useThemeStore } from '@/stores/themeStore'
 import { LineChart, RefreshCw } from 'lucide-react'
-import { CATEGORY_COLORS } from './category-colors'
 import { EmptyHint } from './empty-hint'
 
 /**
@@ -20,6 +20,8 @@ import { EmptyHint } from './empty-hint'
 const TOTAL_COLOR = CHART_INK.text
 
 export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes: string[]; fiscalYear: string | null }) {
+  // 分类色板跟随当前品牌主题：按公司顺序轮转，首位为品牌主色
+  const theme = useThemeStore((s) => s.theme)
   const { data, isLoading, isError, error, refetch, isFetching } = useInventoryTrend({ fiscalYear, companyCodes })
   // 图例/系列名称跟随全局「显示简称」开关（与明细表一致）
   const { getDisplayName } = useCompanyDisplayName()
@@ -27,6 +29,7 @@ export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes:
   const hasData = !!data && data.months.length > 0
 
   const option = useMemo<EChartsOption>(() => {
+    const seriesColors = getChartSeries(theme)
     const months = data?.months ?? []
     const byCompany = data?.byCompany ?? []
     const total = data?.total ?? []
@@ -94,7 +97,7 @@ export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes:
           stack: 'company',
           barMaxWidth: 28,
           data: c.values,
-          itemStyle: { color: CATEGORY_COLORS[i % CATEGORY_COLORS.length] },
+          itemStyle: { color: seriesColors[i % seriesColors.length] },
         })),
         {
           name: '存货总额',
@@ -109,7 +112,7 @@ export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes:
         },
       ] as SeriesOption[],
     }
-  }, [data, getDisplayName])
+  }, [data, getDisplayName, theme])
 
   return (
     <Card className="animate-fade-in">

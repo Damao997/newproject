@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { useConfirm } from '@/components/ui/confirm-dialog'
+import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { useCompareImports, useRollbackImport } from '@/hooks/api-queries'
 import { usePermission } from '@/hooks/usePermission'
 import { cn, formatMoneyWan, getChangeColor, getChangePrefix } from '@/lib/utils'
@@ -15,6 +16,41 @@ const statusLabel: Record<string, string> = { draft: '草稿', active: '已生�
 
 /** 差异行表格列（changed/added/removed 共用，按需隐藏列） */
 function DiffTable({ rows, showOld, showNew }: { rows: ImportDiffRow[]; showOld: boolean; showNew: boolean }) {
+  const columns: DataTableColumn<ImportDiffRow>[] = useMemo(() => {
+    const cols: DataTableColumn<ImportDiffRow>[] = [
+      { key: 'subjectName', header: '科目', cellClassName: 'font-medium text-foreground' },
+      { key: 'companyCode', header: '公司', align: 'center', cellClassName: 'font-mono text-muted-foreground' },
+      { key: 'period', header: '期间', align: 'center', cellClassName: 'font-mono text-muted-foreground' },
+    ]
+    if (showOld) {
+      cols.push({
+        key: 'oldValue', header: '旧值(万)', align: 'right', cellClassName: 'font-num',
+        render: (r) => (r.delta !== 0 ? <span className="text-muted-foreground">{formatMoneyWan(r.oldValue)}</span> : '-'),
+      })
+    }
+    if (showNew) {
+      cols.push({
+        key: 'newValue', header: '新值(万)', align: 'right', cellClassName: 'font-num',
+        render: (r) => (r.delta !== 0 ? formatMoneyWan(r.newValue) : <span className="text-muted-foreground">-</span>),
+      })
+    }
+    cols.push(
+      {
+        key: 'delta', header: '差值(万)', align: 'right', cellClassName: 'font-num',
+        render: (r) => <span className={r.delta === 0 ? 'text-muted-foreground' : getChangeColor(r.delta)}>{getChangePrefix(r.delta)}{formatMoneyWan(r.delta)}</span>,
+      },
+      {
+        key: 'deltaPercent', header: '变化', align: 'right', cellClassName: 'font-num',
+        render: (r) => (
+          <span className={r.delta === 0 ? 'text-muted-foreground' : getChangeColor(r.delta)}>
+            {r.deltaPercent !== null ? (r.deltaPercent === 0 ? '-' : `${getChangePrefix(r.deltaPercent)}${r.deltaPercent.toFixed(1)}%`) : '-'}
+          </span>
+        ),
+      },
+    )
+    return cols
+  }, [showOld, showNew])
+
   if (rows.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 py-10 text-center">
@@ -23,49 +59,17 @@ function DiffTable({ rows, showOld, showNew }: { rows: ImportDiffRow[]; showOld:
       </div>
     )
   }
+
   return (
-    <div className="max-h-[340px] overflow-auto rounded-lg border">
-      <table className="w-full text-[13px]">
-        <thead className="sticky top-0">
-          <tr className="border-b bg-muted/50 text-black">
-            <th className="h-9 px-3 text-center font-medium">科目</th>
-            <th className="h-9 px-3 text-center font-medium">公司</th>
-            <th className="h-9 px-3 text-center font-medium">期间</th>
-            {showOld && <th className="h-9 px-3 text-center font-medium">旧值(万)</th>}
-            {showNew && <th className="h-9 px-3 text-center font-medium">新值(万)</th>}
-            <th className="h-9 px-3 text-center font-medium">差值(万)</th>
-            <th className="h-9 px-3 text-center font-medium">变化</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => {
-            const deltaColor = r.delta === 0 ? 'text-muted-foreground' : getChangeColor(r.delta)
-            return (
-              <tr key={`${r.companyCode}-${r.accountCode}-${r.period}-${i}`} className="border-b last:border-0 hover:bg-muted/40">
-                <td className="whitespace-nowrap px-3 py-1.5 font-medium text-foreground">{r.subjectName}</td>
-                <td className="whitespace-nowrap px-3 py-1.5 text-center font-mono text-muted-foreground">{r.companyCode}</td>
-                <td className="whitespace-nowrap px-3 py-1.5 text-center font-mono text-muted-foreground">{r.period}</td>
-                {showOld && (
-                  <td className={cn('whitespace-nowrap px-3 py-1.5 text-right font-num', r.delta !== 0 && 'text-muted-foreground')}>
-                    {r.delta !== 0 ? formatMoneyWan(r.oldValue) : '-'}
-                  </td>
-                )}
-                {showNew && (
-                  <td className={cn('whitespace-nowrap px-3 py-1.5 text-right font-num', r.delta !== 0 ? 'text-foreground' : 'text-muted-foreground')}>
-                    {r.delta !== 0 ? formatMoneyWan(r.newValue) : '-'}
-                  </td>
-                )}
-                <td className={cn('whitespace-nowrap px-3 py-1.5 text-right font-num', deltaColor)}>
-                  {getChangePrefix(r.delta)}{formatMoneyWan(r.delta)}
-                </td>
-                <td className={cn('whitespace-nowrap px-3 py-1.5 text-right font-num', deltaColor)}>
-                  {r.deltaPercent !== null ? (r.deltaPercent === 0 ? '-' : `${getChangePrefix(r.deltaPercent)}${r.deltaPercent.toFixed(1)}%`) : '-'}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+    <div className="rounded-lg border">
+      <DataTable
+        columns={columns}
+        data={rows}
+        rowKey={(r, i) => `${r.companyCode}-${r.accountCode}-${r.period}-${i}`}
+        density="compact"
+        maxHeight="340px"
+        caption="批次差异明细"
+      />
     </div>
   )
 }

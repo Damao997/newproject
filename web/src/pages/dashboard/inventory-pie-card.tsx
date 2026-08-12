@@ -5,8 +5,8 @@ import ReactECharts, { echarts } from '@/components/charts/echarts-core'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useInventoryOverview } from '@/hooks/api-queries'
 import { formatMoneyWan } from '@/lib/utils'
-import { CATEGORY_COLORS } from '@/lib/chart-colors'
-import { CHART_FONT, CHART_INK, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
+import { CHART_FONT, CHART_INK, getChartSeries, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
+import { useThemeStore } from '@/stores/themeStore'
 import { PieChart } from 'lucide-react'
 
 interface InventoryPieCardProps {
@@ -25,6 +25,8 @@ interface InventoryPieCardProps {
  */
 export function InventoryPieCard({ period, companyCode, subjectName }: InventoryPieCardProps) {
   const navigate = useNavigate()
+  // 分类色板跟随当前品牌主题：按序轮转，首位为品牌主色
+  const theme = useThemeStore((s) => s.theme)
   /** 深链库存页：携带当前主体与期间，库存页挂载时写入 store 后清理 URL */
   const gotoInventory = () => {
     const params = new URLSearchParams()
@@ -42,6 +44,7 @@ export function InventoryPieCard({ period, companyCode, subjectName }: Inventory
   const negatives = useMemo(() => categories.filter((c) => c.current < 0), [categories])
 
   const option = useMemo<EChartsOption>(() => {
+    const seriesColors = getChartSeries(theme)
     const sum = pieData.reduce((s, c) => s + c.current, 0)
     return {
       animation: false,
@@ -81,12 +84,12 @@ export function InventoryPieCard({ period, companyCode, subjectName }: Inventory
           data: pieData.map((c, i) => ({
             name: c.name,
             value: c.current,
-            itemStyle: { color: CATEGORY_COLORS[i % CATEGORY_COLORS.length] },
+            itemStyle: { color: seriesColors[i % seriesColors.length] },
           })),
         },
       ],
     }
-  }, [pieData])
+  }, [pieData, theme])
 
   return (
     <Card className="animate-fade-in border border-border shadow-sm" style={{ animationDelay: '240ms' }}>

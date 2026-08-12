@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { useBudgetRatio, useBudgetRatioMutation, useAvailablePeriods } from '@/hooks/api-queries'
 import { formatMoneyWan, cn } from '@/lib/utils'
 import { AlertTriangle, CheckCircle2, Loader2, RotateCcw, Save } from 'lucide-react'
@@ -93,10 +94,52 @@ export function BudgetRatioPanel({ canUpdate = false }: BudgetRatioPanelProps) {
     [annualTotal, ratioNums, data?.monthlyAmounts],
   )
 
-  const setRatioAt = (i: number, v: string) => {
+  const setRatioAt = useCallback((i: number, v: string) => {
     setRatios((prev) => prev.map((x, idx) => (idx === i ? v : x)))
     setSavedMsg(null)
-  }
+  }, [])
+
+  // 月度占比行数据（label + index 双驱动，render 内读取 ratios/monthlyAmounts/ratioNums）
+  const ratioRows = monthLabels.map((label, index) => ({ label, index }))
+  const ratioColumns: DataTableColumn<(typeof ratioRows)[number]>[] = useMemo(() => [
+    { key: 'label', header: '月份', cellClassName: 'font-medium text-foreground' },
+    {
+      key: 'ratio', header: '预算占比（%）', align: 'right',
+      render: ({ label, index }) => (
+        <Input
+          className="ml-auto h-7 w-[90px] text-right font-num"
+          type="number"
+          min={0}
+          max={100}
+          step="0.01"
+          value={ratios[index]}
+          onChange={(e) => setRatioAt(index, e.target.value)}
+          disabled={!canUpdate}
+          aria-label={`${label}预算占比`}
+        />
+      ),
+    },
+    {
+      key: 'amount', header: '拆分金额（万元）', align: 'right', cellClassName: 'font-num text-foreground',
+      render: ({ index }) => {
+        const amount = monthlyAmounts[index]
+        return amount === null || amount === undefined ? <span className="text-muted-foreground">—</span> : formatMoneyWan(amount)
+      },
+    },
+    {
+      key: 'split', header: '拆分占比', align: 'right',
+      render: ({ index }) => {
+        const amount = monthlyAmounts[index]
+        const r = ratioNums[index]
+        const validR = Number.isFinite(r) && r >= 0 && r <= 100
+        return (
+          <span className={cn('font-num', validR && amount ? 'text-muted-foreground' : 'text-muted-foreground/50')}>
+            {validR ? `${Math.round(r * 100) / 100}%` : '—'}
+          </span>
+        )
+      },
+    },
+  ], [ratios, setRatioAt, canUpdate, monthlyAmounts, ratioNums])
 
   const handleReset = () => {
     setRatios(DEFAULT_RATIOS.map(String))
@@ -191,50 +234,14 @@ export function BudgetRatioPanel({ canUpdate = false }: BudgetRatioPanelProps) {
       </div>
 
       {/* 12 个月占比 + 拆分金额 */}
-      <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/40">
-              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">月份</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">预算占比（%）</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">拆分金额（万元）</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">拆分占比</th>
-            </tr>
-          </thead>
-          <tbody>
-            {monthLabels.map((label, i) => {
-              const amount = monthlyAmounts[i]
-              const r = ratioNums[i]
-              const validR = Number.isFinite(r) && r >= 0 && r <= 100
-              return (
-                <tr key={label} className="border-b border-border/60">
-                  <td className="px-3 py-1.5 font-medium text-foreground">{label}</td>
-                  <td className="px-3 py-1.5">
-                    <Input
-                      className="ml-auto h-7 w-[90px] text-right font-num"
-                      type="number"
-                      min={0}
-                      max={100}
-                      step="0.01"
-                      value={ratios[i]}
-                      onChange={(e) => setRatioAt(i, e.target.value)}
-                      disabled={!canUpdate}
-                      aria-label={`${label}预算占比`}
-                    />
-                  </td>
-                  <td className="px-3 py-1.5 text-right font-num text-foreground">
-                    {amount === null || amount === undefined ? <span className="text-muted-foreground">—</span> : formatMoneyWan(amount)}
-                  </td>
-                  <td className="px-3 py-1.5 text-right text-xs">
-                    <span className={cn('font-num', validR && amount ? 'text-muted-foreground' : 'text-muted-foreground/50')}>
-                      {validR ? `${Math.round(r * 100) / 100}%` : '—'}
-                    </span>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-          <tfoot>
+      <div className="rounded-lg border border-border">
+        <DataTable
+          columns={ratioColumns}
+          data={ratioRows}
+          rowKey={(r) => r.label}
+          density="compact"
+          caption="月度预算占比配置"
+          footer={
             <tr className="border-t border-border bg-muted/30">
               <td className="px-3 py-2 font-medium">合计</td>
               <td className="px-3 py-2 text-right font-num font-medium">{Number.isFinite(ratioSum) ? `${ratioSum}%` : '—'}</td>
@@ -249,8 +256,8 @@ export function BudgetRatioPanel({ canUpdate = false }: BudgetRatioPanelProps) {
                 </span>
               </td>
             </tr>
-          </tfoot>
-        </table>
+          }
+        />
       </div>
 
       {error && (

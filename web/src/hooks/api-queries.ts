@@ -1041,7 +1041,7 @@ export function useRollbackReportVersion() {
 }
 
 // ---------------- 往来分析 ----------------
-import type { TransactionOverviewItem, TransactionDetailItem, AgingAnalysisRow, InternalSummaryRow, InternalMirrorRow, TransactionFilterParams, PaginatedResponse } from '@/types'
+import type { TransactionOverviewItem, AgingAnalysisRow, InternalSummaryRow, InternalMirrorRow, PaginatedResponse } from '@/types'
 import type { TransactionImportPreview, TransactionImportUploadResult, CollectionPlanItem, CollectionLogItem } from '@/types'
 import type { TransactionTrendResult } from '@/types'
 import type { TransactionCoverageResult, BatchCoverageRow } from '@/types'
@@ -1057,16 +1057,7 @@ export function useTransactionOverview(params: { companyCodes?: string[]; period
   })
 }
 
-export function useTransactionDetails(params: TransactionFilterParams, options: { enabled?: boolean } = {}) {
-  return useQuery({
-    queryKey: ['transactions', 'details', params] as const,
-    queryFn: () => api.getTransactionDetails(params as Record<string, unknown>) as Promise<PaginatedResponse<TransactionDetailItem>>,
-    enabled: options.enabled ?? true,
-    placeholderData: keepPreviousData,
-  })
-}
-
-export function useTransactionAging(params: { companyCode?: string; transactionType?: string; groupBy?: string; period?: string; accountCodes?: string; partyType?: string }, options: { enabled?: boolean } = {}) {
+export function useTransactionAging(params: { companyCode?: string; transactionType?: string; groupBy?: string; period?: string; accountCodes?: string; partyType?: string; counterpartyKeyword?: string }, options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ['transactions', 'aging', params] as const,
     queryFn: () => api.getTransactionAging(params) as Promise<AgingAnalysisRow[]>,

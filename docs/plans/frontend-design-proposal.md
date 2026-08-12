@@ -71,10 +71,10 @@ React 18 + TypeScript 5.5
 
 ```css
 :root {
-  /* 基础色（暖中性：色相 24-30，与品牌橙同族，避免冷灰蓝与橙的冲突） */
+  /* 基础色（中性色保持暖调：色相 24-30，与品牌橙同族；页面底色为冷灰 #F5F7FA，形成现代 SaaS 层次） */
   --background: 0 0% 100%;          /* 页面背景：纯白 */
   --foreground: 24 10% 10%;        /* 主文本：暖近黑 */
-  --page: 30 30% 98%;              /* 内容区底色，与卡片白底形成层次 */
+  --page: 216 33% 97%;              /* 内容区底色：冷灰 #F5F7FA，与卡片白底形成层次 */
 
   /* 卡片与表面 */
   --card: 0 0% 100%;                /* 卡片背景 */
@@ -85,7 +85,7 @@ React 18 + TypeScript 5.5
   --muted-foreground: 25 8% 45%;   /* 辅助文字 */
 
   /* 主题色 */
-  --primary: 25 95% 53%;           /* 品牌橙：#F97316 */
+  --primary: 25 95% 53%;           /* 默认品牌橙：#F97316（可经主题预设切换，见下方主题色块） */
   --primary-foreground: 0 0% 100%;
   --secondary: 30 25% 96%;         /* 次要背景 */
   --secondary-foreground: 25 20% 18%;
@@ -114,17 +114,24 @@ React 18 + TypeScript 5.5
   --chart-13: 210 20% 52%;
 
   /* 圆角 */
-  --radius: 0.75rem;               /* 12px — 卡片级别 */
+  --radius: 0.75rem;               /* 12px — 浮层/对话框级别（Dialog、Dropdown、Select） */
+  --radius-card: 0.5rem;           /* 8px — 卡片容器级别（Card 基类） */
   /* 派生：md = calc(var(--radius) - 2px), sm = calc(var(--radius) - 4px) */
 }
 ```
+
+**品牌主题色预设（Header 主题切换器）**
+
+- 切换器位于 Header（调色板图标），选择写入 `html[data-theme]`（`themeStore`，localStorage 持久化），`globals.css` 中 `:root[data-theme='blue'|'green'|'violet']` 块覆盖品牌相关变量：`--primary` / `--primary-foreground` / `--ring` / `--chart-1` / `--accent` / `--accent-foreground`；中性色（background/page/border/muted）与 `--radius*` 不随主题变化。
+- 预设明度策略与默认橙一致（L≈50-55%），保证白字对比度相当；新增主题必须同时更新 `globals.css` 主题块与 `chart-theme.ts` 的 `THEME_PRESETS`（hex 镜像）。
+- ECharts 图表序列主色经 `getChartSeries(theme)` 返回（首位跟随主题），antd token 经 `THEME_PRESETS[theme]` 注入，均监听 `themeStore` 即时重绘。
 
 **令牌使用约束（P0 强制）**
 
 - 业务代码禁止十六进制色值与 Tailwind 调色板类（`bg-blue-500`、`text-green-600`、`bg-slate-50` 等），一律使用上表令牌映射出的类名。
 - 多彩强调位（KPI 图标、快捷入口、分类标签）使用 `bg-chart-N/10 text-chart-N`，四色轮换固定为 `chart-1 / chart-2 / chart-3 / chart-5`。
 - 白底上的小字号状态文本用 `-strong` 变体；图标与色块用 base 令牌。
-- ECharts（canvas 渲染）与 antd `theme.token` 无法读取 CSS 变量，统一从 `web/src/lib/chart-theme.ts` 取 hex 镜像：`CHART_SERIES`（序列色）、`CHART_INK`（坐标轴/网格/浮层）、`THEME_HEX`（antd 语义色）。该文件是全仓唯一允许出现 hex 的位置，修改颜色时必须与 `globals.css` 同步。
+- ECharts（canvas 渲染）与 antd `theme.token` 无法读取 CSS 变量，统一从 `web/src/lib/chart-theme.ts` 取 hex 镜像：`CHART_SERIES`（序列色）、`CHART_INK`（坐标轴/网格/浮层）、`THEME_HEX`（antd 语义色）、`THEME_PRESETS`（品牌主题色预设）。该文件是全仓唯一允许出现 hex 的位置，修改颜色时必须与 `globals.css` 同步。
 - Tailwind 配置 `darkMode: 'class'`：平台维持纯亮色，`dark:` 变体不会被系统偏好触发。
 
 ### 3.2 财务专用色
@@ -204,7 +211,7 @@ React 18 + TypeScript 5.5
 ```
 - 背景：hsl(var(--card)) = 白色
 - 边框：1px solid hsl(var(--border)) = #E9E2DB
-- 圆角：var(--radius) = 12px
+- 圆角：var(--radius-card) = 8px
 - 阴影：shadow-sm（默认），hover 时 shadow-md
 - 内边距：card-header / card-content 统一 `p-6`（24px，content 顶部由 `pt-0` 衔接）
 - 过渡：`transition-shadow duration-200 ease-brand`（写在 Card 基类，页面不重复声明）
@@ -225,11 +232,19 @@ React 18 + TypeScript 5.5
 ### 4.4 Table（数据表格）
 
 ```
-容器：
+容器（全站统一卡片化）：
 - 边框：1px solid hsl(var(--border))
-- 圆角：12px
+- 圆角：8px（rounded-card）
 - overflow: hidden
+- 卡头：区块标题/统计信息置于 border-b 行（px-4 py-2.5）
+- 筛选/工具条：独立筛选卡（rounded-card p-4），与表格卡以 16px 间距分隔
+```
 
+**卡片化特例**：
+- 财务指标页筛选条位于 PageContainer actions（sticky 吸顶结构），保持页头形态不包卡；仅表格区包卡。
+- 权限管理角色列表为角色卡网格（本身卡片化），不额外套外层 Card（避免嵌套）。
+- 企业查询/报告编辑器等已全卡片化页面不再改动。
+```
 表头：
 - 背景：bg-muted/50（暖中性半透明）
 - 字体：13px / 500
@@ -337,7 +352,7 @@ React 18 + TypeScript 5.5
 ```
 ┌──────────┬───────────────────────────────────────┐
 │ Sidebar  │  Header (56px)                        │
-│ 展开240px│  - 财年选择器 + 用户头像下拉           │
+│ 展开240px│  - 主题色切换 + 财年选择器 + 头像下拉  │
 │ 收起 64px│  - 底部 1px 分割线 + shadow-sm         │
 │          ├───────────────────────────────────────┤
 │ Logo+品牌│  Main Content                          │
@@ -356,9 +371,18 @@ React 18 + TypeScript 5.5
 - `<768px`：侧边栏隐藏，改为顶栏汉堡按钮唤起的抽屉（含遮罩，路由切换自动关闭）。
 
 **顶栏规则**：
-- 桌面端仅承载全局财年选择器与用户菜单（品牌标识在侧边栏顶部）；移动端额外显示汉堡按钮 + 品牌标识。
-- 全局财年选择影响看板/指标/数据浏览的期间候选，状态存于 `periodStore`。
-- 内容区背景为 `bg-page`（`--page`，暖白），卡片保持纯白形成层次。
+- 桌面端承载品牌主题色切换器（调色板图标）、全局财年选择器与用户菜单（品牌标识在侧边栏顶部）；移动端额外显示汉堡按钮 + 品牌标识。
+- 全局财年选择影响看板/指标/数据浏览的期间候选，状态存于 `periodStore`；主题切换器状态存于 `themeStore`（localStorage 持久化）。
+- 内容区背景为 `bg-page`（`--page`，冷灰 #F5F7FA），卡片保持纯白形成层次。
+
+**面包屑规则**：
+- 3 级及以上层级深度的页面（如 数据管理 / 维度/科目体系 / 经营分析科目）在页头标题上方渲染面包屑（实现见 `components/layout/breadcrumb.tsx`，集成于 `PageContainer`）。
+- 路径链从 `nav-items.ts` 递归匹配当前 pathname 推导（单一数据源）；中间级目录项（如「维度/科目体系」，无独立页面）渲染为纯文本不可点击，叶子项渲染为 Link。
+- 样式：12px 灰色（`text-xs text-muted-foreground`）+ `/` 分隔，末级 `font-medium text-foreground`。
+
+**页头标题与描述规则**：
+- h1 主标题必须保留：满足文档大纲（屏幕阅读器导航）且单级/双级页面（无面包屑）以标题为唯一页面标识；title 应为子页名（如「账龄分析」），模块归属由面包屑承担。
+- 描述默认不常驻展示：有信息增量的描述（功能清单/数据口径/引导文案）作为 `description` 传入，渲染为标题旁 Info 图标 + Tooltip 悬浮（`PageContainer` 内置）；与标题或面包屑重复的冗余描述一律不传。
 
 ### 5.2 登录页
 

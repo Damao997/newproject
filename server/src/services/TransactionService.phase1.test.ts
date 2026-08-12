@@ -4,9 +4,8 @@ import { TransactionService } from './TransactionService'
 
 /**
  * 第一阶段集成测试（真实 DB，无 DB 时整组跳过）：
- *  - Req3 关联方过滤：listDetails/getAgingAnalysis 的 partyType 三态过滤；
- *  - Req5 科目排除：inactive 科目在明细/账龄中被自动剔除，且不出现在筛选选项；
- *  - Req4 明细合计：totals.closingBalance = 全筛选集（跨页）期末余额之和。
+ *  - Req3 关联方过滤：getAgingAnalysis 的 partyType 三态过滤；
+ *  - Req5 科目排除：inactive 科目在账龄中被自动剔除，且不出现在筛选选项。
  * 用独立公司 EN999910、往来类型 __TEST_P1__、科目 9100xxx 隔离，afterAll 清理。
  */
 
@@ -60,18 +59,6 @@ afterAll(async () => {
 })
 
 describe('Req3 关联方过滤（真实 DB）', () => {
-  it('listDetails 按 partyType 过滤，且合计随筛选变化', async () => {
-    if (!dbReady) return
-    const related = await TransactionService.listDetails({ companyCodes: [CO], transactionType: TYPE, partyType: 'related' })
-    expect(related.items).toHaveLength(1)
-    expect(related.items[0].counterpartyCode).toBe('330099')
-    expect(related.totals?.closingBalance).toBe(100)
-
-    const internal = await TransactionService.listDetails({ companyCodes: [CO], transactionType: TYPE, partyType: 'internal' })
-    expect(internal.items).toHaveLength(1)
-    expect(internal.totals?.closingBalance).toBe(300)
-  })
-
   it('getAgingAnalysis 按 partyType 过滤', async () => {
     if (!dbReady) return
     const rows = await TransactionService.getAgingAnalysis({ companyCodes: [CO], transactionType: TYPE, period: PERIOD, partyType: 'external', groupBy: 'counterparty' }) as Array<{ counterpartyCode: string; closingBalance: number }>
@@ -80,16 +67,23 @@ describe('Req3 关联方过滤（真实 DB）', () => {
     expect(rows[0].counterpartyCode).toBe('C0001')
     expect(rows[0].closingBalance).toBe(200)
   })
+
+  it('getAgingAnalysis 按往来对象关键词过滤（编码/名称模糊匹配）', async () => {
+    if (!dbReady) return
+    const byCode = await TransactionService.getAgingAnalysis({ companyCodes: [CO], transactionType: TYPE, period: PERIOD, counterpartyKeyword: '3300', groupBy: 'counterparty' }) as Array<{ counterpartyCode: string }>
+    // 330099 与 330088 命中；C0001/C0002 不命中
+    expect(byCode.map((r) => r.counterpartyCode).sort()).toEqual(['330088', '330099'])
+  })
 })
 
 describe('Req5 科目排除（真实 DB）', () => {
-  it('inactive 科目在明细中被自动剔除，合计不含其金额', async () => {
+  it('inactive 科目在账龄中被自动剔除，金额不含其数据', async () => {
     if (!dbReady) return
-    const all = await TransactionService.listDetails({ companyCodes: [CO], transactionType: TYPE })
+    const rows = await TransactionService.getAgingAnalysis({ companyCodes: [CO], transactionType: TYPE, period: PERIOD, groupBy: 'counterparty' }) as Array<{ counterpartyCode: string; closingBalance: number }>
     // A/B/C 三条（100+200+300），排除科目的 999 不在内
-    expect(all.items).toHaveLength(3)
-    expect(all.items.every((i) => i.accountCode !== ACC_INACTIVE)).toBe(true)
-    expect(all.totals?.closingBalance).toBe(600)
+    expect(rows).toHaveLength(3)
+    expect(rows.some((r) => r.counterpartyCode === 'C0002')).toBe(false)
+    expect(rows.reduce((s, r) => s + r.closingBalance, 0)).toBe(600)
   })
 
   it('筛选选项 listAccounts 不含 inactive 科目', async () => {
@@ -110,15 +104,5 @@ describe('Req5 科目排除（真实 DB）', () => {
     expect(after?.status).toBe('active')
     // 还原
     await TransactionService.updateAccountStatus(ACC_INACTIVE, 'inactive', '__test_user__')
-  })
-})
-
-describe('Req4 明细合计（真实 DB）', () => {
-  it('totals 为全筛选集期末余额之和（跨页）', async () => {
-    if (!dbReady) return
-    const page1 = await TransactionService.listDetails({ companyCodes: [CO], transactionType: TYPE, page: 1, pageSize: 2 })
-    expect(page1.items).toHaveLength(2) // 分页只返回 2 条
-    expect(page1.total).toBe(3)
-    expect(page1.totals?.closingBalance).toBe(600) // 合计仍为全部 3 条之和
   })
 })

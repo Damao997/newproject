@@ -77,29 +77,7 @@ router.get('/overview', requirePermission('transactions:view', 'view'), asyncHan
   sendOk(res, data)
 }))
 
-// ===== 明细列表 =====
-router.get('/details', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
-  const q = req.query
-  const data = await TransactionService.listDetails({
-    page: Number(q.page) || 1,
-    pageSize: Number(q.pageSize) || 20,
-    companyCodes: await normalizeCompanies(req.authUser as AuthUserContext, q.companyCode),
-    transactionType: q.transactionType as string | undefined,
-    direction: q.direction as string | undefined,
-    counterpartyKeyword: q.counterpartyKeyword as string | undefined,
-    isInternal: q.isInternal !== undefined ? q.isInternal === 'true' : undefined,
-    internalType: q.internalType as string | undefined,
-    isSettled: q.isSettled !== undefined ? q.isSettled === 'true' : undefined,
-    minAmount: q.minAmount ? Number(q.minAmount) : undefined,
-    maxAmount: q.maxAmount ? Number(q.maxAmount) : undefined,
-    period: q.period as string | undefined,
-    accountCodes: q.accountCodes ? String(q.accountCodes).split(',').map((s) => s.trim()).filter(Boolean) : undefined,
-    partyType: parsePartyType(q.partyType),
-  })
-  sendOk(res, data)
-}))
-
-// ===== 已导入期间列表（明细筛选用） =====
+// ===== 已导入期间列表 =====
 router.get('/periods', requirePermission('transactions:view', 'view'), asyncHandler(async (_req, res) => {
   const data = await TransactionService.listPeriods()
   sendOk(res, data)
@@ -115,6 +93,7 @@ router.get('/aging', requirePermission('transactions:view', 'view'), asyncHandle
     period: q.period as string | undefined,
     accountCodes: q.accountCodes ? String(q.accountCodes).split(',').map((s) => s.trim()).filter(Boolean) : undefined,
     partyType: parsePartyType(q.partyType),
+    counterpartyKeyword: q.counterpartyKeyword as string | undefined,
   })
   sendOk(res, data)
 }))
@@ -130,6 +109,7 @@ router.get('/aging/export', requirePermission('transactions:export', 'export'), 
     period: q.period as string | undefined,
     accountCodes: q.accountCodes ? String(q.accountCodes).split(',').map((s) => s.trim()).filter(Boolean) : undefined,
     partyType: parsePartyType(q.partyType),
+    counterpartyKeyword: q.counterpartyKeyword as string | undefined,
     subtotalOnly: q.subtotalOnly === 'true',
   })
   await recordAudit({

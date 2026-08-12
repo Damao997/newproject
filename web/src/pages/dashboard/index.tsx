@@ -12,10 +12,7 @@ import { KpiGridSkeleton, ChartSkeleton, ListSkeleton } from '@/components/ui/sk
 import { useCompanies, useDashboardOverview, useAvailablePeriods } from '@/hooks/api-queries'
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { usePageStore } from '@/stores/pageStateStore'
-import { TrendSection } from './trend-section'
-import { ProductBudgetCard } from './product-budget-card'
-import { SubjectBudgetCard } from './subject-budget-card'
-import { ExpenseAnalysisCard } from './expense-analysis-card'
+import { AnalysisTabsCard, type AnalysisTab } from './analysis-tabs-card'
 import { ReceivablesCard } from './receivables-card'
 import { InventoryPieCard } from './inventory-pie-card'
 import { AlertTriangle, Inbox, Loader2, RefreshCw } from 'lucide-react'
@@ -29,10 +26,12 @@ export default function DashboardPage() {
   const dimFilter = usePageStore((s) => s.dashboard.dim)
   const trendMetric = usePageStore((s) => s.dashboard.trendMetric) as TrendMetric
   const trendMode = usePageStore((s) => s.dashboard.trendMode) as TrendMode
+  const analysisTab = usePageStore((s) => s.dashboard.analysisTab) as AnalysisTab
   const setSelectedPeriod = useCallback((v: string) => setDashboard({ period: v }), [setDashboard])
   const setDimFilter = useCallback((v: string) => setDashboard({ dim: v }), [setDashboard])
   const setTrendMetric = useCallback((v: TrendMetric) => setDashboard({ trendMetric: v }), [setDashboard])
   const setTrendMode = useCallback((v: TrendMode) => setDashboard({ trendMode: v }), [setDashboard])
+  const setAnalysisTab = useCallback((v: AnalysisTab) => setDashboard({ analysisTab: v }), [setDashboard])
   const navigate = useNavigate()
 
   // 期间候选：可用期间按全局选中财年过滤；未选时后端默认取最新期
@@ -110,7 +109,7 @@ export default function DashboardPage() {
 
   return (
     <PageContainer
-      title="首页看板"
+      title="首页"
       description={`数据更新时间: ${lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleString('zh-CN') : new Date().toLocaleDateString('zh-CN')}${currentPeriod ? ` · 当前期间: ${currentPeriod}` : ''} · 当前主体: ${currentSubjectName}`}
       stickyHeader
       actions={
@@ -128,7 +127,7 @@ export default function DashboardPage() {
             allLabel="全部主体"
             ariaLabel="选择主体维度（汇总主体自动展开为成员合并口径）"
             title="选择主体维度（汇总主体自动展开为成员合并口径）"
-            className="h-9 w-[150px] border-input/60 bg-page hover:bg-muted/60 sm:w-[180px]"
+            className="h-8 w-[150px] border-input/60 bg-page hover:bg-muted/60 sm:w-[180px]"
           />
           {periodOptions.length > 0 && (
             <div className="flex items-center gap-2">
@@ -137,7 +136,7 @@ export default function DashboardPage() {
                 value={selectedPeriod || periodOptions[periodOptions.length - 1] || 'latest'}
                 onValueChange={(v) => setSelectedPeriod(v === 'latest' ? '' : v)}
               >
-                <SelectTrigger className="h-9 w-[140px] border-input/60 bg-page hover:bg-muted/60" title="选择预览期间（KPI 按选定期计算）">
+                <SelectTrigger className="h-8 w-[140px] border-input/60 bg-page hover:bg-muted/60" title="选择预览期间（KPI 按选定期计算）">
                   <SelectValue placeholder="最新期间" />
                 </SelectTrigger>
                 <SelectContent>
@@ -193,29 +192,24 @@ export default function DashboardPage() {
           {/* 核心 KPI 卡片区（收入/毛利/净利润/回款）—— 交错淡入，点击钻取指标分析 */}
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
             {kpiData.map((kpi, i) => (
-              <KpiCard key={kpi.title} data={kpi} index={i} onClick={() => navigate('/indicators')} />
+              <KpiCard key={kpi.title} data={kpi} index={i} onClick={() => navigate('/indicators/operating')} />
             ))}
           </div>
 
-          {/* 财年趋势（指标+月度/累计口径可切换，主体口径跟随顶部筛选） */}
-          <TrendSection
-            data={trendData}
-            metric={trendMetric}
-            onMetricChange={setTrendMetric}
-            mode={trendMode}
-            onModeChange={setTrendMode}
-            fiscalYearLabel={fiscalYear}
+          {/* 综合分析：趋势分析 / 品类预算达成 / 公司预算达成 / 运营费用（TAB 切换，主体口径跟随顶部筛选） */}
+          <AnalysisTabsCard
+            period={currentPeriod || undefined}
+            companyCode={companyCode}
             subjectName={currentSubjectName}
+            trendData={trendData}
+            trendMetric={trendMetric}
+            onTrendMetricChange={setTrendMetric}
+            trendMode={trendMode}
+            onTrendModeChange={setTrendMode}
+            fiscalYearLabel={fiscalYear}
+            tab={analysisTab}
+            onTabChange={setAnalysisTab}
           />
-
-          {/* 品类预算达成（单期间，主体口径跟随顶部筛选） */}
-          <ProductBudgetCard period={currentPeriod || undefined} companyCode={companyCode} subjectName={currentSubjectName} />
-
-          {/* 公司预算达成（单期间，主体口径跟随顶部筛选：汇总主体展示成员明细行） */}
-          <SubjectBudgetCard period={currentPeriod || undefined} companyCode={companyCode} subjectName={currentSubjectName} />
-
-          {/* 运营费用分析（单期间，主体口径跟随顶部筛选） */}
-          <ExpenseAnalysisCard period={currentPeriod || undefined} companyCode={companyCode} subjectName={currentSubjectName} />
 
           {/* 应收分布 + 存货占比（均跟随顶部主体筛选，期间跟随看板） */}
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">

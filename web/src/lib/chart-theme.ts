@@ -4,6 +4,26 @@
  * ECharts 走 canvas 渲染、antd 的 theme.token 只接受字面色值，两者都不能直接吃 CSS 变量，
  * 因此这里以 hex 常量镜像 `globals.css` 的 `--chart-*` / 中性色令牌。修改颜色时两处必须同步。
  */
+import type { ThemeKey } from '@/stores/themeStore'
+
+/**
+ * 品牌主题色 hex 镜像：与 globals.css 的 `:root[data-theme]` 预设一一对应。
+ * 供 ECharts 序列主色、antd theme.token 与主题切换器色板使用；修改时两处必须同步。
+ */
+export const THEME_PRESETS: Record<
+  ThemeKey,
+  { label: string; primary: string; primaryHover: string; chart1: string }
+> = {
+  orange: { label: '品牌橙', primary: '#F97316', primaryHover: '#FB923C', chart1: '#F97316' },
+  blue: { label: '睿智蓝', primary: '#1270E2', primaryHover: '#4290F0', chart1: '#1270E2' },
+  green: { label: '翡翠绿', primary: '#10BC83', primaryHover: '#14E19D', chart1: '#10BC83' },
+  violet: { label: '罗兰紫', primary: '#7842D7', primaryHover: '#8D5FDD', chart1: '#7842D7' },
+}
+
+/** 按主题返回图表序列色：首位替换为主题主色（chart1），其余 12 色保持和谐化多色不变 */
+export function getChartSeries(theme: ThemeKey = 'orange'): string[] {
+  return [THEME_PRESETS[theme].chart1, ...CHART_SERIES.slice(1)]
+}
 
 /** 序列色：橙主导 + 和谐化多色（与 --chart-1 ~ --chart-13 一一对应） */
 export const CHART_SERIES = [
@@ -67,10 +87,9 @@ export const labelSpan = (label: string) =>
 /**
  * 语义色 hex 镜像：供只接受字面色值的第三方组件（antd theme.token）使用。
  * 与 `globals.css` 的同名令牌一一对应。
+ * 注意：主题主色随 data-theme 变化，请使用 THEME_PRESETS[theme].primary，勿在此定义固定主色。
  */
 export const THEME_HEX = {
-  primary: '#F97316',
-  primaryHover: '#FB923C',
   success: '#10B981',
   warning: '#F59E0B',
   destructive: '#EF4444',

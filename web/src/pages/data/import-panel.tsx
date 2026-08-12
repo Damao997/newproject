@@ -176,6 +176,17 @@ export function ImportPanel() {
     { key: 'message', header: '错误信息', cellClassName: 'text-destructive' },
   ], [])
 
+  // 抽样预览表列（动态列：表头来自服务端文件表头，单元格统一 font-num 数字字体）
+  const sampleColumns: DataTableColumn<(string | number)[]>[] = useMemo(() => {
+    if (!previewResult?.sampleRows) return []
+    return previewResult.sampleRows.headers.map((h, i) => ({
+      key: `col-${i}`,
+      header: h,
+      cellClassName: 'font-num text-muted-foreground',
+      render: (row) => (typeof row[i] === 'number' ? (row[i] as number).toLocaleString('zh-CN', { maximumFractionDigits: 2 }) : row[i]),
+    }))
+  }, [previewResult?.sampleRows])
+
   const batchErrors = (batchDetail?.errors ?? []) as ImportErrorRow[]
 
   const acceptFile = (file: File) => {
@@ -673,50 +684,30 @@ export function ImportPanel() {
               {previewResult.sampleRows && previewResult.sampleRows.rows.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-sm font-medium">数据抽样预览（{previewResult.sampleRows.rows.length} 行，跨科目/公司分散采样）</p>
-                  <div className="max-h-[280px] overflow-auto rounded-lg border">
-                    <table className="w-full text-sm">
-                      <thead className="sticky top-0">
-                        <tr className="border-b bg-muted/50">
-                          {previewResult.sampleRows.headers.map((h, i) => (
-                            <th key={i} className="whitespace-nowrap p-2 text-center font-medium">{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {previewResult.sampleRows.rows.map((row, i) => (
-                          <tr key={i} className="border-b last:border-0">
-                            {row.map((cell, j) => (
-                              <td key={j} className="whitespace-nowrap p-2 font-num text-muted-foreground">
-                                {typeof cell === 'number' ? cell.toLocaleString('zh-CN', { maximumFractionDigits: 2 }) : cell}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="rounded-lg border">
+                    <DataTable
+                      columns={sampleColumns}
+                      data={previewResult.sampleRows.rows}
+                      rowKey={(_, i) => i}
+                      density="compact"
+                      maxHeight="280px"
+                      emptyText="无预览数据"
+                      caption="导入数据抽样预览"
+                    />
                   </div>
                 </div>
               )}
               {previewResult.errorCount > 0 && (
-                <div className="max-h-[200px] overflow-y-auto rounded-lg border">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b bg-muted/50">
-                        <th className="p-2 text-center font-medium">行号</th>
-                        <th className="p-2 text-center font-medium">列</th>
-                        <th className="p-2 text-center font-medium">错误信息</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {previewResult.errors.slice(0, 50).map((e, i) => (
-                        <tr key={`${e.row}-${e.column}-${i}`} className="border-b">
-                          <td className="p-2 font-num text-muted-foreground">{e.row > 0 ? e.row : '-'}</td>
-                          <td className="p-2 font-mono text-muted-foreground">{e.column}</td>
-                          <td className="p-2 text-destructive">{e.message}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="rounded-lg border">
+                  <DataTable
+                    columns={errorColumns}
+                    data={previewResult.errors.slice(0, 50)}
+                    rowKey={(e, i) => `${e.row}-${e.column}-${i}`}
+                    density="compact"
+                    maxHeight="200px"
+                    emptyText="暂无解析错误"
+                    caption="导入校验错误明细"
+                  />
                 </div>
               )}
               <p className="text-xs text-muted-foreground">确认无误后点击“确认导入”正式写入。</p>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, type EnterpriseSearchResult } from '@/lib/api'
+import { PageContainer } from '@/components/layout/page-container'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -98,6 +99,7 @@ export function EnterpriseLookup() {
   }
 
   return (
+    <PageContainer title="企业查询">
     <div className="grid animate-fade-in gap-4 lg:grid-cols-3">
       {/* 左侧：搜索 + 结果 */}
       <div className="space-y-4 lg:col-span-2">
@@ -243,5 +245,8 @@ export function EnterpriseLookup() {
         </CardContent>
       </Card>
     </div>
+    </PageContainer>
   )
 }
+
+export default EnterpriseLookup

@@ -1,6 +1,7 @@
 import { Fragment, useState } from 'react'
 import { ChevronRight, ChevronDown, MessageSquarePlus } from 'lucide-react'
 import { cn, formatMetricValue, formatPercent, getChangeColor } from '@/lib/utils'
+import { TABLE_HEAD_BASE } from '@/components/data-table/styles'
 import { calcYoy, calcAchievement, calcYtdYoy, type MetricValue } from '@/lib/metric-values'
 import type { SubjectNode } from '@/types'
 
@@ -310,7 +311,8 @@ export function MetricTree({
   const isOperating = variant === 'operating'
   const colSpan = 1 + valueColCount(isOperating) + (categoryColumn ? 1 : 0)
   // sticky top-0 + z-[2]：容器内部滚动时表头固定在容器顶（高于表体 sticky 列的 z-[1]）；bg-muted 保证吸顶时不透明遮挡下方行
-  const headBase = 'sticky top-0 z-[2] h-11 whitespace-nowrap border-b bg-muted px-3 text-[13px] align-middle font-medium text-black'
+  // TABLE_HEAD_BASE（13px/500 黑字居中）为共享样式常量，对齐《统一表格设计标准》
+  const headBase = cn(TABLE_HEAD_BASE, 'sticky top-0 z-[2] h-11 border-b bg-muted px-3')
   return (
     <div
       className={cn('overflow-x-auto', stickyHeaderTop > 0 && 'overflow-y-auto')}

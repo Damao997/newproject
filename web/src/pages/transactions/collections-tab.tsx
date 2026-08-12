@@ -1,6 +1,6 @@
-import { useCallback, useState } from 'react'
-import { Card, CardContent } from '@/components/ui/card'
+import { useCallback, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { Pagination } from '@/components/data-table/pagination'
+import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { usePermission } from '@/hooks/usePermission'
 import { useCollections, useGenerateCollections, useUpdateCollection, useCollectionLogs, useAddCollectionLog } from '@/hooks/api-queries'
 import { usePageStore } from '@/stores/pageStateStore'
@@ -316,9 +317,56 @@ export function CollectionsTab() {
   const items = data?.items || []
   const total = data?.total || 0
 
+  // 催收计划列表列（操作列带权限门禁）
+  const planColumns: DataTableColumn<CollectionPlanItem>[] = useMemo(() => [
+    {
+      key: 'companyCode', header: '公司',
+      render: (row) => <span title={row.companyName || row.companyCode}>{getDisplayName(row.companyCode, row.companyName)}</span>,
+    },
+    {
+      key: 'counterpartyName', header: '客商',
+      render: (row) => (
+        <>
+          <div>{row.counterpartyName || '-'}</div>
+          <div className="text-xs text-muted-foreground">{row.counterpartyCode}</div>
+        </>
+      ),
+    },
+    { key: 'accountCode', header: '科目', render: (row) => <span className="text-xs">{row.accountCode}</span> },
+    { key: 'overdueAmount', header: '逾期金额', align: 'right', cellClassName: 'font-num', render: (row) => fmtAmount(row.overdueAmount) },
+    { key: 'plannedDate', header: '计划日期', render: (row) => <span className="text-xs">{row.plannedDate}</span> },
+    { key: 'method', header: '方式', render: (row) => <span className="text-xs">{METHOD_LABELS[row.method] || row.method}</span> },
+    { key: 'actualAmount', header: '实际回收', align: 'right', cellClassName: 'font-num', render: (row) => fmtAmount(row.actualAmount) },
+    {
+      key: 'status', header: '状态',
+      render: (row) => (
+        <span className={cn('rounded px-1.5 py-0.5 text-xs', STATUS_STYLES[row.status])}>
+          {STATUS_LABELS[row.status]}
+        </span>
+      ),
+    },
+    {
+      key: 'actions', header: '操作',
+      render: (row) => (
+        <div className="flex gap-1">
+          {canUpdate && (
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setUpdatingPlan(row)}>
+              更新
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setLogsPlan(row)}>
+            <History className="mr-0.5 h-3 w-3" />
+            记录
+          </Button>
+        </div>
+      ),
+    },
+  ], [getDisplayName, canUpdate, setUpdatingPlan, setLogsPlan])
+
   return (
     <div className="space-y-4">
-      {/* 筛选栏 + 操作 */}
+      {/* 筛选卡：公司 / 状态 / 客商关键词 / 生成操作 */}
+      <Card className="rounded-card p-4">
       <div className="flex flex-wrap items-center gap-3">
         <CompanySelect value={companyFilter} onChange={(v) => { setCompanyFilter(v); setPage(1) }} />
         <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v === 'all' ? '' : v); setPage(1) }}>
@@ -345,80 +393,41 @@ export function CollectionsTab() {
           </Button>
         )}
       </div>
+      </Card>
 
-      {/* 计划列表 */}
-      <Card>
-        <CardContent className="pt-4">
+      {/* 计划列表（表格卡） */}
+      <Card className="rounded-card overflow-hidden">
+        <div className="pt-4">
           {isLoading ? (
             <div className="py-8 text-center text-sm text-muted-foreground">加载中...</div>
           ) : items.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">暂无催收计划，可从账龄数据生成催收建议</div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-center text-black">
-                    <th className="px-2 py-2 font-medium">公司</th>
-                    <th className="px-2 py-2 font-medium">客商</th>
-                    <th className="px-2 py-2 font-medium">科目</th>
-                    <th className="px-2 py-2 font-medium">逾期金额</th>
-                    <th className="px-2 py-2 font-medium">计划日期</th>
-                    <th className="px-2 py-2 font-medium">方式</th>
-                    <th className="px-2 py-2 font-medium">实际回收</th>
-                    <th className="px-2 py-2 font-medium">状态</th>
-                    <th className="px-2 py-2 font-medium">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((row) => (
-                    <tr key={row.id} className="border-b last:border-0 hover:bg-muted/50">
-                      <td className="px-2 py-2 text-xs" title={row.companyName || row.companyCode}>{getDisplayName(row.companyCode, row.companyName)}</td>
-                      <td className="px-2 py-2">
-                        <div>{row.counterpartyName || '-'}</div>
-                        <div className="text-xs text-muted-foreground">{row.counterpartyCode}</div>
-                      </td>
-                      <td className="px-2 py-2 text-xs">{row.accountCode}</td>
-                      <td className="px-2 py-2 text-right font-num">{fmtAmount(row.overdueAmount)}</td>
-                      <td className="px-2 py-2 text-xs">{row.plannedDate}</td>
-                      <td className="px-2 py-2 text-xs">{METHOD_LABELS[row.method] || row.method}</td>
-                      <td className="px-2 py-2 text-right font-num">{fmtAmount(row.actualAmount)}</td>
-                      <td className="px-2 py-2">
-                        <span className={cn('rounded px-1.5 py-0.5 text-xs', STATUS_STYLES[row.status])}>
-                          {STATUS_LABELS[row.status]}
-                        </span>
-                      </td>
-                      <td className="px-2 py-2">
-                        <div className="flex gap-1">
-                          {canUpdate && (
-                            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setUpdatingPlan(row)}>
-                              更新
-                            </Button>
-                          )}
-                          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setLogsPlan(row)}>
-                            <History className="mr-0.5 h-3 w-3" />
-                            记录
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="px-2 pb-2">
+              <DataTable
+                columns={planColumns}
+                data={items}
+                rowKey={(row) => row.id}
+                density="compact"
+                caption="催收计划列表"
+              />
             </div>
           )}
-        </CardContent>
+        </div>
       </Card>
 
       {/* 分页 */}
       {total > 0 && (
-        <Pagination
-          page={page}
-          pageSize={pageSize}
-          total={total}
-          onPageChange={setPage}
-          onPageSizeChange={setPageSize}
-          summary={`共 ${total} 条`}
-        />
+        <div className="rounded-card border bg-card px-4 py-2.5">
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+            summary={`共 ${total} 条`}
+          />
+        </div>
       )}
 
       <GenerateDialog open={generateOpen} companyCode={companyCode} onClose={() => setGenerateOpen(false)} />

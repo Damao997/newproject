@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useSubjectBudget } from '@/hooks/api-queries'
 import { totalOf } from './budget-total'
@@ -36,15 +35,17 @@ function YoYBadge({ value }: { value: number }) {
   )
 }
 
-const TH_CLS = 'px-3 py-2 text-right text-xs font-medium text-muted-foreground'
+// 表头对齐《统一表格设计标准》：13px/500 黑字居中（数值列表头同样居中）；TD 保持右对齐 font-num
+const TH_CLS = 'px-3 py-2 text-center text-[13px] font-medium text-black'
 const TD_CLS = 'px-3 py-2 text-right font-num text-sm text-foreground'
 
 /**
- * 主体预算达成分析卡（单期间）：单体公司/汇总主体的收入、毛利、净利润预算达成。
+ * 主体预算达成内容（综合分析卡「公司预算达成」页，单期间）：单体公司/汇总主体的收入、毛利、净利润预算达成。
  * 主体口径完全跟随看板顶部筛选（无独立筛选器）：未指定时展示全部单体公司；
  * 指定单体公司时展示该主体一行；指定汇总主体时展示其成员公司明细行。
  * 切换器仅保留月度/累计（金额口径）；预算口径自动联动（月度=占比拆分后的当月预算，累计=年度预算总额）。
  * 完成率以橙色进度条展示；预警列按达成率红黄绿三档（月度用月度达成率，累计用累计预算口径达成率）。
+ * 外层 Card 由 AnalysisTabsCard 统一提供。
  */
 export function SubjectBudgetCard({ period, companyCode, subjectName }: SubjectBudgetCardProps) {
   const [amountMode, setAmountMode] = useState<AmountMode>('month')
@@ -63,23 +64,19 @@ export function SubjectBudgetCard({ period, companyCode, subjectName }: SubjectB
   })
 
   return (
-    <Card className="animate-fade-in border border-border shadow-sm" style={{ animationDelay: '180ms' }}>
-      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 px-6 pb-3 pt-5">
-        <div>
-          <CardTitle className="text-lg font-semibold text-foreground">公司预算达成分析</CardTitle>
-          <p className="mt-1 text-xs text-muted-foreground">
-            期间 {data?.period ?? period ?? '—'} · 单位：万元{subjectName ? ` · 当前主体：${subjectName}` : ''}
-          </p>
-        </div>
+    <>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          期间 {data?.period ?? period ?? '—'} · 单位：万元{subjectName ? ` · 当前主体：${subjectName}` : ''}
+        </p>
         <Tabs value={amountMode} onValueChange={(v) => setAmountMode(v as AmountMode)}>
           <TabsList className="bg-muted p-1">
             <TabsTrigger value="month" className="rounded-lg px-3 py-1.5 text-xs data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">月度</TabsTrigger>
             <TabsTrigger value="ytd" className="rounded-lg px-3 py-1.5 text-xs data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">累计</TabsTrigger>
           </TabsList>
         </Tabs>
-      </CardHeader>
-      <CardContent className="px-6 pb-6">
-        {isEmpty ? (
+      </div>
+      {isEmpty ? (
           <div className="flex flex-col items-center gap-3 py-12 text-center">
             <p className="text-sm font-medium text-foreground">暂无主体数据</p>
             <p className="text-xs text-muted-foreground">导入并激活经营数据后，将按主体展示预算达成情况</p>
@@ -89,10 +86,10 @@ export function SubjectBudgetCard({ period, companyCode, subjectName }: SubjectB
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  <th rowSpan={2} className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">主体</th>
-                  <th colSpan={5} className="border-l border-border px-3 py-2 text-center text-xs font-semibold text-foreground">收入</th>
-                  <th colSpan={5} className="border-l border-border px-3 py-2 text-center text-xs font-semibold text-foreground">毛利</th>
-                  <th colSpan={5} className="border-l border-border px-3 py-2 text-center text-xs font-semibold text-foreground">净利润</th>
+                  <th rowSpan={2} className="px-3 py-2 text-left text-[13px] font-medium text-black">主体</th>
+                  <th colSpan={5} className="border-l border-border px-3 py-2 text-center text-[13px] font-semibold text-black">收入</th>
+                  <th colSpan={5} className="border-l border-border px-3 py-2 text-center text-[13px] font-semibold text-black">毛利</th>
+                  <th colSpan={5} className="border-l border-border px-3 py-2 text-center text-[13px] font-semibold text-black">净利润</th>
                 </tr>
                 <tr className="border-b border-border">
                   <th className={TH_CLS}>{amountMode === 'month' ? '月度预算' : '年度预算'}</th>
@@ -176,7 +173,6 @@ export function SubjectBudgetCard({ period, companyCode, subjectName }: SubjectB
             </table>
           </div>
         )}
-      </CardContent>
-    </Card>
+    </>
   )
 }

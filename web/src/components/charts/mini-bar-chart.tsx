@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
-import { CHART_SERIES } from '@/lib/chart-theme'
+import { useEffect, useMemo, useState } from 'react'
+import { getChartSeries } from '@/lib/chart-theme'
+import { useThemeStore } from '@/stores/themeStore'
 import { cn } from '@/lib/utils'
 
 export interface MiniBarChartItem {
@@ -29,9 +30,12 @@ interface MiniBarChartProps {
  * 仅用 CSS 宽度过渡实现流畅的条形增长动画（挂载后从 0 增长到目标值）。
  * 适合分类少、只需展示相对占比的轻量场景。
  */
-const DEFAULT_BAR_COLORS = CHART_SERIES.slice(0, 4)
 
-export function MiniBarChart({ data, max, valueFormatter, barColors = DEFAULT_BAR_COLORS, className }: MiniBarChartProps) {
+export function MiniBarChart({ data, max, valueFormatter, barColors, className }: MiniBarChartProps) {
+  const theme = useThemeStore((s) => s.theme)
+  // 默认四色活泼体系：首位跟随当前品牌主题主色
+  const defaultBarColors = useMemo(() => getChartSeries(theme).slice(0, 4), [theme])
+  const colors = barColors ?? defaultBarColors
   const [ready, setReady] = useState(false)
   const maxValue = max ?? Math.max(...data.map((d) => d.value), 1)
 
@@ -45,7 +49,7 @@ export function MiniBarChart({ data, max, valueFormatter, barColors = DEFAULT_BA
     <div className={cn('space-y-5', className)}>
       {data.map((item, i) => {
         const pct = Math.min((item.value / maxValue) * 100, 100)
-        const barColor = barColors[i % barColors.length]
+        const barColor = colors[i % colors.length]
         return (
           <div key={item.label} className="group">
             <div className="mb-2 flex items-center justify-between">

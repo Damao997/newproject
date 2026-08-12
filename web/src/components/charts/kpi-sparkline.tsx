@@ -1,14 +1,18 @@
 import type { EChartsOption } from 'echarts'
-import { CHART_SERIES } from '@/lib/chart-theme'
+import { getChartSeries } from '@/lib/chart-theme'
+import { useThemeStore } from '@/stores/themeStore'
 import ReactECharts, { echarts } from './echarts-core'
 
 interface KpiSparklineProps {
   data: number[]
+  /** 折线颜色；缺省跟随当前品牌主题主色 */
   color?: string
   height?: number
 }
 
-export function KpiSparkline({ data, color = CHART_SERIES[0], height = 48 }: KpiSparklineProps) {
+export function KpiSparkline({ data, color, height = 48 }: KpiSparklineProps) {
+  const theme = useThemeStore((s) => s.theme)
+  const lineColor = color ?? getChartSeries(theme)[0]
   const option: EChartsOption = {
     grid: {
       top: 4,
@@ -33,7 +37,7 @@ export function KpiSparkline({ data, color = CHART_SERIES[0], height = 48 }: Kpi
         showSymbol: false,
         lineStyle: {
           width: 2,
-          color,
+          color: lineColor,
           cap: 'round',
         },
         areaStyle: {
@@ -44,9 +48,9 @@ export function KpiSparkline({ data, color = CHART_SERIES[0], height = 48 }: Kpi
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: color + '30' },
-              { offset: 0.5, color: color + '15' },
-              { offset: 1, color: color + '00' },
+              { offset: 0, color: lineColor + '30' },
+              { offset: 0.5, color: lineColor + '15' },
+              { offset: 1, color: lineColor + '00' },
             ],
           },
         },

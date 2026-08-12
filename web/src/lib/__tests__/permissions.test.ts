@@ -61,9 +61,10 @@ describe('resolveHomePath', () => {
   it('无 dashboard 时按显式优先级返回第一个有权限的模块（reports 优先于 transactions）', () => {
     expect(resolveHomePath(['inventory:view'])).toBe('/inventory')
     expect(resolveHomePath(['transactions:view', 'reports:view'])).toBe('/reports')
-    expect(resolveHomePath(['transactions:view'])).toBe('/transactions')
-    expect(resolveHomePath(['indicators:view'])).toBe('/indicators')
-    expect(resolveHomePath(['data:browse:view'])).toBe('/data')
+    // 路由化后落地页为各模块默认子页（旧 ?tab= 路径已由 LegacyQueryRedirect 兼容）
+    expect(resolveHomePath(['transactions:view'])).toBe('/transactions/overview')
+    expect(resolveHomePath(['indicators:view'])).toBe('/indicators/operating')
+    expect(resolveHomePath(['data:browse:view'])).toBe('/data/browse')
     expect(resolveHomePath(['admin:users:view'])).toBe('/admin/users')
   })
 

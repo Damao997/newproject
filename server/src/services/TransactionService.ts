@@ -5,7 +5,7 @@ import { getFiscalStartMonth, formatPeriod, periodsInRange, fiscalYearLabel } fr
 import { buildExcel } from '../lib/excel'
 
 /**
- * 往来分析服务：六大往来总览、明细查询、账龄分析、内部往来抵消。
+ * 往来分析服务：六大往来总览、账龄分析、内部往来抵消。
  * 数据来源：yingshou 分支 sync_consolidate.py 的 SSOT 汇总表逻辑。
  * 六大往来类型：应收账款(AR)、其他应收款(AR)、预收账款(AR)、应付账款(AP)、其他应付款(AP)、预付账款(AP)
  */
@@ -40,35 +40,6 @@ export interface TransactionOverviewItem {
   internalCount: number
   externalCount: number
   aging: Record<string, number>
-}
-
-export interface TransactionDetailDto {
-  id: string
-  companyCode: string
-  companyName: string | null
-  transactionType: string
-  direction: string
-  cutoffDate: string | null
-  counterpartyCode: string
-  counterpartyName: string | null
-  accountCode: string
-  accountDesc: string | null
-  documentNo: string | null
-  bookingDate: string | null
-  dueDate: string | null
-  agingDays: number | null
-  openingBalance: number
-  debitAmount: number
-  creditAmount: number
-  closingBalance: number
-  aging: Record<string, number>
-  isInternal: boolean
-  internalType: string | null
-  internalPeerCode: string | null
-  partyType: string
-  isEliminated: boolean
-  isSettled: boolean
-  sourceFile: string | null
 }
 
 export interface AgingSummaryRow {
@@ -151,24 +122,6 @@ function parseDeclaredCoverage(coverageJson: unknown): DeclaredCoverageItem[] {
   return coverageJson.filter((x): x is DeclaredCoverageItem => !!x && typeof x === 'object' && typeof (x as DeclaredCoverageItem).companyCode === 'string' && typeof (x as DeclaredCoverageItem).period === 'string')
 }
 
-interface ListParams {
-  page?: number
-  pageSize?: number
-  /** 已按数据范围归一化的公司编码集合（汇总主体在路由层展开为成员） */
-  companyCodes?: string[]
-  transactionType?: string
-  direction?: string
-  counterpartyKeyword?: string
-  isInternal?: boolean
-  internalType?: string
-  isSettled?: boolean
-  minAmount?: number
-  maxAmount?: number
-  period?: string
-  accountCodes?: string[]
-  partyType?: string
-}
-
 function toNumber(v: unknown): number {
   if (v === null || v === undefined) return 0
   return Number(v) || 0
@@ -178,45 +131,6 @@ function toNumber(v: unknown): number {
 async function getInactiveAccountCodes(): Promise<string[]> {
   const rows = await prisma.transactionAccount.findMany({ where: { status: 'inactive' }, select: { code: true } })
   return rows.map((r) => r.code)
-}
-
-function extractAging(row: Record<string, unknown>): Record<string, number> {
-  const aging: Record<string, number> = {}
-  AGING_BUCKETS.forEach((bucket, i) => {
-    aging[bucket] = toNumber(row[AGING_FIELDS[i]])
-  })
-  return aging
-}
-
-function toDetailDto(row: Record<string, unknown>): TransactionDetailDto {
-  return {
-    id: row.id as string,
-    companyCode: row.companyCode as string,
-    companyName: row.companyName as string | null,
-    transactionType: row.transactionType as string,
-    direction: row.direction as string,
-    cutoffDate: row.cutoffDate as string | null,
-    counterpartyCode: row.counterpartyCode as string,
-    counterpartyName: row.counterpartyName as string | null,
-    accountCode: row.accountCode as string,
-    accountDesc: row.accountDesc as string | null,
-    documentNo: row.documentNo as string | null,
-    bookingDate: row.bookingDate as string | null,
-    dueDate: row.dueDate as string | null,
-    agingDays: row.agingDays as number | null,
-    openingBalance: toNumber(row.openingBalance),
-    debitAmount: toNumber(row.debitAmount),
-    creditAmount: toNumber(row.creditAmount),
-    closingBalance: toNumber(row.closingBalance),
-    aging: extractAging(row),
-    isInternal: row.isInternal as boolean,
-    internalType: row.internalType as string | null,
-    internalPeerCode: row.internalPeerCode as string | null,
-    partyType: (row.partyType as string | null) ?? 'external',
-    isEliminated: row.isEliminated as boolean,
-    isSettled: row.isSettled as boolean,
-    sourceFile: row.sourceFile as string | null,
-  }
 }
 
 export const TransactionService = {
@@ -296,72 +210,25 @@ export const TransactionService = {
   },
 
   /**
-   * 往来明细分页查询（固定排除零余额行，提升可读性）
+   * 账龄分析：按公司×往来类型×往来对象汇总账龄分布。
+   * 账龄 10 段归集为 8 段展示（1个月 / 2个月 / 3个月 / 4-6月 / 半年以上 / 1年至2年 / 2年至3年 / 3年以上）；
+   * 支持 period 单期过滤（期末余额为时点数）与科目多选；固定排除零余额行；
+   * counterpartyKeyword 对往来对象编码/名称做模糊搜索（聚合前过滤底层记录）；
+   * 结果按期末余额倒序。
    */
-  async listDetails(params: ListParams) {
-    const page = Math.max(params.page || 1, 1)
-    const pageSize = Math.min(Math.max(params.pageSize || 20, 1), 500)
+  async getAgingAnalysis(params: { companyCodes?: string[]; transactionType?: string; groupBy?: 'type' | 'counterparty' | 'account'; period?: string; accountCodes?: string[]; partyType?: string; counterpartyKeyword?: string }) {
     const where: Record<string, unknown> = {}
-
     if (params.companyCodes) where.companyCode = { in: params.companyCodes }
     if (params.transactionType) where.transactionType = params.transactionType
-    if (params.direction) where.direction = params.direction
     if (params.period) where.period = params.period
-    const detailAccountCodes = (params.accountCodes ?? []).filter(Boolean)
-    const inactiveCodes = await getInactiveAccountCodes()
-    if (detailAccountCodes.length) where.accountCode = { in: detailAccountCodes, notIn: inactiveCodes }
-    else if (inactiveCodes.length) where.accountCode = { notIn: inactiveCodes }
-    if (params.isInternal !== undefined) where.isInternal = params.isInternal
-    if (params.internalType) where.internalType = params.internalType
     if (params.partyType) where.partyType = params.partyType
-    if (params.isSettled !== undefined) where.isSettled = params.isSettled
+    // 往来对象关键词搜索：编码或名称模糊匹配（不区分大小写），在 groupBy 聚合前过滤底层记录
     if (params.counterpartyKeyword) {
       where.OR = [
         { counterpartyCode: { contains: params.counterpartyKeyword, mode: 'insensitive' } },
         { counterpartyName: { contains: params.counterpartyKeyword, mode: 'insensitive' } },
       ]
     }
-    // 零余额行固定隐藏；与金额区间筛选用 AND 叠加，避免同字段条件互相覆盖
-    const balanceConds: Record<string, unknown>[] = [{ closingBalance: { not: 0 } }]
-    if (params.minAmount !== undefined) balanceConds.push({ closingBalance: { gte: params.minAmount } })
-    if (params.maxAmount !== undefined) balanceConds.push({ closingBalance: { lte: params.maxAmount } })
-    where.AND = balanceConds
-
-    const [items, total, agg] = await Promise.all([
-      prisma.transactionDetail.findMany({
-        where,
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-        // 按期末余额倒序（从大到小），同额时按创建时间稳定排序
-        orderBy: [{ closingBalance: 'desc' }, { createdAt: 'desc' }],
-      }),
-      prisma.transactionDetail.count({ where }),
-      // 合计：与列表同一 where（含零余额隐藏/科目排除/关联方过滤），跨全部页聚合
-      prisma.transactionDetail.aggregate({ where, _sum: { closingBalance: true } }),
-    ])
-
-    return {
-      items: items.map((r) => toDetailDto(r as unknown as Record<string, unknown>)),
-      total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
-      totals: { closingBalance: toNumber(agg._sum.closingBalance) },
-    }
-  },
-
-  /**
-   * 账龄分析：按公司×往来类型×往来对象汇总账龄分布。
-   * 账龄 10 段归集为 8 段展示（1个月 / 2个月 / 3个月 / 4-6月 / 半年以上 / 1年至2年 / 2年至3年 / 3年以上）；
-   * 支持 period 单期过滤（期末余额为时点数）与科目多选；固定排除零余额行（与 listDetails 口径一致）；
-   * 结果按期末余额倒序。
-   */
-  async getAgingAnalysis(params: { companyCodes?: string[]; transactionType?: string; groupBy?: 'type' | 'counterparty' | 'account'; period?: string; accountCodes?: string[]; partyType?: string }) {
-    const where: Record<string, unknown> = {}
-    if (params.companyCodes) where.companyCode = { in: params.companyCodes }
-    if (params.transactionType) where.transactionType = params.transactionType
-    if (params.period) where.period = params.period
-    if (params.partyType) where.partyType = params.partyType
     const accountCodes = (params.accountCodes ?? []).filter(Boolean)
     const agingInactiveCodes = await getInactiveAccountCodes()
     if (accountCodes.length) where.accountCode = { in: accountCodes, notIn: agingInactiveCodes }
@@ -416,7 +283,7 @@ export const TransactionService = {
    * 按前端表格同规则重组为 数据行 + 公司小计 + 合计（subtotalOnly 时仅小计/合计），
    * 数值以元为单位原值导出，保证导出内容 = 当前视图。
    */
-  async exportAgingAnalysis(params: { companyCodes?: string[]; transactionType?: string; groupBy?: 'type' | 'counterparty' | 'account'; period?: string; accountCodes?: string[]; partyType?: string; subtotalOnly?: boolean }): Promise<Buffer> {
+  async exportAgingAnalysis(params: { companyCodes?: string[]; transactionType?: string; groupBy?: 'type' | 'counterparty' | 'account'; period?: string; accountCodes?: string[]; partyType?: string; counterpartyKeyword?: string; subtotalOnly?: boolean }): Promise<Buffer> {
     const groupBy = params.groupBy || 'type'
     type ExportRow = AgingSummaryRow & { accountCode?: string; accountDesc?: string | null }
     const rows = (await this.getAgingAnalysis(params)) as unknown as ExportRow[]

@@ -593,7 +593,8 @@ export default function InventoryPage() {
       description="库存总览、品类占比、周转指标、趋势分析（数据源：静态数据存货品类）"
     >
       <div className="space-y-6">
-        {/* 筛选行：公司多选（单体/汇总互斥）+ 期间单选（财年由顶部导航全局控制，财年月外的月份禁用） */}
+        {/* 筛选卡：公司多选（单体/汇总互斥）+ 期间单选（财年由顶部导航全局控制，财年月外的月份禁用） */}
+        <Card className="rounded-card p-4">
         <div className="flex flex-wrap items-center gap-3">
           <CompanyMultiSelect value={selectedCompanies} onChange={handleCompaniesChange} selectAllType="entity" />
           <MonthPicker
@@ -606,6 +607,7 @@ export default function InventoryPage() {
           />
           <span className="text-xs text-muted-foreground">金额单位：万元 · 单体公司与汇总主体不可同时筛选 · 期间仅作用于卡片与明细，趋势图展示财年全月序列</span>
         </div>
+        </Card>
 
         {/* KPI 卡行：失败时整体降级为错误提示 */}
         {overviewQuery.isError ? (
@@ -686,68 +688,70 @@ export default function InventoryPage() {
           <InventoryTrendCard companyCodes={selectedCompanies} fiscalYear={fiscalYear} />
         )}
 
-        {/* 明细表：维度切换（按公司汇总 / 按品类展开 / 公司×品类明细），排序 / 搜索 / 合计 / 批量导出 */}
-        <Card className="animate-fade-in">
-          <CardHeader className="pb-2">
-            <div className="flex flex-wrap items-center gap-3">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Boxes className="h-4 w-4" />
-                {DIM_TITLES[detailDim]}
-                <span className="ml-1 text-xs font-normal text-muted-foreground">{period ?? ''} · 共 {visibleRows.length} 行</span>
-              </CardTitle>
-              {categoryCode && (
-                <span className="flex items-center gap-1">
-                  <Badge variant="secondary">品类：{activeCategoryName}</Badge>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 w-6 p-0"
-                    aria-label="清除品类筛选"
-                    onClick={() => setInventory({ categoryCode: '' })}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                </span>
-              )}
-              <div className="ml-auto flex flex-wrap items-center gap-2">
-                <Select value={detailDim} onValueChange={(v) => setInventory({ detailDim: v as DetailDim })}>
-                  <SelectTrigger className="h-9 w-[140px]" aria-label="明细表维度切换">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="company">按公司汇总</SelectItem>
-                    <SelectItem value="category">按品类展开</SelectItem>
-                    <SelectItem value="detail">公司×品类明细</SelectItem>
-                  </SelectContent>
-                </Select>
-                {selected.size > 0 && (
-                  <>
-                    <span className="text-xs text-muted-foreground">已选 <span className="font-num">{selected.size}</span> 行</span>
-                    <Button variant="outline" size="sm" disabled={exporting || selectedRows.length === 0} onClick={() => doExport(selectedRows, '_选中')}>
-                      <Download className="mr-1 h-3.5 w-3.5" />
-                      导出选中
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>取消选择</Button>
-                  </>
-                )}
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    value={keywordInput}
-                    onChange={(e) => setKeywordInput(e.target.value)}
-                    placeholder="搜索公司 / 品类"
-                    aria-label="搜索公司或品类"
-                    className="h-9 w-full pl-8 sm:w-[200px]"
-                  />
-                </div>
-                <Button variant="outline" size="sm" disabled={exporting || detailsQuery.isLoading || visibleRows.length === 0} onClick={() => doExport(visibleRows)}>
-                  <Download className="mr-1 h-3.5 w-3.5" />
-                  导出 Excel
+        {/* 控制层：明细表工具条（维度切换 / 搜索 / 导出 / 选中操作，筛选卡） */}
+        <Card className="rounded-card p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <Select value={detailDim} onValueChange={(v) => setInventory({ detailDim: v as DetailDim })}>
+            <SelectTrigger className="h-8 w-[140px]" aria-label="明细表维度切换">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="company">按公司汇总</SelectItem>
+              <SelectItem value="category">按品类展开</SelectItem>
+              <SelectItem value="detail">公司×品类明细</SelectItem>
+            </SelectContent>
+          </Select>
+          {selected.size > 0 && (
+            <>
+              <span className="text-xs text-muted-foreground">已选 <span className="font-num">{selected.size}</span> 行</span>
+              <Button variant="outline" size="sm" disabled={exporting || selectedRows.length === 0} onClick={() => doExport(selectedRows, '_选中')}>
+                <Download className="mr-1 h-3.5 w-3.5" />
+                导出选中
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>取消选择</Button>
+            </>
+          )}
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={keywordInput}
+              onChange={(e) => setKeywordInput(e.target.value)}
+              placeholder="搜索公司 / 品类"
+              aria-label="搜索公司或品类"
+              className="h-8 w-full pl-8 sm:w-[200px]"
+            />
+          </div>
+          <Button variant="outline" size="sm" disabled={exporting || detailsQuery.isLoading || visibleRows.length === 0} onClick={() => doExport(visibleRows)}>
+            <Download className="mr-1 h-3.5 w-3.5" />
+            导出 Excel
+          </Button>
+        </div>
+        </Card>
+
+        {/* 展示层：明细表（表格卡） */}
+        <Card className="animate-fade-in overflow-hidden rounded-card">
+          <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2.5">
+            <h3 className="flex items-center gap-2 text-base font-semibold tracking-tight">
+              <Boxes className="h-4 w-4" />
+              {DIM_TITLES[detailDim]}
+              <span className="ml-1 text-xs font-normal text-muted-foreground">{period ?? ''} · 共 {visibleRows.length} 行</span>
+            </h3>
+            {categoryCode && (
+              <span className="flex items-center gap-1">
+                <Badge variant="secondary">品类：{activeCategoryName}</Badge>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0"
+                  aria-label="清除品类筛选"
+                  onClick={() => setInventory({ categoryCode: '' })}
+                >
+                  <X className="h-3.5 w-3.5" />
                 </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
+              </span>
+            )}
+          </div>
+          <div>
             {detailsQuery.isLoading ? (
               <div className="space-y-2 py-2" aria-label="加载中">
                 {Array.from({ length: 8 }).map((_, i) => (
@@ -779,11 +783,11 @@ export default function InventoryPage() {
                 role="region"
                 aria-label={DIM_REGION_LABELS[detailDim]}
                 tabIndex={0}
-                className={cn('max-h-[520px] overflow-auto rounded-md border border-border transition-opacity duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', detailsQuery.isFetching && 'opacity-60')}
+                className={cn('max-h-[520px] overflow-auto transition-opacity duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', detailsQuery.isFetching && 'opacity-60')}
               >
                 <table className="w-full min-w-[880px] text-sm">
                   <thead className="sticky top-0 z-[2] bg-card">
-                    <tr className="border-b text-center text-black">
+                    <tr className="border-b bg-muted/50 text-center text-black">
                       <th className="sticky left-0 z-[3] w-9 bg-card px-2 py-2">
                         <input
                           type="checkbox"
@@ -869,7 +873,7 @@ export default function InventoryPage() {
                 </table>
               </div>
             )}
-          </CardContent>
+          </div>
         </Card>
       </div>
 

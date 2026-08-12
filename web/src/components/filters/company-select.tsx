@@ -135,7 +135,7 @@ export function CompanyMultiSelect({ value, onChange, entitiesOnly = false, sele
         <Button
           variant="outline"
           aria-label={`公司筛选：${triggerLabel}`}
-          className={cn('h-9 w-[220px] max-w-full shrink-0 justify-between px-3 font-normal', className)}
+          className={cn('h-8 w-[220px] max-w-full shrink-0 justify-between px-3 font-normal', className)}
         >
           <span className="truncate">{triggerLabel}</span>
           <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />

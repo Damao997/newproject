@@ -248,7 +248,6 @@ export interface ConsolidationAdjustment {
 /** 核心 KPI 卡（收入/毛利/净利润/回款）：金额万元，达成率 0-100，null=无预算（显示 "–"） */
 export interface KpiData {
   title: string
-  icon: string
   /** 本月合计金额（万元） */
   monthActual: number
   /** 月度预算达成率（%，本月实际/月均预算） */
@@ -442,7 +441,7 @@ export interface ReceivableRow {
   balance: number
 }
 
-/** 首页看板预警（后端由 alert 表派生的展示结构） */
+/** 首页预警（后端由 alert 表派生的展示结构） */
 export interface DashboardAlert {
   id: string
   severity: 'info' | 'warning' | 'error'
@@ -502,7 +501,7 @@ export interface PaginatedResponse<T> {
   page: number
   pageSize: number
   totalPages: number
-  /** 明细查询合计（跨全部筛选数据，忽略分页） */
+  /** 合计（部分接口返回；跨全部筛选数据，忽略分页） */
   totals?: { closingBalance: number }
 }
 
@@ -548,35 +547,6 @@ export interface TransactionOverviewItem {
   aging: Record<string, number>
 }
 
-export interface TransactionDetailItem {
-  id: string
-  companyCode: string
-  companyName: string | null
-  transactionType: string
-  direction: string
-  cutoffDate: string | null
-  counterpartyCode: string
-  counterpartyName: string | null
-  accountCode: string
-  accountDesc: string | null
-  documentNo: string | null
-  bookingDate: string | null
-  dueDate: string | null
-  agingDays: number | null
-  openingBalance: number
-  debitAmount: number
-  creditAmount: number
-  closingBalance: number
-  aging: Record<string, number>
-  isInternal: boolean
-  internalType: string | null
-  internalPeerCode: string | null
-  partyType: string
-  isEliminated: boolean
-  isSettled: boolean
-  sourceFile: string | null
-}
-
 export interface AgingAnalysisRow {
   companyCode: string
   companyName: string | null
@@ -605,25 +575,6 @@ export interface InternalMirrorRow {
   arAmount: number
   apAmount: number
   difference: number
-}
-
-export interface TransactionFilterParams {
-  page?: number
-  pageSize?: number
-  companyCode?: string
-  transactionType?: string
-  direction?: string
-  counterpartyKeyword?: string
-  isInternal?: boolean
-  internalType?: string
-  isSettled?: boolean
-  minAmount?: number
-  maxAmount?: number
-  period?: string
-  /** 科目多选（逗号分隔编码串） */
-  accountCodes?: string
-  /** 关联方过滤：internal=内部公司 / related=关联方 / external=外部，不传=全部 */
-  partyType?: 'internal' | 'related' | 'external'
 }
 
 // ===== 往来科目筛选 =====

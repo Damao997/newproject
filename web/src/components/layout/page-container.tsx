@@ -1,5 +1,8 @@
 import * as React from "react"
+import { Info } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Breadcrumb } from "./breadcrumb"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface PageContainerProps extends React.HTMLAttributes<HTMLDivElement> {
   title?: string
@@ -26,15 +29,34 @@ const PageContainer = React.forwardRef<HTMLDivElement, PageContainerProps>(
           className={cn(
             "animate-slide-in flex flex-wrap items-center justify-between gap-3",
             stickyHeader &&
-              "sticky top-0 z-20 -mx-4 bg-page px-4 py-3 shadow-sm sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8",
+              "sticky top-0 z-20 -mx-4 bg-page px-4 py-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8",
           )}
         >
-          <div className="space-y-1">
+          <div className="space-y-2">
+            {title && <Breadcrumb />}
             {title && (
-              <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
-            )}
-            {description && (
-              <p className="text-sm text-muted-foreground">{description}</p>
+              <h1 className="flex items-center gap-1.5 text-2xl font-bold tracking-tight">
+                {title}
+                {/* 页面描述悬浮化：不常驻占位，hover Info 图标查看（有信息增量的描述才传入） */}
+                {description && (
+                  <TooltipProvider delayDuration={0}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label="页面说明"
+                          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                        >
+                          <Info className="h-4 w-4" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-xs">
+                        {description}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+              </h1>
             )}
           </div>
           {actions && (

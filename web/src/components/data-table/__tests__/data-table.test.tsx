@@ -39,6 +39,121 @@ describe('DataTable', () => {
     render(<DataTable columns={cols} data={rows} rowKey={(r) => r.id} />)
     expect(screen.getByText('城市-杭州')).toBeInTheDocument()
   })
+
+  it('表头单元格带 scope="col" 无障碍属性', () => {
+    const { container } = render(<DataTable columns={columns} data={rows} rowKey={(r) => r.id} />)
+    const ths = container.querySelectorAll('th')
+    expect(ths.length).toBe(2)
+    ths.forEach((th) => expect(th.getAttribute('scope')).toBe('col'))
+  })
+
+  it('空态单元格带 role="status"', () => {
+    const { container } = render(<DataTable columns={columns} data={[]} rowKey={(r) => r.id} />)
+    const empty = container.querySelector('td[role="status"]')
+    expect(empty).not.toBeNull()
+  })
+
+  it('dense 布尔向后兼容：单元格使用 px-4 py-1.5 紧凑密度', () => {
+    const { container } = render(<DataTable columns={columns} data={rows} rowKey={(r) => r.id} dense />)
+    const cell = container.querySelector('tbody td')
+    expect(cell?.className).toContain('px-4 py-1.5')
+  })
+
+  it('density="compact" 使用 px-3 py-2 微紧凑密度，且优先于 dense 布尔', () => {
+    const { container } = render(<DataTable columns={columns} data={rows} rowKey={(r) => r.id} dense density="compact" />)
+    const cell = container.querySelector('tbody td')
+    expect(cell?.className).toContain('px-3 py-2')
+    expect(cell?.className).not.toContain('px-4 py-1.5')
+  })
+
+  it('排序受控：点击表头回调方向循环 升序 → 降序 → 取消', () => {
+    const onSortChange = vi.fn()
+    const { rerender } = render(
+      <DataTable
+        columns={[{ key: 'amount', header: '金额', sortable: true }]}
+        data={rows}
+        rowKey={(r) => r.id}
+        sortKey={null}
+        onSortChange={onSortChange}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '按金额排序' }))
+    expect(onSortChange).toHaveBeenLastCalledWith('amount', 'asc')
+
+    rerender(
+      <DataTable
+        columns={[{ key: 'amount', header: '金额', sortable: true }]}
+        data={rows}
+        rowKey={(r) => r.id}
+        sortKey="amount"
+        sortDirection="asc"
+        onSortChange={onSortChange}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '按金额排序' }))
+    expect(onSortChange).toHaveBeenLastCalledWith('amount', 'desc')
+
+    rerender(
+      <DataTable
+        columns={[{ key: 'amount', header: '金额', sortable: true }]}
+        data={rows}
+        rowKey={(r) => r.id}
+        sortKey="amount"
+        sortDirection="desc"
+        onSortChange={onSortChange}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '按金额排序' }))
+    expect(onSortChange).toHaveBeenLastCalledWith('amount', null)
+  })
+
+  it('排序受控：aria-sort 跟随当前排序方向', () => {
+    const { rerender } = render(
+      <DataTable
+        columns={[{ key: 'amount', header: '金额', sortable: true }]}
+        data={rows}
+        rowKey={(r) => r.id}
+        sortKey="amount"
+        sortDirection="asc"
+        onSortChange={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('columnheader', { name: /金额/ }).getAttribute('aria-sort')).toBe('ascending')
+    rerender(
+      <DataTable
+        columns={[{ key: 'amount', header: '金额', sortable: true }]}
+        data={rows}
+        rowKey={(r) => r.id}
+        sortKey="amount"
+        sortDirection="desc"
+        onSortChange={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('columnheader', { name: /金额/ }).getAttribute('aria-sort')).toBe('descending')
+  })
+
+  it('排序非受控：点击后本地排序数据行', () => {
+    render(
+      <DataTable
+        columns={[{ key: 'amount', header: '金额', sortable: true }]}
+        data={rows}
+        rowKey={(r) => r.id}
+      />,
+    )
+    const cells = () => screen.getAllByRole('cell').map((c) => c.textContent)
+    expect(cells()).toEqual(['100', '200'])
+    fireEvent.click(screen.getByRole('button', { name: '按金额排序' }))
+    expect(cells()).toEqual(['100', '200'])
+    fireEvent.click(screen.getByRole('button', { name: '按金额排序' }))
+    expect(cells()).toEqual(['200', '100'])
+  })
+
+  it('loading 渲染骨架行且不渲染数据行', () => {
+    const { container } = render(<DataTable columns={columns} data={rows} rowKey={(r) => r.id} loading loadingRows={3} />)
+    expect(container.querySelectorAll('tbody tr')).toHaveLength(3)
+    expect(container.querySelectorAll('.skeleton').length).toBeGreaterThan(0)
+    expect(screen.queryByText('杭州')).toBeNull()
+  })
 })
 
 describe('Pagination', () => {

@@ -161,7 +161,7 @@ describe('TransactionService.getOverview 过滤（真实 DB）', () => {
     expect(r2[0].recordCount).toBe(2)
   })
 
-  it('inactive 科目自动剔除（与明细/账龄口径一致）', async () => {
+  it('inactive 科目自动剔除（与账龄口径一致）', async () => {
     if (!dbReady) return
     const r = await TransactionService.getOverview({ companyCodes: [CO_B], period: '2097-03' })
     expect(r).toHaveLength(1)
@@ -171,7 +171,7 @@ describe('TransactionService.getOverview 过滤（真实 DB）', () => {
   })
 })
 
-describe('TransactionService.getAgingAnalysis / listDetails（真实 DB）', () => {
+describe('TransactionService.getAgingAnalysis（真实 DB）', () => {
   it('账龄 10 段归集为 8 段，支持 period + 科目多选过滤，按期末余额倒序', async () => {
     if (!dbReady) return
     const rows = await TransactionService.getAgingAnalysis({ groupBy: 'type', period: '2097-03', accountCodes: ['__TREND_1122__'] }) as Array<{ companyCode: string; closingBalance: number; aging: Record<string, number> }>
@@ -186,20 +186,10 @@ describe('TransactionService.getAgingAnalysis / listDetails（真实 DB）', () 
     expect(none).toHaveLength(0)
   })
 
-  it('明细按金额倒序，支持科目多选过滤', async () => {
-    if (!dbReady) return
-    const page = await TransactionService.listDetails({ period: '2097-03', accountCodes: ['__TREND_1122__'] })
-    expect(page.total).toBe(2)
-    expect(page.items[0].closingBalance).toBe(700)
-    expect(page.items[1].closingBalance).toBe(300)
-    const none = await TransactionService.listDetails({ period: '2097-03', accountCodes: ['__NO_SUCH__'] })
-    expect(none.total).toBe(0)
-  })
-
-  it('账龄分析与明细固定过滤零余额行', async () => {
+  it('账龄分析固定过滤零余额行', async () => {
     if (!dbReady) return
     // 临时种子：与 CO_A 300 行同公司同类型同期间、余额为 0 但账龄非 0（异常数据），
-    // 若不过滤，groupBy 合并后 1个月 变 1099、明细 total 变 3，断言即失败
+    // 若不过滤，groupBy 合并后 1个月 变 1099，断言即失败
     const zero = await basePrisma.transactionDetail.create({
       data: {
         companyCode: CO_A, companyName: '趋势测试A', transactionType: TYPE, direction: 'AP',
@@ -212,8 +202,6 @@ describe('TransactionService.getAgingAnalysis / listDetails（真实 DB）', () 
       expect(rows).toHaveLength(2)
       const a = rows.find((r) => r.companyCode === CO_A)!
       expect(a.aging['1个月']).toBe(100)
-      const page = await TransactionService.listDetails({ period: '2097-03', accountCodes: [ACC_ACTIVE] })
-      expect(page.total).toBe(2)
     } finally {
       await basePrisma.transactionDetail.delete({ where: { id: zero.id } }).catch(() => undefined)
     }

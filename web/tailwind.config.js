@@ -88,6 +88,7 @@ export default {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        card: "var(--radius-card)",
       },
       fontFamily: {
         // 全局正文统一微软雅黑（非 Windows 环境回退 system-ui）

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/select'
 import { RichTextEditor } from '@/components/editor/rich-text-editor'
 import { Pagination } from '@/components/data-table/pagination'
+import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { PAGINATION } from '@/lib/constants'
 import {
   useAnalyses, useUpdateAnalysis, useDeleteAnalysis, useRestoreAnalysis,
@@ -138,6 +139,67 @@ export function AnalysisManager() {
   // 插入报告：将 AI 预分析归档追加为报告章节（实时引用，随重新生成更新）
   const [insertTarget, setInsertTarget] = useState<AnalysisItem | null>(null)
   const [insertReportId, setInsertReportId] = useState('')
+
+  // 分析列表列（操作列带权限门禁与状态分支）
+  const listColumns: DataTableColumn<AnalysisItem>[] = useMemo(() => [
+    {
+      key: 'companyCode', header: '公司', align: 'center', cellClassName: 'text-muted-foreground',
+      render: (a) => (
+        <>
+          <span title={a.companyName ?? a.companyCode}>{getDisplayName(a.companyCode, a.companyName)}</span>
+          <div className="font-mono text-[11px]">{a.companyCode}</div>
+        </>
+      ),
+    },
+    {
+      key: 'subjectCode', header: '科目', align: 'center', cellClassName: 'text-muted-foreground',
+      render: (a) => (
+        <>
+          <span className="inline-flex items-center gap-1">
+            {a.subjectName ?? a.subjectCode}
+            {a.subjectCode === 'OVERVIEW' && (
+              <Badge variant="outline" className="border-primary/40 px-1.5 py-0 text-[10px] text-primary">AI 预分析</Badge>
+            )}
+          </span>
+          <div className="font-mono text-[11px]">{a.subjectCode}</div>
+        </>
+      ),
+    },
+    { key: 'period', header: '期间', align: 'center', cellClassName: 'font-mono text-muted-foreground' },
+    { key: 'title', header: '标题', cellClassName: 'font-medium text-foreground' },
+    { key: 'refs', header: '引用', align: 'center', render: (a) => <RefsBadge refs={a.refs ?? []} /> },
+    {
+      key: 'status', header: '状态', align: 'center',
+      render: (a) => (a.status === 'inactive' ? <Badge variant="destructive">已删除</Badge> : <Badge variant="secondary">正常</Badge>),
+    },
+    { key: 'createdAt', header: '创建时间', align: 'center', cellClassName: 'text-muted-foreground', render: (a) => new Date(a.createdAt).toLocaleDateString('zh-CN') },
+    { key: 'updatedAt', header: '更新时间', align: 'center', cellClassName: 'text-muted-foreground', render: (a) => new Date(a.updatedAt).toLocaleDateString('zh-CN') },
+    {
+      key: 'actions', header: '操作', align: 'center',
+      render: (a) => {
+        const inactive = a.status === 'inactive'
+        return (
+          <div className="flex items-center justify-center gap-1">
+            {!inactive && a.subjectCode === 'OVERVIEW' && canUpdate && (
+              <Button variant="ghost" size="sm" onClick={() => { setInsertTarget(a); setInsertReportId('') }}>
+                <Link2 className="mr-1 h-3.5 w-3.5" /> 插入报告
+              </Button>
+            )}
+            {!inactive && canUpdate && (
+              <Button variant="ghost" size="sm" onClick={() => setEditing(a)}><Pencil className="mr-1 h-3.5 w-3.5" /> 编辑</Button>
+            )}
+            {!inactive && canDelete && (
+              <Button variant="ghost" size="sm" aria-label="删除分析" onClick={() => handleDelete(a)} className="text-finance-red"><Trash2 className="h-3.5 w-3.5" /></Button>
+            )}
+            {inactive && canUpdate && (
+              <Button variant="ghost" size="sm" onClick={() => handleRestore(a)}><RotateCcw className="mr-1 h-3.5 w-3.5" /> 恢复</Button>
+            )}
+          </div>
+        )
+      },
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleDelete/handleRestore 为组件内闭包，重算代价可忽略
+  ], [canUpdate, canDelete, getDisplayName, setInsertTarget, setEditing, handleDelete, handleRestore])
   const [inserting, setInserting] = useState(false)
   const { data: draftReports } = useReports({ status: 'draft', pageSize: 100 })
   const { data: insertReport } = useReport(insertTarget && insertReportId ? insertReportId : null)
@@ -167,10 +229,10 @@ export function AnalysisManager() {
   }
 
   return (
-    <Card className="animate-fade-in">
-      <CardContent className="p-0">
-        {/* 筛选工具条 */}
-        <div className="flex flex-wrap items-center gap-2 border-b p-3">
+    <>
+      {/* 控制层：筛选工具条（筛选卡） */}
+      <Card className="rounded-card p-4">
+      <div className="flex flex-wrap items-center gap-2">
           <Select value={companyCode} onValueChange={(v) => { setCompanyCode(v); resetPage() }}>
             <SelectTrigger className="h-8 w-44"><SelectValue placeholder="公司" /></SelectTrigger>
             <SelectContent>
@@ -226,9 +288,12 @@ export function AnalysisManager() {
             <Switch checked={includeInactive} onCheckedChange={(v) => { setIncludeInactive(v); resetPage() }} />
             包含已删除
           </label>
-        </div>
+      </div>
+      </Card>
 
-        {msg && <p className="px-4 pt-2 text-[13px] text-primary">{msg}</p>}
+      {/* 展示层：分析列表（表格卡） */}
+      <Card className="animate-fade-in overflow-hidden rounded-card">
+        {msg && <p className="pt-2 text-[13px] text-primary">{msg}</p>}
 
         {isLoading ? (
           <div className="py-16 text-center text-sm text-muted-foreground">加载中…</div>
@@ -238,73 +303,13 @@ export function AnalysisManager() {
             <p className="text-sm text-muted-foreground">暂无符合条件的单项分析。可在「指标分析」页各科目行点击「分析」撰写。</p>
           </div>
         ) : (
-          <table className="w-full text-[13px]">
-            <thead>
-              <tr className="border-b bg-muted/50 text-black">
-                <th className="h-11 px-4 text-center font-medium">公司</th>
-                <th className="h-11 px-4 text-center font-medium">科目</th>
-                <th className="h-11 px-4 text-center font-medium">期间</th>
-                <th className="h-11 px-4 text-center font-medium">标题</th>
-                <th className="h-11 px-4 text-center font-medium">引用</th>
-                <th className="h-11 px-4 text-center font-medium">状态</th>
-                <th className="h-11 px-4 text-center font-medium">创建时间</th>
-                <th className="h-11 px-4 text-center font-medium">更新时间</th>
-                <th className="h-11 px-4 text-center font-medium">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((a) => {
-                const inactive = a.status === 'inactive'
-                return (
-                  <tr key={a.id} className="border-b transition-colors hover:bg-muted/50">
-                    <td className="px-4 py-2.5 text-center text-muted-foreground" title={a.companyName ?? a.companyCode}>
-                      {getDisplayName(a.companyCode, a.companyName)}
-                      <div className="font-mono text-[11px]">{a.companyCode}</div>
-                    </td>
-                    <td className="px-4 py-2.5 text-center text-muted-foreground">
-                      <span className="inline-flex items-center gap-1">
-                        {a.subjectName ?? a.subjectCode}
-                        {a.subjectCode === 'OVERVIEW' && (
-                          <Badge variant="outline" className="border-primary/40 px-1.5 py-0 text-[10px] text-primary">AI 预分析</Badge>
-                        )}
-                      </span>
-                      <div className="font-mono text-[11px]">{a.subjectCode}</div>
-                    </td>
-                    <td className="px-4 py-2.5 text-center font-mono text-muted-foreground">{a.period}</td>
-                    <td className="px-4 py-2.5 text-left font-medium text-foreground">{a.title}</td>
-                    <td className="px-4 py-2.5 text-center">
-                      <RefsBadge refs={a.refs ?? []} />
-                    </td>
-                    <td className="px-4 py-2.5 text-center">
-                      {inactive
-                        ? <Badge variant="destructive">已删除</Badge>
-                        : <Badge variant="secondary">正常</Badge>}
-                    </td>
-                    <td className="px-4 py-2.5 text-center text-muted-foreground">{new Date(a.createdAt).toLocaleDateString('zh-CN')}</td>
-                    <td className="px-4 py-2.5 text-center text-muted-foreground">{new Date(a.updatedAt).toLocaleDateString('zh-CN')}</td>
-                    <td className="px-4 py-2.5 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        {!inactive && a.subjectCode === 'OVERVIEW' && canUpdate && (
-                          <Button variant="ghost" size="sm" onClick={() => { setInsertTarget(a); setInsertReportId('') }}>
-                            <Link2 className="mr-1 h-3.5 w-3.5" /> 插入报告
-                          </Button>
-                        )}
-                        {!inactive && canUpdate && (
-                          <Button variant="ghost" size="sm" onClick={() => setEditing(a)}><Pencil className="mr-1 h-3.5 w-3.5" /> 编辑</Button>
-                        )}
-                        {!inactive && canDelete && (
-                          <Button variant="ghost" size="sm" aria-label="删除分析" onClick={() => handleDelete(a)} className="text-finance-red"><Trash2 className="h-3.5 w-3.5" /></Button>
-                        )}
-                        {inactive && canUpdate && (
-                          <Button variant="ghost" size="sm" onClick={() => handleRestore(a)}><RotateCcw className="mr-1 h-3.5 w-3.5" /> 恢复</Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+          <DataTable
+            columns={listColumns}
+            data={items}
+            rowKey={(a) => a.id}
+            dense
+            caption="单项分析列表"
+          />
         )}
 
         {/* 分页 */}
@@ -348,8 +353,8 @@ export function AnalysisManager() {
           busy={inserting}
         />
         {confirmElement}
-      </CardContent>
-    </Card>
+      </Card>
+    </>
   )
 }
 
@@ -447,7 +452,7 @@ function InsertReportDialog({
           </DialogDescription>
         </DialogHeader>
         <Select value={reportId} onValueChange={onReportIdChange}>
-          <SelectTrigger className="h-9 w-full"><SelectValue placeholder="选择草稿报告" /></SelectTrigger>
+          <SelectTrigger className="h-8 w-full"><SelectValue placeholder="选择草稿报告" /></SelectTrigger>
           <SelectContent>
             {reports.length === 0 ? (
               <SelectItem value="__none" disabled>暂无草稿报告</SelectItem>

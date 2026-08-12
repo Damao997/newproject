@@ -15,7 +15,8 @@ import { usePeriodStore } from '@/stores/periodStore'
 import { usePageStore, type TransactionOverviewState } from '@/stores/pageStateStore'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { formatMoneyWan } from '@/lib/utils'
-import { CHART_FONT, CHART_INK, CHART_SERIES, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
+import { CHART_FONT, CHART_INK, getChartSeries, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
+import { useThemeStore } from '@/stores/themeStore'
 import { Download, LineChart, RefreshCw } from 'lucide-react'
 
 /**
@@ -27,10 +28,9 @@ import { Download, LineChart, RefreshCw } from 'lucide-react'
 
 const TRANSACTION_TYPES = ['应收账款', '其他应收款', '预收账款', '应付账款', '其他应付款', '预付账款']
 
-/** 折线色板：按公司顺序轮转，统一取自图表序列色 */
-const LINE_COLORS = CHART_SERIES
-
 export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] }) {
+  // 折线色板跟随当前品牌主题：按公司顺序轮转，首位为品牌主色
+  const theme = useThemeStore((s) => s.theme)
   // 图表筛选持久化到 pageStateStore（跟随 OverviewTab 生命周期，切 tab/切路由/刷新后恢复）
   const transactionType = usePageStore((s) => s.transactions.overview.trend.type)
   // 期间模式：'fiscal' = 跟随全局 Header 财年（默认）；'custom' = 自定义期间范围；'FYxxxx' = 指定财年
@@ -73,6 +73,7 @@ export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] 
   const hasData = !!data && data.series.length > 0 && data.series.some((s) => s.points.some((p) => p !== null))
 
   const option = useMemo<EChartsOption>(() => {
+    const lineColors = getChartSeries(theme)
     const periods = data?.periods ?? []
     const series = data?.series ?? []
     return {
@@ -144,13 +145,13 @@ export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] 
         data: s.points,
         smooth: 0.4,
         connectNulls: false,
-        lineStyle: { color: LINE_COLORS[i % LINE_COLORS.length], width: 2.5, cap: 'round' as const },
+        lineStyle: { color: lineColors[i % lineColors.length], width: 2.5, cap: 'round' as const },
         symbol: 'circle',
         symbolSize: 6,
-        itemStyle: { color: LINE_COLORS[i % LINE_COLORS.length], borderWidth: 2, borderColor: CHART_INK.surface },
+        itemStyle: { color: lineColors[i % lineColors.length], borderWidth: 2, borderColor: CHART_INK.surface },
       })),
     }
-  }, [data, transactionType, getDisplayName])
+  }, [data, transactionType, getDisplayName, theme])
 
   // CSV 导出：公司,往来类型,期间,期末余额（BOM 防中文乱码）
   // 注意：数值保持 toFixed(2) 原始格式 —— 加千分位会引入逗号破坏 CSV 分隔

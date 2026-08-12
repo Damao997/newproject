@@ -10,7 +10,6 @@ vi.mock('../kpi-sparkline', () => ({
 
 const revenueKpi: KpiData = {
   title: '收入',
-  icon: 'TrendingUp',
   monthActual: 1234567.89,
   monthRate: 96.5,
   ytdActual: 9876543.21,
@@ -21,7 +20,6 @@ const revenueKpi: KpiData = {
 
 const noBudgetKpi: KpiData = {
   title: '回款',
-  icon: 'Banknote',
   monthActual: 500,
   monthRate: null,
   ytdActual: 3000,

@@ -1,4 +1,3 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useExpenseAnalysis } from '@/hooks/api-queries'
 import { totalMetrics } from './budget-total'
 import { RateBar } from '@/components/ui/rate-bar'
@@ -39,18 +38,20 @@ function YoYBadge({ value }: { value: number }) {
   )
 }
 
-const TH_CLS = 'px-3 py-2 text-right text-xs font-medium text-muted-foreground'
+// 表头对齐《统一表格设计标准》：13px/500 黑字居中（数值列表头同样居中）；TD 保持右对齐 font-num
+const TH_CLS = 'px-3 py-2 text-center text-[13px] font-medium text-black'
 const TD_CLS = 'px-3 py-2 text-right font-num text-sm text-foreground'
 
 /** 单行指标组（ExpenseAnalysisRow 去掉 code/name 即指标组字段） */
 type MetricOf = Omit<ExpenseAnalysisRow, 'code' | 'name'>
 
 /**
- * 运营费用分析卡（单期间）：按映射配置（看板管理 > 运营费用映射）聚合的运营费用科目，
+ * 运营费用分析内容（综合分析卡「运营费用」页，单期间）：按映射配置（看板管理 > 运营费用映射）聚合的运营费用科目，
  * 同时展示月度完成情况（月度预算/本月金额/使用率/预警/同期金额/同比）与
  * 财年累计完成情况（年度预算/累计金额/使用率/预警/同期累计金额/财年同比）。
  * 使用率以橙色进度条展示；预警按费用类红绿灯：使用率 <75 绿 / 75-100 黄 / >100 红，
- * 月度用月度使用率、累计用累计预算口径使用率（ytdCumRate）判断。主体口径跟随看板顶部筛选。
+ * 月度用月度使用率、累计用累计预算口径使用率（ytdCumRate）判断。主体口径跟随看板顶部筛选；
+ * 外层 Card 由 AnalysisTabsCard 统一提供。
  */
 export function ExpenseAnalysisCard({ period, companyCode, subjectName }: ExpenseAnalysisCardProps) {
   const { data, isLoading } = useExpenseAnalysis({ period, companyCode })
@@ -83,17 +84,13 @@ export function ExpenseAnalysisCard({ period, companyCode, subjectName }: Expens
   )
 
   return (
-    <Card className="animate-fade-in border border-border shadow-sm" style={{ animationDelay: '200ms' }}>
-      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 px-6 pb-3 pt-5">
-        <div>
-          <CardTitle className="text-lg font-semibold text-foreground">运营费用分析</CardTitle>
-          <p className="mt-1 text-xs text-muted-foreground">
-            期间 {data?.period ?? period ?? '—'} · 单位：万元{subjectName ? ` · 当前主体：${subjectName}` : ''}
-          </p>
-        </div>
-      </CardHeader>
-      <CardContent className="px-6 pb-6">
-        {isEmpty ? (
+    <>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          期间 {data?.period ?? period ?? '—'} · 单位：万元{subjectName ? ` · 当前主体：${subjectName}` : ''}
+        </p>
+      </div>
+      {isEmpty ? (
           <div className="flex flex-col items-center gap-3 py-12 text-center">
             <p className="text-sm font-medium text-foreground">暂无运营费用数据</p>
             <p className="text-xs text-muted-foreground">配置运营费用映射并导入经营数据后，将按映射展示费用使用情况</p>
@@ -103,9 +100,9 @@ export function ExpenseAnalysisCard({ period, companyCode, subjectName }: Expens
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  <th rowSpan={2} className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">指标名称</th>
-                  <th colSpan={6} className="border-l border-border px-3 py-2 text-center text-xs font-semibold text-foreground">月度完成情况</th>
-                  <th colSpan={6} className="border-l border-border px-3 py-2 text-center text-xs font-semibold text-foreground">财年累计完成情况</th>
+                  <th rowSpan={2} className="px-3 py-2 text-left text-[13px] font-medium text-black">指标名称</th>
+                  <th colSpan={6} className="border-l border-border px-3 py-2 text-center text-[13px] font-semibold text-black">月度完成情况</th>
+                  <th colSpan={6} className="border-l border-border px-3 py-2 text-center text-[13px] font-semibold text-black">财年累计完成情况</th>
                 </tr>
                 <tr className="border-b border-border">
                   <th className={TH_CLS}>月度预算</th>
@@ -151,7 +148,6 @@ export function ExpenseAnalysisCard({ period, companyCode, subjectName }: Expens
             </table>
           </div>
         )}
-      </CardContent>
-    </Card>
+    </>
   )
 }

@@ -79,24 +79,6 @@ describe('往来分析数据范围隔离（真实 DB）', () => {
     expect(item?.recordCount).toBe(2)
   })
 
-  it('明细列表：受限范围不返回范围外公司的行', async () => {
-    if (!dbReady) return
-    const page = await inScope(restricted, () =>
-      TransactionService.listDetails({ transactionType: TYPE, period: PERIOD, pageSize: 100 }),
-    )
-    const codes = new Set(page.items.map((r) => r.companyCode))
-    expect(codes.has(CO_IN)).toBe(true)
-    expect(codes.has(CO_OUT)).toBe(false)
-  })
-
-  it('明细列表：显式传入范围外公司也取不到数据（默认拒绝）', async () => {
-    if (!dbReady) return
-    const page = await inScope(restricted, () =>
-      TransactionService.listDetails({ companyCodes: [CO_OUT], transactionType: TYPE, period: PERIOD }),
-    )
-    expect(page.items).toHaveLength(0)
-  })
-
   it('账龄分析：受限范围不含范围外公司', async () => {
     if (!dbReady) return
     const rows = (await inScope(restricted, () =>

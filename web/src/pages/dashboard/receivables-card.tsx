@@ -4,8 +4,8 @@ import ReactECharts, { echarts } from '@/components/charts/echarts-core'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useDashboardReceivables } from '@/hooks/api-queries'
 import { formatMoneyWan } from '@/lib/utils'
-import { CATEGORY_COLORS } from '@/lib/chart-colors'
-import { CHART_FONT, CHART_INK, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
+import { CHART_FONT, CHART_INK, getChartSeries, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
+import { useThemeStore } from '@/stores/themeStore'
 import { BarChart3 } from 'lucide-react'
 
 interface ReceivablesCardProps {
@@ -25,8 +25,11 @@ interface ReceivablesCardProps {
 export function ReceivablesCard({ period, companyCode, subjectName }: ReceivablesCardProps) {
   const { data, isLoading } = useDashboardReceivables({ period, mode: 'single', companyCode })
   const rows = useMemo(() => data?.rows ?? [], [data])
+  // 分类色板跟随当前品牌主题：按序轮转，首位为品牌主色
+  const theme = useThemeStore((s) => s.theme)
 
   const option = useMemo<EChartsOption>(() => {
+    const seriesColors = getChartSeries(theme)
     const byName = new Map(rows.map((r) => [r.name, r]))
     const total = rows.reduce((s, r) => s + r.balance, 0)
     return {
@@ -76,7 +79,7 @@ export function ReceivablesCard({ period, companyCode, subjectName }: Receivable
           barWidth: 12,
           data: rows.map((r, i) => ({
             value: r.balance,
-            itemStyle: { color: CATEGORY_COLORS[i % CATEGORY_COLORS.length], borderRadius: [0, 4, 4, 0] },
+            itemStyle: { color: seriesColors[i % seriesColors.length], borderRadius: [0, 4, 4, 0] },
           })),
           label: {
             show: true,
@@ -89,7 +92,7 @@ export function ReceivablesCard({ period, companyCode, subjectName }: Receivable
         },
       ],
     }
-  }, [rows])
+  }, [rows, theme])
 
   return (
     <Card className="animate-fade-in border border-border shadow-sm" style={{ animationDelay: '200ms' }}>

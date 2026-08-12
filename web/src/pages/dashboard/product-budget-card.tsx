@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useProductBudget } from '@/hooks/api-queries'
 import { totalOf } from './budget-total'
@@ -36,14 +35,15 @@ function YoYBadge({ value }: { value: number }) {
   )
 }
 
-const TH_CLS = 'px-3 py-2 text-right text-xs font-medium text-muted-foreground'
+// 表头对齐《统一表格设计标准》：13px/500 黑字居中（数值列表头同样居中）；TD 保持右对齐 font-num
+const TH_CLS = 'px-3 py-2 text-center text-[13px] font-medium text-black'
 const TD_CLS = 'px-3 py-2 text-right font-num text-sm text-foreground'
 
 /**
- * 品类预算达成分析卡（单期间）：收入/毛利品类的预算、本月/累计金额、预算达成率与同比。
- * 切换器：月度/累计（金额口径）；预算口径自动联动（月度=占比拆分后的当月预算，累计=年度预算总额）。
+ * 品类预算达成内容（综合分析卡「品类预算达成」页，单期间）：收入/毛利品类的预算、本月/累计金额、
+ * 预算达成率与同比。切换器：月度/累计（金额口径）；预算口径自动联动（月度=占比拆分后的当月预算，累计=年度预算总额）。
  * 完成率以橙色进度条展示；预警列按达成率红黄绿三档（月度用月度达成率，累计用累计预算口径达成率）。
- * 主体口径跟随看板顶部筛选。
+ * 主体口径跟随看板顶部筛选；外层 Card 由 AnalysisTabsCard 统一提供。
  */
 export function ProductBudgetCard({ period, companyCode, subjectName }: ProductBudgetCardProps) {
   const [amountMode, setAmountMode] = useState<AmountMode>('month')
@@ -63,14 +63,11 @@ export function ProductBudgetCard({ period, companyCode, subjectName }: ProductB
   })
 
   return (
-    <Card className="animate-fade-in border border-border shadow-sm" style={{ animationDelay: '160ms' }}>
-      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 px-6 pb-3 pt-5">
-        <div>
-          <CardTitle className="text-lg font-semibold text-foreground">品类预算达成分析</CardTitle>
-          <p className="mt-1 text-xs text-muted-foreground">
-            期间 {data?.period ?? period ?? '—'} · 单位：万元{subjectName ? ` · 主体：${subjectName}` : ''}
-          </p>
-        </div>
+    <>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          期间 {data?.period ?? period ?? '—'} · 单位：万元{subjectName ? ` · 主体：${subjectName}` : ''}
+        </p>
         <div className="flex flex-wrap items-center gap-2">
           <Tabs value={amountMode} onValueChange={(v) => setAmountMode(v as AmountMode)}>
             <TabsList className="bg-muted p-1">
@@ -79,9 +76,8 @@ export function ProductBudgetCard({ period, companyCode, subjectName }: ProductB
             </TabsList>
           </Tabs>
         </div>
-      </CardHeader>
-      <CardContent className="px-6 pb-6">
-        {isEmpty ? (
+      </div>
+      {isEmpty ? (
           <div className="flex flex-col items-center gap-3 py-12 text-center">
             <p className="text-sm font-medium text-foreground">暂无品类数据</p>
             <p className="text-xs text-muted-foreground">导入并激活经营数据后，将按收入/毛利品类展示预算达成情况</p>
@@ -91,9 +87,9 @@ export function ProductBudgetCard({ period, companyCode, subjectName }: ProductB
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  <th rowSpan={2} className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">品类</th>
-                  <th colSpan={6} className="border-l border-border px-3 py-2 text-center text-xs font-semibold text-foreground">收入</th>
-                  <th colSpan={6} className="border-l border-border px-3 py-2 text-center text-xs font-semibold text-foreground">毛利</th>
+                  <th rowSpan={2} className="px-3 py-2 text-left text-[13px] font-medium text-black">品类</th>
+                  <th colSpan={6} className="border-l border-border px-3 py-2 text-center text-[13px] font-semibold text-black">收入</th>
+                  <th colSpan={6} className="border-l border-border px-3 py-2 text-center text-[13px] font-semibold text-black">毛利</th>
                 </tr>
                 <tr className="border-b border-border">
                   <th className={TH_CLS}>{amountMode === 'month' ? '月度预算' : '年度预算'}</th>
@@ -162,7 +158,6 @@ export function ProductBudgetCard({ period, companyCode, subjectName }: ProductB
             </table>
           </div>
         )}
-      </CardContent>
-    </Card>
+    </>
   )
 }

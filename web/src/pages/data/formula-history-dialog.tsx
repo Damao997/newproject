@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog'
 import { useMetricHistory, useRollbackMetric, useApproveMetric, useRejectMetric } from '@/hooks/api-queries'
 import { useConfirm } from '@/components/ui/confirm-dialog'
+import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { FormulaText } from './formula-text'
 
 interface MetricRef {
@@ -59,6 +60,57 @@ export function HistoryDialog({ metric, formatFormula, onClose, canApprove = fal
     }
   }
 
+  // 历史版本表列（响应式隐藏列：说明/时间 md 以上、变更人 sm 以上）
+  const historyColumns: DataTableColumn<NonNullable<typeof data>[number]>[] = useMemo(() => [
+    {
+      key: 'compare', header: '', align: 'center',
+      render: (h) => (
+        <input
+          type="checkbox"
+          className="h-3.5 w-3.5 accent-primary"
+          checked={compareVersions.includes(h.version)}
+          onChange={() => toggleCompare(h.version)}
+          aria-label={`选择版本 ${h.version} 对比`}
+        />
+      ),
+    },
+    { key: 'version', header: '版本', align: 'center', cellClassName: 'font-mono whitespace-nowrap', render: (h) => `v${h.version}` },
+    {
+      key: 'formula', header: '公式', align: 'center',
+      render: (h) => (h.formula ? <FormulaText text={formatFormula(h.formula)} className="max-w-[180px] md:max-w-[260px]" /> : '（空）'),
+    },
+    {
+      key: 'description', header: '说明', align: 'center',
+      headerClassName: 'hidden md:table-cell',
+      cellClassName: 'hidden text-muted-foreground md:table-cell',
+      render: (h) => <span className="block max-w-[160px] truncate" title={h.description ?? undefined}>{h.description ?? '—'}</span>,
+    },
+    {
+      key: 'changedByName', header: '变更人', align: 'center',
+      headerClassName: 'hidden sm:table-cell',
+      cellClassName: 'hidden sm:table-cell',
+    },
+    {
+      key: 'changedAt', header: '时间', align: 'center',
+      headerClassName: 'hidden md:table-cell',
+      cellClassName: 'hidden text-muted-foreground md:table-cell',
+      render: (h) => new Date(h.changedAt).toLocaleString('zh-CN'),
+    },
+    {
+      key: 'approvedBy', header: '审批', align: 'center',
+      render: (h) => (h.approvedBy ? <Badge variant="success">已审</Badge> : <Badge variant="secondary">待审</Badge>),
+    },
+    {
+      key: 'actions', header: '操作', align: 'center',
+      render: (h) => (
+        <Button variant="ghost" size="sm" onClick={() => handleRollback(h.version, h.formula)} disabled={rollback.isPending}>
+          回滚
+        </Button>
+      ),
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- toggleCompare/handleRollback 为组件内闭包，重算代价可忽略
+  ], [compareVersions, toggleCompare, formatFormula, handleRollback, rollback.isPending])
+
   const handleApprove = async () => {
     if (!metric) return
     setActionError(null)
@@ -96,48 +148,14 @@ export function HistoryDialog({ metric, formatFormula, onClose, canApprove = fal
         ) : !data || data.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">暂无历史版本</p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/50">
-                  <th className="p-2 w-8"></th>
-                  <th className="p-2 text-center font-medium whitespace-nowrap">版本</th>
-                  <th className="p-2 text-center font-medium">公式</th>
-                  <th className="hidden p-2 text-center font-medium md:table-cell">说明</th>
-                  <th className="hidden p-2 text-center font-medium whitespace-nowrap sm:table-cell">变更人</th>
-                  <th className="hidden p-2 text-center font-medium whitespace-nowrap md:table-cell">时间</th>
-                  <th className="p-2 text-center font-medium whitespace-nowrap">审批</th>
-                  <th className="p-2 text-center font-medium whitespace-nowrap">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.map((h) => (
-                  <tr key={h.version} className="border-b">
-                    <td className="p-2">
-                      <input
-                        type="checkbox"
-                        className="h-3.5 w-3.5 accent-primary"
-                        checked={compareVersions.includes(h.version)}
-                        onChange={() => toggleCompare(h.version)}
-                      />
-                    </td>
-                    <td className="p-2 font-mono whitespace-nowrap">v{h.version}</td>
-                    <td className="p-2 font-mono">{h.formula ? <FormulaText text={formatFormula(h.formula)} className="max-w-[180px] md:max-w-[260px]" /> : '（空）'}</td>
-                    <td className="hidden max-w-[160px] truncate p-2 text-muted-foreground md:table-cell" title={h.description ?? undefined}>{h.description ?? '—'}</td>
-                    <td className="hidden p-2 whitespace-nowrap sm:table-cell">{h.changedByName}</td>
-                    <td className="hidden p-2 text-muted-foreground whitespace-nowrap md:table-cell">{new Date(h.changedAt).toLocaleString('zh-CN')}</td>
-                    <td className="p-2">
-                      {h.approvedBy ? <Badge variant="success">已审</Badge> : <Badge variant="secondary">待审</Badge>}
-                    </td>
-                    <td className="p-2">
-                      <Button variant="ghost" size="sm" onClick={() => handleRollback(h.version, h.formula)} disabled={rollback.isPending}>
-                        回滚
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="rounded-lg border">
+            <DataTable
+              columns={historyColumns}
+              data={data}
+              rowKey={(h) => h.version}
+              density="compact"
+              caption="公式版本历史列表"
+            />
           </div>
         )}
         {compareVersions.length === 2 && (() => {

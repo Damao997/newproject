@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useConfirm } from '@/components/ui/confirm-dialog'
+import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { useProductCategories, useProductCategoryCheck, useProductCategoryMutations } from '@/hooks/api-queries'
 import { cn } from '@/lib/utils'
 import { Plus, RefreshCw, Pencil, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
@@ -124,6 +125,81 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
   const checkMap = new Map((check?.categories ?? []).map((c) => [c.id, c]))
   const hasWarnings = (check?.uncoveredSubjects.length ?? 0) > 0 || (check?.brokenKeywords.length ?? 0) > 0 || (check?.missingProfitMirror.length ?? 0) > 0
 
+  // 品类列表列（含科目树变化检测结果与权限门禁行操作）
+  const columns: DataTableColumn<ProductCategory>[] = useMemo(() => {
+    const cols: DataTableColumn<ProductCategory>[] = [
+      { key: 'name', header: '品类名称', cellClassName: 'font-medium text-foreground' },
+      {
+        key: 'subjectKeyword', header: '匹配关键词',
+        render: (row) => (
+          <code className="rounded bg-muted px-1.5 py-0.5 text-xs text-foreground">{row.subjectKeyword}</code>
+        ),
+      },
+      { key: 'sortOrder', header: '排序', align: 'right', cellClassName: 'font-num text-foreground' },
+      {
+        key: 'status', header: '状态',
+        render: (row) => (
+          <Badge variant={row.status === 'active' ? 'default' : 'secondary'} className="text-[10px]">
+            {row.status === 'active' ? '启用' : '停用'}
+          </Badge>
+        ),
+      },
+      {
+        key: 'matchedSubjects', header: '匹配科目',
+        render: (row) => {
+          const matched = checkMap.get(row.id)?.matchedSubjects ?? []
+          return matched.length > 0 ? (
+            <div className="flex max-w-xs flex-wrap gap-1">
+              {matched.map((s) => (
+                <span key={s} className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{s}</span>
+              ))}
+            </div>
+          ) : (
+            <span className="text-xs text-destructive">无匹配科目</span>
+          )
+        },
+      },
+      {
+        key: 'profitOk', header: '毛利镜像',
+        render: (row) => {
+          const item = checkMap.get(row.id)
+          return !item ? (
+            <span className="text-xs text-muted-foreground">—</span>
+          ) : item.profitOk ? (
+            <span className="inline-flex items-center gap-1 text-xs text-success-strong">
+              <CheckCircle2 className="h-3.5 w-3.5" />齐全
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-xs text-destructive">
+              <XCircle className="h-3.5 w-3.5" />缺失
+            </span>
+          )
+        },
+      },
+    ]
+    if (canUpdate || canDelete) {
+      cols.push({
+        key: 'actions', header: '操作', align: 'right',
+        render: (row) => (
+          <div className="flex justify-end gap-1">
+            {canUpdate && (
+              <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => openEdit(row)} title="编辑品类">
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {canDelete && (
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-destructive hover:text-destructive" onClick={() => handleDelete(row)} title="删除品类">
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
+        ),
+      })
+    }
+    return cols
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- openEdit/handleDelete/checkMap 为组件内闭包/派生对象，重算代价可忽略
+  }, [canUpdate, canDelete, openEdit, handleDelete, checkMap])
+
   return (
     <div className="space-y-4">
       {/* 说明 + 工具栏 */}
@@ -195,85 +271,16 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
       )}
 
       {/* 品类列表 */}
-      <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/40">
-              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">品类名称</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">匹配关键词</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">排序</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">状态</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">匹配科目</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">毛利镜像</th>
-              {(canUpdate || canDelete) && <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">操作</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {(categories ?? []).map((row) => {
-              const item = checkMap.get(row.id)
-              const matched = item?.matchedSubjects ?? []
-              return (
-                <tr key={row.id} className="border-b border-border/60">
-                  <td className="px-3 py-2 font-medium text-foreground">{row.name}</td>
-                  <td className="px-3 py-2">
-                    <code className="rounded bg-muted px-1.5 py-0.5 text-xs text-foreground">{row.subjectKeyword}</code>
-                  </td>
-                  <td className="px-3 py-2 text-right font-num text-foreground">{row.sortOrder}</td>
-                  <td className="px-3 py-2">
-                    <Badge variant={row.status === 'active' ? 'default' : 'secondary'} className="text-[10px]">
-                      {row.status === 'active' ? '启用' : '停用'}
-                    </Badge>
-                  </td>
-                  <td className="px-3 py-2">
-                    {matched.length > 0 ? (
-                      <div className="flex max-w-xs flex-wrap gap-1">
-                        {matched.map((s) => (
-                          <span key={s} className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{s}</span>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="text-xs text-destructive">无匹配科目</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    {matched.length === 0 ? (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    ) : item?.profitOk ? (
-                      <span className="inline-flex items-center gap-1 text-xs text-success-strong">
-                        <CheckCircle2 className="h-3.5 w-3.5" />齐全
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-xs text-destructive">
-                        <XCircle className="h-3.5 w-3.5" />缺失
-                      </span>
-                    )}
-                  </td>
-                  {(canUpdate || canDelete) && (
-                    <td className="px-3 py-2">
-                      <div className="flex justify-end gap-1">
-                        {canUpdate && (
-                          <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => openEdit(row)} title="编辑品类">
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
-                        {canDelete && (
-                          <Button variant="ghost" size="sm" className="h-7 px-2 text-destructive hover:text-destructive" onClick={() => handleDelete(row)} title="删除品类">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
-                      </div>
-                    </td>
-                  )}
-                </tr>
-              )
-            })}
-            {(categories?.length ?? 0) === 0 && !isLoading && (
-              <tr>
-                <td colSpan={7} className="px-3 py-8 text-center text-sm text-muted-foreground">暂无品类配置，点击「新增品类」创建</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      <div className="rounded-lg border border-border">
+        <DataTable
+          columns={columns}
+          data={categories ?? []}
+          rowKey={(r) => r.id}
+          density="compact"
+          emptyText="暂无品类配置，点击「新增品类」创建"
+          caption="品类配置列表"
+          loading={isLoading}
+        />
       </div>
 
       {error && (

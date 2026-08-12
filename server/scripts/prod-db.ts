@@ -1,6 +1,7 @@
 import dotenv from 'dotenv'
 import EmbeddedPostgres from 'embedded-postgres'
 import { existsSync } from 'node:fs'
+import net from 'node:net'
 import path from 'node:path'
 
 dotenv.config()
@@ -45,6 +46,40 @@ const pg = new EmbeddedPostgres({
   postgresFlags: ['-c', 'listen_addresses=127.0.0.1'],
 })
 
+// ── 心跳检测：防止"假在线"僵尸状态 ─────────────────────────
+// postmaster 被外部终止（如 Windows 控制台 Ctrl+C 广播）时，本包装进程收不到
+// 信号仍会存活，PM2 误判 online 而不触发 autorestart（2026-08-12 事故根因）。
+// 定期探测监听端口，连续失败即以非 0 退出，让 PM2 自动重启拉起新实例。
+const HEARTBEAT_INTERVAL_MS = 15_000
+const HEARTBEAT_MAX_FAILURES = 3
+
+function startHeartbeat(listenPort: number): void {
+  let failures = 0
+  setInterval(() => {
+    const sock = net.connect(listenPort, '127.0.0.1')
+    let counted = false
+    const fail = (reason: string): void => {
+      // 同一连接 timeout/error 可能先后触发：仅首次计入失败，避免单次探测双计数
+      if (counted) return
+      counted = true
+      failures += 1
+      sock.destroy()
+      console.error(`[prod-db] 心跳检测失败（${reason}：${failures}/${HEARTBEAT_MAX_FAILURES}）`)
+      if (failures >= HEARTBEAT_MAX_FAILURES) {
+        console.error('[prod-db] PostgreSQL 无响应，退出以触发 PM2 自动重启')
+        process.exit(1)
+      }
+    }
+    sock.setTimeout(3_000)
+    sock.once('connect', () => {
+      failures = 0
+      sock.destroy()
+    })
+    sock.once('error', () => fail('连接被拒'))
+    sock.once('timeout', () => fail('超时'))
+  }, HEARTBEAT_INTERVAL_MS)
+}
+
 async function main(): Promise<void> {
   const initialised = existsSync(path.join(dataDir, 'PG_VERSION'))
   if (!initialised) {
@@ -54,6 +89,7 @@ async function main(): Promise<void> {
   }
   await pg.start()
   console.log(`[prod-db] PostgreSQL 已启动：127.0.0.1:${port}（数据目录 ${dataDir}）`)
+  startHeartbeat(port)
 
   try {
     await pg.createDatabase(dbName)

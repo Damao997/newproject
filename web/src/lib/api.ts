@@ -1146,12 +1146,8 @@ class ApiClient {
     })
   }
 
-  async getTransactionDetails(params: Record<string, unknown>) {
-    return this.request({ method: 'GET', url: '/transactions/details', params })
-  }
-
-  // 账龄分析：支持单期间与科目多选（逗号分隔）
-  async getTransactionAging(params: { companyCode?: string; transactionType?: string; groupBy?: string; period?: string; accountCodes?: string; partyType?: string }) {
+  // 账龄分析：支持单期间、科目多选（逗号分隔）与往来对象关键词搜索
+  async getTransactionAging(params: { companyCode?: string; transactionType?: string; groupBy?: string; period?: string; accountCodes?: string; partyType?: string; counterpartyKeyword?: string }) {
     return this.request({ method: 'GET', url: '/transactions/aging', params })
   }
 

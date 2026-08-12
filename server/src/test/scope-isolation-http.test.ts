@@ -242,22 +242,31 @@ describe('数据范围隔离 HTTP 端到端（真实 DB）', () => {
     expect(item?.totalClosingBalance).toBe(1000)
   })
 
-  it('往来明细：显式请求范围外公司 → 降级为授权主体（不报错、不返回越权数据）', async () => {
+  it('往来账龄：显式请求范围外公司 → 降级为授权主体（不报错、不返回越权数据）', async () => {
     if (!dbReady) return
-    const res = await auth(request(app).get(`/api/v1/transactions/details?companyCode=${CO_OUT}&period=${PERIOD}`))
+    const res = await auth(request(app).get(`/api/v1/transactions/aging?companyCode=${CO_OUT}&period=${PERIOD}&groupBy=counterparty`))
     expect(res.status).toBe(200)
-    const codes = new Set((res.body.data.items as Array<{ companyCode: string }>).map((r) => r.companyCode))
+    const codes = new Set((res.body.data as Array<{ companyCode: string }>).map((r) => r.companyCode))
     expect(codes.has(CO_OUT)).toBe(false)
     expect(codes.has(CO_IN)).toBe(true)
   })
 
-  it('往来明细：不传公司时不返回范围外公司的行', async () => {
+  it('往来账龄：不传公司时不返回范围外公司的行', async () => {
     if (!dbReady) return
-    const res = await auth(request(app).get(`/api/v1/transactions/details?period=${PERIOD}&pageSize=100`))
+    const res = await auth(request(app).get(`/api/v1/transactions/aging?period=${PERIOD}&groupBy=counterparty`))
     expect(res.status).toBe(200)
-    const codes = new Set((res.body.data.items as Array<{ companyCode: string }>).map((r) => r.companyCode))
+    const codes = new Set((res.body.data as Array<{ companyCode: string }>).map((r) => r.companyCode))
     expect(codes.has(CO_IN)).toBe(true)
     expect(codes.has(CO_OUT)).toBe(false)
+  })
+
+  it('往来账龄：往来对象关键词过滤经路由透传生效', async () => {
+    if (!dbReady) return
+    const res = await auth(request(app).get(`/api/v1/transactions/aging?period=${PERIOD}&groupBy=counterparty&counterpartyKeyword=${encodeURIComponent('__SCOPE_CP_')}`))
+    expect(res.status).toBe(200)
+    const rows = res.body.data as Array<{ counterpartyCode: string }>
+    expect(rows.length).toBeGreaterThan(0)
+    expect(rows.every((r) => r.counterpartyCode.includes('__SCOPE_CP_'))).toBe(true)
   })
 
   it('公司列表：只返回授权公司，不含范围外公司与未完整授权的汇总主体', async () => {

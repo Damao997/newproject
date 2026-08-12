@@ -2,7 +2,8 @@
   "name": "yipinhui-finance",
   "private": true,
   "scripts": {
-    "prepare": "husky"
+    "prepare": "husky",
+    "dev:up": "node scripts/dev-up.mjs"
   },
   "devDependencies": {
     "husky": "^9.1.0",

@@ -159,16 +159,22 @@ function DesktopNavDropdown({
 
   return (
     <div ref={triggerRef} className="relative">
-      <button
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={onToggle}
-        className={cn(linkBase, 'w-full justify-center bg-transparent px-2', isActive ? linkActive : linkIdle)}
-      >
-        {isActive && <ActiveBar />}
-        <Icon className={linkIcon} />
-      </button>
+      {/* 折叠态悬停显示模块名；点击仍弹出二级/三级面板（Tooltip 与弹层共存） */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={open}
+            onClick={onToggle}
+            className={cn(linkBase, 'w-full justify-center bg-transparent px-2', isActive ? linkActive : linkIdle)}
+          >
+            {isActive && <ActiveBar />}
+            <Icon className={linkIcon} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right">{item.label}</TooltipContent>
+      </Tooltip>
 
       {/* 二级/三级面板：fixed 定位（nav overflow 裁剪不了），关闭即卸载（无关闭动画） */}
       {open && panelPos && (
@@ -427,7 +433,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onMobileClose
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="w-auto px-2 text-muted-foreground"
+                  className="w-auto px-2 text-muted-foreground transition-colors hover:text-foreground"
                   aria-label="展开侧边栏"
                   onClick={onToggleCollapse}
                 >
@@ -440,7 +446,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onMobileClose
             <Button
               variant="ghost"
               size="sm"
-              className="w-full justify-start text-muted-foreground"
+              className="w-full justify-start text-muted-foreground transition-colors hover:text-foreground"
               aria-label="收起侧边栏"
               onClick={onToggleCollapse}
             >

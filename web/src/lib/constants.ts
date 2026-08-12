@@ -64,7 +64,7 @@ export const PAGINATION = {
 
 /** 权限码模块段→中文名（权限配置弹窗分组标题） */
 export const PERMISSION_MODULE_LABELS: Record<string, string> = {
-  dashboard: '首页看板',
+  dashboard: '首页',
   indicators: '财务指标',
   transactions: '往来分析',
   inventory: '存货管理',

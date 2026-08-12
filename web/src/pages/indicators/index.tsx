@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Card, CardContent } from '@/components/ui/card'
+import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 import {
   Select,
   SelectContent,
@@ -79,13 +79,17 @@ function flattenForExport(rows: Row[], depth = 0): { row: Row; depth: number }[]
   return out
 }
 
-export default function IndicatorsPage() {
+/**
+ * 财务指标页（经营/静态共用实现）：按科目层级查看指标数据。
+ * subjectType 决定数据源（经营指标 / 静态指标）与展示列；
+ * 支持主体/期间/去重分类口径筛选、科目搜索、全部展开/折叠、Excel 导出、
+ * 单项分析撰写（需单选公司）与 AI 全局预分析。
+ */
+export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'static' }) {
   const { can } = usePermission()
   const navigate = useNavigate()
-  // 子标签由 URL ?tab= 直接派生（非 useState：同 pathname 切换 tab 时组件不重挂载，
-  // 派生可保证导航菜单点击后页面立即联动；?tab=static 定位静态指标）
-  const [searchParams] = useSearchParams()
-  const activeTab: 'operating' | 'static' = searchParams.get('tab') === 'static' ? 'static' : 'operating'
+  // 子标签类型由路由入口决定（/indicators/operating | /indicators/static）
+  const activeTab = subjectType
   // 查询条件与展开状态持久化到 pageStateStore（路由切换/刷新后恢复）；analysisTarget 为瞬时抽屉状态
   const setIndicators = usePageStore((s) => s.setIndicators)
   const dimFilter = usePageStore((s) => s.indicators.dimFilter)
@@ -365,22 +369,22 @@ export default function IndicatorsPage() {
             valueFormat="prefixed"
             allLabel="全部主体"
             ariaLabel="主体维度"
-            className="h-8 w-[120px] shrink-0 border-input/60 bg-page hover:bg-muted/60 sm:w-[140px] lg:w-[200px] min-[1680px]:w-[280px]"
+            className="h-8 w-[120px] shrink-0 border-input/60 bg-page hover:bg-muted/60 min-[800px]:w-[140px] lg:w-[200px] min-[1300px]:w-[250px]"
           />
 
           {/* 右侧：科目搜索 + 期间 + 重分类 + 操作按钮组（lg 以上靠右对齐） */}
           <div className="flex shrink-0 items-center gap-2 lg:ml-auto">
             {/* 科目列关键字筛选：实时过滤科目树（命中节点保留整棵子树与祖先链） */}
             <div className="relative shrink-0">
-              {/* >=1680px：完整输入框 */}
-              <div className="hidden min-[1680px]:block">
+              {/* >=600px：完整输入框 */}
+              <div className="hidden min-[600px]:block">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   value={subjectKeyword}
                   onChange={(e) => setSubjectKeyword(e.target.value)}
                   placeholder="搜索科目"
                   aria-label="搜索科目"
-                  className="h-8 w-[100px] border-input/60 bg-page pl-8 pr-7 text-[13px] min-[1680px]:w-[170px]"
+                  className="h-8 w-[120px] border-input/60 bg-page pl-8 pr-7 text-[13px]"
                 />
                 {subjectKeyword && (
                   <button
@@ -393,8 +397,8 @@ export default function IndicatorsPage() {
                   </button>
                 )}
               </div>
-              {/* <1680px：仅图标按钮，点击展开 Popover 浮层输入框（Portal 渲染，不受侧边栏/吸顶层级遮挡） */}
-              <div className="min-[1680px]:hidden">
+              {/* <600px：仅图标按钮，点击展开 Popover 浮层输入框（Portal 渲染，不受侧边栏/吸顶层级遮挡） */}
+              <div className="min-[600px]:hidden">
                 <Popover open={searchOpen} onOpenChange={setSearchOpen}>
                   <PopoverTrigger asChild>
                     <Button
@@ -438,7 +442,7 @@ export default function IndicatorsPage() {
             </div>
 
             <Select value={periodFilter} onValueChange={setPeriodFilter}>
-              <SelectTrigger className="h-8 w-[100px] shrink-0 border-input/60 bg-page hover:bg-muted/60 min-[1680px]:w-[160px]" aria-label="期间">
+              <SelectTrigger className="h-8 w-[100px] shrink-0 border-input/60 bg-page hover:bg-muted/60 min-[800px]:w-[120px] lg:w-[140px] min-[1300px]:w-[160px]" aria-label="期间">
                 <SelectValue placeholder="选择期间" />
               </SelectTrigger>
               <SelectContent>
@@ -454,19 +458,19 @@ export default function IndicatorsPage() {
               title="按重分类日志快照回溯展示调整前口径，仅供对比查看，不修改数据"
             >
               <Switch id="exclude-reclassify" aria-label="去除重分类影响" checked={excludeReclassify} onCheckedChange={setExcludeReclassify} />
-              <Label htmlFor="exclude-reclassify" className="hidden cursor-pointer whitespace-nowrap text-[13px] min-[1680px]:inline">去除重分类影响</Label>
+              <Label htmlFor="exclude-reclassify" className="hidden cursor-pointer whitespace-nowrap text-[13px] min-[1300px]:inline">去除重分类影响</Label>
             </div>
 
             <div className="mx-1 h-5 w-px shrink-0 bg-border/60" aria-hidden="true" />
 
-            {/* 展开/折叠：lg+ 独立显示（<lg 时在下拉内）；过滤态下禁用（展开由 effectiveExpanded 托管，避免污染持久化展开态） */}
-            <Button variant="fused" size="sm" onClick={toggleExpandAll} disabled={!!subjectKeyword.trim()} className="hidden shrink-0 lg:inline-flex">
+            {/* 展开/折叠：800px+ 独立显示（<800px 时在下拉内）；过滤态下禁用（展开由 effectiveExpanded 托管，避免污染持久化展开态） */}
+            <Button variant="fused" size="sm" onClick={toggleExpandAll} disabled={!!subjectKeyword.trim()} className="hidden shrink-0 min-[800px]:inline-flex">
               {isAllExpanded ? <ChevronsDownUp className="mr-1 h-3.5 w-3.5" /> : <ChevronsUpDown className="mr-1 h-3.5 w-3.5" />}
               {isAllExpanded ? '全部折叠' : '全部展开'}
             </Button>
 
-            {/* 小屏与中屏（<1680px）：AI 预分析 / 查看分析 / 导出 合并为「更多操作」下拉；<lg 时展开/折叠也在下拉内 */}
-            <div className="shrink-0 min-[1680px]:hidden">
+            {/* 小屏与中屏（<1300px）：AI 预分析 / 查看分析 / 导出 合并为「更多操作」下拉；<800px 时展开/折叠也在下拉内 */}
+            <div className="shrink-0 min-[1300px]:hidden">
               <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="fused" size="sm">
@@ -474,8 +478,8 @@ export default function IndicatorsPage() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-40">
-                    {/* 展开/折叠全部（仅 <lg 在下拉内，lg+ 已独立显示）；过滤态下禁用 */}
-                    <DropdownMenuItem onClick={toggleExpandAll} disabled={!!subjectKeyword.trim()} className="lg:hidden">
+                    {/* 展开/折叠全部（仅 <800px 在下拉内，800px+ 已独立显示）；过滤态下禁用 */}
+                    <DropdownMenuItem onClick={toggleExpandAll} disabled={!!subjectKeyword.trim()} className="min-[800px]:hidden">
                       {isAllExpanded ? <ChevronsDownUp className="mr-2 h-3.5 w-3.5" /> : <ChevronsUpDown className="mr-2 h-3.5 w-3.5" />}
                       {isAllExpanded ? '全部折叠' : '全部展开'}
                     </DropdownMenuItem>
@@ -486,7 +490,7 @@ export default function IndicatorsPage() {
                       </DropdownMenuItem>
                     )}
                     {can('reports', 'view') && (
-                      <DropdownMenuItem onClick={() => navigate('/reports?tab=analyses')}>
+                      <DropdownMenuItem onClick={() => navigate('/reports/analyses')}>
                         <Eye className="mr-2 h-3.5 w-3.5" /> 查看分析
                       </DropdownMenuItem>
                     )}
@@ -499,8 +503,8 @@ export default function IndicatorsPage() {
                 </DropdownMenu>
               </div>
 
-            {/* 大屏（>=1680px）：AI 预分析 / 查看分析 / 导出 独立显示（展开/折叠已独立于上方） */}
-            <div className="hidden shrink-0 min-[1680px]:flex lg:items-center lg:gap-2">
+            {/* 大屏（>=1300px）：AI 预分析 / 查看分析 / 导出 独立显示（展开/折叠已独立于上方） */}
+            <div className="hidden shrink-0 min-[1300px]:flex min-[1300px]:items-center min-[1300px]:gap-2">
               {can('reports', 'create') ? (
                 <Button
                   variant="fused"
@@ -513,7 +517,7 @@ export default function IndicatorsPage() {
                 </Button>
               ) : null}
               {can('reports', 'view') ? (
-                <Button variant="fused" size="sm" onClick={() => navigate('/reports?tab=analyses')}>
+                <Button variant="fused" size="sm" onClick={() => navigate('/reports/analyses')}>
                   <Eye className="mr-1 h-3.5 w-3.5" /> 查看分析
                 </Button>
               ) : null}
@@ -534,7 +538,7 @@ export default function IndicatorsPage() {
           key={`${companyCode ?? 'all'}|${period ?? 'all'}`}
           open={overviewOpen}
           onOpenChange={setOverviewOpen}
-          onViewAnalyses={() => navigate('/reports?tab=analyses')}
+          onViewAnalyses={() => navigate('/reports/analyses')}
           slotKey={`${companyCode ?? 'all'}|${period ?? 'all'}`}
           companyCode={companyCode}
           period={period ?? periods[periods.length - 1]}
@@ -557,9 +561,12 @@ export default function IndicatorsPage() {
         </div>
       )}
 
-      {/* 指标科目树 */}
-      <Card className="animate-fade-in">
-        <CardContent className="min-h-[420px] px-4 py-3">
+      {/* 指标科目树（表格卡片：筛选条在页头 actions 吸顶，树区承载于卡片内） */}
+      <Card className="animate-fade-in overflow-hidden rounded-card">
+        <div className="flex items-center justify-between border-b px-4 py-2.5">
+          <h3 className="text-base font-semibold tracking-tight">指标科目树</h3>
+        </div>
+        <div className="min-h-[420px] px-4 py-3">
           {isLoading ? (
             /* 加载骨架：保持表格占位高度，避免内容区塌陷再撑回导致跳动 */
             <div className="py-3">
@@ -602,7 +609,7 @@ export default function IndicatorsPage() {
               />
             </div>
           )}
-        </CardContent>
+        </div>
       </Card>
 
       {/* 单项分析抽屉 */}

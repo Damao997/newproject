@@ -27,8 +27,9 @@ async function req(method: string, url: string, body?: unknown, form?: FormData)
 }
 
 async function totalDetails(): Promise<number> {
-  const d = (await req('GET', '/transactions/details?pageSize=1')) as { total: number }
-  return d.total
+  // 明细总笔数 = 总览各类型 recordCount 之和（/transactions/details 已随明细查询移除）
+  const rows = (await req('GET', '/transactions/overview')) as Array<{ recordCount: number }>
+  return rows.reduce((s, r) => s + r.recordCount, 0)
 }
 
 async function main() {

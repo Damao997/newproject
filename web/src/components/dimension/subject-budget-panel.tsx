@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useConfirm } from '@/components/ui/confirm-dialog'
+import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { useCompanies } from '@/hooks/api-queries'
 import { useSubjectBudgetConfigs, useSubjectBudgetConfigCheck, useSubjectBudgetConfigMutations } from '@/hooks/api-queries'
 import { cn } from '@/lib/utils'
@@ -116,6 +117,51 @@ export function SubjectBudgetPanel({ canCreate = false, canUpdate = false, canDe
   const unconfigured = check?.unconfiguredSubjects ?? []
   const hasWarnings = unconfigured.length > 0
 
+  // 配置列表列（权限门禁行操作；斑马纹由 rowClassName 表达）
+  const columns: DataTableColumn<SubjectBudgetConfig>[] = useMemo(() => {
+    const cols: DataTableColumn<SubjectBudgetConfig>[] = [
+      { key: 'companyName', header: '主体名称', cellClassName: 'font-medium text-foreground' },
+      {
+        key: 'entityType', header: '类型',
+        render: (row) => (
+          <Badge variant={row.entityType === 'summary' ? 'secondary' : 'outline'} className="text-[10px]">
+            {row.entityType === 'summary' ? '汇总主体' : '单体公司'}
+          </Badge>
+        ),
+      },
+      { key: 'sortOrder', header: '排序', align: 'right', cellClassName: 'font-num text-foreground' },
+      {
+        key: 'status', header: '状态',
+        render: (row) => (
+          <Badge variant={row.status === 'active' ? 'default' : 'secondary'} className="text-[10px]">
+            {row.status === 'active' ? '启用' : '停用'}
+          </Badge>
+        ),
+      },
+    ]
+    if (canUpdate || canDelete) {
+      cols.push({
+        key: 'actions', header: '操作', align: 'right',
+        render: (row) => (
+          <div className="flex justify-end gap-1">
+            {canUpdate && (
+              <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => openEdit(row)} title="编辑主体配置">
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {canDelete && (
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-destructive hover:text-destructive" onClick={() => handleDelete(row)} title="移除主体配置">
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
+        ),
+      })
+    }
+    return cols
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- openEdit/handleDelete 为组件内闭包，重算代价可忽略
+  }, [canUpdate, canDelete, openEdit, handleDelete])
+
   return (
     <div className="space-y-4">
       {/* 说明 + 工具栏 */}
@@ -159,57 +205,17 @@ export function SubjectBudgetPanel({ canCreate = false, canUpdate = false, canDe
       )}
 
       {/* 配置列表 */}
-      <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/40">
-              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">主体名称</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">类型</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">排序</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">状态</th>
-              {(canUpdate || canDelete) && <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">操作</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {(configs ?? []).map((row, i) => (
-              <tr key={row.id} className={cn('border-b border-border/60', i % 2 === 1 && 'bg-muted/30')}>
-                <td className="px-3 py-2 font-medium text-foreground">{row.companyName}</td>
-                <td className="px-3 py-2">
-                  <Badge variant={row.entityType === 'summary' ? 'secondary' : 'outline'} className="text-[10px]">
-                    {row.entityType === 'summary' ? '汇总主体' : '单体公司'}
-                  </Badge>
-                </td>
-                <td className="px-3 py-2 text-right font-num text-foreground">{row.sortOrder}</td>
-                <td className="px-3 py-2">
-                  <Badge variant={row.status === 'active' ? 'default' : 'secondary'} className="text-[10px]">
-                    {row.status === 'active' ? '启用' : '停用'}
-                  </Badge>
-                </td>
-                {(canUpdate || canDelete) && (
-                  <td className="px-3 py-2">
-                    <div className="flex justify-end gap-1">
-                      {canUpdate && (
-                        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => openEdit(row)} title="编辑主体配置">
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                      {canDelete && (
-                        <Button variant="ghost" size="sm" className="h-7 px-2 text-destructive hover:text-destructive" onClick={() => handleDelete(row)} title="移除主体配置">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                    </div>
-                  </td>
-                )}
-              </tr>
-            ))}
-            {(configs?.length ?? 0) === 0 && !isLoading && (
-              <tr>
-                <td colSpan={5} className="px-3 py-8 text-center text-sm text-muted-foreground">暂无主体配置，点击「新增主体」创建</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      <div className="rounded-lg border border-border">
+        <DataTable
+          columns={columns}
+          data={configs ?? []}
+          rowKey={(r) => r.id}
+          density="compact"
+          emptyText="暂无主体配置，点击「新增主体」创建"
+          caption="主体展示配置列表"
+          rowClassName={(_, i) => (i % 2 === 1 ? 'bg-muted/30' : undefined)}
+          loading={isLoading}
+        />
       </div>
 
       {error && (

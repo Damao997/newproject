@@ -3,10 +3,10 @@ import type { EChartsOption } from 'echarts'
 import ReactECharts, { echarts } from '@/components/charts/echarts-core'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatMoneyWan } from '@/lib/utils'
-import { CHART_FONT, CHART_INK, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
+import { CHART_FONT, CHART_INK, getChartSeries, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
+import { useThemeStore } from '@/stores/themeStore'
 import { BarChart3 } from 'lucide-react'
 import type { InventoryCategoryRow } from '@/hooks/api-queries'
-import { CATEGORY_COLORS } from './category-colors'
 import { EmptyHint } from './empty-hint'
 
 /**
@@ -19,12 +19,15 @@ export function CategoryRankCard({ categories, loading, onCategoryClick }: {
   loading?: boolean
   onCategoryClick?: (code: string) => void
 }) {
+  // 分类色板跟随当前品牌主题：按序轮转，首位为品牌主色
+  const theme = useThemeStore((s) => s.theme)
   // 后端已按金额降序附 rank；横向条形图 yAxis 需倒序以使第一名在顶部
   const ranked = useMemo(() => [...categories].sort((a, b) => a.rank - b.rank), [categories])
   // ECharts click 回调仅能拿到 name，这里维护 名称→编码 映射用于钻取
   const nameToCode = useMemo(() => new Map(ranked.map((c) => [c.name, c.code])), [ranked])
 
   const option = useMemo<EChartsOption>(() => {
+    const seriesColors = getChartSeries(theme)
     const byRow = new Map(ranked.map((c) => [c.name, c]))
     return {
       animation: false,
@@ -76,7 +79,7 @@ export function CategoryRankCard({ categories, loading, onCategoryClick }: {
           barWidth: 12,
           data: ranked.map((c, i) => ({
             value: c.current,
-            itemStyle: { color: CATEGORY_COLORS[i % CATEGORY_COLORS.length], borderRadius: [0, 4, 4, 0] },
+            itemStyle: { color: seriesColors[i % seriesColors.length], borderRadius: [0, 4, 4, 0] },
           })),
           label: {
             show: true,
@@ -91,7 +94,7 @@ export function CategoryRankCard({ categories, loading, onCategoryClick }: {
         },
       ],
     }
-  }, [ranked])
+  }, [ranked, theme])
 
   return (
     <Card className="animate-fade-in">

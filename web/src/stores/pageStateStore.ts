@@ -44,22 +44,6 @@ export interface TransactionOverviewState {
   trend: { type: string; rangeMode: string; customFrom: string; customTo: string }
 }
 
-export interface TransactionDetailsState {
-  page: number
-  pageSize: number
-  /** 'all' | 公司编码 */
-  company: string
-  /** '' = 跟随最新期间；'all' = 全部期间 */
-  period: string
-  /** '' = 全部类型 */
-  type: string
-  /** 科目多选，空数组 = 全部科目 */
-  accounts: string[]
-  /** 'all' | 'internal' | 'related' | 'external' */
-  party: string
-  keyword: string
-}
-
 export interface TransactionAgingState {
   /** 'all' | 公司编码 */
   company: string
@@ -75,6 +59,8 @@ export interface TransactionAgingState {
   groupBy: string
   /** 仅显示小计：隐藏明细数据行，仅保留各组小计与合计行 */
   subtotalOnly: boolean
+  /** 往来对象关键词搜索（编码/名称模糊匹配） */
+  keyword: string
 }
 
 export interface TransactionInternalState {
@@ -104,7 +90,6 @@ export interface TransactionCollectionsState {
 
 export interface TransactionsState {
   overview: TransactionOverviewState
-  details: TransactionDetailsState
   aging: TransactionAgingState
   internal: TransactionInternalState
   coverage: TransactionCoverageState
@@ -120,6 +105,8 @@ export interface DashboardState {
   trendMetric: string
   /** 趋势图金额口径：'month' = 月度，'ytd' = 累计 */
   trendMode: string
+  /** 综合分析卡当前标签：'trend' | 'product' | 'subject' | 'expense' */
+  analysisTab: string
 }
 
 export interface InventoryState {
@@ -168,17 +155,6 @@ const defaultOverview: TransactionOverviewState = {
   trend: { type: '应收账款', rangeMode: 'fiscal', customFrom: '', customTo: '' },
 }
 
-const defaultDetails: TransactionDetailsState = {
-  page: 1,
-  pageSize: PAGINATION.DEFAULT_PAGE_SIZE,
-  company: DEFAULT_SUMMARY_CODE,
-  period: '',
-  type: '应收账款',
-  accounts: [],
-  party: 'external',
-  keyword: '',
-}
-
 const defaultAging: TransactionAgingState = {
   company: DEFAULT_SUMMARY_CODE,
   period: '',
@@ -187,6 +163,7 @@ const defaultAging: TransactionAgingState = {
   party: 'external',
   groupBy: 'type',
   subtotalOnly: false,
+  keyword: '',
 }
 
 const defaultInternal: TransactionInternalState = { company: 'all' }
@@ -203,7 +180,7 @@ const defaultCollections: TransactionCollectionsState = {
   keyword: '',
 }
 
-const defaultDashboard: DashboardState = { period: '', dim: '', trendMetric: 'revenue', trendMode: 'month' }
+const defaultDashboard: DashboardState = { period: '', dim: '', trendMetric: 'revenue', trendMode: 'month', analysisTab: 'trend' }
 
 // 默认主体：浙江省公司汇总（与往来总览 overview 默认口径一致；空数组=全部公司仍可显式选择）
 const defaultInventory: InventoryState = { companies: [DEFAULT_SUMMARY_CODE], period: '', categoryCode: '', keyword: '', detailDim: 'company' }
@@ -212,7 +189,6 @@ const defaultFormulas: FormulasState = { subjectType: 'operating', keyword: '', 
 
 const defaultTransactions: TransactionsState = {
   overview: defaultOverview,
-  details: defaultDetails,
   aging: defaultAging,
   internal: defaultInternal,
   coverage: defaultCoverage,
@@ -252,7 +228,6 @@ function mergePersisted(persisted: unknown, current: PageStateStore): PageStateS
         ...(t?.overview ?? {}),
         trend: { ...defaultOverview.trend, ...(t?.overview?.trend ?? {}) },
       },
-      details: { ...defaultDetails, ...(t?.details ?? {}) },
       aging: { ...defaultAging, ...(t?.aging ?? {}) },
       internal: { ...defaultInternal, ...(t?.internal ?? {}) },
       coverage: { ...defaultCoverage, ...(t?.coverage ?? {}) },

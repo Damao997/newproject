@@ -68,7 +68,7 @@ export function MonthPicker({
         <button
           type="button"
           className={cn(
-            'flex h-9 w-[150px] items-center gap-2 rounded-md border border-input bg-background px-3 text-sm text-black shadow-sm transition-colors hover:bg-muted/50 focus:outline-none focus:ring-1 focus:ring-ring',
+            'flex h-8 w-[150px] items-center gap-2 rounded-md border border-input bg-background px-3 text-sm text-black shadow-sm transition-colors hover:border-primary hover:bg-muted/50 focus:outline-none focus:ring-1 focus:ring-ring',
             !value && 'text-muted-foreground',
             className,
           )}

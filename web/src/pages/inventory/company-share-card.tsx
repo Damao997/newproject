@@ -3,11 +3,11 @@ import type { EChartsOption } from 'echarts'
 import ReactECharts, { echarts } from '@/components/charts/echarts-core'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatMoneyWan } from '@/lib/utils'
-import { CHART_FONT, CHART_INK, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
+import { CHART_FONT, CHART_INK, getChartSeries, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
+import { useThemeStore } from '@/stores/themeStore'
 import { PieChart } from 'lucide-react'
 import type { InventoryDetailRow } from '@/hooks/api-queries'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
-import { CATEGORY_COLORS } from './category-colors'
 import { EmptyHint } from './empty-hint'
 
 /**
@@ -23,6 +23,8 @@ function round2(n: number): number {
 }
 
 export function CompanyShareCard({ rows, loading }: { rows: InventoryDetailRow[]; loading?: boolean }) {
+  // 分类色板跟随当前品牌主题：按序轮转，首位为品牌主色
+  const theme = useThemeStore((s) => s.theme)
   const { getDisplayName } = useCompanyDisplayName()
   // 公司 → 本期金额跨品类求和；名称跟随全局「显示简称」开关
   const companies = useMemo(() => {
@@ -45,6 +47,7 @@ export function CompanyShareCard({ rows, loading }: { rows: InventoryDetailRow[]
   const sum = useMemo(() => pieData.reduce((s, c) => s + c.current, 0), [pieData])
 
   const option = useMemo<EChartsOption>(() => {
+    const seriesColors = getChartSeries(theme)
     return {
       animation: false,
       textStyle: {
@@ -83,12 +86,12 @@ export function CompanyShareCard({ rows, loading }: { rows: InventoryDetailRow[]
           data: pieData.map((c, i) => ({
             name: c.label,
             value: c.current,
-            itemStyle: { color: CATEGORY_COLORS[i % CATEGORY_COLORS.length] },
+            itemStyle: { color: seriesColors[i % seriesColors.length] },
           })),
         },
       ],
     }
-  }, [pieData, sum])
+  }, [pieData, sum, theme])
 
   return (
     <Card className="animate-fade-in">

@@ -74,11 +74,16 @@ async function main() {
   console.log('✔ 六大往来总览:')
   for (const o of overview) console.log(`    ${o.transactionType}(${o.direction}) 期末=${o.totalClosingBalance.toFixed(2)} 笔数=${o.recordCount} 内部=${o.internalCount}`)
 
-  const aging = (await req('GET', '/transactions/aging?groupBy=counterparty&transactionType=应收账款')) as unknown[]
+  const aging = (await req('GET', '/transactions/aging?groupBy=counterparty&transactionType=应收账款')) as Array<{ counterpartyCode: string; counterpartyName: string | null }>
   console.log(`✔ 应收账款按客商账龄分析 ${aging.length} 行`)
 
-  const details = (await req('GET', '/transactions/details?direction=AR&pageSize=5')) as { total: number; items: unknown[] }
-  console.log(`✔ AR 客商明细共 ${details.total} 条`)
+  // 账龄关键词搜索（替代原明细查询检查：对象编码/名称模糊匹配）
+  const firstCp = aging[0]
+  const keyword = firstCp ? (firstCp.counterpartyName || firstCp.counterpartyCode).slice(0, 2) : ''
+  const matched = (await req('GET', `/transactions/aging?groupBy=counterparty&transactionType=应收账款&counterpartyKeyword=${encodeURIComponent(keyword)}`)) as Array<{ counterpartyCode: string }>
+  const hit = firstCp ? matched.some((r) => r.counterpartyCode === firstCp.counterpartyCode) : matched.length === 0
+  console.log(`✔ 账龄关键词搜索“${keyword}”：命中 ${matched.length} 行${hit ? '' : '（未命中已知客商）'}`)
+  if (aging.length > 0 && !hit) throw new Error('账龄关键词搜索未命中已知客商')
 
   const cutoff = (await req('GET', '/transactions/latest-cutoff')) as { cutoffDate: string | null }
   console.log(`✔ 最新截止日期: ${cutoff.cutoffDate}`)

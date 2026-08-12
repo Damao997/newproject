@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Menu, LogOut, User, Key, CalendarRange } from 'lucide-react'
+import { ThemeSwitcher } from './theme-switcher'
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -70,6 +71,8 @@ export function Header({ onMenuClick }: HeaderProps) {
         </div>
 
         <div className="flex flex-1 shrink-0 items-center justify-end space-x-2">
+          {/* 品牌主题色切换器（全局应用，localStorage 持久化） */}
+          <ThemeSwitcher />
           {/* 全局财年选择：有候选时渲染下拉；无数据/失败时显示占位提示而非静默隐藏（避免「功能不见了」的困惑） */}
           <div className="flex items-center gap-1.5">
             <CalendarRange className="hidden h-4 w-4 text-muted-foreground sm:block" />

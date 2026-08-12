@@ -174,7 +174,7 @@ export default function LoginPage() {
                     aria-invalid={!!fieldErrors.username}
                     aria-describedby={fieldErrors.username ? 'username-error' : undefined}
                     className={cn(
-                      'pl-10 transition-shadow duration-200',
+                      'h-10 pl-10 transition-shadow duration-200',
                       fieldErrors.username && 'border-destructive focus-visible:ring-destructive'
                     )}
                   />
@@ -206,7 +206,7 @@ export default function LoginPage() {
                     aria-invalid={!!fieldErrors.password}
                     aria-describedby={fieldErrors.password ? 'password-error' : undefined}
                     className={cn(
-                      'pl-10 pr-10 transition-shadow duration-200',
+                      'h-10 pl-10 pr-10 transition-shadow duration-200',
                       fieldErrors.password && 'border-destructive focus-visible:ring-destructive'
                     )}
                   />

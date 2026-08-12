@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { SubjectTree } from '@/components/subject-tree/subject-tree'
 import { SubjectDialog } from '@/components/subject-tree/subject-dialog'
@@ -158,101 +159,108 @@ export function SubjectTreePanel({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col space-y-2 sm:flex-row sm:items-center sm:space-x-2 sm:space-y-0">
-        <Select value={category} onValueChange={setCategory}>
-          <SelectTrigger className="w-full sm:w-[200px]">
-            <SelectValue placeholder="选择类别" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">全部类别</SelectItem>
-            {tree.map((n) => (
-              <SelectItem key={n.code} value={n.name}>
-                {n.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      {/* 筛选与控制卡片：类别下拉 + 搜索框 + 操作按钮组 */}
+      <Card className="rounded-card p-4">
+        <div className="flex flex-col space-y-2 sm:flex-row sm:items-center sm:space-x-2 sm:space-y-0">
+          <Select value={category} onValueChange={setCategory}>
+            <SelectTrigger className="w-full sm:w-[200px]">
+              <SelectValue placeholder="选择类别" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部类别</SelectItem>
+              {tree.map((n) => (
+                <SelectItem key={n.code} value={n.name}>
+                  {n.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-        <div className="relative flex-1">
-          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="搜索科目名称或编码..."
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            className="pl-8"
-          />
-        </div>
+          <div className="relative flex-1">
+            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="搜索科目名称或编码..."
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              className="pl-8"
+            />
+          </div>
 
-        <div className="flex items-center space-x-2">
-          {canCreate && (
-            <Button variant="outline" size="sm" onClick={() => setDialog({ open: true, mode: 'create', subject: null })}>
-              <Plus className="mr-2 h-4 w-4" />
-              新增科目
+          <div className="flex items-center space-x-2">
+            {canCreate && (
+              <Button variant="default" size="sm" onClick={() => setDialog({ open: true, mode: 'create', subject: null })}>
+                <Plus className="mr-2 h-4 w-4" />
+                新增科目
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setExpandedCodes(new Set(allExpandableCodes))}
+              disabled={!!trimmedKeyword}
+            >
+              <ChevronsUpDown className="mr-2 h-4 w-4" />
+              全部展开
             </Button>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setExpandedCodes(new Set(allExpandableCodes))}
-            disabled={!!trimmedKeyword}
-          >
-            <ChevronsUpDown className="mr-2 h-4 w-4" />
-            全部展开
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setExpandedCodes(new Set())}
-            disabled={!!trimmedKeyword}
-          >
-            <ChevronsDownUp className="mr-2 h-4 w-4" />
-            全部折叠
-          </Button>
-          {canExport && (
-            <Button variant="outline" size="sm" onClick={handleExport}>
-              <Download className="mr-2 h-4 w-4" />
-              导出
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setExpandedCodes(new Set())}
+              disabled={!!trimmedKeyword}
+            >
+              <ChevronsDownUp className="mr-2 h-4 w-4" />
+              全部折叠
             </Button>
-          )}
+            {canExport && (
+              <Button variant="outline" size="sm" onClick={handleExport}>
+                <Download className="mr-2 h-4 w-4" />
+                导出
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
-
-      <p className="text-xs text-muted-foreground">
-        {isLoading ? '加载中...' : `共 ${flattenTree(tree).length} 个科目${countSuffix}`}
-      </p>
+      </Card>
 
       {actionError && <p className="text-xs text-destructive">{actionError}</p>}
 
-      <SubjectTree
-        nodes={displayTree}
-        expandedCodes={effectiveExpanded}
-        onToggle={handleToggle}
-        keyword={trimmedKeyword}
-        emptyText={isLoading ? '加载中...' : '暂无科目'}
-        actions={
-          hasActions
-            ? (node) => (
-                <>
-                  {canUpdate && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label="编辑科目"
-                      onClick={() => setDialog({ open: true, mode: 'edit', subject: flat.find((f) => f.code === node.code) ?? null })}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                  )}
-                  {canDelete && (
-                    <Button variant="ghost" size="sm" aria-label="停用科目" onClick={() => handleDisable(node)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
-                </>
-              )
-            : undefined
-        }
-      />
+      {/* 数据表格卡片：头部统计信息 + 树形科目表 */}
+      <Card className="rounded-card overflow-hidden">
+        <div className="flex items-center justify-between border-b px-4 py-2.5">
+          <p className="text-xs text-muted-foreground">
+            {isLoading ? '加载中...' : `共 ${flattenTree(tree).length} 个科目${countSuffix}`}
+          </p>
+        </div>
+        <SubjectTree
+          nodes={displayTree}
+          expandedCodes={effectiveExpanded}
+          onToggle={handleToggle}
+          keyword={trimmedKeyword}
+          emptyText={isLoading ? '加载中...' : '暂无科目'}
+          actions={
+            hasActions
+              ? (node) => (
+                  <>
+                    {canUpdate && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label="编辑科目"
+                        onClick={() => setDialog({ open: true, mode: 'edit', subject: flat.find((f) => f.code === node.code) ?? null })}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
+                    {canDelete && (
+                      <Button variant="ghost" size="sm" aria-label="停用科目" onClick={() => handleDisable(node)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </>
+                )
+              : undefined
+          }
+        />
+      </Card>
 
       <SubjectDialog
         open={dialog.open}

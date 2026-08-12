@@ -3,10 +3,10 @@ import type { EChartsOption } from 'echarts'
 import ReactECharts, { echarts } from '@/components/charts/echarts-core'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatMoneyWan } from '@/lib/utils'
-import { CHART_FONT, CHART_INK, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
+import { CHART_FONT, CHART_INK, getChartSeries, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
+import { useThemeStore } from '@/stores/themeStore'
 import { PieChart } from 'lucide-react'
 import type { InventoryCategoryRow } from '@/hooks/api-queries'
-import { CATEGORY_COLORS } from './category-colors'
 import { EmptyHint } from './empty-hint'
 
 /**
@@ -20,6 +20,8 @@ export function CategoryPieCard({ categories, loading, onCategoryClick }: {
   loading?: boolean
   onCategoryClick?: (code: string) => void
 }) {
+  // 分类色板跟随当前品牌主题：按序轮转，首位为品牌主色
+  const theme = useThemeStore((s) => s.theme)
   // 饼图仅纳入正金额品类；负值品类记入脚注提示
   const pieData = useMemo(() => categories.filter((c) => c.current > 0), [categories])
   const negatives = useMemo(() => categories.filter((c) => c.current < 0), [categories])
@@ -28,6 +30,7 @@ export function CategoryPieCard({ categories, loading, onCategoryClick }: {
   const nameToCode = useMemo(() => new Map(pieData.map((c) => [c.name, c.code])), [pieData])
 
   const option = useMemo<EChartsOption>(() => {
+    const seriesColors = getChartSeries(theme)
     return {
       animation: false,
       textStyle: {
@@ -67,12 +70,12 @@ export function CategoryPieCard({ categories, loading, onCategoryClick }: {
           data: pieData.map((c, i) => ({
             name: c.name,
             value: c.current,
-            itemStyle: { color: CATEGORY_COLORS[i % CATEGORY_COLORS.length] },
+            itemStyle: { color: seriesColors[i % seriesColors.length] },
           })),
         },
       ],
     }
-  }, [pieData, sum])
+  }, [pieData, sum, theme])
 
   return (
     <Card className="animate-fade-in">

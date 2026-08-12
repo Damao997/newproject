@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { Card, CardContent } from '@/components/ui/card'
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
@@ -16,9 +16,8 @@ import {
 import { CompanySelect } from '@/components/filters/company-select'
 import { PageContainer } from '@/components/layout/page-container'
 import { Pagination } from '@/components/data-table/pagination'
+import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { PAGINATION } from '@/lib/constants'
-import { ReportEditor } from './report-editor'
-import { AnalysisManager } from './analysis-list'
 import { useReports, useCreateReport, useDeleteReport, useCompanies, useAvailablePeriods } from '@/hooks/api-queries'
 import { usePermission } from '@/hooks/usePermission'
 import { Plus, FileText, Trash2, ExternalLink, Search } from 'lucide-react'
@@ -36,40 +35,36 @@ const STATUS_TABS: { value: string; label: string }[] = [
   { value: 'all', label: '全部' },
 ]
 
+/**
+ * 分析报告 · 汇总报告：报告列表（状态 Tab/搜索/分页）+ 新建入口。
+ * 报告编辑器为独立三级路由 /reports/:reportId/edit。
+ */
 export default function ReportsPage() {
   const { can } = usePermission()
   const canCreate = can('reports', 'create')
   const canDelete = can('reports', 'delete')
-
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [createOpen, setCreateOpen] = useState(false)
-  // 子标签由 URL ?tab= 直接派生（非 useState：同 pathname 切换 tab 时组件不重挂载，
-  // 派生可保证导航菜单点击后页面立即联动；?tab=analyses 定位「单项分析」）
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const tab: 'reports' | 'analyses' = searchParams.get('tab') === 'analyses' ? 'analyses' : 'reports'
 
-  if (selectedId) {
-    return (
-      <PageContainer title="分析报告" description="按公司或汇总主体编制的总体分析报告">
-        <ReportEditor reportId={selectedId} onBack={() => setSelectedId(null)} />
-      </PageContainer>
-    )
-  }
+  // 旧 ?tab=analyses URL 兼容：重定向到独立三级路径 /reports/analyses
+  useEffect(() => {
+    if (searchParams.get('tab') === 'analyses') {
+      navigate('/reports/analyses', { replace: true })
+    }
+  }, [searchParams, navigate])
+
+  const [createOpen, setCreateOpen] = useState(false)
 
   return (
     <PageContainer
       title="分析报告"
       description="汇总各公司/汇总主体的单项分析，编制总体分析报告"
-      actions={tab === 'reports' && canCreate ? (
+      actions={canCreate ? (
         <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="mr-2 h-4 w-4" /> 新建报告</Button>
       ) : null}
     >
-      {tab === 'reports' ? (
-        <ReportList onOpen={setSelectedId} canDelete={canDelete} />
-      ) : (
-        <AnalysisManager />
-      )}
-      <CreateReportDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={(id) => setSelectedId(id)} />
+      <ReportList onOpen={(id) => navigate(`/reports/${id}/edit`)} canDelete={canDelete} />
+      <CreateReportDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={(id) => navigate(`/reports/${id}/edit`)} />
     </PageContainer>
   )
 }
@@ -96,29 +91,65 @@ function ReportList({ onOpen, canDelete }: { onOpen: (id: string) => void; canDe
     await deleteReport.mutateAsync(id)
   }
 
-  return (
-    <Card className="animate-fade-in">
-      <CardContent className="p-0">
-        {/* 筛选工具条 */}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b p-3">
-          <Tabs value={status} onValueChange={(v) => { setStatus(v); setPage(1) }}>
-            <TabsList>
-              {STATUS_TABS.map((t) => (
-                <TabsTrigger key={t.value} value={t.value}>{t.label}</TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-          <div className="relative w-56">
-            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={keyword}
-              onChange={(e) => { setKeyword(e.target.value); setPage(1) }}
-              placeholder="按标题搜索…"
-              className="h-8 pl-8"
-            />
-          </div>
+  // 报告列表列（操作列带权限门禁）
+  const reportColumns: DataTableColumn<(typeof items)[number]>[] = useMemo(() => [
+    { key: 'title', header: '报告标题', cellClassName: 'font-medium text-foreground' },
+    {
+      key: 'companyScope', header: '主体', align: 'center', cellClassName: 'text-muted-foreground',
+      render: (r) => (
+        <>
+          {r.companyScope.name ?? r.companyScope.code}
+          <span className="ml-1 text-[11px]">({r.companyScope.type === 'summary' ? '汇总' : '公司'})</span>
+        </>
+      ),
+    },
+    { key: 'period', header: '期间', align: 'center', cellClassName: 'font-mono text-muted-foreground' },
+    {
+      key: 'status', header: '状态', align: 'center',
+      render: (r) => <Badge variant={STATUS_VARIANT[r.status] ?? 'secondary'}>{STATUS_LABEL[r.status] ?? r.status}</Badge>,
+    },
+    { key: 'currentVersion', header: '版本', align: 'center', cellClassName: 'font-mono text-muted-foreground', render: (r) => `v${r.currentVersion}` },
+    { key: 'updatedAt', header: '更新时间', align: 'center', cellClassName: 'text-muted-foreground', render: (r) => new Date(r.updatedAt).toLocaleDateString('zh-CN') },
+    {
+      key: 'actions', header: '操作', align: 'center',
+      render: (r) => (
+        <div className="flex items-center justify-center gap-1">
+          <Button variant="ghost" size="sm" onClick={() => onOpen(r.id)}><ExternalLink className="mr-1 h-3.5 w-3.5" /> 打开</Button>
+          {canDelete && r.status !== 'archived' && (
+            <Button variant="ghost" size="sm" aria-label="删除报告" onClick={() => handleDelete(r.id, r.title)} className="text-finance-red"><Trash2 className="h-3.5 w-3.5" /></Button>
+          )}
         </div>
+      ),
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleDelete 为组件内闭包，重算代价可忽略
+  ], [onOpen, canDelete, handleDelete])
 
+  return (
+    <>
+      {/* 控制层：筛选工具条（状态 Tab + 搜索，筛选卡） */}
+      <Card className="rounded-card p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Tabs value={status} onValueChange={(v) => { setStatus(v); setPage(1) }}>
+          <TabsList>
+            {STATUS_TABS.map((t) => (
+              <TabsTrigger key={t.value} value={t.value}>{t.label}</TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+        <div className="relative w-56">
+          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={keyword}
+            onChange={(e) => { setKeyword(e.target.value); setPage(1) }}
+            placeholder="按标题搜索…"
+            className="h-8 pl-8"
+          />
+        </div>
+      </div>
+      </Card>
+
+      {/* 展示层：报告列表（表格卡） */}
+      <Card className="animate-fade-in overflow-hidden rounded-card">
         {isLoading ? (
           <div className="py-16 text-center text-sm text-muted-foreground">加载中…</div>
         ) : items.length === 0 ? (
@@ -129,44 +160,13 @@ function ReportList({ onOpen, canDelete }: { onOpen: (id: string) => void; canDe
             </p>
           </div>
         ) : (
-          <table className="w-full text-[13px]">
-            <thead>
-              <tr className="border-b bg-muted/50 text-black">
-                <th className="h-11 px-4 text-center font-medium">报告标题</th>
-                <th className="h-11 px-4 text-center font-medium">主体</th>
-                <th className="h-11 px-4 text-center font-medium">期间</th>
-                <th className="h-11 px-4 text-center font-medium">状态</th>
-                <th className="h-11 px-4 text-center font-medium">版本</th>
-                <th className="h-11 px-4 text-center font-medium">更新时间</th>
-                <th className="h-11 px-4 text-center font-medium">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((r) => (
-                <tr key={r.id} className="border-b transition-colors hover:bg-muted/50">
-                  <td className="px-4 py-2.5 text-left font-medium text-foreground">{r.title}</td>
-                  <td className="px-4 py-2.5 text-center text-muted-foreground">
-                    {r.companyScope.name ?? r.companyScope.code}
-                    <span className="ml-1 text-[11px]">({r.companyScope.type === 'summary' ? '汇总' : '公司'})</span>
-                  </td>
-                  <td className="px-4 py-2.5 text-center font-mono text-muted-foreground">{r.period}</td>
-                  <td className="px-4 py-2.5 text-center">
-                    <Badge variant={STATUS_VARIANT[r.status] ?? 'secondary'}>{STATUS_LABEL[r.status] ?? r.status}</Badge>
-                  </td>
-                  <td className="px-4 py-2.5 text-center font-mono text-muted-foreground">v{r.currentVersion}</td>
-                  <td className="px-4 py-2.5 text-center text-muted-foreground">{new Date(r.updatedAt).toLocaleDateString('zh-CN')}</td>
-                  <td className="px-4 py-2.5 text-center">
-                    <div className="flex items-center justify-center gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => onOpen(r.id)}><ExternalLink className="mr-1 h-3.5 w-3.5" /> 打开</Button>
-                      {canDelete && r.status !== 'archived' && (
-                        <Button variant="ghost" size="sm" aria-label="删除报告" onClick={() => handleDelete(r.id, r.title)} className="text-finance-red"><Trash2 className="h-3.5 w-3.5" /></Button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <DataTable
+            columns={reportColumns}
+            data={items}
+            rowKey={(r) => r.id}
+            dense
+            caption="分析报告列表"
+          />
         )}
 
         {/* 分页 */}
@@ -183,8 +183,8 @@ function ReportList({ onOpen, canDelete }: { onOpen: (id: string) => void; canDe
           </div>
         )}
         {confirmElement}
-      </CardContent>
-    </Card>
+      </Card>
+    </>
   )
 }
 

@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { usePermission } from '@/hooks/usePermission'
 import { useManageAccounts, useUpdateAccountStatus } from '@/hooks/api-queries'
@@ -10,7 +10,7 @@ import type { ManageAccountItem } from '@/types'
 
 /**
  * 科目过滤 Tab（紧凑标签点选式）：配置哪些往来科目纳入/排除分析。
- * 单击标签即切换纳入/排除；排除（inactive）的科目会在明细查询与账龄分析中被自动剔除，
+ * 单击标签即切换纳入/排除；排除（inactive）的科目会在账龄分析中被自动剔除，
  * 且不出现在科目筛选下拉中。默认只显示有数据或已排除的科目，其余可展开查看。
  */
 
@@ -56,22 +56,24 @@ export function AccountFilterTab() {
 
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader className="pb-3">
+      {/* 科目过滤卡：标题统计 + 交互说明 + 科目标签云 */}
+      <Card className="rounded-card overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5">
           <div className="flex flex-wrap items-center gap-3">
-            <CardTitle className="flex items-center gap-2 text-base">
+            <h3 className="flex items-center gap-2 text-base font-semibold tracking-tight">
               <FilterX className="h-4 w-4" />
               科目过滤
-            </CardTitle>
+            </h3>
             <span className="text-xs text-muted-foreground">
               已纳入 <span className="font-medium text-success-strong">{activeCount}</span> 个 · 已排除 <span className="font-medium text-warning-strong">{excludedCount}</span> 个
             </span>
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            点击标签即可排除/恢复该科目：排除后明细查询与账龄分析将自动剔除其数据，且不再出现在科目筛选下拉中。
+        </div>
+        <div className="p-4">
+          <p className="pb-3 text-xs text-muted-foreground">
+            点击标签即可排除/恢复该科目：排除后账龄分析将自动剔除其数据，且不再出现在科目筛选下拉中。
           </p>
-        </CardHeader>
-        <CardContent>
+        <div>
           {isLoading ? (
             <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" /> 加载中...
@@ -123,7 +125,8 @@ export function AccountFilterTab() {
               )}
             </div>
           )}
-        </CardContent>
+        </div>
+        </div>
       </Card>
     </div>
   )

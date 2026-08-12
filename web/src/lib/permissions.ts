@@ -131,11 +131,11 @@ export function hasPermission(
  *  与侧边栏 navItems 展示顺序不同，故显式声明而非依赖数组顺序） */
 export const HOME_ROUTE_PRIORITY: ReadonlyArray<{ resource: string; path: string }> = [
   { resource: 'dashboard:view', path: '/dashboard' },
-  { resource: 'indicators:view', path: '/indicators' },
+  { resource: 'indicators:view', path: '/indicators/operating' },
   { resource: 'reports:view', path: '/reports' },
-  { resource: 'transactions:view', path: '/transactions' },
+  { resource: 'transactions:view', path: '/transactions/overview' },
   { resource: 'inventory:view', path: '/inventory' },
-  { resource: 'data:browse:view', path: '/data' },
+  { resource: 'data:browse:view', path: '/data/browse' },
   { resource: 'admin:users:view', path: '/admin/users' },
 ]
 
