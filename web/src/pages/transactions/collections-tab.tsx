@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -92,9 +92,14 @@ function amountTone(v: number | null): string {
 function UpdateStatusDialog({ plan, onClose }: { plan: CollectionPlanItem | null; onClose: () => void }) {
   const [status, setStatus] = useState('')
   const [actualAmount, setActualAmount] = useState('')
-  const [statusNote, setStatusNote] = useState('')
+  const [statusNote, setStatusNote] = useState(plan?.statusNote ?? '')
   const [errorMsg, setErrorMsg] = useState('')
   const updateMutation = useUpdateCollection()
+
+  // 打开对话框时预填既有催收状态说明（可修改/覆盖）；关闭时由 handleClose 清空
+  useEffect(() => {
+    if (plan) setStatusNote(plan.statusNote ?? '')
+  }, [plan])
 
   const allowed = plan ? STATUS_TRANSITIONS[plan.status] : []
 
@@ -165,7 +170,7 @@ function UpdateStatusDialog({ plan, onClose }: { plan: CollectionPlanItem | null
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="update-status-note">催收状态说明（≤500 字）</Label>
-            <Textarea id="update-status-note" rows={3} placeholder="如：客户承诺月底回款，逾期部分已开票待付款…" value={statusNote} onChange={(e) => setStatusNote(e.target.value)} />
+            <Textarea id="update-status-note" rows={3} maxLength={500} placeholder="如：客户承诺月底回款，逾期部分已开票待付款…" value={statusNote} onChange={(e) => setStatusNote(e.target.value)} />
           </div>
           {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
         </div>
@@ -278,9 +283,9 @@ function GenerateDialog({ open, companyCode, onClose }: { open: boolean; company
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">逾期起算账龄</label>
+            <Label htmlFor="generate-bucket">逾期起算账龄</Label>
             <Select value={bucket} onValueChange={setBucket}>
-              <SelectTrigger>
+              <SelectTrigger id="generate-bucket">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -338,7 +343,7 @@ function BilledAmountDrawer({ plan, onClose }: { plan: CollectionPlanItem | null
       footer={(
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={onClose} disabled={updateMutation.isPending}>取消</Button>
-          <Button size="sm" disabled={updateMutation.isPending || value.trim() === ''} onClick={handleSave}>
+          <Button size="sm" disabled={updateMutation.isPending} onClick={handleSave}>
             保存
           </Button>
         </div>
@@ -509,7 +514,7 @@ export function CollectionsTab() {
           {canUpdate && (
             <button
               type="button"
-              className="invisible rounded px-1 text-xs text-primary group-hover/billed:visible hover:underline"
+              className="invisible rounded px-1 text-xs text-primary group-hover/billed:visible focus-visible:visible hover:underline"
               onClick={() => setBilledPlan(row)}
             >
               编辑
@@ -526,7 +531,7 @@ export function CollectionsTab() {
           {canUpdate && (
             <button
               type="button"
-              className="invisible rounded px-1 text-xs text-primary group-hover/salesman:visible hover:underline"
+              className="invisible rounded px-1 text-xs text-primary group-hover/salesman:visible focus-visible:visible hover:underline"
               onClick={() => setSalesmanPlan(row)}
             >
               编辑
@@ -560,7 +565,7 @@ export function CollectionsTab() {
     {
       key: 'actions', header: '操作', cellClassName: 'group/ops whitespace-nowrap',
       render: (row) => (
-        <span className="invisible inline-flex gap-1 group-hover/ops:visible">
+        <span className="invisible inline-flex gap-1 group-hover/ops:visible focus-within:visible">
           {canUpdate && (
             <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setUpdatingPlan(row)}>
               更新
