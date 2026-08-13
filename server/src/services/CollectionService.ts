@@ -233,10 +233,13 @@ export const CollectionService = {
       where.counterpartyCode = { in: matched.map((m) => m.code) }
     }
 
+    // 状态统计使用不含状态筛选的条件（统计条为全状态总览，点击筛选后其余状态计数不应归零）
+    const statsWhere: Record<string, unknown> = { ...where }
+    delete statsWhere.status
     const [items, total, statusRows] = await Promise.all([
       prisma.collectionPlan.findMany({ where, skip: (page - 1) * pageSize, take: pageSize, orderBy: { createdAt: 'desc' } }),
       prisma.collectionPlan.count({ where }),
-      prisma.collectionPlan.groupBy({ by: ['status'], where, _count: { id: true }, _sum: { overdueAmount: true } }),
+      prisma.collectionPlan.groupBy({ by: ['status'], where: statsWhere, _count: { id: true }, _sum: { overdueAmount: true } }),
     ])
     const names = await buildNameMaps(items)
     const stats = {

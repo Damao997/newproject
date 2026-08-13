@@ -198,12 +198,12 @@ export default function TransactionsOverviewPage() {
                   return (
                     <Card
                       key={item.transactionType}
-                      className="cursor-pointer transition-shadow duration-200 ease-brand hover:shadow-md"
-                      onClick={() => {
+                      className={cn(item.totalClosingBalance !== 0 && 'cursor-pointer transition-shadow duration-200 ease-brand hover:shadow-md')}
+                      onClick={item.totalClosingBalance !== 0 ? () => {
                         // 预选该类型并跳转账龄分析（pageStateStore 持久化，刷新后仍生效）
                         setTransactionsTab('aging', { type: item.transactionType })
                         navigate('/transactions/aging')
-                      }}
+                      } : undefined}
                     >
                       <CardContent className="p-4">
                         <p className="flex items-center gap-2 text-sm font-semibold text-foreground">

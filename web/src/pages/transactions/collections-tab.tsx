@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { cn } from '@/lib/utils'
+import { cn, formatMoneyWan } from '@/lib/utils'
 import { Pagination } from '@/components/data-table/pagination'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { usePermission } from '@/hooks/usePermission'
@@ -338,6 +338,7 @@ function BilledAmountDrawer({ plan, onClose }: { plan: CollectionPlanItem | null
   return (
     <SheetShell
       onClose={onClose}
+      className="max-w-md"
       title="编辑已开票未收款金额"
       description={plan ? `${plan.companyName || plan.companyCode} · ${plan.counterpartyName || plan.counterpartyCode} · ${plan.accountCode}` : undefined}
       footer={(
@@ -400,6 +401,7 @@ function SalesmanDrawer({ plan, onClose }: { plan: CollectionPlanItem | null; on
   return (
     <SheetShell
       onClose={onClose}
+      className="max-w-md"
       title="业务员"
       description={plan ? `${plan.companyName || plan.companyCode} · ${plan.counterpartyName || plan.counterpartyCode}` : undefined}
       footer={(
@@ -624,7 +626,7 @@ export function CollectionsTab() {
             </button>
           ))}
           <span className="ml-auto text-muted-foreground">
-            金额合计 <span className="font-num font-medium text-destructive">{fmtAmount(stats.totalOverdue)}</span>
+            金额合计 <span className="font-num font-medium text-destructive">{formatMoneyWan(stats.totalOverdue / 10000)}<span className="ml-0.5 text-[10px] font-normal">万</span></span>
           </span>
         </div>
       )}
