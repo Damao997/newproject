@@ -144,20 +144,6 @@ router.patch('/accounts/:code/status', requirePermission('transactions:update', 
   sendOk(res, data)
 }))
 
-// ===== 内部往来汇总 =====
-router.get('/internal/summary', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
-  const companyCodes = await normalizeCompanies(req.authUser as AuthUserContext, req.query.companyCode)
-  const data = await TransactionService.getInternalSummary(companyCodes)
-  sendOk(res, data)
-}))
-
-// ===== 内部往来镜像校验 =====
-router.get('/internal/mirror-check', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
-  const companyCodes = await normalizeCompanies(req.authUser as AuthUserContext, req.query.companyCode)
-  const data = await TransactionService.getInternalMirrorCheck(companyCodes)
-  sendOk(res, data)
-}))
-
 // ===== 往来对象列表（筛选用） =====
 router.get('/counterparties', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
   const companyCodes = await normalizeCompanies(req.authUser as AuthUserContext, req.query.companyCode)
