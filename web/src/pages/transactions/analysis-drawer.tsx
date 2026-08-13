@@ -178,14 +178,16 @@ function TransactionDrawerBody({ target, onClose }: { target: TransactionAnalysi
                 {(() => {
                   const risk = agingRisk(snapshot.aging, snapshot.closingBalance)
                   const total = snapshot.closingBalance > 0 ? snapshot.closingBalance : 0
-                  const pct = (b: string) => (total > 0 ? (((snapshot.aging[b] ?? 0) / total) * 100).toFixed(1) : '0.0')
+                  // 分段占比：与总览卡片口径一致（1年内 = 前 5 段、1-3年 = 5-7 段、3年+ = 末段）
+                  const pct = (from: number, to: number) =>
+                    total > 0 ? ((AGING_GROUPS.slice(from, to).reduce((s, b) => s + (snapshot.aging[b] ?? 0), 0) / total) * 100).toFixed(1) : '0.0'
                   return (
                     <>
                       <p className="mt-1.5 flex justify-between font-num text-[11px] text-muted-foreground">
-                        <span>1年内 {pct('1个月')}</span>
-                        <span>1-3年 {pct('1年至2年')}</span>
+                        <span>1年内 {pct(0, 5)}%</span>
+                        <span>1-3年 {pct(5, 7)}%</span>
                         <span className={risk?.level === 'danger' ? 'text-destructive' : risk?.level === 'watch' ? 'text-warning-strong' : 'text-muted-foreground'}>
-                          3年+ {pct('3年以上')}
+                          3年+ {pct(7, 8)}%
                         </span>
                       </p>
                       <button
