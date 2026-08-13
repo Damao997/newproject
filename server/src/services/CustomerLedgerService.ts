@@ -105,15 +105,19 @@ export const CustomerLedgerService = {
       counterpartyCodes.length
         ? prisma.counterparty.findMany({ where: { code: { in: counterpartyCodes } }, select: { code: true, name: true } })
         : [],
-      prisma.collectionPlan.findMany({
-        where: {
-          ...(params.companyCodes ? { companyCode: { in: params.companyCodes } } : {}),
-          accountCode: { in: arCodes.length ? arCodes : ['__NO_AR_ACCOUNT__'] },
-        },
-        orderBy: { createdAt: 'desc' },
-        select: { id: true, companyCode: true, counterpartyCode: true, status: true, plannedDate: true, method: true, actualAmount: true, statusNote: true },
+      rows.length
+        ? prisma.collectionPlan.findMany({
+            where: {
+              ...(params.companyCodes ? { companyCode: { in: params.companyCodes } } : {}),
+              accountCode: { in: arCodes.length ? arCodes : ['__NO_AR_ACCOUNT__'] },
+            },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, companyCode: true, counterpartyCode: true, status: true, plannedDate: true, method: true, actualAmount: true, statusNote: true },
+          })
+        : [],
+      prisma.customerExt.findMany({
+        where: rows.length ? { companyCode: { in: [...new Set(rows.map((r) => r.companyCode))] } } : { companyCode: { in: ['__NO_ROWS__'] } },
       }),
-      prisma.customerExt.findMany({ where: params.companyCodes ? { companyCode: { in: params.companyCodes } } : {} }),
     ])
     const extByKey = new Map(exts.map((e) => [`${e.companyCode}|${e.counterpartyCode}`, e]))
     const extSalesmanIds = [...new Set(exts.map((e) => e.salesmanId).filter((x): x is string => !!x))]
@@ -139,13 +143,14 @@ export const CustomerLedgerService = {
       const s = r._sum
       const aging: Record<string, number> = {}
       for (const [bucket, fields] of AGING_GROUP_DEFS) {
-        aging[bucket] = fields.reduce((acc, f) => acc + toNumber((s as Record<string, unknown>)[f]), 0)
+        const raw = fields.reduce((acc, f) => acc + toNumber((s as Record<string, unknown>)[f]), 0)
+        aging[bucket] = Math.round(raw * 100) / 100
       }
       return {
         companyCode: r.companyCode,
         counterpartyCode: r.counterpartyCode,
         counterpartyName: counterpartyNameMap.get(r.counterpartyCode) ?? null,
-        closingBalance: toNumber(s.closingBalance),
+        closingBalance: Math.round(toNumber(s.closingBalance) * 100) / 100,
         overdueAmount: OVERDUE_GROUPS.reduce((acc, g) => acc + (aging[g] ?? 0), 0),
         aging,
         billedUncollectedAmount: ext?.billedUncollectedAmount === null || ext?.billedUncollectedAmount === undefined ? null : toNumber(ext?.billedUncollectedAmount),
