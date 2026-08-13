@@ -728,6 +728,10 @@ export interface CollectionPlanItem {
   actualAmount: number | null
   status: CollectionStatus
   remark: string | null
+  billedUncollectedAmount: number | null
+  salesmanId: string | null
+  salesmanName: string | null
+  statusNote: string | null
   createdAt: string
 }
 
@@ -739,6 +743,30 @@ export interface CollectionLogItem {
   content: string
   attachmentUrl: string | null
 }
+
+export interface SalesmanItem {
+  id: string
+  companyCode: string
+  name: string
+  phone: string | null
+  remark: string | null
+}
+
+export interface CounterpartyOption {
+  code: string
+  name: string
+  companyCode: string
+  partyType: string
+  isInternal: boolean
+}
+
+export interface CollectionStats {
+  byStatus: Record<CollectionStatus, number>
+  totalOverdue: number
+}
+
+/** 催收计划分页响应（列表 + 状态统计） */
+export type CollectionListResponse = PaginatedResponse<CollectionPlanItem> & { stats: CollectionStats }
 
 // ============ 分析报告（Reports 模块） ============
 

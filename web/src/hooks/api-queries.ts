@@ -1041,8 +1041,8 @@ export function useRollbackReportVersion() {
 }
 
 // ---------------- 往来分析 ----------------
-import type { TransactionOverviewItem, AgingAnalysisRow, InternalSummaryRow, InternalMirrorRow, PaginatedResponse } from '@/types'
-import type { TransactionImportPreview, TransactionImportUploadResult, CollectionPlanItem, CollectionLogItem } from '@/types'
+import type { TransactionOverviewItem, AgingAnalysisRow, InternalSummaryRow, InternalMirrorRow } from '@/types'
+import type { TransactionImportPreview, TransactionImportUploadResult, CollectionPlanItem, CollectionLogItem, SalesmanItem, CounterpartyOption, CollectionListResponse } from '@/types'
 import type { TransactionTrendResult } from '@/types'
 import type { TransactionCoverageResult, BatchCoverageRow } from '@/types'
 import type { TransactionAccountOption, ManageAccountItem } from '@/types'
@@ -1263,10 +1263,33 @@ export function useTransactionBatchCoverage(batchId: string | null) {
 
 // ===== 催收管理 =====
 
+export function useSalesmen(companyCode?: string) {
+  return useQuery({
+    queryKey: ['transactions', 'salesmen', companyCode ?? 'all'] as const,
+    queryFn: () => api.getSalesmen(companyCode ? { companyCode } : {}) as Promise<SalesmanItem[]>,
+  })
+}
+
+export function useCreateSalesman() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: Record<string, unknown>) => api.createSalesman(data) as Promise<SalesmanItem>,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transactions', 'salesmen'] }),
+  })
+}
+
+export function useCounterparties(companyCode: string | undefined, keyword: string) {
+  return useQuery({
+    queryKey: ['transactions', 'counterparties', companyCode ?? 'all', keyword] as const,
+    queryFn: () => api.getCounterparties({ companyCode, keyword: keyword || undefined }) as Promise<CounterpartyOption[]>,
+    enabled: !!companyCode,
+  })
+}
+
 export function useCollections(params: { page?: number; pageSize?: number; companyCode?: string; status?: string; counterpartyKeyword?: string }) {
   return useQuery({
     queryKey: ['transactions', 'collections', params] as const,
-    queryFn: () => api.getCollections(params as Record<string, unknown>) as Promise<PaginatedResponse<CollectionPlanItem>>,
+    queryFn: () => api.getCollections(params as Record<string, unknown>) as Promise<CollectionListResponse>,
     placeholderData: keepPreviousData,
   })
 }

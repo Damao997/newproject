@@ -1297,6 +1297,19 @@ class ApiClient {
   }
 
   // 催收管理
+  // 业务员与客商选项
+  async getSalesmen(params: Record<string, unknown>) {
+    return this.request({ method: 'GET', url: '/transactions/salesmen', params })
+  }
+
+  async createSalesman(data: Record<string, unknown>) {
+    return this.request({ method: 'POST', url: '/transactions/salesmen', data })
+  }
+
+  async getCounterparties(params: Record<string, unknown>) {
+    return this.request({ method: 'GET', url: '/transactions/collections/counterparties', params })
+  }
+
   async getCollections(params: Record<string, unknown>) {
     return this.request({ method: 'GET', url: '/transactions/collections', params })
   }
