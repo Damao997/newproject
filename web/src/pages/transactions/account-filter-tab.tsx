@@ -1,11 +1,13 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { usePermission } from '@/hooks/usePermission'
 import { useManageAccounts, useUpdateAccountStatus } from '@/hooks/api-queries'
 import { usePageStore } from '@/stores/pageStateStore'
-import { Loader2, FilterX } from 'lucide-react'
+import { Loader2, FilterX, Search, Info } from 'lucide-react'
 import type { ManageAccountItem } from '@/types'
 
 /**
@@ -32,20 +34,24 @@ export function AccountFilterTab() {
   const { can } = usePermission()
   const canUpdate = can('transactions', 'update')
 
+  const [keyword, setKeyword] = useState('')
+
   const list = accounts ?? []
   const activeCount = list.filter((a) => a.status === 'active').length
   const excludedCount = list.length - activeCount
 
   // 默认收敛：只显示 有数据 或 已排除 的科目；展开后显示全部
   const grouped = useMemo(() => {
-    const visible = showAll ? list : list.filter((a) => a.hasData || a.status === 'inactive')
+    const kw = keyword.trim()
+    const filtered = kw ? list.filter((a) => a.name.includes(kw) || a.code.includes(kw)) : list
+    const visible = showAll ? filtered : filtered.filter((a) => a.hasData || a.status === 'inactive')
     const map = new Map<string, ManageAccountItem[]>()
     for (const a of visible) {
       if (!map.has(a.transactionType)) map.set(a.transactionType, [])
       map.get(a.transactionType)!.push(a)
     }
     return TYPE_ORDER.filter((t) => map.has(t)).map((t) => ({ type: t, items: map.get(t)! }))
-  }, [list, showAll])
+  }, [list, showAll, keyword])
 
   const visibleCount = grouped.reduce((s, g) => s + g.items.length, 0)
   const hasHidden = visibleCount < list.length
@@ -67,16 +73,32 @@ export function AccountFilterTab() {
             <span className="text-xs text-muted-foreground">
               已纳入 <span className="font-medium text-success-strong">{activeCount}</span> 个 · 已排除 <span className="font-medium text-warning-strong">{excludedCount}</span> 个
             </span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button type="button" aria-label="科目过滤规则说明" className="rounded p-0.5 text-muted-foreground hover:text-foreground">
+                  <Info className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p className="max-w-[260px] text-xs">点击标签即可排除/恢复该科目：排除后账龄分析将自动剔除其数据，且不再出现在科目筛选下拉中。</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+          <div className="relative">
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="搜索科目..."
+              className="h-8 w-[180px] pl-8 text-sm"
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+            />
           </div>
         </div>
         <div className="p-4">
-          <p className="pb-3 text-xs text-muted-foreground">
-            点击标签即可排除/恢复该科目：排除后账龄分析将自动剔除其数据，且不再出现在科目筛选下拉中。
-          </p>
         <div>
           {isLoading ? (
             <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> 加载中...
+              <Loader2 className="h-4 w-4 animate-spin" /> 加载中…
             </div>
           ) : list.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">暂无科目主数据</div>
@@ -87,6 +109,9 @@ export function AccountFilterTab() {
                   <div className="mb-2 flex items-center gap-2 text-sm font-medium">
                     {g.type}
                     <span className="text-xs font-normal text-muted-foreground">{g.items.length} 个科目</span>
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                      纳入 {g.items.filter((a) => a.status === 'active').length} · 排除 {g.items.filter((a) => a.status === 'inactive').length}
+                    </span>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {g.items.map((a) => {
@@ -123,6 +148,11 @@ export function AccountFilterTab() {
                   </Button>
                 </div>
               )}
+              <div className="flex items-center gap-4 border-t border-border pt-3 text-[10px] text-muted-foreground">
+                <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-success" /> 有数据</span>
+                <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-warning" /> 已排除</span>
+                <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full border border-dashed border-muted-foreground/60" /> 暂无数据</span>
+              </div>
             </div>
           )}
         </div>
