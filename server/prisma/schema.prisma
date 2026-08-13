@@ -157,7 +157,7 @@ model Company {
   entityType       EntityType   @map("entity_type")
   legalEntity      String?      @map("legal_entity")
   managementEntity String?      @map("management_entity")
-  businessUnit    String?      @map("business_unit")
+  businessUnit     String?      @map("business_unit")
   parentCode       String?      @map("parent_code")
   status           RecordStatus @default(active)
   orderNo          Int          @default(0) @map("order_no")
@@ -261,7 +261,7 @@ model SubjectBudgetConfig {
 model BudgetRatioConfig {
   id         String   @id @default(uuid())
   fiscalYear String   @unique @map("fiscal_year") // FY2026
-  ratios     Json     @map("ratios") @db.JsonB    // 12 项，按财年 4月~次年3月顺序，和为 100
+  ratios     Json     @map("ratios") @db.JsonB // 12 项，按财年 4月~次年3月顺序，和为 100
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
@@ -422,26 +422,26 @@ model FactSnapshot {
 
 // 4.5 重分类记录表（跨公司/科目归类调整的审计追溯，含行级快照支持撤销）
 model ReclassificationLog {
-  id            String    @id @default(uuid())
-  type          String // 'company' | 'subject' | 'subject_adjust'
-  templateType  String?   @map("template_type")
-  sourceCompany String?   @map("source_company")
-  targetCompany String?   @map("target_company")
-  sourceSubject String?   @map("source_subject")
-  targetSubject String?   @map("target_subject")
-  period        String?
-  periodFrom    String?   @map("period_from")
-  periodTo      String?   @map("period_to")
-  affectedRows  Int       @default(0) @map("affected_rows")
-  operatedBy    String    @map("operated_by")
-  revertedAt    DateTime? @map("reverted_at")
-  revertedBy    String?   @map("reverted_by")
+  id                String    @id @default(uuid())
+  type              String // 'company' | 'subject' | 'subject_adjust'
+  templateType      String?   @map("template_type")
+  sourceCompany     String?   @map("source_company")
+  targetCompany     String?   @map("target_company")
+  sourceSubject     String?   @map("source_subject")
+  targetSubject     String?   @map("target_subject")
+  period            String?
+  periodFrom        String?   @map("period_from")
+  periodTo          String?   @map("period_to")
+  affectedRows      Int       @default(0) @map("affected_rows")
+  operatedBy        String    @map("operated_by")
+  revertedAt        DateTime? @map("reverted_at")
+  revertedBy        String?   @map("reverted_by")
   // 批次替换/归档/清除导致快照引用失效时由批次变更流程联动标记（reason: rows_replaced | batch_inactive）
-  invalidatedAt    DateTime? @map("invalidated_at")
-  invalidatedBy    String?   @map("invalidated_by")
-  invalidatedReason String?  @map("invalidated_reason")
-  detail        Json?     @db.JsonB
-  createdAt     DateTime  @default(now()) @map("created_at")
+  invalidatedAt     DateTime? @map("invalidated_at")
+  invalidatedBy     String?   @map("invalidated_by")
+  invalidatedReason String?   @map("invalidated_reason")
+  detail            Json?     @db.JsonB
+  createdAt         DateTime  @default(now()) @map("created_at")
 
   @@index([type, createdAt])
   @@map("reclassification_log")
@@ -479,7 +479,7 @@ model TransactionDetail {
   companyCode      String   @map("company_code")
   companyName      String?  @map("company_name")
   transactionType  String   @map("transaction_type") // 应付账款/其他应付款/预付账款/应收账款/其他应收款/预收账款
-  direction        String   // AR / AP
+  direction        String // AR / AP
   cutoffDate       String?  @map("cutoff_date") // 截止日期
   counterpartyCode String   @map("counterparty_code")
   counterpartyName String?  @map("counterparty_name")
@@ -550,12 +550,12 @@ model AgingRecord {
   @@map("aging_record")
 }
 
-// 5.6 业务员表（催收计划归属业务员，按公司隔离）
+// 5.3a 业务员表（催收计划归属业务员，按公司隔离）
 model Salesman {
   id          String   @id @default(uuid())
   companyCode String   @map("company_code")
   name        String
-  phone       String?  @map("phone")
+  phone       String?
   remark      String?
   createdAt   DateTime @default(now()) @map("created_at")
 
@@ -565,18 +565,18 @@ model Salesman {
 
 // 5.3 催收计划表
 model CollectionPlan {
-  id               String           @id @default(uuid())
-  companyCode      String           @map("company_code")
-  counterpartyCode String           @map("counterparty_code")
-  accountCode      String           @map("account_code")
-  overdueAmount    Decimal          @map("overdue_amount") @db.Decimal(18, 2)
-  plannedDate      DateTime         @map("planned_date") @db.Date
-  collectorId      String?          @map("collector_id")
-  method           CollectionMethod
-  expectedAmount   Decimal?         @map("expected_amount") @db.Decimal(18, 2)
-  actualAmount     Decimal?         @map("actual_amount") @db.Decimal(18, 2)
-  status           CollectionStatus @default(pending)
-  remark                 String?
+  id                      String           @id @default(uuid())
+  companyCode             String           @map("company_code")
+  counterpartyCode        String           @map("counterparty_code")
+  accountCode             String           @map("account_code")
+  overdueAmount           Decimal          @map("overdue_amount") @db.Decimal(18, 2)
+  plannedDate             DateTime         @map("planned_date") @db.Date
+  collectorId             String?          @map("collector_id")
+  method                  CollectionMethod
+  expectedAmount          Decimal?         @map("expected_amount") @db.Decimal(18, 2)
+  actualAmount            Decimal?         @map("actual_amount") @db.Decimal(18, 2)
+  status                  CollectionStatus @default(pending)
+  remark                  String?
   billedUncollectedAmount Decimal?         @map("billed_uncollected_amount") @db.Decimal(18, 2)
   salesmanId              String?          @map("salesman_id")
   statusNote              String?          @map("status_note")
@@ -732,23 +732,23 @@ model SubjectAnalysis {
 
 // 7.1 用户表
 model User {
-  id              String       @id @default(uuid())
-  username        String       @unique
-  displayName     String       @map("display_name")
-  email           String?
-  passwordHash    String       @map("password_hash")
-  roleId          String       @map("role_id")
-  companyCode     String?      @map("company_code")
-  orgScopeBu    Json?        @map("org_scope_bu") @db.JsonB
+  id                  String       @id @default(uuid())
+  username            String       @unique
+  displayName         String       @map("display_name")
+  email               String?
+  passwordHash        String       @map("password_hash")
+  roleId              String       @map("role_id")
+  companyCode         String?      @map("company_code")
+  orgScopeBu          Json?        @map("org_scope_bu") @db.JsonB
   // 多选数据范围：公司编码数组（可混合 EN 单体与 ET 汇总），优先于 companyCode 生效
-  dataScopeCodes  Json?        @map("data_scope_codes") @db.JsonB
-  status          RecordStatus @default(active)
+  dataScopeCodes      Json?        @map("data_scope_codes") @db.JsonB
+  status              RecordStatus @default(active)
   // 首次登录强制改密：管理员创建/重置密码后置 true，改密成功后置 false
-  mustChangePassword Boolean     @default(false) @map("must_change_password")
+  mustChangePassword  Boolean      @default(false) @map("must_change_password")
   // 多会话刷新令牌 jti 列表（Json 数组）：任一有效即放行，登录追加、登出/改密轮转移除
-  refreshTokenJtiList Json?      @map("refresh_token_jti_list") @db.JsonB
-  createdAt       DateTime     @default(now()) @map("created_at")
-  updatedAt       DateTime     @updatedAt @map("updated_at")
+  refreshTokenJtiList Json?        @map("refresh_token_jti_list") @db.JsonB
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @updatedAt @map("updated_at")
 
   role           Role             @relation(fields: [roleId], references: [id])
   company        Company?         @relation(fields: [companyCode], references: [code])
