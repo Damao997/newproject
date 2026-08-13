@@ -550,6 +550,19 @@ model AgingRecord {
   @@map("aging_record")
 }
 
+// 5.6 业务员表（催收计划归属业务员，按公司隔离）
+model Salesman {
+  id          String   @id @default(uuid())
+  companyCode String   @map("company_code")
+  name        String
+  phone       String?  @map("phone")
+  remark      String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([companyCode])
+  @@map("salesman")
+}
+
 // 5.3 催收计划表
 model CollectionPlan {
   id               String           @id @default(uuid())
@@ -563,8 +576,11 @@ model CollectionPlan {
   expectedAmount   Decimal?         @map("expected_amount") @db.Decimal(18, 2)
   actualAmount     Decimal?         @map("actual_amount") @db.Decimal(18, 2)
   status           CollectionStatus @default(pending)
-  remark           String?
-  createdAt        DateTime         @default(now()) @map("created_at")
+  remark                 String?
+  billedUncollectedAmount Decimal?         @map("billed_uncollected_amount") @db.Decimal(18, 2)
+  salesmanId              String?          @map("salesman_id")
+  statusNote              String?          @map("status_note")
+  createdAt               DateTime         @default(now()) @map("created_at")
 
   @@index([companyCode])
   @@index([status])
