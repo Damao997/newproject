@@ -250,9 +250,9 @@ router.get('/salesmen', requirePermission('transactions:view', 'view'), asyncHan
 router.post('/salesmen', requirePermission('transactions:update', 'update'), asyncHandler(async (req, res) => {
   const authUser = req.authUser as AuthUserContext
   const body = req.body ?? {}
-  // 业务员归属单体公司：汇总主体归一化后取第一个成员
+  // 业务员归属单体公司：汇总主体归一化后取第一个成员（排序确定化，避免依赖 DB 返回顺序）
   const companyCodes = await normalizeCompanies(authUser, body.companyCode)
-  const companyCode = companyCodes?.[0] ?? ''
+  const companyCode = [...(companyCodes ?? [])].sort()[0] ?? ''
   const data = await CollectionService.createSalesman({ companyCode, name: body.name, phone: body.phone, remark: body.remark }, { userId: authUser.userId, traceId: req.traceId })
   sendOk(res, data)
 }))

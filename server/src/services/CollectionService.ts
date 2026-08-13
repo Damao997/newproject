@@ -288,7 +288,8 @@ export const CollectionService = {
    * 客商选项（按公司过滤 + 关键词模糊匹配 code/name，供编辑抽屉选择）
    */
   async listCounterparties(params: { companyCodes?: string[]; keyword?: string }) {
-    const where: Record<string, unknown> = {}
+    // 只展示有效客商，停用客商不出现在选项中
+    const where: Record<string, unknown> = { status: 'active' }
     if (params.companyCodes) where.companyCode = { in: params.companyCodes }
     if (params.keyword) {
       where.OR = [
