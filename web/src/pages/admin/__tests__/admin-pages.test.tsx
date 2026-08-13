@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { useAuthStore } from '@/stores/authStore'
 import type { User } from '@/types'
 
@@ -17,7 +17,7 @@ const { mutationStub } = vi.hoisted(() => ({
 vi.mock('@/hooks/api-queries', () => ({
   useUsers: () => ({ data: { items: [], total: 0 } }),
   useRoles: () => ({
-    data: [{ id: 'r1', code: 'viewer', name: '查看者', description: null, isSystem: true, permissions: [] }],
+    data: [{ id: 'r1', code: 'viewer', name: '查看者', description: null, isSystem: true, userCount: 0, permissions: [] }],
   }),
   usePermissions: () => ({ data: [] }),
   useCompanies: () => ({ data: [] }),
@@ -31,6 +31,7 @@ vi.mock('@/hooks/api-queries', () => ({
   useCreateRole: mutationStub,
   useUpdateRole: mutationStub,
   useUpdateRolePermissions: mutationStub,
+  useUpdateRolePermissionsBatch: mutationStub,
 }))
 
 import UsersPage from '../users'
@@ -68,5 +69,41 @@ describe('管理页面渲染冒烟（白屏回归）', () => {
     render(<RolesPage />)
     expect(screen.getByText('角色管理')).toBeInTheDocument()
     expect(screen.getByText('查看者')).toBeInTheDocument()
+  })
+
+  it('角色管理页展示统计卡片、搜索框与角色编码', () => {
+    render(<RolesPage />)
+    expect(screen.getByText('角色总数')).toBeInTheDocument()
+    expect(screen.getByText('系统角色')).toBeInTheDocument()
+    expect(screen.getByText('自定义角色')).toBeInTheDocument()
+    expect(screen.getByText('含高危权限')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('搜索角色名称、编码或描述...')).toBeInTheDocument()
+    expect(screen.getByText('viewer')).toBeInTheDocument()
+  })
+
+  it('角色管理页：中大屏切换表格视图，展示表头与行选择', () => {
+    // 模拟 ≥768px 视口（jsdom 无 matchMedia）：切换器可见，点击「表格」进入表格视图
+    const mq = { matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue(mq))
+    localStorage.removeItem('roles-view-mode')
+    try {
+      render(<RolesPage />)
+      // 默认卡片视图；Radix Tabs 为 RovingTabIndex 键盘激活，按 Enter 切换「表格」
+      fireEvent.keyDown(screen.getByRole('tab', { name: /表格/ }), { key: 'Enter' })
+      expect(screen.getByRole('columnheader', { name: /角色名称/ })).toBeInTheDocument()
+      expect(screen.getByRole('columnheader', { name: /角色编码/ })).toBeInTheDocument()
+      expect(screen.getByRole('columnheader', { name: /类型/ })).toBeInTheDocument()
+      expect(screen.getByRole('columnheader', { name: /权限数/ })).toBeInTheDocument()
+      expect(screen.getByRole('columnheader', { name: /成员数/ })).toBeInTheDocument()
+      expect(screen.getByRole('columnheader', { name: /操作/ })).toBeInTheDocument()
+      // 行选择：表头全选复选框存在，角色行可勾选
+      expect(screen.getByLabelText('全选当前角色')).toBeInTheDocument()
+      expect(screen.getAllByLabelText('选择该行')).toHaveLength(1)
+      // 选择持久化：localStorage 已记录表格视图
+      expect(localStorage.getItem('roles-view-mode')).toBe('table')
+    } finally {
+      vi.unstubAllGlobals()
+      localStorage.removeItem('roles-view-mode')
+    }
   })
 })

@@ -68,3 +68,10 @@ export const updateRolePermissionsSchema = z.object({
     .max(500, '权限条目过多'),
 })
 export type UpdateRolePermissionsInput = z.infer<typeof updateRolePermissionsSchema>
+
+/** 批量覆盖多角色权限：roleIds 至少 1 个、至多 50 个；permissions 校验规则与单角色一致 */
+export const updateRolePermissionsBatchSchema = z.object({
+  roleIds: z.array(z.string().uuid('无效的角色 ID')).min(1, '至少选择一个角色').max(50, '一次最多操作 50 个角色'),
+  permissions: updateRolePermissionsSchema.shape.permissions,
+})
+export type UpdateRolePermissionsBatchInput = z.infer<typeof updateRolePermissionsBatchSchema>

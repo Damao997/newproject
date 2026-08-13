@@ -5,7 +5,7 @@ import { asyncHandler } from '../lib/async-handler'
 import { sendOk } from '../lib/response'
 import { errors } from '../lib/errors'
 import { recordAudit, clientIp } from '../middleware/audit'
-import { updateRolePermissionsSchema } from '../lib/schema'
+import { updateRolePermissionsSchema, updateRolePermissionsBatchSchema } from '../lib/schema'
 import { AdminService } from '../services/AdminService'
 import type { AuthUserContext } from '../types/express'
 
@@ -79,6 +79,13 @@ router.post('/roles', requirePermission('admin:roles:create', 'create'), asyncHa
   const b = req.body ?? {}
   if (!b.code || !b.name) throw errors.badRequest('角色编码与名称必填')
   sendOk(res, await AdminService.createRole(b, ctxOf(req)))
+}))
+
+// 批量覆盖多角色权限（须先于 /roles/:id 注册，避免 :id 匹配批量路径）
+router.put('/roles/batch-permissions', requirePermission('admin:permissions:update', 'update'), asyncHandler(async (req, res) => {
+  const parsed = updateRolePermissionsBatchSchema.parse(req.body ?? {})
+  await AdminService.updateRolePermissionsBatch(parsed.roleIds, parsed.permissions, ctxOf(req))
+  sendOk(res, null)
 }))
 
 router.put('/roles/:id', requirePermission('admin:roles:update', 'update'), asyncHandler(async (req, res) => {

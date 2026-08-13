@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { PageContainer } from '@/components/layout/page-container'
+import { FlashMessage } from '@/components/ui/flash-message'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { Pagination } from '@/components/data-table/pagination'
 import { usePermission } from '@/hooks/usePermission'
@@ -57,6 +58,9 @@ export default function UsersPage() {
   const [userDialog, setUserDialog] = useState<{ open: boolean; mode: 'create' | 'edit'; user: User | null }>({ open: false, mode: 'create', user: null })
   const [resetUser, setResetUser] = useState<User | null>(null)
 
+  // 操作反馈（成功/失败，自动消失）
+  const [flash, setFlash] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
   // 真实数据（用户量小，取较大页在前端做筛选/分页，保留原交互）
   const { data: usersData } = useUsers({ page: 1, pageSize: USER_FETCH_LIMIT })
   const { data: rolesData } = useRoles()
@@ -101,22 +105,31 @@ export default function UsersPage() {
     inactive: allUsers.filter((u) => u.status === 'inactive').length,
   }
 
-  const alertError = (fallback: string) => (e: unknown) => window.alert(e instanceof Error ? e.message : fallback)
+  const alertError = (fallback: string) => (e: unknown) => setFlash({ type: 'error', text: e instanceof Error ? e.message : fallback })
 
   /** 停用：走专用 DELETE 接口（后端会同步吊销刷新令牌），需二次确认 */
   const handleDisableUser = (u: User) => {
     if (!window.confirm(`确认停用用户「${u.name}」？停用后其登录会话将失效。`)) return
-    disableUser.mutate(u.id, { onError: alertError('停用失败') })
+    disableUser.mutate(u.id, {
+      onSuccess: () => setFlash({ type: 'success', text: `已停用用户「${u.name}」` }),
+      onError: alertError('停用失败'),
+    })
   }
 
   /** 启用：恢复账号状态 */
   const handleEnableUser = (u: User) => {
-    updateUser.mutate({ id: u.id, data: { status: 'active' } }, { onError: alertError('启用失败') })
+    updateUser.mutate({ id: u.id, data: { status: 'active' } }, {
+      onSuccess: () => setFlash({ type: 'success', text: `已启用用户「${u.name}」` }),
+      onError: alertError('启用失败'),
+    })
   }
 
   const handlePurgeUser = (u: User) => {
     if (!window.confirm(`将物理删除用户「${u.name}」（${u.username}），此操作不可恢复！确认彻底删除？`)) return
-    purgeUser.mutate(u.id, { onError: alertError('彻底删除失败') })
+    purgeUser.mutate(u.id, {
+      onSuccess: () => setFlash({ type: 'success', text: `已彻底删除用户「${u.name}」` }),
+      onError: alertError('彻底删除失败'),
+    })
   }
 
   const userColumns: DataTableColumn<User>[] = [
@@ -266,6 +279,13 @@ export default function UsersPage() {
         </Card>
       </div>
 
+      {/* 操作反馈条（成功/失败，自动消失） */}
+      {flash && (
+        <FlashMessage type={flash.type} autoHideMs={4000} onAutoHide={() => setFlash(null)}>
+          {flash.text}
+        </FlashMessage>
+      )}
+
       {/* 用户列表（筛选卡 + 表格卡） */}
       <Card className="animate-fade-in overflow-hidden rounded-card">
         <div className="flex items-center justify-between border-b px-4 py-2.5">
@@ -346,8 +366,14 @@ export default function UsersPage() {
         user={userDialog.user}
         roles={assignableRoles.map((r) => ({ code: r.code, name: r.name }))}
         onClose={() => setUserDialog((s) => ({ ...s, open: false }))}
+        onSaved={(name) => setFlash({ type: 'success', text: `已保存用户「${name}」` })}
       />
-      <ResetPasswordDialog open={!!resetUser} user={resetUser} onClose={() => setResetUser(null)} />
+      <ResetPasswordDialog
+        open={!!resetUser}
+        user={resetUser}
+        onClose={() => setResetUser(null)}
+        onSuccess={() => setFlash({ type: 'success', text: '密码已重置，首次登录须修改' })}
+      />
     </PageContainer>
   )
 }

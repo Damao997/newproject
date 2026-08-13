@@ -131,11 +131,54 @@ describe('服务层集成（真实 DB）', () => {
     expect(roles.filter((r) => r.isSystem).length).toBeGreaterThanOrEqual(6)
     const admin = roles.find((r) => r.code === 'admin')
     expect(admin!.permissions.length).toBeGreaterThan(0)
+    expect(admin!.userCount).toBeGreaterThanOrEqual(0)
+    expect(typeof admin!.userCount).toBe('number')
     // superadmin 独占高危码：admin 不含 purge，superadmin 包含
     const superadmin = roles.find((r) => r.code === 'superadmin')
     expect(superadmin).toBeTruthy()
     expect(superadmin!.permissions.some((p) => p.resource === 'data:company:purge')).toBe(true)
     expect(admin!.permissions.some((p) => p.resource.endsWith(':purge'))).toBe(false)
+    // createdAt 透出（ISO 字符串，前端表格视图排序用）
+    expect(typeof admin!.createdAt).toBe('string')
+    expect(new Date(admin!.createdAt).getTime()).toBeGreaterThan(0)
+  })
+
+  it('管理：批量覆盖角色权限（事务生效、superadmin 保护、缺角色整体拒绝）', async () => {
+    if (!dbReady) return
+    const ctx = { userId: 'integration-test', traceId: 'integration', actorRoleId: 'integration-role' }
+    // 创建两个临时自定义角色（避免污染预置角色），结束后清理
+    const suffix = Date.now().toString(36)
+    const r1 = await AdminService.createRole({ code: `batch_a_${suffix}`, name: `批量A-${suffix}` }, ctx)
+    const r2 = await AdminService.createRole({ code: `batch_b_${suffix}`, name: `批量B-${suffix}` }, ctx)
+    try {
+      // 空权限批量（清空）→ 事务内两角色均生效
+      await AdminService.updateRolePermissionsBatch([r1.id, r2.id], [], ctx)
+      const after = await AdminService.listRoles()
+      expect(after.find((r) => r.id === r1.id)!.permissions.length).toBe(0)
+      expect(after.find((r) => r.id === r2.id)!.permissions.length).toBe(0)
+      // 权限码集批量写入
+      await AdminService.updateRolePermissionsBatch(
+        [r1.id, r2.id],
+        [
+          { resource: 'dashboard:view', action: 'view' },
+          { resource: 'transactions:view', action: 'view' },
+        ],
+        ctx,
+      )
+      const after2 = await AdminService.listRoles()
+      expect(after2.find((r) => r.id === r1.id)!.permissions.length).toBe(2)
+      expect(after2.find((r) => r.id === r2.id)!.permissions.map((p) => p.resource).sort()).toEqual(['dashboard:view', 'transactions:view'])
+      // 混合 superadmin → 整体拒绝（回滚，不部分生效）
+      const superRole = (await AdminService.listRoles()).find((r) => r.code === 'superadmin')!
+      await expect(AdminService.updateRolePermissionsBatch([r1.id, superRole.id], [], ctx)).rejects.toThrow('超级管理员角色权限不可修改')
+      // 不存在的角色 → 整体拒绝
+      await expect(
+        AdminService.updateRolePermissionsBatch(['00000000-0000-0000-0000-000000000000'], [], ctx),
+      ).rejects.toThrow('存在不存在的角色')
+    } finally {
+      await prisma.role.deleteMany({ where: { id: { in: [r1.id, r2.id] } } })
+      await prisma.permission.deleteMany({ where: { roleId: { in: [r1.id, r2.id] } } })
+    }
   })
 
   it('导出经营指标为合法 xlsx（PK 头）', async () => {

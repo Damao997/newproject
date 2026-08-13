@@ -235,8 +235,11 @@ export const AdminService = {
 
   // ===== 角色 =====
   async listRoles() {
-    const rows = await prisma.role.findMany({ include: { permissions: { select: { id: true, resource: true, action: true } } }, orderBy: { createdAt: 'asc' } })
-    return rows.map((r) => ({ id: r.id, code: r.code, name: r.name, description: r.description, isSystem: r.isSystem, scopeValue: r.scopeValue, permissions: r.permissions }))
+    const rows = await prisma.role.findMany({
+      include: { permissions: { select: { id: true, resource: true, action: true } }, _count: { select: { users: true } } },
+      orderBy: { createdAt: 'asc' },
+    })
+    return rows.map((r) => ({ id: r.id, code: r.code, name: r.name, description: r.description, isSystem: r.isSystem, scopeValue: r.scopeValue, userCount: r._count.users, createdAt: r.createdAt.toISOString(), permissions: r.permissions }))
   },
 
   async createRole(input: { code: string; name: string; description?: string; scopeValue?: string }, ctx: AuditCtx) {
@@ -315,6 +318,26 @@ export const AdminService = {
     await recordAudit({
       userId: ctx.userId, module: 'admin', action: 'permission_change', targetId: roleId,
       detail: { role: role.code, before: role.permissions.length, after: permissions.length, added, removed },
+    }, ctx.traceId)
+  },
+
+  /** 批量覆盖多角色权限：事务内逐角色替换并审计；superadmin 恒受保护，任一角色不存在则整体失败回滚 */
+  async updateRolePermissionsBatch(roleIds: string[], permissions: { resource: string; action: PermissionAction }[], ctx: AuditCtx): Promise<void> {
+    const roles = await prisma.role.findMany({ where: { id: { in: roleIds } }, select: { id: true, code: true } })
+    if (roles.length !== roleIds.length) throw errors.notFound('存在不存在的角色，请刷新后重试')
+    const superRole = roles.find((r) => r.code === 'superadmin')
+    if (superRole) throw errors.forbidden('超级管理员角色权限不可修改')
+    await prisma.$transaction(async (tx) => {
+      for (const role of roles) {
+        await tx.permission.deleteMany({ where: { roleId: role.id } })
+        if (permissions.length > 0) {
+          await tx.permission.createMany({ data: permissions.map((p) => ({ roleId: role.id, resource: p.resource, action: p.action })), skipDuplicates: true })
+        }
+      }
+    })
+    await recordAudit({
+      userId: ctx.userId, module: 'admin', action: 'permission_change', targetId: roles[0].id,
+      detail: { action: 'batch', roles: roles.map((r) => r.code), roleCount: roles.length, after: permissions.length },
     }, ctx.traceId)
   },
 
