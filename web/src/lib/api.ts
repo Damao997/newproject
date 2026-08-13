@@ -1007,6 +1007,14 @@ class ApiClient {
     })
   }
 
+  async updatePermissionsBatch(roleIds: string[], permissions: Permission[]): Promise<void> {
+    return this.request({
+      method: 'PUT',
+      url: '/admin/roles/batch-permissions',
+      data: { roleIds, permissions },
+    })
+  }
+
   async getAuditLogs(params?: FilterParams): Promise<PaginatedResponse<any>> {
     return this.request({
       method: 'GET',
@@ -1178,14 +1186,6 @@ class ApiClient {
     return this.request({ method: 'PATCH', url: `/transactions/accounts/${code}/status`, data: { status } })
   }
 
-  async getInternalSummary(companyCode?: string) {
-    return this.request({ method: 'GET', url: '/transactions/internal/summary', params: { companyCode } })
-  }
-
-  async getInternalMirrorCheck(companyCode?: string) {
-    return this.request({ method: 'GET', url: '/transactions/internal/mirror-check', params: { companyCode } })
-  }
-
   async getTransactionCounterparties(companyCode?: string) {
     return this.request({ method: 'GET', url: '/transactions/counterparties', params: { companyCode } })
   }
@@ -1310,16 +1310,21 @@ class ApiClient {
     return this.request({ method: 'GET', url: '/transactions/collections/counterparties', params })
   }
 
+  // 应收款客商台账（催收计划页默认视图）
+  async getCustomerLedger(params: Record<string, unknown>) {
+    return this.request({ method: 'GET', url: '/transactions/collections/customers', params })
+  }
+
+  async updateCustomerExt(companyCode: string, counterpartyCode: string, data: Record<string, unknown>) {
+    return this.request({ method: 'PATCH', url: `/transactions/collections/customers/${companyCode}/${counterpartyCode}`, data })
+  }
+
   async getCollections(params: Record<string, unknown>) {
     return this.request({ method: 'GET', url: '/transactions/collections', params })
   }
 
   async createCollection(data: Record<string, unknown>) {
     return this.request({ method: 'POST', url: '/transactions/collections', data })
-  }
-
-  async generateCollections(data: { companyCode?: string; minAgingBucket?: string }) {
-    return this.request({ method: 'POST', url: '/transactions/collections/generate', data })
   }
 
   async updateCollection(id: string, data: Record<string, unknown>) {

@@ -15,11 +15,11 @@ import { cn, formatMoneyWan } from '@/lib/utils'
 import { Pagination } from '@/components/data-table/pagination'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { usePermission } from '@/hooks/usePermission'
-import { useCollections, useGenerateCollections, useUpdateCollection, useCollectionLogs, useAddCollectionLog } from '@/hooks/api-queries'
+import { useCollections, useUpdateCollection, useCollectionLogs, useAddCollectionLog } from '@/hooks/api-queries'
 import { usePageStore } from '@/stores/pageStateStore'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { CompanySelect } from '@/components/filters/company-select'
-import { Loader2, PhoneCall } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { SheetShell } from '@/components/ui/sheet-shell'
 import { Label } from '@/components/ui/label'
 import { FlashMessage } from '@/components/ui/flash-message'
@@ -66,14 +66,6 @@ const STATUS_DOT: Record<CollectionStatus, string> = {
   full: 'bg-success',
   bad_debt: 'bg-destructive',
 }
-
-const BUCKET_OPTIONS = [
-  { value: '1m', label: '1个月以上' },
-  { value: '3m', label: '3个月以上' },
-  { value: '6m', label: '半年以上' },
-  { value: '1y', label: '1年以上' },
-  { value: '2y', label: '2年以上' },
-]
 
 function fmtAmount(v: number | null): string {
   if (v === null || v === undefined) return '-'
@@ -249,73 +241,6 @@ function LogsDialog({ plan, canUpdate, onClose }: { plan: CollectionPlanItem | n
   )
 }
 
-// ===== 生成催收建议对话框 =====
-function GenerateDialog({ open, companyCode, onClose }: { open: boolean; companyCode?: string; onClose: () => void }) {
-  const [bucket, setBucket] = useState('6m')
-  const [result, setResult] = useState<{ created: number; skipped: number } | null>(null)
-  const [errorMsg, setErrorMsg] = useState('')
-  const generateMutation = useGenerateCollections()
-
-  const handleGenerate = async () => {
-    setErrorMsg('')
-    try {
-      const data = await generateMutation.mutateAsync({ companyCode, minAgingBucket: bucket })
-      setResult(data)
-    } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : '生成失败')
-    }
-  }
-
-  const handleClose = () => {
-    setResult(null)
-    setErrorMsg('')
-    onClose()
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>生成催收建议</DialogTitle>
-          <DialogDescription>
-            从应收账龄数据生成催收计划（AR 方向、外部客商、期末余额为正），按 公司×客商×科目 聚合逾期金额；已有进行中计划的自动跳过
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="generate-bucket">逾期起算账龄</Label>
-            <Select value={bucket} onValueChange={setBucket}>
-              <SelectTrigger id="generate-bucket">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {BUCKET_OPTIONS.map((b) => (
-                  <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {result && (
-            <p className="rounded bg-success/10 p-2 text-sm text-success-strong">
-              已生成 {result.created} 条催收计划，跳过 {result.skipped} 条（已有进行中计划）
-            </p>
-          )}
-          {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>{result ? '完成' : '取消'}</Button>
-          {!result && (
-            <Button disabled={generateMutation.isPending} onClick={handleGenerate}>
-              {generateMutation.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
-              生成
-            </Button>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 // ===== 已开票未收款金额编辑抽屉 =====
 function BilledAmountDrawer({ plan, onClose }: { plan: CollectionPlanItem | null; onClose: () => void }) {
   const [value, setValue] = useState(plan ? String(plan.billedUncollectedAmount ?? plan.overdueAmount) : '')
@@ -464,7 +389,6 @@ export function CollectionsTab() {
   const setCompanyFilter = useCallback((v: string) => setTransactionsTab('collections', { company: v }), [setTransactionsTab])
   const setStatusFilter = useCallback((v: string) => setTransactionsTab('collections', { status: v }), [setTransactionsTab])
   const setKeyword = useCallback((v: string) => setTransactionsTab('collections', { keyword: v }), [setTransactionsTab])
-  const [generateOpen, setGenerateOpen] = useState(false)
   const [updatingPlan, setUpdatingPlan] = useState<CollectionPlanItem | null>(null)
   const [logsPlan, setLogsPlan] = useState<CollectionPlanItem | null>(null)
   const [billedPlan, setBilledPlan] = useState<CollectionPlanItem | null>(null)
@@ -473,7 +397,6 @@ export function CollectionsTab() {
   const { getDisplayName } = useCompanyDisplayName()
 
   const companyCode = companyFilter === 'all' ? undefined : companyFilter
-  const canCreate = can('transactions', 'create')
   const canUpdate = can('transactions', 'update')
 
   const { data, isLoading } = useCollections({
@@ -604,12 +527,6 @@ export function CollectionsTab() {
           value={keyword}
           onChange={(e) => { setKeyword(e.target.value); setPage(1) }}
         />
-        {canCreate && (
-          <Button className="ml-auto" size="sm" onClick={() => setGenerateOpen(true)}>
-            <PhoneCall className="mr-1 h-4 w-4" />
-            生成催收建议
-          </Button>
-        )}
       </div>
       {stats && (
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-dashed border-border pt-2.5 text-xs">
@@ -667,7 +584,6 @@ export function CollectionsTab() {
         )}
       </Card>
 
-      <GenerateDialog open={generateOpen} companyCode={companyCode} onClose={() => setGenerateOpen(false)} />
       <UpdateStatusDialog plan={updatingPlan} onClose={() => setUpdatingPlan(null)} />
       <LogsDialog plan={logsPlan} canUpdate={canUpdate} onClose={() => setLogsPlan(null)} />
       {billedPlan && <BilledAmountDrawer plan={billedPlan} onClose={() => setBilledPlan(null)} />}

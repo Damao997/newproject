@@ -778,7 +778,7 @@ export function useCreateUser() {
 // ---- 角色与权限 ----
 export interface RoleItem {
   id: string; code: string; name: string; description: string | null; isSystem: boolean
-  scopeValue?: string; permissions: { id: string; resource: string; action: string }[]
+  scopeValue?: string; userCount?: number; createdAt?: string; permissions: { id: string; resource: string; action: string }[]
 }
 
 export function usePermissions() {
@@ -822,6 +822,15 @@ export function useUpdateRolePermissions() {
   return useMutation({
     mutationFn: (vars: { roleId: string; permissions: { resource: string; action: string }[] }) =>
       api.updatePermissions(vars.roleId, vars.permissions as never),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'roles'] }),
+  })
+}
+
+export function useUpdateRolePermissionsBatch() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { roleIds: string[]; permissions: { resource: string; action: string }[] }) =>
+      api.updatePermissionsBatch(vars.roleIds, vars.permissions as never),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'roles'] }),
   })
 }
@@ -1041,8 +1050,8 @@ export function useRollbackReportVersion() {
 }
 
 // ---------------- 往来分析 ----------------
-import type { TransactionOverviewItem, AgingAnalysisRow, InternalSummaryRow, InternalMirrorRow } from '@/types'
-import type { TransactionImportPreview, TransactionImportUploadResult, CollectionPlanItem, CollectionLogItem, SalesmanItem, CounterpartyOption, CollectionListResponse } from '@/types'
+import type { TransactionOverviewItem, AgingAnalysisRow } from '@/types'
+import type { TransactionImportPreview, TransactionImportUploadResult, CollectionPlanItem, CollectionLogItem, SalesmanItem, CounterpartyOption, CollectionListResponse, CustomerLedgerResponse } from '@/types'
 import type { TransactionTrendResult } from '@/types'
 import type { TransactionCoverageResult, BatchCoverageRow } from '@/types'
 import type { TransactionAccountOption, ManageAccountItem } from '@/types'
@@ -1093,20 +1102,6 @@ export function useUpdateAccountStatus() {
       qc.invalidateQueries({ queryKey: ['transactions', 'details'] })
       qc.invalidateQueries({ queryKey: ['transactions', 'aging'] })
     },
-  })
-}
-
-export function useInternalSummary(companyCode?: string) {
-  return useQuery({
-    queryKey: ['transactions', 'internal', 'summary', companyCode] as const,
-    queryFn: () => api.getInternalSummary(companyCode) as Promise<InternalSummaryRow[]>,
-  })
-}
-
-export function useInternalMirrorCheck(companyCode?: string) {
-  return useQuery({
-    queryKey: ['transactions', 'internal', 'mirror', companyCode] as const,
-    queryFn: () => api.getInternalMirrorCheck(companyCode) as Promise<InternalMirrorRow[]>,
   })
 }
 
@@ -1294,18 +1289,27 @@ export function useCollections(params: { page?: number; pageSize?: number; compa
   })
 }
 
+export function useCustomerLedger(params: { page?: number; pageSize?: number; companyCode?: string; status?: string; counterpartyKeyword?: string }) {
+  return useQuery({
+    queryKey: ['transactions', 'collections', 'customers', params] as const,
+    queryFn: () => api.getCustomerLedger(params as Record<string, unknown>) as Promise<CustomerLedgerResponse>,
+    placeholderData: keepPreviousData,
+  })
+}
+
+export function useUpdateCustomerExt() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { companyCode: string; counterpartyCode: string; data: Record<string, unknown> }) =>
+      api.updateCustomerExt(vars.companyCode, vars.counterpartyCode, vars.data) as Promise<unknown>,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transactions', 'collections', 'customers'] }),
+  })
+}
+
 export function useCreateCollection() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: Record<string, unknown>) => api.createCollection(data) as Promise<CollectionPlanItem>,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['transactions', 'collections'] }),
-  })
-}
-
-export function useGenerateCollections() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (data: { companyCode?: string; minAgingBucket?: string }) => api.generateCollections(data) as Promise<{ created: number; skipped: number }>,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['transactions', 'collections'] }),
   })
 }

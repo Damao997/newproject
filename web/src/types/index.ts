@@ -560,23 +560,6 @@ export interface AgingAnalysisRow {
   aging: Record<string, number>
 }
 
-export interface InternalSummaryRow {
-  companyCode: string
-  internalPeerCode: string
-  direction: string
-  transactionType: string
-  closingBalance: number
-  recordCount: number
-}
-
-export interface InternalMirrorRow {
-  companyA: string
-  companyB: string
-  arAmount: number
-  apAmount: number
-  difference: number
-}
-
 // ===== 往来科目筛选 =====
 
 /** 科目过滤管理项（含纳入/排除状态） */
@@ -767,6 +750,32 @@ export interface CollectionStats {
 
 /** 催收计划分页响应（列表 + 状态统计） */
 export type CollectionListResponse = PaginatedResponse<CollectionPlanItem> & { stats: CollectionStats }
+
+export interface CustomerLedgerItem {
+  companyCode: string
+  counterpartyCode: string
+  counterpartyName: string | null
+  closingBalance: number
+  overdueAmount: number
+  aging: Record<string, number>
+  billedUncollectedAmount: number | null
+  salesmanId: string | null
+  salesmanName: string | null
+  planId: string | null
+  planStatus: string | null
+  plannedDate: string | null
+  method: string | null
+  actualAmount: number | null
+  statusNote: string | null
+}
+
+export interface CustomerLedgerStats {
+  byStatus: Record<'unplanned' | CollectionStatus, number>
+  totalBalance: number
+}
+
+/** 应收款客商台账分页响应（列表 + 状态统计） */
+export type CustomerLedgerResponse = PaginatedResponse<CustomerLedgerItem> & { stats: CustomerLedgerStats }
 
 // ============ 分析报告（Reports 模块） ============
 
