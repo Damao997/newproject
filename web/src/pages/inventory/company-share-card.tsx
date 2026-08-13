@@ -3,7 +3,7 @@ import type { EChartsOption } from 'echarts'
 import ReactECharts, { echarts } from '@/components/charts/echarts-core'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatMoneyWan } from '@/lib/utils'
-import { CHART_FONT, CHART_INK, getChartSeries, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
+import { CHART_FONT, getChartInk, getChartSeries, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
 import { useThemeStore } from '@/stores/themeStore'
 import { PieChart } from 'lucide-react'
 import type { InventoryDetailRow } from '@/hooks/api-queries'
@@ -23,8 +23,8 @@ function round2(n: number): number {
 }
 
 export function CompanyShareCard({ rows, loading }: { rows: InventoryDetailRow[]; loading?: boolean }) {
-  // 分类色板跟随当前品牌主题：按序轮转，首位为品牌主色
-  const theme = useThemeStore((s) => s.theme)
+  // 分类色板跟随当前侧边栏风格：按序轮转，首位为风格主色；主页面恒白，图表框架色恒定
+  const sidebarStyle = useThemeStore((s) => s.sidebarStyle)
   const { getDisplayName } = useCompanyDisplayName()
   // 公司 → 本期金额跨品类求和；名称跟随全局「显示简称」开关
   const companies = useMemo(() => {
@@ -47,7 +47,8 @@ export function CompanyShareCard({ rows, loading }: { rows: InventoryDetailRow[]
   const sum = useMemo(() => pieData.reduce((s, c) => s + c.current, 0), [pieData])
 
   const option = useMemo<EChartsOption>(() => {
-    const seriesColors = getChartSeries(theme)
+    const ink = getChartInk()
+    const seriesColors = getChartSeries(sidebarStyle)
     return {
       animation: false,
       textStyle: {
@@ -55,17 +56,17 @@ export function CompanyShareCard({ rows, loading }: { rows: InventoryDetailRow[]
       },
       tooltip: {
         trigger: 'item',
-        ...tooltipShell,
+        ...tooltipShell(ink),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         formatter: (params: any) => {
           const pct = sum > 0 ? ((params.value / sum) * 100).toFixed(1) : '0.0'
-          return titleSpan(params.name)
+          return titleSpan(params.name, ink)
             + `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px">
-              ${labelSpan('金额')}
+              ${labelSpan('金额', ink)}
               ${numSpan(formatMoneyWan(params.value))}
             </div>
             <div style="display:flex;align-items:center;justify-content:space-between;gap:16px">
-              ${labelSpan('占比')}
+              ${labelSpan('占比', ink)}
               ${numSpan(`${pct}%`)}
             </div>`
         },
@@ -75,14 +76,14 @@ export function CompanyShareCard({ rows, loading }: { rows: InventoryDetailRow[]
           type: 'pie',
           radius: ['42%', '70%'],
           center: ['50%', '50%'],
-          itemStyle: { borderColor: CHART_INK.surface, borderWidth: 2, borderRadius: 4 },
+          itemStyle: { borderColor: ink.surface, borderWidth: 2, borderRadius: 4 },
           emphasis: { scale: true, scaleSize: 4 },
           label: {
             fontSize: 11,
-            color: CHART_INK.sub,
+            color: ink.sub,
             formatter: (p: { name: string; percent?: number }) => `${p.name} ${p.percent?.toFixed(1) ?? 0}%`,
           },
-          labelLine: { length: 10, length2: 8, lineStyle: { color: CHART_INK.grid } },
+          labelLine: { length: 10, length2: 8, lineStyle: { color: ink.grid } },
           data: pieData.map((c, i) => ({
             name: c.label,
             value: c.current,
@@ -91,7 +92,7 @@ export function CompanyShareCard({ rows, loading }: { rows: InventoryDetailRow[]
         },
       ],
     }
-  }, [pieData, sum, theme])
+  }, [pieData, sum, sidebarStyle])
 
   return (
     <Card className="animate-fade-in">

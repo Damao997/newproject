@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -264,17 +265,15 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
       )}
 
       {/* 映射列表 */}
-      <div className="rounded-lg border border-border">
-        <DataTable
-          columns={columns}
-          data={rows}
-          rowKey={(r) => r.id}
-          density="compact"
-          emptyText="暂无映射配置，点击「新增映射」创建"
-          caption="运营费用映射列表"
-          loading={isLoading}
-        />
-      </div>
+      <DataTable
+        columns={columns}
+        data={rows}
+        rowKey={(r) => r.id}
+        density="compact"
+        emptyText="暂无映射配置，点击「新增映射」创建"
+        caption="运营费用映射列表"
+        loading={isLoading}
+      />
 
       {error && (
         <p className="flex items-center gap-1.5 text-xs text-destructive">
@@ -333,11 +332,11 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
                               selected ? 'border-primary/50 bg-primary/5 text-foreground' : 'border-border text-muted-foreground hover:bg-muted/50',
                             )}
                           >
-                            <input
-                              type="checkbox"
-                              className="h-3.5 w-3.5 accent-primary"
+                            <Checkbox
+                              size="sm"
+                              className="shrink-0"
                               checked={selected}
-                              onChange={() => toggleSubject(item.code)}
+                              onCheckedChange={() => toggleSubject(item.code)}
                             />
                             <span className="flex-1 truncate" title={item.name}>{item.name}</span>
                             {!item.hasData && <span className="shrink-0 text-[10px] text-muted-foreground">（暂无数据）</span>}

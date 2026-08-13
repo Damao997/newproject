@@ -205,18 +205,16 @@ export function SubjectBudgetPanel({ canCreate = false, canUpdate = false, canDe
       )}
 
       {/* 配置列表 */}
-      <div className="rounded-lg border border-border">
-        <DataTable
-          columns={columns}
-          data={configs ?? []}
-          rowKey={(r) => r.id}
-          density="compact"
-          emptyText="暂无主体配置，点击「新增主体」创建"
-          caption="主体展示配置列表"
-          rowClassName={(_, i) => (i % 2 === 1 ? 'bg-muted/30' : undefined)}
-          loading={isLoading}
-        />
-      </div>
+      <DataTable
+        columns={columns}
+        data={configs ?? []}
+        rowKey={(r) => r.id}
+        density="compact"
+        emptyText="暂无主体配置，点击「新增主体」创建"
+        caption="主体展示配置列表"
+        rowClassName={(_, i) => (i % 2 === 1 ? 'bg-muted/30' : undefined)}
+        loading={isLoading}
+      />
 
       {error && (
         <p className="flex items-center gap-1.5 text-xs text-destructive">

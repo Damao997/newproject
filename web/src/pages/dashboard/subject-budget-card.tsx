@@ -36,7 +36,7 @@ function YoYBadge({ value }: { value: number }) {
 }
 
 // 表头对齐《统一表格设计标准》：13px/500 黑字居中（数值列表头同样居中）；TD 保持右对齐 font-num
-const TH_CLS = 'px-3 py-2 text-center text-[13px] font-medium text-black'
+const TH_CLS = 'px-3 py-2 text-center text-[13px] font-medium text-foreground'
 const TD_CLS = 'px-3 py-2 text-right font-num text-sm text-foreground'
 
 /**
@@ -70,9 +70,9 @@ export function SubjectBudgetCard({ period, companyCode, subjectName }: SubjectB
           期间 {data?.period ?? period ?? '—'} · 单位：万元{subjectName ? ` · 当前主体：${subjectName}` : ''}
         </p>
         <Tabs value={amountMode} onValueChange={(v) => setAmountMode(v as AmountMode)}>
-          <TabsList className="bg-muted p-1">
-            <TabsTrigger value="month" className="rounded-lg px-3 py-1.5 text-xs data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">月度</TabsTrigger>
-            <TabsTrigger value="ytd" className="rounded-lg px-3 py-1.5 text-xs data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">累计</TabsTrigger>
+          <TabsList variant="line" className="justify-start">
+            <TabsTrigger value="month">月度</TabsTrigger>
+            <TabsTrigger value="ytd">累计</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
@@ -86,10 +86,10 @@ export function SubjectBudgetCard({ period, companyCode, subjectName }: SubjectB
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  <th rowSpan={2} className="px-3 py-2 text-left text-[13px] font-medium text-black">主体</th>
-                  <th colSpan={5} className="border-l border-border px-3 py-2 text-center text-[13px] font-semibold text-black">收入</th>
-                  <th colSpan={5} className="border-l border-border px-3 py-2 text-center text-[13px] font-semibold text-black">毛利</th>
-                  <th colSpan={5} className="border-l border-border px-3 py-2 text-center text-[13px] font-semibold text-black">净利润</th>
+                  <th rowSpan={2} className="px-3 py-2 text-left text-[13px] font-medium text-foreground">主体</th>
+                  <th colSpan={5} className="border-l border-border px-3 py-2 text-center text-[13px] font-semibold text-foreground">收入</th>
+                  <th colSpan={5} className="border-l border-border px-3 py-2 text-center text-[13px] font-semibold text-foreground">毛利</th>
+                  <th colSpan={5} className="border-l border-border px-3 py-2 text-center text-[13px] font-semibold text-foreground">净利润</th>
                 </tr>
                 <tr className="border-b border-border">
                   <th className={TH_CLS}>{amountMode === 'month' ? '月度预算' : '年度预算'}</th>

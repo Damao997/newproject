@@ -15,7 +15,7 @@ import { usePeriodStore } from '@/stores/periodStore'
 import { usePageStore, type TransactionOverviewState } from '@/stores/pageStateStore'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { formatMoneyWan } from '@/lib/utils'
-import { CHART_FONT, CHART_INK, getChartSeries, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
+import { CHART_FONT, getChartInk, getChartSeries, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
 import { useThemeStore } from '@/stores/themeStore'
 import { Download, LineChart, RefreshCw } from 'lucide-react'
 
@@ -29,8 +29,8 @@ import { Download, LineChart, RefreshCw } from 'lucide-react'
 const TRANSACTION_TYPES = ['应收账款', '其他应收款', '预收账款', '应付账款', '其他应付款', '预付账款']
 
 export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] }) {
-  // 折线色板跟随当前品牌主题：按公司顺序轮转，首位为品牌主色
-  const theme = useThemeStore((s) => s.theme)
+  // 折线色板跟随当前侧边栏风格：按公司顺序轮转，首位为风格主色；主页面恒白，图表框架色恒定
+  const sidebarStyle = useThemeStore((s) => s.sidebarStyle)
   // 图表筛选持久化到 pageStateStore（跟随 OverviewTab 生命周期，切 tab/切路由/刷新后恢复）
   const transactionType = usePageStore((s) => s.transactions.overview.trend.type)
   // 期间模式：'fiscal' = 跟随全局 Header 财年（默认）；'custom' = 自定义期间范围；'FYxxxx' = 指定财年
@@ -73,7 +73,8 @@ export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] 
   const hasData = !!data && data.series.length > 0 && data.series.some((s) => s.points.some((p) => p !== null))
 
   const option = useMemo<EChartsOption>(() => {
-    const lineColors = getChartSeries(theme)
+    const ink = getChartInk()
+    const lineColors = getChartSeries(sidebarStyle)
     const periods = data?.periods ?? []
     const series = data?.series ?? []
     return {
@@ -82,17 +83,17 @@ export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] 
       },
       tooltip: {
         trigger: 'axis',
-        ...tooltipShell,
+        ...tooltipShell(ink),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         formatter: (params: any) => {
           if (!Array.isArray(params) || params.length === 0) return ''
-          let result = titleSpan(`${params[0].axisValue} · ${transactionType}`)
+          let result = titleSpan(`${params[0].axisValue} · ${transactionType}`, ink)
           for (const item of params) {
             if (item.value === null || item.value === undefined) continue
             result += `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin:4px 0">
               <div style="display:flex;align-items:center;gap:8px">
                 <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${item.color}"></span>
-                ${labelSpan(item.seriesName)}
+                ${labelSpan(item.seriesName, ink)}
               </div>
               ${numSpan(formatMoneyWan(item.value))}
             </div>`
@@ -107,7 +108,7 @@ export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] 
         itemWidth: 12,
         itemHeight: 8,
         itemGap: 24,
-        textStyle: { color: CHART_INK.sub, fontSize: 12 },
+        textStyle: { color: ink.sub, fontSize: 12 },
       },
       grid: { top: 24, right: 24, bottom: 72, left: 72 },
       dataZoom: [
@@ -117,10 +118,10 @@ export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] 
       xAxis: {
         type: 'category',
         data: periods,
-        axisLine: { lineStyle: { color: CHART_INK.grid } },
+        axisLine: { lineStyle: { color: ink.grid } },
         axisTick: { show: false },
         axisLabel: {
-          color: CHART_INK.axis,
+          color: ink.axis,
           fontSize: 11,
           formatter: (value: string) => {
             const parts = value.split('-')
@@ -132,9 +133,9 @@ export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] 
         type: 'value',
         axisLine: { show: false },
         axisTick: { show: false },
-        splitLine: { lineStyle: { color: CHART_INK.grid, type: 'dashed' } },
+        splitLine: { lineStyle: { color: ink.grid, type: 'dashed' } },
         axisLabel: {
-          color: CHART_INK.axis,
+          color: ink.axis,
           fontSize: 11,
           formatter: (v: number) => (Math.abs(v) >= 10000 ? `${(v / 10000).toFixed(0)}万` : String(v)),
         },
@@ -148,10 +149,10 @@ export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] 
         lineStyle: { color: lineColors[i % lineColors.length], width: 2.5, cap: 'round' as const },
         symbol: 'circle',
         symbolSize: 6,
-        itemStyle: { color: lineColors[i % lineColors.length], borderWidth: 2, borderColor: CHART_INK.surface },
+        itemStyle: { color: lineColors[i % lineColors.length], borderWidth: 2, borderColor: ink.surface },
       })),
     }
-  }, [data, transactionType, getDisplayName, theme])
+  }, [data, transactionType, getDisplayName, sidebarStyle])
 
   // CSV 导出：公司,往来类型,期间,期末余额（BOM 防中文乱码）
   // 注意：数值保持 toFixed(2) 原始格式 —— 加千分位会引入逗号破坏 CSV 分隔
@@ -237,7 +238,7 @@ export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] 
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">加载中...</div>
+          <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">加载中…</div>
         ) : isError ? (
           <div className="flex h-[320px] flex-col items-center justify-center gap-3">
             <p className="text-sm text-destructive">{error instanceof Error ? error.message : '数据加载失败'}</p>

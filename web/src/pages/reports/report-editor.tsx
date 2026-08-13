@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { FlashMessage } from '@/components/ui/flash-message'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -26,6 +27,7 @@ import {
   useReportVersionSnapshot, useRollbackReportVersion,
 } from '@/hooks/api-queries'
 import { api } from '@/lib/api'
+import { REPORT_STATUS_LABEL, REPORT_STATUS_BADGE_VARIANT } from '@/lib/constants'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { usePermission } from '@/hooks/usePermission'
 
@@ -39,8 +41,6 @@ interface SectionEdit {
   missing?: boolean
   sourceLabel?: string | null
 }
-
-const STATUS_LABEL: Record<string, string> = { draft: '草稿', published: '已发布', archived: '已归档' }
 
 /** 纯文本 → 段落 HTML（AI 概述插入用） */
 function plainTextToHtml(text: string): string {
@@ -72,7 +72,7 @@ export function ReportEditor() {
   const [sections, setSectionsLocal] = useState<SectionEdit[]>([])
   const [dirty, setDirty] = useState(false)
   const [showVersions, setShowVersions] = useState(false)
-  const [msg, setMsg] = useState<string | null>(null)
+  const [msg, setMsg] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null)
   const [versionDialogOpen, setVersionDialogOpen] = useState(false)
   const [versionSummary, setVersionSummary] = useState('')
   const [viewVersionNo, setViewVersionNo] = useState<number | null>(null)
@@ -129,8 +129,8 @@ export function ReportEditor() {
   const isDraft = report.status === 'draft'
   const canEdit = canUpdate && isDraft
 
-  const flash = (m: string) => {
-    setMsg(m)
+  const flash = (text: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setMsg({ type, text })
     window.setTimeout(() => setMsg(null), 2500)
   }
 
@@ -185,7 +185,7 @@ export function ReportEditor() {
       setDirty(false)
       flash('章节已保存')
     } catch (e) {
-      flash((e as Error).message || '保存失败')
+      flash((e as Error).message || '保存失败', 'error')
     }
   }
 
@@ -195,7 +195,7 @@ export function ReportEditor() {
       setDirty(false)
       flash('已按主体范围拉取单项分析生成章节')
     } catch (e) {
-      flash((e as Error).message || '生成失败')
+      flash((e as Error).message || '生成失败', 'error')
     }
   }
 
@@ -210,20 +210,20 @@ export function ReportEditor() {
       setVersionSummary('')
       flash(`已保存为 v${versionNo}`)
     } catch (e) {
-      flash((e as Error).message || '保存版本失败')
+      flash((e as Error).message || '保存版本失败', 'error')
     }
   }
 
   const handleStatusChange = async (status: string, label: string) => {
     if (dirty && status === 'published') {
-      flash('存在未保存的章节修改，请先保存章节')
+      flash('存在未保存的章节修改，请先保存章节', 'info')
       return
     }
     try {
       await updateReport.mutateAsync({ id: reportId, data: { status } })
       flash(label)
     } catch (e) {
-      flash((e as Error).message || '状态更新失败')
+      flash((e as Error).message || '状态更新失败', 'error')
     }
   }
 
@@ -241,7 +241,7 @@ export function ReportEditor() {
       setViewVersionNo(null)
       flash(`已回退到 v${versionNo}`)
     } catch (e) {
-      flash((e as Error).message || '回退失败')
+      flash((e as Error).message || '回退失败', 'error')
     }
   }
 
@@ -251,7 +251,7 @@ export function ReportEditor() {
       if (format === 'docx') await exportReportToDocx(data)
       else await exportReportToPdf(data)
     } catch (e) {
-      flash((e as Error).message || '导出失败')
+      flash((e as Error).message || '导出失败', 'error')
     }
   }
 
@@ -266,7 +266,7 @@ export function ReportEditor() {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h3 className="truncate text-base font-semibold text-foreground">{report.title}</h3>
-              <Badge variant="secondary">{STATUS_LABEL[report.status] ?? report.status}</Badge>
+              <Badge variant={REPORT_STATUS_BADGE_VARIANT[report.status] ?? 'secondary'}>{REPORT_STATUS_LABEL[report.status] ?? report.status}</Badge>
               <span className="text-[12px] text-muted-foreground">v{report.currentVersion}</span>
               {dirty && <Badge variant="destructive">未保存</Badge>}
             </div>
@@ -332,10 +332,10 @@ export function ReportEditor() {
         </CardContent>
       </Card>
 
-      {msg && <p className="px-1 text-[13px] text-primary">{msg}</p>}
+      {msg && <FlashMessage type={msg.type} className="px-1">{msg.text}</FlashMessage>}
       {!isDraft && (
         <p className="px-1 text-[13px] text-muted-foreground">
-          当前报告为{STATUS_LABEL[report.status] ?? report.status}状态，内容只读；如需修改请先{report.status === 'published' ? '撤回' : '恢复'}为草稿。
+          当前报告为{REPORT_STATUS_LABEL[report.status] ?? report.status}状态，内容只读；如需修改请先{report.status === 'published' ? '撤回' : '恢复'}为草稿。
         </p>
       )}
 
@@ -396,7 +396,7 @@ export function ReportEditor() {
                   <div className="flex shrink-0 items-center gap-1">
                     <Button variant="ghost" size="sm" aria-label="上移章节" onClick={() => move(idx, -1)} disabled={idx === 0}><ArrowUp className="h-4 w-4" /></Button>
                     <Button variant="ghost" size="sm" aria-label="下移章节" onClick={() => move(idx, 1)} disabled={idx === sections.length - 1}><ArrowDown className="h-4 w-4" /></Button>
-                    <Button variant="ghost" size="sm" aria-label="删除章节" onClick={() => removeSection(s.key)} className="text-finance-red"><Trash2 className="h-4 w-4" /></Button>
+                    <Button variant="ghost" size="sm" aria-label="删除章节" onClick={() => removeSection(s.key)} className="text-destructive"><Trash2 className="h-4 w-4" /></Button>
                   </div>
                 )}
               </div>
@@ -422,7 +422,7 @@ export function ReportEditor() {
           </DialogHeader>
           <div className="space-y-1.5">
             <Input value={versionSummary} onChange={(e) => setVersionSummary(e.target.value)} placeholder="版本说明（可选），如：月度定稿" autoFocus />
-            {dirty && <p className="text-[12px] text-finance-red">存在未保存的章节修改，快照将基于已保存内容，建议先「保存章节」。</p>}
+            {dirty && <p className="text-[12px] text-destructive">存在未保存的章节修改，快照将基于已保存内容，建议先「保存章节」。</p>}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setVersionDialogOpen(false)}>取消</Button>
@@ -534,7 +534,7 @@ function AISummaryDialog({ reportId, open, onOpenChange, onInsert }: {
           {text || ai.preview || (ai.streaming ? '生成中…' : '点击「开始生成」获取概述初稿。')}
           {ai.streaming && <Loader2 className="ml-1 inline h-3.5 w-3.5 animate-spin text-muted-foreground" />}
         </div>
-        {ai.error && <p className="text-[13px] text-finance-red">{ai.error}</p>}
+        {ai.error && <p className="text-[13px] text-destructive">{ai.error}</p>}
         <DialogFooter>
           {ai.streaming ? (
             <Button variant="outline" onClick={stop}>停止</Button>

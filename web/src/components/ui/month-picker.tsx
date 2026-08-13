@@ -12,6 +12,8 @@ interface MonthPickerProps {
   /** 允许选择的期间列表（如当前财年内的月份）；传入后集合外的月份禁用不可点 */
   allowedPeriods?: string[]
   placeholder?: string
+  /** 触发器 id（配合 Label htmlFor 无障碍关联） */
+  id?: string
   className?: string
 }
 
@@ -33,6 +35,7 @@ export function MonthPicker({
   availablePeriods = [],
   allowedPeriods,
   placeholder = '全部月份',
+  id,
   className,
 }: MonthPickerProps) {
   const [open, setOpen] = useState(false)
@@ -67,8 +70,9 @@ export function MonthPicker({
       <PopoverTrigger asChild>
         <button
           type="button"
+          id={id}
           className={cn(
-            'flex h-8 w-[150px] items-center gap-2 rounded-md border border-input bg-background px-3 text-sm text-black shadow-sm transition-colors hover:border-primary hover:bg-muted/50 focus:outline-none focus:ring-1 focus:ring-ring',
+            'flex h-8 w-[150px] items-center gap-2 rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-sm transition-colors hover:border-primary hover:bg-muted/50 focus:border-input focus:outline-none focus:ring-1 focus:ring-ring',
             !value && 'text-muted-foreground',
             className,
           )}
@@ -121,7 +125,7 @@ export function MonthPicker({
                 disabled={disabled}
                 onClick={() => pick(period)}
                 className={cn(
-                  'relative h-9 rounded-md text-[13px] text-black transition-colors',
+                  'relative h-9 rounded-md text-[13px] text-foreground transition-colors',
                   isSelected
                     ? 'bg-primary font-medium text-primary-foreground'
                     : 'hover:bg-muted',

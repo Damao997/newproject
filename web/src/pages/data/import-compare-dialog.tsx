@@ -61,16 +61,14 @@ function DiffTable({ rows, showOld, showNew }: { rows: ImportDiffRow[]; showOld:
   }
 
   return (
-    <div className="rounded-lg border">
-      <DataTable
-        columns={columns}
-        data={rows}
-        rowKey={(r, i) => `${r.companyCode}-${r.accountCode}-${r.period}-${i}`}
-        density="compact"
-        maxHeight="340px"
-        caption="批次差异明细"
-      />
-    </div>
+    <DataTable
+      columns={columns}
+      data={rows}
+      rowKey={(r, i) => `${r.companyCode}-${r.accountCode}-${r.period}-${i}`}
+      density="compact"
+      maxHeight="340px"
+      caption="批次差异明细"
+    />
   )
 }
 
@@ -192,7 +190,7 @@ export function ImportCompareDialog({ open, onOpenChange, source, candidates, on
 
               {/* 分组 Tab */}
               <Tabs defaultValue="changed">
-                <TabsList>
+                <TabsList variant="line">
                   <TabsTrigger value="changed">变化（{summary?.changedCount ?? 0}）</TabsTrigger>
                   <TabsTrigger value="added">新增（{summary?.addedCount ?? 0}）</TabsTrigger>
                   <TabsTrigger value="removed">删除（{summary?.removedCount ?? 0}）</TabsTrigger>

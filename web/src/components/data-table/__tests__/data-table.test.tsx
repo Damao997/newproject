@@ -154,6 +154,77 @@ describe('DataTable', () => {
     expect(container.querySelectorAll('.skeleton').length).toBeGreaterThan(0)
     expect(screen.queryByText('杭州')).toBeNull()
   })
+
+  it('emptyText 支持自定义 JSX 空态', () => {
+    render(
+      <DataTable
+        columns={columns}
+        data={[]}
+        rowKey={(r) => r.id}
+        emptyText={
+          <div>
+            <span>空态图标</span>
+            <p>暂无数据说明</p>
+          </div>
+        }
+      />,
+    )
+    expect(screen.getByText('暂无数据说明')).toBeInTheDocument()
+  })
+
+  it('rowSelection：首列渲染选择框，全选/行选择回调携带行键', () => {
+    const onSelectionChange = vi.fn()
+    const { container } = render(
+      <DataTable
+        columns={columns}
+        data={rows}
+        rowKey={(r) => r.id}
+        rowSelection={{ selectedKeys: new Set([1]), onSelectionChange }}
+      />,
+    )
+    // 首列选择框（Radix Checkbox 渲染为 role="checkbox" 的 button）：表头 1 个 + 数据行 2 个
+    expect(container.querySelectorAll('thead [role="checkbox"]')).toHaveLength(1)
+    expect(container.querySelectorAll('tbody [role="checkbox"]')).toHaveLength(2)
+    // 已选 1/2 → 表头半选态；点击表头 → 全选（回调携带全部行键）
+    fireEvent.click(container.querySelector('thead [role="checkbox"]')!)
+    expect(onSelectionChange).toHaveBeenLastCalledWith(new Set([1, 2]))
+    // 点击已选行 → 移除该键
+    fireEvent.click(container.querySelectorAll('tbody [role="checkbox"]')[0]!)
+    expect(onSelectionChange).toHaveBeenLastCalledWith(new Set())
+  })
+
+  it('sticky="right" 列应用右侧冻结样式类（表头与单元格）', () => {
+    const cols: DataTableColumn<Row>[] = [
+      { key: 'name', header: '名称' },
+      { key: 'amount', header: '金额', sticky: 'right' },
+    ]
+    const { container } = render(<DataTable columns={cols} data={rows} rowKey={(r) => r.id} />)
+    const th = container.querySelector('th:last-child')
+    expect(th?.className).toContain('sticky right-0')
+    const td = container.querySelector('tbody td:last-child')
+    expect(td?.className).toContain('sticky right-0')
+  })
+
+  it('resizable：渲染 colgroup（列宽生效）与表头拖拽手柄，拖拽更新列宽', () => {
+    const { container } = render(
+      <DataTable
+        columns={[{ key: 'name', header: '名称', width: 200 }]}
+        data={rows}
+        rowKey={(r) => r.id}
+        resizable
+      />,
+    )
+    const col = container.querySelector('col')
+    expect(col?.getAttribute('style')).toContain('width: 200px')
+    const handle = container.querySelector('th div')
+    expect(handle?.className).toContain('cursor-col-resize')
+    // 拖拽：jsdom 无 PointerEvent，手动 dispatch MouseEvent 触发合成 pointerdown 与 window pointermove
+    handle!.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 100 }))
+    fireEvent(window, new MouseEvent('pointermove', { clientX: 150 }))
+    // jsdom 下 offsetWidth=0，移动 50px 后取最小宽度 80px
+    expect(col?.getAttribute('style')).toContain('80px')
+    fireEvent(window, new MouseEvent('pointerup'))
+  })
 })
 
 describe('Pagination', () => {

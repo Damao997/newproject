@@ -10,16 +10,17 @@
     --card-foreground: 24 10% 10%;
     --popover: 0 0% 100%;
     --popover-foreground: 24 10% 10%;
-    /* 页面底色：冷灰 #F5F7FA，与卡片白底形成层次（品牌主题色切换不改变页面底色） */
-    --page: 216 33% 97%;
-    --primary: 25 95% 53%;
+    /* 页面底色：纯白，卡片层次改由边框 + 阴影承担（品牌主题色切换不改变页面底色） */
+    --page: 0 0% 100%;
+    --primary: 29 100% 53%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 30 25% 96%;
-    --secondary-foreground: 25 20% 18%;
-    --muted: 30 25% 96%;
-    --muted-foreground: 25 8% 45%;
-    --accent: 30 40% 95%;
-    --accent-foreground: 25 25% 18%;
+    /* 辅助色统一随品牌主题色相（浅色调），不再使用固定暖灰 */
+    --secondary: 29 55% 96%;
+    --secondary-foreground: 29 55% 22%;
+    --muted: 29 55% 96%;
+    --muted-foreground: 29 30% 45%;
+    --accent: 29 65% 94%;
+    --accent-foreground: 29 60% 20%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
     --success: 160 84% 39%;
@@ -29,14 +30,22 @@
     --warning-strong: 32 90% 36%;
     /* 信息态：替代蓝色调色板，承担中性提示/进行中状态 */
     --info: 205 80% 38%;
-    --border: 30 18% 89%;
-    --input: 30 18% 89%;
-    --ring: 25 95% 53%;
+    --border: 29 20% 88%;
+    --input: 29 20% 88%;
+    --ring: 29 100% 53%;
+    /* 侧边栏浅色风格（默认）：白底 + 浅橙高亮；三风格下 --sidebar-bg 均为 HSL 三元组，经 bg-sidebar-bg 类（hsl() 包装）使用 */
+    --sidebar-bg: 0 0% 100%;
+    --sidebar-fg: 220 9% 46%;
+    --sidebar-icon: 220 9% 64%;
+    --sidebar-selected-bg: 33 100% 93%;
+    --sidebar-selected-fg: 33 100% 66%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-brand-fg: 220 9% 20%;
     --radius: 0.75rem;
     /* 卡片专用圆角：8px（小于浮层 12px，用于卡片容器） */
     --radius-card: 0.5rem;
-    /* 图表序列色：橙主导 + 和谐化多色（13 色，覆盖分类色板全部槽位） */
-    --chart-1: 25 95% 53%;
+    /* 图表序列色：主题主色主导 + 和谐化多色（13 色，覆盖分类色板全部槽位） */
+    --chart-1: 29 100% 53%;
     --chart-2: 200 78% 45%;
     --chart-3: 160 84% 39%;
     --chart-4: 38 92% 50%;
@@ -51,34 +60,56 @@
     --chart-13: 210 20% 52%;
   }
 
-  /* ============ 品牌主题色预设 ============
-   * 由 Header 主题切换器写入 html[data-theme]，仅覆盖品牌相关变量
-   * （主色/焦点环/图表主序列/强调浅底），中性色与页面底色不随主题变化；
-   * 所有预设保持与默认橙一致的明度策略（L≈50-55%），保证白字对比度相当。
+  /* ============ 侧边栏风格预设 ============
+   * 由 Header 风格切换器写入 html[data-sidebar]；仅 3 种风格（浅色/紫渐变/深色）。
+   * 主页面恒白：--background/--page/--card 三种风格下均为纯白；
+   * 交互元素（--primary/--ring/--chart-1/辅助色）跟随侧边栏主题色。
+   * 靛蓝纯色：侧边栏 #352F7E，选中用更亮的紫 #4338CA。
    */
-  :root[data-theme='blue'] {
-    --primary: 213 85% 48%;
+  /* 靛蓝纯色：侧边栏背景与交互主色统一 #352F7E（原紫渐变已取消，收敛为纯色方案）；图表主色用淡紫提亮 #BBA9F7 */
+  :root[data-sidebar='gradient'] {
+    --primary: 245 46% 34%;
     --primary-foreground: 0 0% 100%;
-    --ring: 213 85% 48%;
-    --chart-1: 213 85% 48%;
-    --accent: 213 50% 95%;
-    --accent-foreground: 213 60% 20%;
+    --ring: 245 46% 34%;
+    --chart-1: 254 83% 82%;
+    --secondary: 245 30% 96%;
+    --secondary-foreground: 245 45% 26%;
+    --muted: 245 30% 96%;
+    --muted-foreground: 245 22% 45%;
+    --accent: 245 40% 94%;
+    --accent-foreground: 245 45% 26%;
+    --border: 245 25% 88%;
+    --input: 245 25% 88%;
+    --sidebar-bg: 245 46% 34%;
+    --sidebar-fg: 231 100% 94%;
+    --sidebar-icon: 231 100% 90%;
+    --sidebar-selected-bg: 239 55% 51%;
+    --sidebar-selected-fg: 0 0% 100%;
+    --sidebar-border: 245 46% 40%;
+    --sidebar-brand-fg: 0 0% 100%;
   }
-  :root[data-theme='green'] {
-    --primary: 160 84% 40%;
+
+  /* 深色：交互转深灰 #1F2937，侧边栏 #111827，选中 #1F2937 + 白字；图表主色用亮蓝提亮 #7A9BF2 */
+  :root[data-sidebar='dark'] {
+    --primary: 222 47% 15%;
     --primary-foreground: 0 0% 100%;
-    --ring: 160 84% 40%;
-    --chart-1: 160 84% 40%;
-    --accent: 160 50% 95%;
-    --accent-foreground: 160 60% 18%;
-  }
-  :root[data-theme='violet'] {
-    --primary: 262 65% 55%;
-    --primary-foreground: 0 0% 100%;
-    --ring: 262 65% 55%;
-    --chart-1: 262 65% 55%;
-    --accent: 262 45% 95%;
-    --accent-foreground: 262 55% 22%;
+    --ring: 222 47% 15%;
+    --chart-1: 224 82% 71%;
+    --secondary: 222 25% 96%;
+    --secondary-foreground: 222 30% 18%;
+    --muted: 222 25% 96%;
+    --muted-foreground: 222 15% 45%;
+    --accent: 222 30% 94%;
+    --accent-foreground: 222 30% 18%;
+    --border: 222 15% 88%;
+    --input: 222 15% 88%;
+    --sidebar-bg: 222 47% 11%;
+    --sidebar-fg: 220 9% 65%;
+    --sidebar-icon: 220 9% 65%;
+    --sidebar-selected-bg: 222 47% 15%;
+    --sidebar-selected-fg: 0 0% 100%;
+    --sidebar-border: 222 47% 18%;
+    --sidebar-brand-fg: 0 0% 100%;
   }
 
   * {
@@ -108,6 +139,11 @@
     );
     background-size: 200% 100%;
     animation: shimmer 1.5s ease-in-out infinite;
+  }
+
+  /* 登录页输入框报错态：悬停（未聚焦）时保持红边框，不被基类 hover:border-primary 覆盖；聚焦时让位给常态灰边框 */
+  .login-input-error:hover:not(:focus-visible) {
+    border-color: hsl(var(--destructive)) !important;
   }
 
   /* 轻量图表柱体：高度/宽度过渡，借鉴 demo-3 性能优先的纯 CSS 渲染 */

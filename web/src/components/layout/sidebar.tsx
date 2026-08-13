@@ -27,17 +27,18 @@ interface NavListProps {
   variant?: 'desktop' | 'mobile'
 }
 
-/** 一级导航项基础样式（桌面与移动端共用） */
+/** 一级导航项基础样式（桌面与移动端共用）：微软雅黑 + 加粗（font-semibold） */
 const linkBase =
-  'relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150'
-const linkActive =
-  'bg-gradient-to-r from-primary/[0.12] to-primary/[0.04] font-semibold text-primary'
-const linkIdle = 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+  'relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-semibold transition-colors duration-150'
+/** 激活态：选中背景（浅色=浅橙 / 紫渐变=顶部紫 / 深色=稍亮灰黑）+ 选中文字色，三风格自适应 */
+const linkActive = 'bg-sidebar-selected-bg font-semibold text-sidebar-selected-fg'
+/** 非激活态：侧边栏主文字色 + 前景色 10% hover 层（三风格自适应） */
+const linkIdle = 'text-sidebar-fg hover:bg-sidebar-fg/10'
 const linkIcon = 'h-4 w-4 shrink-0'
 
-/** 一级项激活指示条 */
+/** 一级项激活指示条：跟随选中文字色（浅色=橙 / 紫渐变=白 / 深色=白） */
 function ActiveBar() {
-  return <span className="absolute inset-y-1 left-0 w-[3px] rounded-full bg-primary" />
+  return <span className="absolute inset-y-1 left-0 w-[3px] rounded-full bg-sidebar-selected-fg" />
 }
 
 /** 当前 URL（pathname + search），用于子菜单项精确高亮 */
@@ -53,17 +54,25 @@ function useCurrentUrl() {
  * - 叶子项：普通 Link；
  * - 所有子项不显示展开/收起箭头图标（一级项 ChevronDown 除外）；
  * - 高亮：叶子项精确匹配（pathname+search），目录项不做任何激活态。
+ * - onSurface：'sidebar' = 侧边栏内联（使用侧边栏前景色系），'popover' = 白底弹层（深色文字）。
  */
 function NavSubList({
   items,
   depth,
   onNavigate,
+  onSurface = 'popover',
 }: {
   items: NavChild[]
   depth: number
   onNavigate?: () => void
+  onSurface?: 'sidebar' | 'popover'
 }) {
   const currentUrl = useCurrentUrl()
+  const dirCls = onSurface === 'sidebar' ? 'text-sidebar-fg/70' : 'text-muted-foreground'
+  const leafIdleCls =
+    onSurface === 'sidebar'
+      ? 'text-sidebar-fg/80 hover:bg-sidebar-fg/10 hover:text-sidebar-fg'
+      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
 
   return (
     <div className={cn('mt-1 space-y-1', depth >= 2 && 'ml-5 border-l border-border pl-2')}>
@@ -74,14 +83,15 @@ function NavSubList({
               {/* 目录项：纯容器标题，不可点击、不可选中（仅作层级分组） */}
               <div
                 className={cn(
-                  'flex select-none items-center rounded-md py-1.5 text-sm font-medium text-muted-foreground',
+                  'flex select-none items-center rounded-md py-1.5 text-sm font-medium',
+                  dirCls,
                   depth === 1 ? 'pl-9 pr-3' : 'pl-6 pr-3'
                 )}
               >
                 <span className="pl-1.5">{child.label}</span>
               </div>
               {/* 三级直接内联显示，无展开/收起状态与箭头 */}
-              <NavSubList items={child.children} depth={depth + 1} onNavigate={onNavigate} />
+              <NavSubList items={child.children} depth={depth + 1} onNavigate={onNavigate} onSurface={onSurface} />
             </div>
           )
         }
@@ -93,11 +103,11 @@ function NavSubList({
             to={child.path}
             onClick={onNavigate}
             className={cn(
-              'relative flex items-center rounded-md py-1.5 text-sm transition-colors duration-150',
+              'relative flex items-center rounded-md py-1.5 text-sm font-medium transition-colors duration-150',
               depth === 1 ? 'pl-9 pr-3' : 'pl-6 pr-3',
               isLeafActive
-                ? 'font-medium text-primary'
-                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                ? 'font-medium text-sidebar-selected-fg'
+                : leafIdleCls
             )}
           >
             {isLeafActive && <ActiveBar />}
@@ -230,7 +240,7 @@ function DesktopInlineNavItem({
       </button>
       {expanded && (
         <div className="animate-in fade-in slide-in-from-top-1 duration-100">
-          <NavSubList items={item.children!} depth={1} onNavigate={onNavigate} />
+          <NavSubList items={item.children!} depth={1} onNavigate={onNavigate} onSurface="sidebar" />
         </div>
       )}
     </div>
@@ -283,7 +293,7 @@ function MobileNavItem({
       </button>
       {expanded && (
         <div className="animate-in fade-in slide-in-from-top-1 duration-100">
-          <NavSubList items={item.children} depth={1} onNavigate={onNavigate} />
+          <NavSubList items={item.children} depth={1} onNavigate={onNavigate} onSurface="sidebar" />
         </div>
       )}
     </div>
@@ -330,7 +340,7 @@ function NavList({ collapsed, onNavigate, variant = 'desktop' }: NavListProps) {
     setOpenPanelPath((prev) => (prev === path ? null : path))
 
   return (
-    <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-3">
+    <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-3 font-sans">
       {visibleNavItems.map((item) => {
         if (variant === 'mobile') {
           return (
@@ -404,7 +414,7 @@ function SidebarBrand({ collapsed, className }: { collapsed: boolean; className?
     >
       <img src="/logo.png" alt="壹品慧" className="h-7 w-7 object-contain" />
       {!collapsed && (
-        <span className="truncate text-sm font-bold tracking-tight text-foreground">浙江壹品慧经营分析平台</span>
+        <span className="truncate text-base font-bold tracking-tight text-sidebar-brand-fg">浙江壹品慧经营分析平台</span>
       )}
     </Link>
   )
@@ -413,56 +423,47 @@ function SidebarBrand({ collapsed, className }: { collapsed: boolean; className?
 export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onMobileClose }: SidebarProps) {
   return (
     <TooltipProvider delayDuration={0}>
-      {/* 桌面端侧边栏 */}
+      {/* 桌面端侧边栏：悬浮卡片设计（m-2 均匀间距 + 柔和阴影 + 四角圆角，圆角为设计语言）；背景 bg-sidebar-bg 经 hsl() 包装，三风格切换 */}
       <aside
         className={cn(
-          'hidden shrink-0 flex-col border-r bg-background transition-[width] duration-200 ease-brand md:flex',
+          'relative m-2 hidden shrink-0 flex-col overflow-hidden rounded-xl bg-sidebar-bg shadow-lg transition-[width] duration-200 ease-brand md:flex',
           collapsed ? 'w-16' : 'w-60'
         )}
       >
-        <SidebarBrand collapsed={collapsed} className="border-b" />
+        <SidebarBrand collapsed={collapsed} />
         <NavList collapsed={collapsed} />
-        <div className={cn('shrink-0 border-t p-2', collapsed && 'flex justify-center')}>
+        <div className={cn('shrink-0 p-2', collapsed && 'flex justify-center')}>
           {/* 当前部署版本（部署脚本注入 meta app-version；开发环境显示 dev） */}
           {!collapsed && (
-            <p className="mb-1 px-2 text-[11px] text-muted-foreground">版本 {getCurrentVersion()}</p>
-          )}
-          {collapsed ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-auto px-2 text-muted-foreground transition-colors hover:text-foreground"
-                  aria-label="展开侧边栏"
-                  onClick={onToggleCollapse}
-                >
-                  <ChevronsRight className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right">展开侧边栏</TooltipContent>
-            </Tooltip>
-          ) : (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full justify-start text-muted-foreground transition-colors hover:text-foreground"
-              aria-label="收起侧边栏"
-              onClick={onToggleCollapse}
-            >
-              <ChevronsLeft className="mr-2 h-4 w-4" />
-              <span>收起侧边栏</span>
-            </Button>
+            <p className="mb-1 px-2 text-[11px] text-sidebar-fg">版本 {getCurrentVersion()}</p>
           )}
         </div>
+        {/* 折叠条：右缘透明按钮（仅箭头图标，三风格自适应）；展开态箭头半透明，hover 转选中色；收起态箭头选中色常驻 */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}
+              onClick={onToggleCollapse}
+              className="group absolute inset-y-0 right-0 z-10 flex w-6 items-center justify-center"
+            >
+              {collapsed ? (
+                <ChevronsRight className="h-4 w-4 shrink-0 text-sidebar-selected-fg transition-transform group-hover:scale-110" />
+              ) : (
+                <ChevronsLeft className="h-4 w-4 shrink-0 text-sidebar-fg/60 transition-colors group-hover:text-sidebar-selected-fg" />
+              )}
+            </button>
+          </TooltipTrigger>
+          {collapsed && <TooltipContent side="right">展开侧边栏</TooltipContent>}
+        </Tooltip>
       </aside>
 
       {/* 移动端抽屉 */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={onMobileClose} />
-          <aside className="absolute inset-y-0 left-0 flex w-60 flex-col border-r bg-background shadow-lg animate-in slide-in-from-left duration-200">
-            <div className="flex items-center justify-between border-b pr-2">
+          <aside className="absolute inset-y-0 left-0 flex w-60 flex-col bg-sidebar-bg shadow-lg animate-in slide-in-from-left duration-200">
+            <div className="flex items-center justify-between pr-2">
               <SidebarBrand collapsed={false} />
               <Button
                 variant="ghost"

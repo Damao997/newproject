@@ -1,7 +1,6 @@
 import * as React from "react"
 import { Info } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { Breadcrumb } from "./breadcrumb"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface PageContainerProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -33,7 +32,6 @@ const PageContainer = React.forwardRef<HTMLDivElement, PageContainerProps>(
           )}
         >
           <div className="space-y-2">
-            {title && <Breadcrumb />}
             {title && (
               <h1 className="flex items-center gap-1.5 text-2xl font-bold tracking-tight">
                 {title}

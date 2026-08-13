@@ -1,6 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  // 本平台按规范维持纯亮色：显式声明 class 策略，避免 dark: 变体被系统偏好误触发
+  // 主页面恒白，无暗色 class 写入；保留 class 策略配置以防历史 dark: 变体意外触发
   darkMode: 'class',
   content: [
     "./index.html",
@@ -52,6 +52,16 @@ export default {
           strong: "hsl(var(--warning-strong))",
         },
         info: "hsl(var(--info))",
+        // 侧边栏三风格变量（随 html[data-sidebar] 切换）；--sidebar-bg 可为渐变字符串，由内联 style 承载
+        sidebar: {
+          bg: "hsl(var(--sidebar-bg))",
+          fg: "hsl(var(--sidebar-fg))",
+          icon: "hsl(var(--sidebar-icon))",
+          "selected-bg": "hsl(var(--sidebar-selected-bg))",
+          "selected-fg": "hsl(var(--sidebar-selected-fg))",
+          border: "hsl(var(--sidebar-border))",
+          "brand-fg": "hsl(var(--sidebar-brand-fg))",
+        },
         finance: {
           red: "#FF3B30",
           green: "#34C759",

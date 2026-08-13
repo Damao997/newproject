@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import type { EChartsOption, SeriesOption } from 'echarts'
 import ReactECharts, { echarts } from './echarts-core'
 import { formatMoneyWan } from '@/lib/utils'
-import { CHART_FONT, CHART_INK, getChartSeries, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
+import { CHART_FONT, getChartInk, getChartSeries, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
 import { useThemeStore } from '@/stores/themeStore'
 import { seriesOf, TREND_SERIES_LABELS, type TrendMetric, type TrendMode } from './trend-metrics'
 import type { TrendData } from '@/types'
@@ -19,10 +19,11 @@ interface TrendChartProps {
  * X 轴为所选财年 12 个月，未导入数据的月份留空（null 断点）。
  */
 export function TrendChart({ data, metric, mode = 'month' }: TrendChartProps) {
-  const theme = useThemeStore((s) => s.theme)
-  // option 随 data/metric/mode/theme 变化才重建，避免父组件无关状态更新触发图表全量重渲染
+  const sidebarStyle = useThemeStore((s) => s.sidebarStyle)
+  // option 随 data/metric/mode/sidebarStyle 变化才重建，避免父组件无关状态更新触发图表全量重渲染
   const option: EChartsOption = useMemo(() => {
-    const seriesColors = getChartSeries(theme)
+    const ink = getChartInk()
+    const seriesColors = getChartSeries(sidebarStyle)
     const SERIES_COLORS = { actual: seriesColors[0], same: seriesColors[1], budget: seriesColors[4] }
     const periods = data.map(d => d.period)
     const { actual, same, budget } = seriesOf(data, metric, mode)
@@ -40,10 +41,10 @@ export function TrendChart({ data, metric, mode = 'month' }: TrendChartProps) {
           color: 'rgba(0, 0, 0, 0.04)',
         },
       },
-      ...tooltipShell,
+      ...tooltipShell(ink),
       formatter: (params: any) => {
         if (!Array.isArray(params)) return ''
-        let result = titleSpan(params[0].axisValue)
+        let result = titleSpan(params[0].axisValue, ink)
         params.forEach((item: any) => {
           const color = item.seriesName === labels.actual ? SERIES_COLORS.actual
             : item.seriesName === labels.same ? SERIES_COLORS.same
@@ -52,7 +53,7 @@ export function TrendChart({ data, metric, mode = 'month' }: TrendChartProps) {
           result += `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin:4px 0">
             <div style="display:flex;align-items:center;gap:8px">
               <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color}"></span>
-              ${labelSpan(item.seriesName)}
+              ${labelSpan(item.seriesName, ink)}
             </div>
             ${numSpan(value)}
           </div>`
@@ -67,7 +68,7 @@ export function TrendChart({ data, metric, mode = 'month' }: TrendChartProps) {
       itemHeight: 8,
       itemGap: 24,
       textStyle: {
-        color: CHART_INK.sub,
+        color: ink.sub,
         fontSize: 12,
       },
     },
@@ -84,14 +85,14 @@ export function TrendChart({ data, metric, mode = 'month' }: TrendChartProps) {
       data: periods,
       axisLine: {
         lineStyle: {
-          color: CHART_INK.grid,
+          color: ink.grid,
         },
       },
       axisTick: {
         show: false,
       },
       axisLabel: {
-        color: CHART_INK.axis,
+        color: ink.axis,
         fontSize: 11,
         formatter: (value: string) => {
           const parts = value.split('-')
@@ -103,7 +104,7 @@ export function TrendChart({ data, metric, mode = 'month' }: TrendChartProps) {
       type: 'value',
       name: '万元',
       nameTextStyle: {
-        color: CHART_INK.axis,
+        color: ink.axis,
         fontSize: 11,
         padding: [0, 0, 0, -24],
       },
@@ -115,12 +116,12 @@ export function TrendChart({ data, metric, mode = 'month' }: TrendChartProps) {
       },
       splitLine: {
         lineStyle: {
-          color: CHART_INK.grid,
+          color: ink.grid,
           type: 'dashed',
         },
       },
       axisLabel: {
-        color: CHART_INK.axis,
+        color: ink.axis,
         fontSize: 11,
         formatter: '{value}',
       },
@@ -164,12 +165,12 @@ export function TrendChart({ data, metric, mode = 'month' }: TrendChartProps) {
         itemStyle: {
           color: SERIES_COLORS.budget,
           borderWidth: 2,
-          borderColor: CHART_INK.surface,
+          borderColor: ink.surface,
         },
       },
     ] as SeriesOption[],
     }
-  }, [data, metric, mode, theme])
+  }, [data, metric, mode, sidebarStyle])
 
   return (
     <div className="h-[260px] w-full lg:h-[320px]">

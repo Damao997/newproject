@@ -227,7 +227,7 @@ export function SubjectTreePanel({
       <Card className="rounded-card overflow-hidden">
         <div className="flex items-center justify-between border-b px-4 py-2.5">
           <p className="text-xs text-muted-foreground">
-            {isLoading ? '加载中...' : `共 ${flattenTree(tree).length} 个科目${countSuffix}`}
+            {isLoading ? '加载中…' : `共 ${flattenTree(tree).length} 个科目${countSuffix}`}
           </p>
         </div>
         <SubjectTree
@@ -235,7 +235,7 @@ export function SubjectTreePanel({
           expandedCodes={effectiveExpanded}
           onToggle={handleToggle}
           keyword={trimmedKeyword}
-          emptyText={isLoading ? '加载中...' : '暂无科目'}
+          emptyText={isLoading ? '加载中…' : '暂无科目'}
           actions={
             hasActions
               ? (node) => (

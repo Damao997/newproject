@@ -8,13 +8,31 @@ import { VersionNotice } from './version-notice'
 
 const SIDEBAR_COLLAPSED_KEY = 'sidebar-collapsed'
 
+/** 小尺寸窗口（<1280px，对齐设计规范 §8：1024-1279 侧边栏收起）自动折叠；≥1280 恢复用户偏好 */
+const SMALL_SCREEN_QUERY = '(max-width: 1279px)'
+
 export function MainLayout() {
   const { isAuthenticated, user, openPasswordDialog } = useAuthStore()
   const location = useLocation()
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true'
   )
+  // 小尺寸自动折叠：窗口 <1280px 时侧边栏强制进入折叠态（图标栏）；
+  // 小尺寸下折叠条点击仅会话内临时展开/折叠（不写 localStorage），回到大尺寸自动清除临时状态
+  const [smallScreen, setSmallScreen] = useState(() => window.matchMedia(SMALL_SCREEN_QUERY).matches)
+  const [forcedExpand, setForcedExpand] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+
+  // 监听窗口尺寸：进入/离开小尺寸区间时同步状态
+  useEffect(() => {
+    const mq = window.matchMedia(SMALL_SCREEN_QUERY)
+    const onChange = (e: MediaQueryListEvent) => {
+      setSmallScreen(e.matches)
+      if (!e.matches) setForcedExpand(false)
+    }
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
 
   // 路由切换时自动关闭移动端抽屉
   useEffect(() => {
@@ -26,7 +44,15 @@ export function MainLayout() {
     if (user?.mustChangePassword) openPasswordDialog(true)
   }, [user?.mustChangePassword, openPasswordDialog])
 
+  // 实际生效的折叠态：小尺寸下以自动折叠为准，大尺寸下为用户持久化偏好
+  const effectiveCollapsed = smallScreen ? !forcedExpand : collapsed
+
   const toggleCollapse = () => {
+    if (smallScreen) {
+      // 小尺寸：仅切换会话内临时展开/折叠，避免覆盖用户在大尺寸下的偏好
+      setForcedExpand((prev) => !prev)
+      return
+    }
     setCollapsed((prev) => {
       const next = !prev
       localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next))
@@ -41,7 +67,7 @@ export function MainLayout() {
   return (
     <div className="flex h-screen overflow-hidden bg-page">
       <Sidebar
-        collapsed={collapsed}
+        collapsed={effectiveCollapsed}
         onToggleCollapse={toggleCollapse}
         mobileOpen={mobileOpen}
         onMobileClose={() => setMobileOpen(false)}

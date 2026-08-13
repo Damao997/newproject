@@ -7,11 +7,15 @@
 
 /** 表头基础样式：13px/500 黑字居中（对齐规范 §4.4：所有标题行单元格一律居中） */
 export const TABLE_HEAD_BASE =
-  'whitespace-nowrap px-4 text-[13px] text-center align-middle font-medium text-black'
+  'whitespace-nowrap px-4 text-[13px] text-center align-middle font-medium text-foreground'
 
 /** 冻结列（sticky 左列）单元格基础：白底 + 右侧分隔线，hover 时跟随行高亮 */
 export const TABLE_STICKY_CELL_BASE =
   'sticky left-0 z-[1] border-r bg-background group-hover:bg-muted/50'
+
+/** 冻结列（sticky 右列）单元格基础：白底 + 左侧分隔线，hover 时跟随行高亮（操作列固定用） */
+export const TABLE_STICKY_RIGHT_CELL_BASE =
+  'sticky right-0 z-[1] border-l bg-background group-hover:bg-muted/50'
 
 /** 限高滚动容器内 sticky 表头：不透明背景防止内容透出（配合 bg-muted 使用） */
 export const TABLE_HEADER_STICKY = 'sticky top-0 z-20'

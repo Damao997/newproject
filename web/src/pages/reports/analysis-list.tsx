@@ -4,7 +4,9 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
+import { FlashMessage } from '@/components/ui/flash-message'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
+import { MonthPicker } from '@/components/ui/month-picker'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -15,7 +17,7 @@ import {
 import { RichTextEditor } from '@/components/editor/rich-text-editor'
 import { Pagination } from '@/components/data-table/pagination'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
-import { PAGINATION } from '@/lib/constants'
+import { PAGINATION, REPORT_STATUS_LABEL } from '@/lib/constants'
 import {
   useAnalyses, useUpdateAnalysis, useDeleteAnalysis, useRestoreAnalysis,
   useCompanies, useSubjects, useAvailablePeriods,
@@ -32,7 +34,6 @@ import { FileText, Search, Pencil, Trash2, RotateCcw, Link2, FilePlus2 } from 'l
  */
 
 const ALL = '__all'
-const REPORT_STATUS_LABEL: Record<string, string> = { draft: '草稿', published: '已发布', archived: '已归档' }
 
 /** 往来单项分析对象（六大往来类型粒度，TXN_* 编码不在 accountSubject 体系内，前端静态提供） */
 const TXN_SUBJECT_OPTIONS = [
@@ -93,10 +94,10 @@ export function AnalysisManager() {
   const { confirm, element: confirmElement } = useConfirm()
 
   const [editing, setEditing] = useState<AnalysisItem | null>(null)
-  const [msg, setMsg] = useState<string | null>(null)
+  const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
-  const flash = (m: string) => {
-    setMsg(m)
+  const flash = (text: string, type: 'success' | 'error' = 'success') => {
+    setMsg({ type, text })
     window.setTimeout(() => setMsg(null), 2500)
   }
 
@@ -117,7 +118,7 @@ export function AnalysisManager() {
       await deleteAnalysis.mutateAsync(item.id)
       flash('已删除')
     } catch (e) {
-      flash((e as Error).message || '删除失败')
+      flash((e as Error).message || '删除失败', 'error')
     }
   }
 
@@ -132,7 +133,7 @@ export function AnalysisManager() {
       await restoreAnalysis.mutateAsync(item.id)
       flash('已恢复')
     } catch (e) {
-      flash((e as Error).message || '恢复失败')
+      flash((e as Error).message || '恢复失败', 'error')
     }
   }
 
@@ -189,7 +190,7 @@ export function AnalysisManager() {
               <Button variant="ghost" size="sm" onClick={() => setEditing(a)}><Pencil className="mr-1 h-3.5 w-3.5" /> 编辑</Button>
             )}
             {!inactive && canDelete && (
-              <Button variant="ghost" size="sm" aria-label="删除分析" onClick={() => handleDelete(a)} className="text-finance-red"><Trash2 className="h-3.5 w-3.5" /></Button>
+              <Button variant="ghost" size="sm" aria-label="删除分析" onClick={() => handleDelete(a)} className="text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
             )}
             {inactive && canUpdate && (
               <Button variant="ghost" size="sm" onClick={() => handleRestore(a)}><RotateCcw className="mr-1 h-3.5 w-3.5" /> 恢复</Button>
@@ -222,7 +223,7 @@ export function AnalysisManager() {
       setInsertReportId('')
       flash('已插入报告章节（实时引用该预分析）')
     } catch (e) {
-      flash((e as Error).message || '插入失败')
+      flash((e as Error).message || '插入失败', 'error')
     } finally {
       setInserting(false)
     }
@@ -268,13 +269,14 @@ export function AnalysisManager() {
               {subjects.map((s) => <SelectItem key={s.code} value={s.code}>{s.name}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Select value={period} onValueChange={(v) => { setPeriod(v); resetPage() }}>
-            <SelectTrigger className="h-8 w-32"><SelectValue placeholder="期间" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>全部期间</SelectItem>
-              {periods.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <MonthPicker
+            value={period === ALL ? '' : period}
+            onChange={(v) => { setPeriod(v || ALL); resetPage() }}
+            availablePeriods={periods}
+            allowedPeriods={periods}
+            placeholder="全部期间"
+            className="h-8 w-32"
+          />
           <div className="relative w-52">
             <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -293,7 +295,7 @@ export function AnalysisManager() {
 
       {/* 展示层：分析列表（表格卡） */}
       <Card className="animate-fade-in overflow-hidden rounded-card">
-        {msg && <p className="pt-2 text-[13px] text-primary">{msg}</p>}
+        {msg && <FlashMessage type={msg.type} className="pt-2">{msg.text}</FlashMessage>}
 
         {isLoading ? (
           <div className="py-16 text-center text-sm text-muted-foreground">加载中…</div>
@@ -307,7 +309,7 @@ export function AnalysisManager() {
             columns={listColumns}
             data={items}
             rowKey={(a) => a.id}
-            dense
+            density="dense"
             caption="单项分析列表"
           />
         )}
@@ -336,7 +338,7 @@ export function AnalysisManager() {
               setEditing(null)
               flash('已保存')
             } catch (e) {
-              flash((e as Error).message || '保存失败')
+              flash((e as Error).message || '保存失败', 'error')
             }
           }}
           saving={updateAnalysis.isPending}

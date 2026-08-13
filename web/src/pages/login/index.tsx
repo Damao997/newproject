@@ -11,7 +11,7 @@ import { AlertCircle, Eye, EyeOff, Loader2, Lock, User } from 'lucide-react'
 import { api } from '@/lib/api'
 import { resolveHomePath } from '@/lib/permissions'
 
-/** 记住我：仅记住用户名（凭证不落盘） */
+/** 记住用户名：仅本地保存用户名（凭证不落盘） */
 const REMEMBER_KEY = 'login-remembered-username'
 
 interface FieldErrors {
@@ -102,7 +102,7 @@ export default function LoginPage() {
 
     try {
       const response = await api.login({ username: username.trim(), password })
-      // 记住我：仅持久化用户名，不保存任何凭证
+      // 记住用户名：仅持久化用户名，不保存任何凭证
       if (rememberMe) {
         localStorage.setItem(REMEMBER_KEY, username.trim())
       } else {
@@ -129,9 +129,7 @@ export default function LoginPage() {
         <Card className="rounded-xl border-border/70 shadow-xl shadow-primary/[0.07] hover:shadow-xl">
           <CardHeader className="space-y-3 pb-4 text-center">
             <div className="flex justify-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 ring-1 ring-primary/20">
-                <img src="/logo.png" alt="壹品慧" className="h-9 w-9 object-contain" />
-              </div>
+              <img src="/logo.png" alt="壹品慧" className="h-9 w-9 object-contain" />
             </div>
             <div className="space-y-1.5">
               <CardTitle className="text-xl font-bold tracking-tight sm:text-2xl">浙江壹品慧经营分析平台</CardTitle>
@@ -174,8 +172,8 @@ export default function LoginPage() {
                     aria-invalid={!!fieldErrors.username}
                     aria-describedby={fieldErrors.username ? 'username-error' : undefined}
                     className={cn(
-                      'h-10 pl-10 transition-shadow duration-200',
-                      fieldErrors.username && 'border-destructive focus-visible:ring-destructive'
+                      'h-10 pl-10 transition-shadow duration-200 focus-visible:border-input',
+                      fieldErrors.username && 'border-destructive login-input-error focus-visible:ring-destructive'
                     )}
                   />
                 </div>
@@ -206,8 +204,8 @@ export default function LoginPage() {
                     aria-invalid={!!fieldErrors.password}
                     aria-describedby={fieldErrors.password ? 'password-error' : undefined}
                     className={cn(
-                      'h-10 pl-10 pr-10 transition-shadow duration-200',
-                      fieldErrors.password && 'border-destructive focus-visible:ring-destructive'
+                      'h-10 pl-10 pr-10 transition-shadow duration-200 focus-visible:border-input',
+                      fieldErrors.password && 'border-destructive login-input-error focus-visible:ring-destructive'
                     )}
                   />
                   <button
@@ -240,7 +238,7 @@ export default function LoginPage() {
                     disabled={isLoading}
                   />
                   <Label htmlFor="remember-me" className="cursor-pointer text-sm font-normal text-muted-foreground">
-                    记住我
+                    记住用户名
                   </Label>
                 </div>
               </div>
@@ -259,11 +257,6 @@ export default function LoginPage() {
             </CardFooter>
           </form>
         </Card>
-
-        {/* 底部：公司信息 + 版本号（frontend-design-proposal 5.2） */}
-        <p className="mt-6 text-center text-xs text-muted-foreground">
-          壹品慧 · 数据分析平台 © 2026
-        </p>
       </div>
     </div>
   )

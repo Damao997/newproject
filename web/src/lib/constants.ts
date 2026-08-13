@@ -47,6 +47,20 @@ export const BATCH_STATUS_NAMES: Record<string, string> = {
   purged: '清除',
 }
 
+/** 分析报告状态 → 中文标签（报告列表/编辑页共享，避免跨页文案漂移） */
+export const REPORT_STATUS_LABEL: Record<string, string> = {
+  draft: '草稿',
+  published: '已发布',
+  archived: '已归档',
+}
+
+/** 分析报告状态 → Badge 语义变体（跨页面统一：草稿灰/已发布橙/已归档描边） */
+export const REPORT_STATUS_BADGE_VARIANT: Record<string, 'secondary' | 'default' | 'outline'> = {
+  draft: 'secondary',
+  published: 'default',
+  archived: 'outline',
+}
+
 export const FINANCIAL_COLORS = {
   RED_UP: '#FF3B30',
   GREEN_DOWN: '#34C759',

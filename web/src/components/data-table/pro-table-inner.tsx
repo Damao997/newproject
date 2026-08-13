@@ -2,7 +2,7 @@ import ProTable from '@ant-design/pro-table'
 import type { ProColumns } from '@ant-design/pro-table'
 import { ConfigProvider } from 'antd'
 import type { TableProps } from 'antd'
-import { THEME_HEX, THEME_PRESETS } from '@/lib/chart-theme'
+import { SIDEBAR_PRESETS, THEME_HEX } from '@/lib/chart-theme'
 import { useThemeStore } from '@/stores/themeStore'
 import {
   compareRaw,
@@ -61,9 +61,10 @@ export default function ProTableInner<T extends Record<string, unknown>>({
   onSortChange,
   loading,
 }: ProTableInnerProps<T>) {
-  // 品牌主色跟随当前主题（antd token 只接受字面色值，取 THEME_PRESETS hex 镜像）
-  const theme = useThemeStore((s) => s.theme)
-  const brand = THEME_PRESETS[theme]
+  // 交互主色跟随当前侧边栏风格（antd token 只接受字面色值，取 SIDEBAR_PRESETS hex 镜像）；主页面恒白，恒用亮色语义色
+  const sidebarStyle = useThemeStore((s) => s.sidebarStyle)
+  const brand = SIDEBAR_PRESETS[sidebarStyle] ?? SIDEBAR_PRESETS.light
+  const themeHex = THEME_HEX
 
   // 密度解析：density 优先，兼容旧 dense 布尔；default 用 antd 默认 middle，紧凑两档用 small
   const densityMode = density ?? (dense ? 'dense' : 'default')
@@ -79,7 +80,7 @@ export default function ProTableInner<T extends Record<string, unknown>>({
     title: col.header,
     dataIndex: col.key,
     align: col.align ?? 'left',
-    fixed: col.sticky ? 'left' : undefined,
+    fixed: col.sticky === 'right' ? 'right' : col.sticky ? 'left' : undefined,
     className: col.cellClassName,
     onHeaderCell: col.headerClassName ? () => ({ className: col.headerClassName }) : undefined,
     sortOrder: isControlled
@@ -109,53 +110,58 @@ export default function ProTableInner<T extends Record<string, unknown>>({
   }
 
   return (
-    <ConfigProvider
-      theme={{
-        // 对齐品牌主色与暖中性令牌：默认 antd 主色为蓝，会让排序/勾选/分页脱离品牌视觉
-        token: {
-          colorPrimary: brand.primary,
-          colorInfo: brand.primary,
-          colorLink: brand.primary,
-          colorLinkHover: brand.primaryHover,
-          colorSuccess: THEME_HEX.success,
-          colorWarning: THEME_HEX.warning,
-          colorError: THEME_HEX.destructive,
-          colorText: THEME_HEX.foreground,
-          colorTextSecondary: THEME_HEX.mutedForeground,
-          colorBorder: THEME_HEX.border,
-          colorBorderSecondary: THEME_HEX.borderSubtle,
-          borderRadius: 8,
-          fontSize: 13,
-          fontFamily: "'Microsoft YaHei', '微软雅黑', system-ui, sans-serif",
-        },
-        components: {
-          Table: {
-            headerBg: THEME_HEX.muted,
-            headerColor: THEME_HEX.foreground,
-            rowHoverBg: THEME_HEX.accent,
-            borderColor: THEME_HEX.border,
-          },
-        },
-      }}
-    >
-      <ProTable<T>
-        columns={proColumns}
-        dataSource={data}
-        rowKey={(row) => String(rowKey(row, 0))}
-        search={false}
-        options={false}
-        toolBarRender={false}
-        virtual
-        scroll={{ y: resolveScrollY(maxHeight) ?? 480 }}
-        pagination={false}
-        size={tableSize}
-        loading={loading}
-        locale={emptyText ? { emptyText } : undefined}
-        sortDirections={isControlled ? undefined : ['ascend', 'descend', null]}
-        onChange={handleTableChange}
-        onRow={onRowClick ? (record, index) => ({ onClick: () => onRowClick(record, index ?? 0) }) : undefined}
-        rowClassName={rowClassName ? (record, index) => rowClassName(record, index) ?? '' : undefined}
-      />
-    </ConfigProvider>
+    // 浅灰圆角容器（与 DataTable 一致的视觉分割）：内层白底 + overflow-hidden 裁剪 antd 表格直角为圆角
+    <div className="overflow-hidden rounded-card bg-muted/40 p-2">
+      <div className="overflow-hidden rounded-sm bg-background">
+        <ConfigProvider
+          theme={{
+            // 主页面恒白：恒用亮色算法，不随风格切换
+            token: {
+              colorPrimary: brand.primary,
+              colorInfo: brand.primary,
+              colorLink: brand.primary,
+              colorLinkHover: brand.primaryHover,
+              colorSuccess: themeHex.success,
+              colorWarning: themeHex.warning,
+              colorError: themeHex.destructive,
+              colorText: themeHex.foreground,
+              colorTextSecondary: themeHex.mutedForeground,
+              colorBorder: themeHex.border,
+              colorBorderSecondary: themeHex.borderSubtle,
+              borderRadius: 8,
+              fontSize: 13,
+              fontFamily: "'Microsoft YaHei', '微软雅黑', system-ui, sans-serif",
+            },
+            components: {
+              Table: {
+                headerBg: themeHex.muted,
+                headerColor: themeHex.foreground,
+                rowHoverBg: themeHex.accent,
+                borderColor: themeHex.border,
+              },
+            },
+          }}
+        >
+          <ProTable<T>
+            columns={proColumns}
+            dataSource={data}
+            rowKey={(row) => String(rowKey(row, 0))}
+            search={false}
+            options={false}
+            toolBarRender={false}
+            virtual
+            scroll={{ y: resolveScrollY(maxHeight) ?? 480 }}
+            pagination={false}
+            size={tableSize}
+            loading={loading}
+            locale={emptyText ? { emptyText } : undefined}
+            sortDirections={isControlled ? undefined : ['ascend', 'descend', null]}
+            onChange={handleTableChange}
+            onRow={onRowClick ? (record, index) => ({ onClick: () => onRowClick(record, index ?? 0) }) : undefined}
+            rowClassName={rowClassName ? (record, index) => rowClassName(record, index) ?? '' : undefined}
+          />
+        </ConfigProvider>
+      </div>
+    </div>
   )
 }

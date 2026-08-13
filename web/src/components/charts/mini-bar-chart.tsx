@@ -32,9 +32,9 @@ interface MiniBarChartProps {
  */
 
 export function MiniBarChart({ data, max, valueFormatter, barColors, className }: MiniBarChartProps) {
-  const theme = useThemeStore((s) => s.theme)
-  // 默认四色活泼体系：首位跟随当前品牌主题主色
-  const defaultBarColors = useMemo(() => getChartSeries(theme).slice(0, 4), [theme])
+  const sidebarStyle = useThemeStore((s) => s.sidebarStyle)
+  // 默认四色活泼体系：首位跟随当前侧边栏风格主色
+  const defaultBarColors = useMemo(() => getChartSeries(sidebarStyle).slice(0, 4), [sidebarStyle])
   const colors = barColors ?? defaultBarColors
   const [ready, setReady] = useState(false)
   const maxValue = max ?? Math.max(...data.map((d) => d.value), 1)

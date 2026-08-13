@@ -573,7 +573,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
       </div>
 
       <p className="text-xs text-muted-foreground">
-        {isLoading ? '加载中...' : `共 ${filtered.length} 个计算类指标（${subjectType === 'operating' ? '经营' : '静态'}）`}
+        {isLoading ? '加载中…' : `共 ${filtered.length} 个计算类指标（${subjectType === 'operating' ? '经营' : '静态'}）`}
       </p>
       {listError && <p className="text-xs text-destructive">{listError}</p>}
 
@@ -862,7 +862,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
 // 依赖影响分析面板（懒加载）
 function DependencyPanel({ metricId }: { metricId: string }) {
   const { data, isLoading } = useDependencies(metricId)
-  if (isLoading) return <p className="text-xs text-muted-foreground">加载中...</p>
+  if (isLoading) return <p className="text-xs text-muted-foreground">加载中…</p>
   if (!data) return null
   return (
     <div className="space-y-2 text-xs">

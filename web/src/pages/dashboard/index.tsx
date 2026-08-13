@@ -211,10 +211,10 @@ export default function DashboardPage() {
             onTabChange={setAnalysisTab}
           />
 
-          {/* 应收分布 + 存货占比（均跟随顶部主体筛选，期间跟随看板） */}
+          {/* 应收账款分析 + 存货品类分析（均跟随顶部主体筛选，期间跟随看板） */}
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-            <ReceivablesCard period={currentPeriod || undefined} companyCode={companyCode} subjectName={currentSubjectName} />
-            <InventoryPieCard period={currentPeriod || undefined} companyCode={companyCode} subjectName={currentSubjectName} />
+            <ReceivablesCard period={currentPeriod || undefined} companyCode={companyCode} />
+            <InventoryPieCard period={currentPeriod || undefined} companyCode={companyCode} />
           </div>
         </>
       )}

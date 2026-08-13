@@ -234,31 +234,29 @@ export function BudgetRatioPanel({ canUpdate = false }: BudgetRatioPanelProps) {
       </div>
 
       {/* 12 个月占比 + 拆分金额 */}
-      <div className="rounded-lg border border-border">
-        <DataTable
-          columns={ratioColumns}
-          data={ratioRows}
-          rowKey={(r) => r.label}
-          density="compact"
-          caption="月度预算占比配置"
-          footer={
-            <tr className="border-t border-border bg-muted/30">
-              <td className="px-3 py-2 font-medium">合计</td>
-              <td className="px-3 py-2 text-right font-num font-medium">{Number.isFinite(ratioSum) ? `${ratioSum}%` : '—'}</td>
-              <td className="px-3 py-2 text-right font-num font-medium">
-                {monthlyAmounts.every((v) => v !== null && v !== undefined)
-                  ? formatMoneyWan(monthlyAmounts.reduce((s, v) => s + (v ?? 0), 0))
-                  : '—'}
-              </td>
-              <td className="px-3 py-2 text-right">
-                <span className={cn('text-xs font-medium', ratioOk ? 'text-success-strong' : 'text-destructive')}>
-                  {ratioOk ? 'Σ=100%' : 'Σ≠100%'}
-                </span>
-              </td>
-            </tr>
-          }
-        />
-      </div>
+      <DataTable
+        columns={ratioColumns}
+        data={ratioRows}
+        rowKey={(r) => r.label}
+        density="compact"
+        caption="月度预算占比配置"
+        footer={
+          <tr className="border-t border-border bg-muted/30">
+            <td className="px-3 py-2 font-medium">合计</td>
+            <td className="px-3 py-2 text-right font-num font-medium">{Number.isFinite(ratioSum) ? `${ratioSum}%` : '—'}</td>
+            <td className="px-3 py-2 text-right font-num font-medium">
+              {monthlyAmounts.every((v) => v !== null && v !== undefined)
+                ? formatMoneyWan(monthlyAmounts.reduce((s, v) => s + (v ?? 0), 0))
+                : '—'}
+            </td>
+            <td className="px-3 py-2 text-right">
+              <span className={cn('text-xs font-medium', ratioOk ? 'text-success-strong' : 'text-destructive')}>
+                {ratioOk ? 'Σ=100%' : 'Σ≠100%'}
+              </span>
+            </td>
+          </tr>
+        }
+      />
 
       {error && (
         <p className="flex items-center gap-1.5 text-xs text-destructive">

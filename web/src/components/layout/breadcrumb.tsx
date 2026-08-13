@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { Link, useInRouterContext, useLocation } from 'react-router-dom'
 import { navItems, type NavChild } from './nav-items'
+import { cn } from '@/lib/utils'
 
 interface Crumb {
   label: string
@@ -26,15 +27,16 @@ function findCrumbPath(items: NavChild[], currentUrl: string): Crumb[] | null {
  * 面包屑导航：按当前 pathname + search 从导航树推导路径链，链首固定「首页」根。
  * 仅当含首页后层级 ≥3（如 首页 / 数据管理 / 维度/科目体系 / 经营分析科目）时渲染，
  * 单级/双级页面无层级困惑，不展示面包屑。
+ * singleLine：顶栏场景单行显示（固定高度内不换行，超长截断）；默认换行。
  * 非 Router 上下文（如单测渲染 PageContainer）时安全降级为不渲染。
  */
-export function Breadcrumb() {
+export function Breadcrumb({ singleLine = false }: { singleLine?: boolean }) {
   const inRouter = useInRouterContext()
   if (!inRouter) return null
-  return <BreadcrumbInner />
+  return <BreadcrumbInner singleLine={singleLine} />
 }
 
-function BreadcrumbInner() {
+function BreadcrumbInner({ singleLine }: { singleLine: boolean }) {
   const location = useLocation()
   const currentUrl = location.pathname + location.search
   const crumbs = useMemo(() => {
@@ -48,7 +50,13 @@ function BreadcrumbInner() {
   if (!crumbs || crumbs.length < 3) return null
 
   return (
-    <nav aria-label="面包屑" className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+    <nav
+      aria-label="面包屑"
+      className={cn(
+        'flex items-center gap-1.5 text-sm text-muted-foreground',
+        singleLine ? 'min-w-0 overflow-hidden whitespace-nowrap' : 'flex-wrap'
+      )}
+    >
       {crumbs.map((crumb, i) => {
         const isLast = i === crumbs.length - 1
         return (

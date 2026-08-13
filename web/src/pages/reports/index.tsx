@@ -14,17 +14,14 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { CompanySelect } from '@/components/filters/company-select'
+import { MonthPicker } from '@/components/ui/month-picker'
 import { PageContainer } from '@/components/layout/page-container'
 import { Pagination } from '@/components/data-table/pagination'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
-import { PAGINATION } from '@/lib/constants'
+import { PAGINATION, REPORT_STATUS_LABEL, REPORT_STATUS_BADGE_VARIANT } from '@/lib/constants'
 import { useReports, useCreateReport, useDeleteReport, useCompanies, useAvailablePeriods } from '@/hooks/api-queries'
 import { usePermission } from '@/hooks/usePermission'
 import { Plus, FileText, Trash2, ExternalLink, Search } from 'lucide-react'
-
-/** 状态徽标 */
-const STATUS_LABEL: Record<string, string> = { draft: '草稿', published: '已发布', archived: '已归档' }
-const STATUS_VARIANT: Record<string, 'secondary' | 'default' | 'outline'> = { draft: 'secondary', published: 'default', archived: 'outline' }
 
 /** 列表状态 Tab：空串=进行中（后端默认排除归档） */
 const STATUS_TABS: { value: string; label: string }[] = [
@@ -106,7 +103,7 @@ function ReportList({ onOpen, canDelete }: { onOpen: (id: string) => void; canDe
     { key: 'period', header: '期间', align: 'center', cellClassName: 'font-mono text-muted-foreground' },
     {
       key: 'status', header: '状态', align: 'center',
-      render: (r) => <Badge variant={STATUS_VARIANT[r.status] ?? 'secondary'}>{STATUS_LABEL[r.status] ?? r.status}</Badge>,
+      render: (r) => <Badge variant={REPORT_STATUS_BADGE_VARIANT[r.status] ?? 'secondary'}>{REPORT_STATUS_LABEL[r.status] ?? r.status}</Badge>,
     },
     { key: 'currentVersion', header: '版本', align: 'center', cellClassName: 'font-mono text-muted-foreground', render: (r) => `v${r.currentVersion}` },
     { key: 'updatedAt', header: '更新时间', align: 'center', cellClassName: 'text-muted-foreground', render: (r) => new Date(r.updatedAt).toLocaleDateString('zh-CN') },
@@ -116,7 +113,7 @@ function ReportList({ onOpen, canDelete }: { onOpen: (id: string) => void; canDe
         <div className="flex items-center justify-center gap-1">
           <Button variant="ghost" size="sm" onClick={() => onOpen(r.id)}><ExternalLink className="mr-1 h-3.5 w-3.5" /> 打开</Button>
           {canDelete && r.status !== 'archived' && (
-            <Button variant="ghost" size="sm" aria-label="删除报告" onClick={() => handleDelete(r.id, r.title)} className="text-finance-red"><Trash2 className="h-3.5 w-3.5" /></Button>
+            <Button variant="ghost" size="sm" aria-label="删除报告" onClick={() => handleDelete(r.id, r.title)} className="text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
           )}
         </div>
       ),
@@ -130,7 +127,7 @@ function ReportList({ onOpen, canDelete }: { onOpen: (id: string) => void; canDe
       <Card className="rounded-card p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Tabs value={status} onValueChange={(v) => { setStatus(v); setPage(1) }}>
-          <TabsList>
+          <TabsList variant="line">
             {STATUS_TABS.map((t) => (
               <TabsTrigger key={t.value} value={t.value}>{t.label}</TabsTrigger>
             ))}
@@ -164,7 +161,7 @@ function ReportList({ onOpen, canDelete }: { onOpen: (id: string) => void; canDe
             columns={reportColumns}
             data={items}
             rowKey={(r) => r.id}
-            dense
+            density="dense"
             caption="分析报告列表"
           />
         )}
@@ -237,34 +234,37 @@ function CreateReportDialog({ open, onOpenChange, onCreated }: { open: boolean; 
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1.5">
-            <Label>报告标题</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="如：2025年6月经营分析报告" />
+            <Label htmlFor="report-title">报告标题</Label>
+            <Input id="report-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="如：2025年6月经营分析报告" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>财年</Label>
+              <Label htmlFor="report-fiscal-year">财年</Label>
               <Select value={effectiveFiscalYear} onValueChange={setFiscalYear}>
-                <SelectTrigger><SelectValue placeholder="选择财年" /></SelectTrigger>
+                <SelectTrigger id="report-fiscal-year"><SelectValue placeholder="选择财年" /></SelectTrigger>
                 <SelectContent>
                   {fiscalYears.map((y) => <SelectItem key={y} value={y}>{y}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>期间</Label>
-              <Select value={effectivePeriod} onValueChange={setPeriod}>
-                <SelectTrigger><SelectValue placeholder="选择期间" /></SelectTrigger>
-                <SelectContent>
-                  {periods.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="report-period">期间</Label>
+              <MonthPicker
+                id="report-period"
+                className="w-full"
+                value={effectivePeriod}
+                onChange={setPeriod}
+                availablePeriods={periods}
+                allowedPeriods={periods}
+                placeholder="选择期间"
+              />
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label>主体范围</Label>
-            <CompanySelect value={scopeCode} onChange={setScopeCode} allowAll={false} placeholder="选择公司或汇总主体" className="w-full" />
+            <Label htmlFor="report-scope">主体范围</Label>
+            <CompanySelect id="report-scope" value={scopeCode} onChange={setScopeCode} allowAll={false} placeholder="选择公司或汇总主体" className="w-full" />
           </div>
-          {error && <p className="text-[13px] text-finance-red">{error}</p>}
+          {error && <p className="text-[13px] text-destructive">{error}</p>}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>

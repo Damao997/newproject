@@ -31,6 +31,7 @@ interface AnalysisTabsCardProps {
   onTabChange: (t: AnalysisTab) => void
 }
 
+/** 线条式标签：选中态主色文字 + 底部主色短横线指示器，未选中 muted 弱化；分割线由 line 变体 TabsList 的 border-b 承担（w-full 贯穿卡片内容区） */
 const TABS: { value: AnalysisTab; label: string }[] = [
   { value: 'trend', label: '趋势分析' },
   { value: 'product', label: '品类预算达成' },
@@ -38,13 +39,9 @@ const TABS: { value: AnalysisTab; label: string }[] = [
   { value: 'expense', label: '运营费用' },
 ]
 
-/** 胶囊标签：未选中灰（text-muted-foreground）、选中纯黑加粗（bg-background 白底 + text-black font-bold，与卡片内口径切换器同模式） */
-const TAB_TRIGGER_CLS =
-  'rounded-full px-4 py-1.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:text-black data-[state=active]:font-bold data-[state=active]:shadow-sm'
-
 /**
  * 综合分析：趋势分析 / 品类预算达成 / 公司预算达成 / 运营费用四个分析视图的 TAB 复合卡。
- * 胶囊式标签栏位于卡片内容区左上方，与图表/表格紧密贴合；四个内容组件各自保留数据请求与交互
+ * 线条式标签栏位于卡片内容区左上方，与图表/表格紧密贴合；四个内容组件各自保留数据请求与交互
  * （Radix TabsContent 默认非激活不挂载，切换时才触发加载，React Query 缓存保证回切秒开）。
  * 主体/期间口径跟随看板顶部筛选。
  */
@@ -62,12 +59,12 @@ export function AnalysisTabsCard({
   onTabChange,
 }: AnalysisTabsCardProps) {
   return (
-    <Card className="animate-fade-in border border-border shadow-sm" style={{ animationDelay: '120ms' }}>
+    <Card className="animate-fade-in" style={{ animationDelay: '120ms' }}>
       <Tabs value={tab} onValueChange={(v) => onTabChange(v as AnalysisTab)}>
         <CardContent className="px-6 py-6">
-          <TabsList className="mb-4 rounded-full bg-muted p-1">
+          <TabsList variant="line" className="mb-4 justify-start">
             {TABS.map((t) => (
-              <TabsTrigger key={t.value} value={t.value} className={TAB_TRIGGER_CLS}>
+              <TabsTrigger key={t.value} value={t.value}>
                 {t.label}
               </TabsTrigger>
             ))}

@@ -98,7 +98,7 @@ export function AiOverviewDialog({ open, onOpenChange, onViewAnalyses, companyCo
           {slot && hasData && (
             <>
               {slot.status === 'error' ? (
-                <p className="text-[13px] text-finance-red">{slot.error}</p>
+                <p className="text-[13px] text-destructive">{slot.error}</p>
               ) : (
                 <div className="rounded-md border bg-muted/20 px-3 py-2 text-[13px] leading-relaxed" aria-live="polite">
                   {slot.status === 'streaming' && (

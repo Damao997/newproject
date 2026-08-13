@@ -226,7 +226,7 @@ export default function DataBrowsePage() {
           </div>
           <div className="p-4">
             {crossLoading ? (
-              <div className="min-h-[320px] py-12 text-center text-sm text-muted-foreground">数据加载中...</div>
+              <div className="min-h-[320px] py-12 text-center text-sm text-muted-foreground">数据加载中…</div>
             ) : (
               <div className={cn('min-h-[320px] transition-opacity duration-200', crossFetching && 'opacity-60')}>
                 <DataTable

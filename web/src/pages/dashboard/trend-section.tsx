@@ -32,26 +32,18 @@ export function TrendSection({ data, metric, onMetricChange, mode, onModeChange,
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <Tabs value={mode} onValueChange={(v) => onModeChange(v as TrendMode)}>
-            <TabsList className="bg-muted p-1">
+            <TabsList variant="line" className="justify-start">
               {MODES.map((m) => (
-                <TabsTrigger
-                  key={m}
-                  value={m}
-                  className="rounded-lg px-3 py-1.5 text-xs data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
-                >
+                <TabsTrigger key={m} value={m}>
                   {TREND_MODE_LABELS[m]}
                 </TabsTrigger>
               ))}
             </TabsList>
           </Tabs>
           <Tabs value={metric} onValueChange={(v) => onMetricChange(v as TrendMetric)}>
-            <TabsList className="bg-muted p-1">
+            <TabsList variant="line" className="justify-start">
               {METRICS.map((m) => (
-                <TabsTrigger
-                  key={m}
-                  value={m}
-                  className="rounded-lg px-3 py-1.5 text-xs data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
-                >
+                <TabsTrigger key={m} value={m}>
                   {TREND_METRIC_LABELS[m]}
                 </TabsTrigger>
               ))}

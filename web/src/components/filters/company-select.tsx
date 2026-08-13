@@ -23,6 +23,8 @@ interface CompanySelectProps {
   /** 无值时的占位文案 */
   placeholder?: string
   className?: string
+  /** 触发器 id（配合 Label htmlFor 无障碍关联） */
+  id?: string
   /** value 格式：'code' = 公司编码（默认）；'prefixed' = 'company:X' | 'summary:X'（主体维度场景） */
   valueFormat?: 'code' | 'prefixed'
   /** "全部"选项文案（prefixed 场景常用「全部主体」） */
@@ -45,6 +47,7 @@ export function CompanySelect({
   entitiesOnly = false,
   placeholder = '选择公司',
   className,
+  id,
   valueFormat = 'code',
   allLabel = '全部公司',
   allowAll = true,
@@ -67,7 +70,7 @@ export function CompanySelect({
 
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className={cn('w-[200px] max-w-full shrink-0', className)} aria-label={ariaLabel} title={title}>
+      <SelectTrigger className={cn('w-[200px] max-w-full shrink-0', className)} id={id} aria-label={ariaLabel} title={title}>
         <span className={cn('truncate', !value && 'text-muted-foreground')}>{selectedLabel}</span>
       </SelectTrigger>
       <SelectContent>

@@ -5,14 +5,14 @@ import ReactECharts, { echarts } from './echarts-core'
 
 interface KpiSparklineProps {
   data: number[]
-  /** 折线颜色；缺省跟随当前品牌主题主色 */
+  /** 折线颜色；缺省跟随当前侧边栏风格主色 */
   color?: string
   height?: number
 }
 
 export function KpiSparkline({ data, color, height = 48 }: KpiSparklineProps) {
-  const theme = useThemeStore((s) => s.theme)
-  const lineColor = color ?? getChartSeries(theme)[0]
+  const sidebarStyle = useThemeStore((s) => s.sidebarStyle)
+  const lineColor = color ?? getChartSeries(sidebarStyle)[0]
   const option: EChartsOption = {
     grid: {
       top: 4,

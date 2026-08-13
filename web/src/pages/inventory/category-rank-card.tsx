@@ -3,7 +3,7 @@ import type { EChartsOption } from 'echarts'
 import ReactECharts, { echarts } from '@/components/charts/echarts-core'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatMoneyWan } from '@/lib/utils'
-import { CHART_FONT, CHART_INK, getChartSeries, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
+import { CHART_FONT, getChartInk, getChartSeries, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
 import { useThemeStore } from '@/stores/themeStore'
 import { BarChart3 } from 'lucide-react'
 import type { InventoryCategoryRow } from '@/hooks/api-queries'
@@ -19,15 +19,16 @@ export function CategoryRankCard({ categories, loading, onCategoryClick }: {
   loading?: boolean
   onCategoryClick?: (code: string) => void
 }) {
-  // 分类色板跟随当前品牌主题：按序轮转，首位为品牌主色
-  const theme = useThemeStore((s) => s.theme)
+  // 分类色板跟随当前侧边栏风格：按序轮转，首位为风格主色；主页面恒白，图表框架色恒定
+  const sidebarStyle = useThemeStore((s) => s.sidebarStyle)
   // 后端已按金额降序附 rank；横向条形图 yAxis 需倒序以使第一名在顶部
   const ranked = useMemo(() => [...categories].sort((a, b) => a.rank - b.rank), [categories])
   // ECharts click 回调仅能拿到 name，这里维护 名称→编码 映射用于钻取
   const nameToCode = useMemo(() => new Map(ranked.map((c) => [c.name, c.code])), [ranked])
 
   const option = useMemo<EChartsOption>(() => {
-    const seriesColors = getChartSeries(theme)
+    const ink = getChartInk()
+    const seriesColors = getChartSeries(sidebarStyle)
     const byRow = new Map(ranked.map((c) => [c.name, c]))
     return {
       animation: false,
@@ -37,7 +38,7 @@ export function CategoryRankCard({ categories, loading, onCategoryClick }: {
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'shadow', shadowStyle: { color: 'rgba(0, 0, 0, 0.04)' } },
-        ...tooltipShell,
+        ...tooltipShell(ink),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         formatter: (params: any) => {
           const item = Array.isArray(params) ? params[0] : params
@@ -46,15 +47,15 @@ export function CategoryRankCard({ categories, loading, onCategoryClick }: {
           const yearStartChange = row.yearStart ? ((row.current - row.yearStart) / row.yearStart) * 100 : 0
           const line = (label: string, value: string) =>
             `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin:2px 0">
-              ${labelSpan(label)}
+              ${labelSpan(label, ink)}
               ${numSpan(value)}
             </div>`
-          return titleSpan(`No.${row.rank} ${row.name}`)
+          return titleSpan(`No.${row.rank} ${row.name}`, ink)
             + line('本期金额', formatMoneyWan(row.current))
             + line('占比', row.share === 0 ? '-' : `${row.share.toFixed(1)}%`)
             + line('同比', row.yoy === 0 ? '-' : `${row.yoy >= 0 ? '+' : ''}${row.yoy.toFixed(1)}%`)
             + line('较年初', yearStartChange === 0 ? '-' : `${yearStartChange >= 0 ? '+' : ''}${yearStartChange.toFixed(1)}%`)
-            + `<div style="margin-top:6px;color:${CHART_INK.axis};font-size:11px">点击钻取该品类明细</div>`
+            + `<div style="margin-top:6px;color:${ink.axis};font-size:11px">点击钻取该品类明细</div>`
         },
       },
       grid: { top: 8, right: 96, bottom: 8, left: 8, containLabel: true },
@@ -62,16 +63,16 @@ export function CategoryRankCard({ categories, loading, onCategoryClick }: {
         type: 'value',
         axisLine: { show: false },
         axisTick: { show: false },
-        splitLine: { lineStyle: { color: CHART_INK.grid, type: 'dashed' } },
-        axisLabel: { color: CHART_INK.axis, fontSize: 11 },
+        splitLine: { lineStyle: { color: ink.grid, type: 'dashed' } },
+        axisLabel: { color: ink.axis, fontSize: 11 },
       },
       yAxis: {
         type: 'category',
         inverse: true,
         data: ranked.map((c) => c.name),
-        axisLine: { lineStyle: { color: CHART_INK.grid } },
+        axisLine: { lineStyle: { color: ink.grid } },
         axisTick: { show: false },
-        axisLabel: { color: CHART_INK.sub, fontSize: 11 },
+        axisLabel: { color: ink.sub, fontSize: 11 },
       },
       series: [
         {
@@ -85,7 +86,7 @@ export function CategoryRankCard({ categories, loading, onCategoryClick }: {
             show: true,
             position: 'right',
             fontSize: 10,
-            color: CHART_INK.axis,
+            color: ink.axis,
             fontFamily: CHART_FONT,
             // 金额 + 占比双信息，dataIndex 对应 ranked 顺序
             formatter: (p: { value?: number | unknown; dataIndex: number }) =>
@@ -94,7 +95,7 @@ export function CategoryRankCard({ categories, loading, onCategoryClick }: {
         },
       ],
     }
-  }, [ranked, theme])
+  }, [ranked, sidebarStyle])
 
   return (
     <Card className="animate-fade-in">

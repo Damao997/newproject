@@ -354,7 +354,6 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
   return (
     <PageContainer
       title="财务指标"
-      description="按科目层级查看经营指标和静态指标数据"
       className="space-y-3"
       stickyHeader
       headerRef={headerRef}
@@ -561,11 +560,8 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
         </div>
       )}
 
-      {/* 指标科目树（表格卡片：筛选条在页头 actions 吸顶，树区承载于卡片内） */}
+      {/* 科目树表格卡片：筛选条在页头 actions 吸顶，树区承载于卡片内 */}
       <Card className="animate-fade-in overflow-hidden rounded-card">
-        <div className="flex items-center justify-between border-b px-4 py-2.5">
-          <h3 className="text-base font-semibold tracking-tight">指标科目树</h3>
-        </div>
         <div className="min-h-[420px] px-4 py-3">
           {isLoading ? (
             /* 加载骨架：保持表格占位高度，避免内容区塌陷再撑回导致跳动 */

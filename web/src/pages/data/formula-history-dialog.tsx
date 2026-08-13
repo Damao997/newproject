@@ -1,6 +1,8 @@
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
 import { useMemo, useState } from 'react'
 import {
   Dialog,
@@ -65,11 +67,10 @@ export function HistoryDialog({ metric, formatFormula, onClose, canApprove = fal
     {
       key: 'compare', header: '', align: 'center',
       render: (h) => (
-        <input
-          type="checkbox"
-          className="h-3.5 w-3.5 accent-primary"
+        <Checkbox
+          size="sm"
           checked={compareVersions.includes(h.version)}
-          onChange={() => toggleCompare(h.version)}
+          onCheckedChange={() => toggleCompare(h.version)}
           aria-label={`选择版本 ${h.version} 对比`}
         />
       ),
@@ -144,19 +145,17 @@ export function HistoryDialog({ metric, formatFormula, onClose, canApprove = fal
           <DialogDescription>{metric ? `${metric.name}（${metric.code}）` : ''}</DialogDescription>
         </DialogHeader>
         {isLoading ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">加载中...</p>
+          <p className="py-8 text-center text-sm text-muted-foreground">加载中…</p>
         ) : !data || data.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">暂无历史版本</p>
         ) : (
-          <div className="rounded-lg border">
-            <DataTable
-              columns={historyColumns}
-              data={data}
-              rowKey={(h) => h.version}
-              density="compact"
-              caption="公式版本历史列表"
-            />
-          </div>
+          <DataTable
+            columns={historyColumns}
+            data={data}
+            rowKey={(h) => h.version}
+            density="compact"
+            caption="公式版本历史列表"
+          />
         )}
         {compareVersions.length === 2 && (() => {
           const vA = (data ?? []).find(h => h.version === compareVersions[0])
@@ -200,7 +199,10 @@ export function HistoryDialog({ metric, formatFormula, onClose, canApprove = fal
           </div>
         )}
         {showRejectInput && (
-          <Input value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="请输入驳回原因..." className="mt-2" />
+          <div className="mt-2 space-y-1.5">
+            <Label htmlFor="reject-reason">驳回原因</Label>
+            <Input id="reject-reason" value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="请输入驳回原因..." />
+          </div>
         )}
         {actionError && <p className="text-xs text-destructive">{actionError}</p>}
         {confirmElement}

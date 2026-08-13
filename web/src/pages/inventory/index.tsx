@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { MonthPicker } from '@/components/ui/month-picker'
@@ -199,7 +200,7 @@ function StatCard({ title, icon: Icon, value, sub, index, loading }: {
 }) {
   return (
     <Card
-      className="animate-fade-in border border-border shadow-sm"
+      className="animate-fade-in"
       style={{ animationDelay: `${index * 80}ms` }}
     >
       <CardHeader className="flex flex-row items-center justify-between space-y-0 px-5 pb-1 pt-5">
@@ -787,14 +788,14 @@ export default function InventoryPage() {
               >
                 <table className="w-full min-w-[880px] text-sm">
                   <thead className="sticky top-0 z-[2] bg-card">
-                    <tr className="border-b bg-muted/50 text-center text-black">
+                    <tr className="border-b bg-muted/50 text-center text-foreground">
                       <th className="sticky left-0 z-[3] w-9 bg-card px-2 py-2">
-                        <input
-                          type="checkbox"
+                        <Checkbox
+                          size="sm"
                           aria-label="全选当前筛选结果"
-                          className="h-3.5 w-3.5 cursor-pointer accent-primary"
+                          className="cursor-pointer"
                           checked={allVisibleSelected}
-                          onChange={toggleAll}
+                          onCheckedChange={toggleAll}
                         />
                       </th>
                       <th className="sticky left-9 z-[3] whitespace-nowrap bg-card px-2 py-2 font-medium">
@@ -813,12 +814,12 @@ export default function InventoryPage() {
                     {visibleRows.map((row) => (
                       <tr key={row.key} className="group border-b last:border-0 hover:bg-muted/50">
                         <td className="sticky left-0 z-[1] w-9 bg-card px-2 py-2 text-center transition-colors group-hover:bg-muted">
-                          <input
-                            type="checkbox"
+                          <Checkbox
+                            size="sm"
                             aria-label={`选择 ${row.label}`}
-                            className="h-3.5 w-3.5 cursor-pointer accent-primary"
+                            className="cursor-pointer"
                             checked={selected.has(row.key)}
-                            onChange={() => toggleOne(row.key)}
+                            onCheckedChange={() => toggleOne(row.key)}
                           />
                         </td>
                         <td className="sticky left-9 z-[1] max-w-[180px] truncate bg-card px-2 py-2 text-xs transition-colors group-hover:bg-muted" title={row.label}>

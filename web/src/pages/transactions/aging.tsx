@@ -281,7 +281,7 @@ export default function TransactionsAgingPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm" style={{ minWidth: 1240 }}>
                   <thead>
-                    <tr className="border-b bg-muted/50 text-center text-black">
+                    <tr className="border-b bg-muted/50 text-center text-foreground">
                       <th className="w-[150px] px-2 py-2 font-medium">公司</th>
                       <th className="w-[90px] px-2 py-2 font-medium">往来类型</th>
                       {effectiveGroupBy === 'counterparty' && <th className="min-w-[140px] px-2 py-2 font-medium">往来对象</th>}

@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Menu, LogOut, User, Key, CalendarRange } from 'lucide-react'
 import { ThemeSwitcher } from './theme-switcher'
+import { Breadcrumb } from './breadcrumb'
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -53,25 +54,30 @@ export function Header({ onMenuClick }: HeaderProps) {
   }
 
   return (
-    <header className="z-40 w-full shrink-0 border-b bg-background/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="z-40 w-full shrink-0 border-b border-border bg-background font-sans">
       <div className="flex h-14 items-center px-4">
         {/* 移动端：菜单按钮 + 品牌标识 */}
         <div className="flex items-center gap-2 md:hidden">
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8"
+            className="h-8 w-8 text-foreground"
             aria-label="打开导航菜单"
             onClick={onMenuClick}
           >
             <Menu className="h-5 w-5" />
           </Button>
           <img src="/logo.png" alt="壹品慧" className="h-7 w-7 object-contain" />
-          <span className="text-sm font-bold">浙江壹品慧经营分析平台</span>
+          <span className="text-base font-bold text-foreground">浙江壹品慧经营分析平台</span>
         </div>
 
-        <div className="flex flex-1 shrink-0 items-center justify-end space-x-2">
-          {/* 品牌主题色切换器（全局应用，localStorage 持久化） */}
+        {/* 桌面端面包屑：层级 ≥3 时显示，左对齐占满剩余空间（单行截断）；<768px 隐藏（左侧为汉堡+品牌） */}
+        <div className="hidden min-w-0 flex-1 items-center overflow-hidden md:flex">
+          <Breadcrumb singleLine />
+        </div>
+
+        <div className="flex shrink-0 items-center space-x-2">
+          {/* 侧边栏风格切换器（浅色/紫渐变/深色，全局应用，localStorage 持久化） */}
           <ThemeSwitcher />
           {/* 全局财年选择：有候选时渲染下拉；无数据/失败时显示占位提示而非静默隐藏（避免「功能不见了」的困惑） */}
           <div className="flex items-center gap-1.5">
@@ -81,7 +87,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                 value={fiscalYear && fiscalYears.includes(fiscalYear) ? fiscalYear : ''}
                 onValueChange={(v) => setFiscalYear(v)}
               >
-                <SelectTrigger className="h-8 w-[120px] text-xs" title="财年选择（影响看板/指标/数据浏览的期间候选）">
+                <SelectTrigger className="h-8 w-[120px] text-sm" title="财年选择（影响看板/指标/数据浏览的期间候选）">
                   <SelectValue placeholder="选择财年" />
                 </SelectTrigger>
                 <SelectContent>
@@ -93,16 +99,16 @@ export function Header({ onMenuClick }: HeaderProps) {
             ) : isPending ? (
               <div className="h-8 w-[120px] animate-pulse rounded-md bg-muted" />
             ) : isError ? (
-              <span className="text-xs text-muted-foreground" title="财年列表加载失败，请稍后重试">财年加载失败</span>
+              <span className="text-sm text-muted-foreground" title="财年列表加载失败，请稍后重试">财年加载失败</span>
             ) : (
-              <span className="text-xs text-muted-foreground" title="导入并激活经营数据后，此处可切换财年">暂无经营数据</span>
+              <span className="text-sm text-muted-foreground" title="导入并激活经营数据后，此处可切换财年">暂无经营数据</span>
             )}
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                 <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-primary/10 text-primary">
+                  <AvatarFallback className="bg-muted text-foreground">
                     {user ? getInitials(user.name) : 'U'}
                   </AvatarFallback>
                 </Avatar>

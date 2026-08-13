@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { X, Save, Trash2, FileText, Sparkles, Loader2, Check } from 'lucide-react'
+import { Save, Trash2, FileText, Sparkles, Loader2, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { SheetShell } from '@/components/ui/sheet-shell'
+import { FlashMessage } from '@/components/ui/flash-message'
 import { RichTextEditor } from '@/components/editor/rich-text-editor'
 import { ContextChip } from '@/components/analysis/context-chip'
 import { useConfirm } from '@/components/ui/confirm-dialog'
@@ -136,38 +138,33 @@ function DrawerBody({ target, onClose }: { target: AnalysisTarget; onClose: () =
     }
     onClose()
   }
-  const handleCloseRef = useRef(handleClose)
-  handleCloseRef.current = handleClose
-  // Escape 键关闭（与 X/遮罩/取消一致，先确认未保存修改）
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') void handleCloseRef.current()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
 
   const m = target.metric
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-black/40 animate-fade-in" onClick={() => void handleClose()} />
-      <div className="relative flex h-full w-full max-w-xl flex-col border-l bg-background shadow-xl animate-in slide-in-from-right duration-200">
-        {/* 头部 */}
-        <div className="flex items-start justify-between border-b px-5 py-4">
-          <div className="flex items-start gap-2">
-            <FileText className="mt-0.5 h-5 w-5 text-primary" />
-            <div>
-              <h3 className="text-base font-semibold text-foreground">单项分析</h3>
-              <p className="text-[13px] text-muted-foreground">
-                {target.companyName} · {target.subjectName} · {target.period}
-              </p>
-            </div>
+    <>
+    <SheetShell
+      onClose={() => void handleClose()}
+      icon={<FileText className="mt-0.5 h-5 w-5 text-primary" />}
+      title="单项分析"
+      description={`${target.companyName} · ${target.subjectName} · ${target.period}`}
+      footer={(
+        <>
+          <div>
+            {form.existingId && (
+              <Button variant="outline" size="sm" onClick={form.remove} disabled={form.busy} className="text-destructive">
+                <Trash2 className="mr-1 h-4 w-4" /> 删除
+              </Button>
+            )}
           </div>
-          <button type="button" onClick={() => void handleClose()} aria-label="关闭" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => void handleClose()} disabled={form.busy}>取消</Button>
+            <Button size="sm" onClick={form.save} disabled={form.busy || !form.title.trim()}>
+              <Save className="mr-1 h-4 w-4" /> 保存
+            </Button>
+          </div>
+        </>
+      )}
+    >
         {/* 指标上下文：按值类型格式化，仅金额类标注“(万)”；同比统一按相对增长率；达成率 = 本年累计 / 全年预算 */}
         {m && (() => {
           const vt = target.valueType
@@ -221,7 +218,7 @@ function DrawerBody({ target, onClose }: { target: AnalysisTarget; onClose: () =
             {(ai.streaming || ai.preview || aiDraft || ai.error) && (
               <div className="rounded-md border bg-muted/20 px-3 py-2 text-[13px] leading-relaxed" aria-live="polite">
                 {ai.error ? (
-                  <span className="text-finance-red">{ai.error}</span>
+                  <span className="text-destructive">{ai.error}</span>
                 ) : (
                   <>
                     <p className="mb-1 flex items-center gap-1 text-[11px] text-muted-foreground">
@@ -241,28 +238,11 @@ function DrawerBody({ target, onClose }: { target: AnalysisTarget; onClose: () =
             <RichTextEditor value={form.content} onChange={form.setContent} placeholder="撰写该指标的分析结论…" polishEnabled />
           </div>
           {form.feedback && (
-            <p className={form.feedback.type === 'ok' ? 'text-[13px] text-finance-green' : 'text-[13px] text-finance-red'}>{form.feedback.msg}</p>
+            <FlashMessage type={form.feedback.type === 'ok' ? 'success' : 'error'}>{form.feedback.msg}</FlashMessage>
           )}
         </div>
-
-        {/* 底部操作 */}
-        <div className="flex items-center justify-between border-t px-5 py-3">
-          <div>
-            {form.existingId && (
-              <Button variant="outline" size="sm" onClick={form.remove} disabled={form.busy} className="text-finance-red">
-                <Trash2 className="mr-1 h-4 w-4" /> 删除
-              </Button>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => void handleClose()} disabled={form.busy}>取消</Button>
-            <Button size="sm" onClick={form.save} disabled={form.busy || !form.title.trim()}>
-              <Save className="mr-1 h-4 w-4" /> 保存
-            </Button>
-          </div>
-        </div>
-      </div>
+      </SheetShell>
       {element}
-    </div>
+    </>
   )
 }

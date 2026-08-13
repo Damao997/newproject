@@ -271,17 +271,15 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
       )}
 
       {/* 品类列表 */}
-      <div className="rounded-lg border border-border">
-        <DataTable
-          columns={columns}
-          data={categories ?? []}
-          rowKey={(r) => r.id}
-          density="compact"
-          emptyText="暂无品类配置，点击「新增品类」创建"
-          caption="品类配置列表"
-          loading={isLoading}
-        />
-      </div>
+      <DataTable
+        columns={columns}
+        data={categories ?? []}
+        rowKey={(r) => r.id}
+        density="compact"
+        emptyText="暂无品类配置，点击「新增品类」创建"
+        caption="品类配置列表"
+        loading={isLoading}
+      />
 
       {error && (
         <p className="flex items-center gap-1.5 text-xs text-destructive">

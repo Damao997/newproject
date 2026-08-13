@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { useConfirm } from '@/components/ui/confirm-dialog'
@@ -110,7 +111,7 @@ export function AggregationMapPanel({ canUpdate = false }: AggregationMapPanelPr
                 </SelectContent>
               </Select>
               <label className="flex items-center gap-1 text-xs text-muted-foreground">
-                <input type="checkbox" checked={elimination} onChange={(e) => setElimination(e.target.checked)} />
+                <Checkbox checked={elimination} onCheckedChange={(c) => setElimination(c === true)} />
                 内部抵消
               </label>
               <Button size="sm" onClick={handleAdd} disabled={addMap.isPending || !singleToAdd}>
@@ -119,10 +120,10 @@ export function AggregationMapPanel({ canUpdate = false }: AggregationMapPanelPr
             </div>
           )}
 
-          <p className="text-xs text-muted-foreground">{isLoading ? '加载中...' : `共 ${rows.length} 个单体成员`}</p>
+          <p className="text-xs text-muted-foreground">{isLoading ? '加载中…' : `共 ${rows.length} 个单体成员`}</p>
           {error && <p className="text-xs text-destructive">{error}</p>}
 
-          <DataTable columns={columns} data={rows} rowKey={(r) => r.id} dense emptyText={isLoading ? '加载中...' : '该汇总主体暂无成员'} />
+          <DataTable columns={columns} data={rows} rowKey={(r) => r.id} dense emptyText={isLoading ? '加载中…' : '该汇总主体暂无成员'} />
         </>
       )}
       {confirmElement}

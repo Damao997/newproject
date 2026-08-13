@@ -12,14 +12,14 @@ const buttonVariants = cva(
         destructive:
           "bg-destructive text-destructive-foreground hover:bg-destructive/90",
         outline:
-          "border border-input bg-page hover:border-primary hover:bg-accent hover:text-accent-foreground",
+          "border border-input bg-page hover:border-primary hover:bg-accent hover:text-accent-foreground focus-visible:border-input",
         secondary:
           "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
         // 融合风格：基础态与页面底色（bg-page）同色 + 灰色描边，悬停/激活时描边变品牌橙
         fused:
-          "border border-input bg-page text-foreground hover:border-primary hover:bg-primary/10 hover:text-primary active:border-primary",
+          "border border-input bg-page text-foreground hover:border-primary hover:bg-primary/10 hover:text-primary active:border-primary focus-visible:border-input",
       },
       size: {
         default: "h-8 px-4 py-2",

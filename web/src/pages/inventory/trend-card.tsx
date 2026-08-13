@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { useInventoryTrend } from '@/hooks/api-queries'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { formatMoneyWan } from '@/lib/utils'
-import { CHART_FONT, CHART_INK, getChartSeries, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
+import { CHART_FONT, getChartInk, getChartSeries, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
 import { useThemeStore } from '@/stores/themeStore'
 import { LineChart, RefreshCw } from 'lucide-react'
 import { EmptyHint } from './empty-hint'
@@ -17,11 +17,9 @@ import { EmptyHint } from './empty-hint'
  * 财年跟随顶部导航全局财年选择，公司多选由页面筛选区传入。
  */
 
-const TOTAL_COLOR = CHART_INK.text
-
 export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes: string[]; fiscalYear: string | null }) {
-  // 分类色板跟随当前品牌主题：按公司顺序轮转，首位为品牌主色
-  const theme = useThemeStore((s) => s.theme)
+  // 分类色板跟随当前侧边栏风格：按公司顺序轮转，首位为风格主色；主页面恒白，图表框架色恒定
+  const sidebarStyle = useThemeStore((s) => s.sidebarStyle)
   const { data, isLoading, isError, error, refetch, isFetching } = useInventoryTrend({ fiscalYear, companyCodes })
   // 图例/系列名称跟随全局「显示简称」开关（与明细表一致）
   const { getDisplayName } = useCompanyDisplayName()
@@ -29,7 +27,8 @@ export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes:
   const hasData = !!data && data.months.length > 0
 
   const option = useMemo<EChartsOption>(() => {
-    const seriesColors = getChartSeries(theme)
+    const ink = getChartInk()
+    const seriesColors = getChartSeries(sidebarStyle)
     const months = data?.months ?? []
     const byCompany = data?.byCompany ?? []
     const total = data?.total ?? []
@@ -41,17 +40,17 @@ export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes:
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'shadow', shadowStyle: { color: 'rgba(0, 0, 0, 0.04)' } },
-        ...tooltipShell,
+        ...tooltipShell(ink),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         formatter: (params: any) => {
           if (!Array.isArray(params) || params.length === 0) return ''
-          let result = titleSpan(params[0].axisValue)
+          let result = titleSpan(params[0].axisValue, ink)
           for (const item of params) {
             if (item.value === null || item.value === undefined || item.value === 0) continue
             result += `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin:4px 0">
               <div style="display:flex;align-items:center;gap:8px">
                 <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${item.color}"></span>
-                ${labelSpan(item.seriesName)}
+                ${labelSpan(item.seriesName, ink)}
               </div>
               ${numSpan(formatMoneyWan(item.value))}
             </div>`
@@ -66,16 +65,16 @@ export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes:
         itemWidth: 12,
         itemHeight: 8,
         itemGap: 16,
-        textStyle: { color: CHART_INK.sub, fontSize: 12 },
+        textStyle: { color: ink.sub, fontSize: 12 },
       },
       grid: { top: 24, right: 24, bottom: 48, left: 72 },
       xAxis: {
         type: 'category',
         data: months,
-        axisLine: { lineStyle: { color: CHART_INK.grid } },
+        axisLine: { lineStyle: { color: ink.grid } },
         axisTick: { show: false },
         axisLabel: {
-          color: CHART_INK.axis,
+          color: ink.axis,
           fontSize: 11,
           formatter: (value: string) => {
             const parts = value.split('-')
@@ -87,8 +86,8 @@ export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes:
         type: 'value',
         axisLine: { show: false },
         axisTick: { show: false },
-        splitLine: { lineStyle: { color: CHART_INK.grid, type: 'dashed' } },
-        axisLabel: { color: CHART_INK.axis, fontSize: 11 },
+        splitLine: { lineStyle: { color: ink.grid, type: 'dashed' } },
+        axisLabel: { color: ink.axis, fontSize: 11 },
       },
       series: [
         ...byCompany.map((c, i) => ({
@@ -104,15 +103,15 @@ export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes:
           type: 'line' as const,
           data: total,
           smooth: 0.4,
-          lineStyle: { color: TOTAL_COLOR, width: 2.5, cap: 'round' as const },
+          lineStyle: { color: ink.text, width: 2.5, cap: 'round' as const },
           symbol: 'circle',
           symbolSize: 6,
-          itemStyle: { color: TOTAL_COLOR, borderWidth: 2, borderColor: CHART_INK.surface },
+          itemStyle: { color: ink.text, borderWidth: 2, borderColor: ink.surface },
           z: 10,
         },
       ] as SeriesOption[],
     }
-  }, [data, getDisplayName, theme])
+  }, [data, getDisplayName, sidebarStyle])
 
   return (
     <Card className="animate-fade-in">

@@ -314,89 +314,92 @@ export function MetricTree({
   // TABLE_HEAD_BASE（13px/500 黑字居中）为共享样式常量，对齐《统一表格设计标准》
   const headBase = cn(TABLE_HEAD_BASE, 'sticky top-0 z-[2] h-11 border-b bg-muted px-3')
   return (
-    <div
-      className={cn('overflow-x-auto', stickyHeaderTop > 0 && 'overflow-y-auto')}
-      style={
-        stickyHeaderTop > 0
-          ? { position: 'sticky', top: stickyHeaderTop, maxHeight: `calc(100dvh - ${stickyHeaderTop}px - 24px)` }
-          : undefined
-      }
-    >
-      {/* border-separate：sticky 单元格边框随滚动稳定跟随（collapse 模式下边框渲染异常） */}
-      {/* minWidth 兜底：窄容器下表格保持完整列宽走横向滚动，列宽永不小于各列 min-w，杜绝浏览器压缩截断 */}
-      <table
-        className="w-full caption-bottom border-separate border-spacing-0 text-[13px]"
-        style={{ minWidth: isOperating ? 1056 : 464 }}
+    // 浅灰圆角容器（与 DataTable 视觉一致）：overflow-hidden 将白底表格直角裁剪为 8px 圆角（rounded-card）
+    <div className="overflow-hidden rounded-card bg-muted/40 p-2">
+      <div
+        className={cn('bg-background', 'overflow-x-auto', stickyHeaderTop > 0 && 'overflow-y-auto')}
+        style={
+          stickyHeaderTop > 0
+            ? { position: 'sticky', top: stickyHeaderTop, maxHeight: `calc(100dvh - ${stickyHeaderTop}px - 24px)` }
+            : undefined
+        }
       >
-        <thead>
-          <tr className="bg-muted">
-            {categoryColumn && (
+        {/* border-separate：sticky 单元格边框随滚动稳定跟随（collapse 模式下边框渲染异常） */}
+        {/* minWidth 兜底：窄容器下表格保持完整列宽走横向滚动，列宽永不小于各列 min-w，杜绝浏览器压缩截断 */}
+        <table
+          className="w-full caption-bottom border-separate border-spacing-0 text-[13px]"
+          style={{ minWidth: isOperating ? 1056 : 464 }}
+        >
+          <thead>
+            <tr className="bg-muted">
+              {categoryColumn && (
+                <th
+                  className={cn(headBase, 'sticky left-0 z-[2] border-r bg-muted text-center shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)]')}
+                  style={{ width: CATEGORY_COL_WIDTH, minWidth: CATEGORY_COL_WIDTH, maxWidth: CATEGORY_COL_WIDTH }}
+                >
+                  分类
+                </th>
+              )}
               <th
-                className={cn(headBase, 'sticky left-0 z-[2] border-r bg-muted text-center shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)]')}
-                style={{ width: CATEGORY_COL_WIDTH, minWidth: CATEGORY_COL_WIDTH, maxWidth: CATEGORY_COL_WIDTH }}
+                className={cn(headBase, 'sticky z-[2] min-w-[160px] border-r bg-muted text-center shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)]')}
+                style={{ left: categoryColumn ? CATEGORY_COL_WIDTH : 0 }}
               >
-                分类
+                科目
               </th>
-            )}
-            <th
-              className={cn(headBase, 'sticky z-[2] min-w-[160px] border-r bg-muted text-center shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)]')}
-              style={{ left: categoryColumn ? CATEGORY_COL_WIDTH : 0 }}
-            >
-              科目
-            </th>
-            {isOperating ? (
-              <>
-                <th className={cn(headBase, 'min-w-[112px] text-center')}>预算金额</th>
-                <th className={cn(headBase, 'min-w-[112px] text-center')}>本月实际</th>
-                <th className={cn(headBase, 'min-w-[112px] text-center')}>同期实际</th>
-                <th className={cn(headBase, 'min-w-[80px] text-center')}>同比</th>
-                <th className={cn(headBase, 'min-w-[80px] text-center')}>达成率</th>
-                <th className={cn(headBase, 'min-w-[112px] text-center')}>本年累计</th>
-                <th className={cn(headBase, 'min-w-[112px] text-center')}>同期累计</th>
-                <th className={cn(headBase, 'min-w-[80px] text-center')}>累计同比</th>
-              </>
-            ) : (
-              <>
-                <th className={cn(headBase, 'min-w-[112px] text-center')}>本期金额</th>
-                <th className={cn(headBase, 'min-w-[112px] text-center')}>同期金额</th>
-                <th className={cn(headBase, 'min-w-[80px] text-center')}>变动率</th>
-              </>
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          {nodes.length === 0 ? (
-            <tr>
-              <td colSpan={colSpan} className="p-6 text-center text-muted-foreground">
-                {emptyText}
-              </td>
+              {isOperating ? (
+                <>
+                  <th className={cn(headBase, 'min-w-[112px] text-center')}>预算金额</th>
+                  <th className={cn(headBase, 'min-w-[112px] text-center')}>本月实际</th>
+                  <th className={cn(headBase, 'min-w-[112px] text-center')}>同期实际</th>
+                  <th className={cn(headBase, 'min-w-[80px] text-center')}>同比</th>
+                  <th className={cn(headBase, 'min-w-[80px] text-center')}>达成率</th>
+                  <th className={cn(headBase, 'min-w-[112px] text-center')}>本年累计</th>
+                  <th className={cn(headBase, 'min-w-[112px] text-center')}>同期累计</th>
+                  <th className={cn(headBase, 'min-w-[80px] text-center')}>累计同比</th>
+                </>
+              ) : (
+                <>
+                  <th className={cn(headBase, 'min-w-[112px] text-center')}>本期金额</th>
+                  <th className={cn(headBase, 'min-w-[112px] text-center')}>同期金额</th>
+                  <th className={cn(headBase, 'min-w-[80px] text-center')}>变动率</th>
+                </>
+              )}
             </tr>
-          ) : categoryColumn ? (
-            <CategoryRows
-              level0Nodes={nodes}
-              valueMap={valueMap}
-              isOperating={isOperating}
-              expandedCodes={expandedCodes}
-              onToggle={onToggle}
-              onAnalyze={onAnalyze}
-              analyzeDisabled={analyzeDisabled}
-              analyzeHint={analyzeHint}
-            />
-          ) : (
-            <MetricRows
-              nodes={nodes}
-              depth={0}
-              valueMap={valueMap}
-              isOperating={isOperating}
-              expandedCodes={expandedCodes}
-              onToggle={onToggle}
-              onAnalyze={onAnalyze}
-              analyzeDisabled={analyzeDisabled}
-              analyzeHint={analyzeHint}
-            />
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {nodes.length === 0 ? (
+              <tr>
+                <td colSpan={colSpan} className="p-6 text-center text-muted-foreground">
+                  {emptyText}
+                </td>
+              </tr>
+            ) : categoryColumn ? (
+              <CategoryRows
+                level0Nodes={nodes}
+                valueMap={valueMap}
+                isOperating={isOperating}
+                expandedCodes={expandedCodes}
+                onToggle={onToggle}
+                onAnalyze={onAnalyze}
+                analyzeDisabled={analyzeDisabled}
+                analyzeHint={analyzeHint}
+              />
+            ) : (
+              <MetricRows
+                nodes={nodes}
+                depth={0}
+                valueMap={valueMap}
+                isOperating={isOperating}
+                expandedCodes={expandedCodes}
+                onToggle={onToggle}
+                onAnalyze={onAnalyze}
+                analyzeDisabled={analyzeDisabled}
+                analyzeHint={analyzeHint}
+              />
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
