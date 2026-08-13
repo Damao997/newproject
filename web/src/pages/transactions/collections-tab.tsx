@@ -19,11 +19,15 @@ import { useCollections, useGenerateCollections, useUpdateCollection, useCollect
 import { usePageStore } from '@/stores/pageStateStore'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { CompanySelect } from '@/components/filters/company-select'
-import { Loader2, PhoneCall, History } from 'lucide-react'
+import { Loader2, PhoneCall } from 'lucide-react'
+import { SheetShell } from '@/components/ui/sheet-shell'
+import { Label } from '@/components/ui/label'
+import { FlashMessage } from '@/components/ui/flash-message'
+import { useSalesmen, useCreateSalesman } from '@/hooks/api-queries'
 import type { CollectionPlanItem, CollectionStatus } from '@/types'
 
 /**
- * 催收管理 Tab：催收计划列表（筛选/分页）、账龄逾期批量生成建议、
+ * 催收计划 Tab：催收计划列表（筛选/分页）、账龄逾期批量生成建议、
  * 状态机流转（pending→collecting→partial|full|bad_debt）、催收记录。
  */
 
@@ -54,6 +58,15 @@ const STATUS_TRANSITIONS: Record<CollectionStatus, CollectionStatus[]> = {
 
 const METHOD_LABELS: Record<string, string> = { phone: '电话', letter: '函证', legal: '法务' }
 
+/** 状态统计条圆点色（对齐 STATUS_STYLES 语义） */
+const STATUS_DOT: Record<CollectionStatus, string> = {
+  pending: 'bg-muted-foreground',
+  collecting: 'bg-info',
+  partial: 'bg-warning',
+  full: 'bg-success',
+  bad_debt: 'bg-destructive',
+}
+
 const BUCKET_OPTIONS = [
   { value: '1m', label: '1个月以上' },
   { value: '3m', label: '3个月以上' },
@@ -67,10 +80,19 @@ function fmtAmount(v: number | null): string {
   return v.toLocaleString('zh-CN', { minimumFractionDigits: 2 })
 }
 
+/** 金额分级着色：≥100万 红、≥10万 橙、其余默认 */
+function amountTone(v: number | null): string {
+  if (v === null || v === undefined) return ''
+  if (v >= 1000000) return 'text-destructive font-semibold'
+  if (v >= 100000) return 'text-warning-strong font-medium'
+  return ''
+}
+
 // ===== 状态更新对话框 =====
 function UpdateStatusDialog({ plan, onClose }: { plan: CollectionPlanItem | null; onClose: () => void }) {
   const [status, setStatus] = useState('')
   const [actualAmount, setActualAmount] = useState('')
+  const [statusNote, setStatusNote] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
   const updateMutation = useUpdateCollection()
 
@@ -89,8 +111,9 @@ function UpdateStatusDialog({ plan, onClose }: { plan: CollectionPlanItem | null
       }
       data.actualAmount = v
     }
+    if (statusNote.trim()) data.statusNote = statusNote.trim()
     if (Object.keys(data).length === 0) {
-      setErrorMsg('请选择新状态或填写实际回收金额')
+      setErrorMsg('请选择新状态、填写实际回收金额或催收状态说明')
       return
     }
     try {
@@ -104,6 +127,7 @@ function UpdateStatusDialog({ plan, onClose }: { plan: CollectionPlanItem | null
   const handleClose = () => {
     setStatus('')
     setActualAmount('')
+    setStatusNote('')
     setErrorMsg('')
     onClose()
   }
@@ -114,17 +138,17 @@ function UpdateStatusDialog({ plan, onClose }: { plan: CollectionPlanItem | null
         <DialogHeader>
           <DialogTitle>更新催收状态</DialogTitle>
           <DialogDescription>
-            {plan?.counterpartyName || plan?.counterpartyCode} · 逾期 {fmtAmount(plan?.overdueAmount ?? null)}
+            {plan?.counterpartyName || plan?.counterpartyCode} · 金额 {fmtAmount(plan?.overdueAmount ?? null)}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">新状态（当前：{plan ? STATUS_LABELS[plan.status] : '-'}）</label>
+            <Label htmlFor="update-status-select">新状态（当前：{plan ? STATUS_LABELS[plan.status] : '-'}）</Label>
             {allowed.length === 0 ? (
               <p className="text-sm text-muted-foreground">当前为终态，不可再流转（仍可补录实际回收金额）</p>
             ) : (
               <Select value={status} onValueChange={setStatus}>
-                <SelectTrigger>
+                <SelectTrigger id="update-status-select">
                   <SelectValue placeholder="保持不变" />
                 </SelectTrigger>
                 <SelectContent>
@@ -136,8 +160,12 @@ function UpdateStatusDialog({ plan, onClose }: { plan: CollectionPlanItem | null
             )}
           </div>
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">实际回收金额</label>
-            <Input type="number" placeholder="选填" value={actualAmount} onChange={(e) => setActualAmount(e.target.value)} />
+            <Label htmlFor="update-actual-amount">实际回收金额</Label>
+            <Input id="update-actual-amount" type="number" placeholder="选填" value={actualAmount} onChange={(e) => setActualAmount(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="update-status-note">催收状态说明（≤500 字）</Label>
+            <Textarea id="update-status-note" rows={3} placeholder="如：客户承诺月底回款，逾期部分已开票待付款…" value={statusNote} onChange={(e) => setStatusNote(e.target.value)} />
           </div>
           {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
         </div>
@@ -184,7 +212,7 @@ function LogsDialog({ plan, canUpdate, onClose }: { plan: CollectionPlanItem | n
         </DialogHeader>
         <div className="space-y-3">
           {isLoading ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">加载中...</p>
+            <p className="py-4 text-center text-sm text-muted-foreground">加载中…</p>
           ) : !logs?.length ? (
             <p className="py-4 text-center text-sm text-muted-foreground">暂无催收记录</p>
           ) : (
@@ -199,7 +227,8 @@ function LogsDialog({ plan, canUpdate, onClose }: { plan: CollectionPlanItem | n
           )}
           {canUpdate && (
             <div className="space-y-2">
-              <Textarea placeholder="记录本次催收情况..." value={content} onChange={(e) => setContent(e.target.value)} rows={3} />
+              <Label htmlFor="collection-log-content">催收记录内容</Label>
+              <Textarea id="collection-log-content" placeholder="记录本次催收情况..." value={content} onChange={(e) => setContent(e.target.value)} rows={3} />
               {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
               <div className="flex justify-end">
                 <Button size="sm" disabled={addMutation.isPending} onClick={handleAdd}>
@@ -282,7 +311,139 @@ function GenerateDialog({ open, companyCode, onClose }: { open: boolean; company
   )
 }
 
-// ===== 催收管理 Tab =====
+// ===== 已开票未收款金额编辑抽屉 =====
+function BilledAmountDrawer({ plan, onClose }: { plan: CollectionPlanItem | null; onClose: () => void }) {
+  const [value, setValue] = useState(plan ? String(plan.billedUncollectedAmount ?? plan.overdueAmount) : '')
+  const [errorMsg, setErrorMsg] = useState('')
+  const updateMutation = useUpdateCollection()
+
+  const handleSave = async () => {
+    if (!plan) return
+    setErrorMsg('')
+    const v = value.trim() === '' ? plan.overdueAmount : Number(value)
+    if (!Number.isFinite(v) || v < 0) { setErrorMsg('金额不合法'); return }
+    try {
+      await updateMutation.mutateAsync({ id: plan.id, data: { billedUncollectedAmount: v } })
+      onClose()
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : '保存失败')
+    }
+  }
+
+  return (
+    <SheetShell
+      onClose={onClose}
+      title="编辑已开票未收款金额"
+      description={plan ? `${plan.companyName || plan.companyCode} · ${plan.counterpartyName || plan.counterpartyCode} · ${plan.accountCode}` : undefined}
+      footer={(
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={onClose} disabled={updateMutation.isPending}>取消</Button>
+          <Button size="sm" disabled={updateMutation.isPending || value.trim() === ''} onClick={handleSave}>
+            保存
+          </Button>
+        </div>
+      )}
+    >
+      <div className="space-y-3 p-5">
+        <div className="space-y-1.5">
+          <Label htmlFor="billed-amount-input">已开票未收款金额（元）</Label>
+          <Input id="billed-amount-input" type="number" min={0} step="0.01" placeholder={`默认 ${plan?.overdueAmount ?? ''}`} value={value} onChange={(e) => setValue(e.target.value)} />
+        </div>
+        <p className="text-xs text-muted-foreground">默认值与「金额」（逾期金额）一致，可手动修改。</p>
+        {errorMsg && <FlashMessage type="error">{errorMsg}</FlashMessage>}
+      </div>
+    </SheetShell>
+  )
+}
+
+// ===== 业务员编辑抽屉（选择现有 / 新建） =====
+function SalesmanDrawer({ plan, onClose }: { plan: CollectionPlanItem | null; onClose: () => void }) {
+  const companyCode = plan?.companyCode
+  const { data: salesmen } = useSalesmen(companyCode)
+  const createMutation = useCreateSalesman()
+  const updateMutation = useUpdateCollection()
+  const [selectedId, setSelectedId] = useState(plan?.salesmanId ?? '')
+  const [newName, setNewName] = useState('')
+  const [newPhone, setNewPhone] = useState('')
+  const [errorMsg, setErrorMsg] = useState('')
+
+  const handleAdd = async () => {
+    if (!companyCode) return
+    setErrorMsg('')
+    if (!newName.trim()) { setErrorMsg('请输入业务员姓名'); return }
+    try {
+      const created = await createMutation.mutateAsync({ companyCode, name: newName.trim(), phone: newPhone.trim() || undefined })
+      setSelectedId(created.id)
+      setNewName('')
+      setNewPhone('')
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : '添加失败')
+    }
+  }
+
+  const handleSave = async () => {
+    if (!plan) return
+    setErrorMsg('')
+    try {
+      await updateMutation.mutateAsync({ id: plan.id, data: { salesmanId: selectedId || null } })
+      onClose()
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : '保存失败')
+    }
+  }
+
+  return (
+    <SheetShell
+      onClose={onClose}
+      title="业务员"
+      description={plan ? `${plan.companyName || plan.companyCode} · ${plan.counterpartyName || plan.counterpartyCode}` : undefined}
+      footer={(
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={onClose} disabled={updateMutation.isPending || createMutation.isPending}>取消</Button>
+          <Button size="sm" disabled={updateMutation.isPending || createMutation.isPending} onClick={handleSave}>保存</Button>
+        </div>
+      )}
+    >
+      <div className="space-y-4 p-5">
+        <div className="space-y-1.5">
+          <Label htmlFor="salesman-select">选择现有业务员</Label>
+          <Select value={selectedId} onValueChange={setSelectedId}>
+            <SelectTrigger id="salesman-select" className="w-full">
+              <SelectValue placeholder="未指定业务员（选填）" />
+            </SelectTrigger>
+            <SelectContent>
+              {(salesmen || []).map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}{s.phone ? ` · ${s.phone}` : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2 border-t border-border pt-3">
+          <p className="text-xs font-medium text-foreground">新建业务员</p>
+          <div className="space-y-1.5">
+            <Label htmlFor="salesman-name">姓名（必填）</Label>
+            <Input id="salesman-name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="业务员姓名" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="salesman-phone">联系方式（选填）</Label>
+            <Input id="salesman-phone" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="手机号/电话" />
+          </div>
+          <div className="flex justify-end">
+            <Button size="sm" variant="outline" disabled={createMutation.isPending} onClick={handleAdd}>
+              {createMutation.isPending ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+              添加
+            </Button>
+          </div>
+        </div>
+        {errorMsg && <FlashMessage type="error">{errorMsg}</FlashMessage>}
+      </div>
+    </SheetShell>
+  )
+}
+
+// ===== 催收计划 Tab =====
 export function CollectionsTab() {
   // 筛选与分页持久化到 pageStateStore（切 tab/切路由/刷新后恢复）；对话框开关为瞬时状态
   const setTransactionsTab = usePageStore((s) => s.setTransactionsTab)
@@ -299,6 +460,8 @@ export function CollectionsTab() {
   const [generateOpen, setGenerateOpen] = useState(false)
   const [updatingPlan, setUpdatingPlan] = useState<CollectionPlanItem | null>(null)
   const [logsPlan, setLogsPlan] = useState<CollectionPlanItem | null>(null)
+  const [billedPlan, setBilledPlan] = useState<CollectionPlanItem | null>(null)
+  const [salesmanPlan, setSalesmanPlan] = useState<CollectionPlanItem | null>(null)
   const { can } = usePermission()
   const { getDisplayName } = useCompanyDisplayName()
 
@@ -316,6 +479,7 @@ export function CollectionsTab() {
 
   const items = data?.items || []
   const total = data?.total || 0
+  const stats = data?.stats
 
   // 催收计划列表列（操作列带权限门禁）
   const planColumns: DataTableColumn<CollectionPlanItem>[] = useMemo(() => [
@@ -333,35 +497,82 @@ export function CollectionsTab() {
       ),
     },
     { key: 'accountCode', header: '科目', render: (row) => <span className="text-xs">{row.accountCode}</span> },
-    { key: 'overdueAmount', header: '逾期金额', align: 'right', cellClassName: 'font-num', render: (row) => fmtAmount(row.overdueAmount) },
-    { key: 'plannedDate', header: '计划日期', render: (row) => <span className="text-xs">{row.plannedDate}</span> },
+    {
+      key: 'overdueAmount', header: '金额', align: 'right', cellClassName: 'font-num',
+      render: (row) => <span className={amountTone(row.overdueAmount)}>{fmtAmount(row.overdueAmount)}</span>,
+    },
+    {
+      key: 'billedUncollectedAmount', header: '已开票未收款', align: 'right', cellClassName: 'font-num group/billed',
+      render: (row) => (
+        <span className="inline-flex items-center gap-2">
+          {fmtAmount(row.billedUncollectedAmount)}
+          {canUpdate && (
+            <button
+              type="button"
+              className="invisible rounded px-1 text-xs text-primary group-hover/billed:visible hover:underline"
+              onClick={() => setBilledPlan(row)}
+            >
+              编辑
+            </button>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: 'salesmanName', header: '业务员', cellClassName: 'group/salesman',
+      render: (row) => (
+        <span className="inline-flex items-center gap-2">
+          {row.salesmanName || '-'}
+          {canUpdate && (
+            <button
+              type="button"
+              className="invisible rounded px-1 text-xs text-primary group-hover/salesman:visible hover:underline"
+              onClick={() => setSalesmanPlan(row)}
+            >
+              编辑
+            </button>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: 'plannedDate', header: '计划日期',
+      render: (row) => {
+        const overdue = row.plannedDate < new Date().toISOString().slice(0, 10) && row.status !== 'full' && row.status !== 'bad_debt'
+        return (
+          <span className={cn('text-xs whitespace-nowrap', overdue && 'font-medium text-destructive')} title={overdue ? '已逾期' : undefined}>
+            {row.plannedDate}
+            {overdue && <span className="ml-1 text-[10px] font-normal text-muted-foreground">已逾期</span>}
+          </span>
+        )
+      },
+    },
     { key: 'method', header: '方式', render: (row) => <span className="text-xs">{METHOD_LABELS[row.method] || row.method}</span> },
     { key: 'actualAmount', header: '实际回收', align: 'right', cellClassName: 'font-num', render: (row) => fmtAmount(row.actualAmount) },
     {
       key: 'status', header: '状态',
       render: (row) => (
-        <span className={cn('rounded px-1.5 py-0.5 text-xs', STATUS_STYLES[row.status])}>
+        <span className={cn('rounded px-1.5 py-0.5 text-xs', STATUS_STYLES[row.status])} title={row.statusNote ?? undefined}>
           {STATUS_LABELS[row.status]}
         </span>
       ),
     },
     {
-      key: 'actions', header: '操作',
+      key: 'actions', header: '操作', cellClassName: 'group/ops whitespace-nowrap',
       render: (row) => (
-        <div className="flex gap-1">
+        <span className="invisible inline-flex gap-1 group-hover/ops:visible">
           {canUpdate && (
             <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setUpdatingPlan(row)}>
               更新
             </Button>
           )}
           <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setLogsPlan(row)}>
-            <History className="mr-0.5 h-3 w-3" />
             记录
           </Button>
-        </div>
+        </span>
       ),
     },
-  ], [getDisplayName, canUpdate, setUpdatingPlan, setLogsPlan])
+  ], [getDisplayName, canUpdate, setUpdatingPlan, setLogsPlan, setBilledPlan, setSalesmanPlan])
 
   return (
     <div className="space-y-4">
@@ -393,13 +604,32 @@ export function CollectionsTab() {
           </Button>
         )}
       </div>
+      {stats && (
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-dashed border-border pt-2.5 text-xs">
+          {(Object.keys(STATUS_LABELS) as CollectionStatus[]).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => { setStatusFilter(statusFilter === s ? '' : s); setPage(1) }}
+              className={cn('flex items-center gap-1.5', statusFilter === s && 'font-semibold text-foreground')}
+              title={`点击${statusFilter === s ? '清除' : '筛选'}「${STATUS_LABELS[s]}」`}
+            >
+              <span className={cn('h-2 w-2 rounded-full', STATUS_DOT[s])} />
+              {STATUS_LABELS[s]} <span className="font-num">{stats.byStatus[s] ?? 0}</span>
+            </button>
+          ))}
+          <span className="ml-auto text-muted-foreground">
+            金额合计 <span className="font-num font-medium text-destructive">{fmtAmount(stats.totalOverdue)}</span>
+          </span>
+        </div>
+      )}
       </Card>
 
       {/* 计划列表（表格卡） */}
       <Card className="rounded-card overflow-hidden">
         <div className="pt-4">
           {isLoading ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">加载中...</div>
+            <div className="py-8 text-center text-sm text-muted-foreground">加载中…</div>
           ) : items.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">暂无催收计划，可从账龄数据生成催收建议</div>
           ) : (
@@ -414,25 +644,27 @@ export function CollectionsTab() {
             </div>
           )}
         </div>
+        {/* 分页：并入表格卡底部 border-t 行 */}
+        {total > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5">
+            <span className="text-xs text-muted-foreground">共 {total} 条</span>
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+              summary=""
+            />
+          </div>
+        )}
       </Card>
-
-      {/* 分页 */}
-      {total > 0 && (
-        <div className="rounded-card border bg-card px-4 py-2.5">
-          <Pagination
-            page={page}
-            pageSize={pageSize}
-            total={total}
-            onPageChange={setPage}
-            onPageSizeChange={setPageSize}
-            summary={`共 ${total} 条`}
-          />
-        </div>
-      )}
 
       <GenerateDialog open={generateOpen} companyCode={companyCode} onClose={() => setGenerateOpen(false)} />
       <UpdateStatusDialog plan={updatingPlan} onClose={() => setUpdatingPlan(null)} />
       <LogsDialog plan={logsPlan} canUpdate={canUpdate} onClose={() => setLogsPlan(null)} />
+      <BilledAmountDrawer plan={billedPlan} onClose={() => setBilledPlan(null)} />
+      <SalesmanDrawer plan={salesmanPlan} onClose={() => setSalesmanPlan(null)} />
     </div>
   )
 }

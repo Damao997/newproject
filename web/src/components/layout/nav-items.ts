@@ -61,13 +61,7 @@ export const navItems: NavItem[] = [
           { path: '/transactions/account-filter', label: '科目过滤' },
         ],
       },
-      {
-        path: '/transactions/collections',
-        label: '催收管理',
-        children: [
-          { path: '/transactions/collections/plans', label: '催收计划' },
-        ],
-      },
+      { path: '/transactions/collections/plans', label: '催收计划' },
     ],
   },
   { path: '/inventory', label: '存货管理', icon: Package, resource: 'inventory:view' },
