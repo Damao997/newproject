@@ -30,6 +30,18 @@ type AgingRenderRow =
   | { kind: 'data'; row: AgingAnalysisRow }
   | { kind: 'subtotal' | 'total'; label: string; closingBalance: number; aging: Record<string, number> }
 
+/** 账龄列风险底色（浅色，账龄越深越偏红）；0 值不着色 */
+const AGING_CELL_BG: Record<string, string> = {
+  '1个月': 'bg-success/[0.06]',
+  '2个月': 'bg-success/[0.06]',
+  '3个月': 'bg-info/[0.06]',
+  '4-6月': 'bg-info/[0.06]',
+  '半年以上': 'bg-warning/[0.08]',
+  '1年至2年': 'bg-warning/[0.08]',
+  '2年至3年': 'bg-destructive/[0.06]',
+  '3年以上': 'bg-destructive/[0.06]',
+}
+
 /**
  * 往来分析 · 账龄分析：按公司分组的多分段账龄矩阵（小计/合计、仅显示小计）、
  * Excel 导出（服务端生成 + 审计）、往来单项分析撰写入口。
@@ -171,6 +183,7 @@ export default function TransactionsAgingPage() {
       <div className="space-y-4">
         {/* 筛选卡：公司 / 期间 / 类型 / 科目 / 客商 / 分组 / 导出 */}
         <Card className="rounded-card p-4">
+        {/* 行 1：核心筛选 + 高频操作 */}
         <div className="flex flex-wrap items-center gap-3">
           <CompanySelect value={companyFilter} onChange={setCompanyFilter} />
           <Select value={period ?? ''} onValueChange={setPeriodFilter}>
@@ -190,14 +203,6 @@ export default function TransactionsAgingPage() {
               {TRANSACTION_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
             </SelectContent>
           </Select>
-          <AccountMultiSelect value={accountFilter} onChange={setAccountFilter} transactionType={typeFilter || undefined} />
-          <PartyTypeSelect value={partyFilter} onChange={setPartyFilter} />
-          <Input
-            placeholder="搜索往来对象..."
-            className="w-[200px]"
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-          />
           <Select value={groupBy} onValueChange={setGroupBy}>
             <SelectTrigger className="w-[160px]">
               <SelectValue placeholder="分组方式" />
@@ -207,41 +212,53 @@ export default function TransactionsAgingPage() {
               <SelectItem value="counterparty">按往来对象</SelectItem>
             </SelectContent>
           </Select>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {can('transactions', 'export') && (
+              <Button variant="outline" size="sm" disabled={!period || exporting} onClick={handleExport}>
+                <Download className="mr-1 h-4 w-4" />
+                {exporting ? (exportProgress > 0 ? `导出中 ${exportProgress}%` : '生成中…') : '导出 Excel'}
+              </Button>
+            )}
+            {can('reports', 'create') && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!period}
+                onClick={() => setAnalysisTarget({
+                  transactionType: typeFilter || '',
+                  period: period as string,
+                  defaultCompanyCode: companyFilter !== 'all' ? companyFilter : undefined,
+                })}
+              >
+                <FileText className="mr-1 h-4 w-4" /> 撰写单项分析
+              </Button>
+            )}
+            {can('reports', 'view') && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate('/reports/analyses')}
+              >
+                <Eye className="mr-1 h-4 w-4" /> 查看分析
+              </Button>
+            )}
+          </div>
+        </div>
+        {/* 行 2：明细筛选 */}
+        <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-dashed border-border pt-3">
+          <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">明细筛选</span>
+          <AccountMultiSelect value={accountFilter} onChange={setAccountFilter} transactionType={typeFilter || undefined} />
+          <PartyTypeSelect value={partyFilter} onChange={setPartyFilter} />
+          <Input
+            placeholder="搜索往来对象..."
+            className="w-[200px]"
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+          />
           <div className="flex items-center gap-2">
             <Switch id="aging-subtotal-only" checked={subtotalOnly} onCheckedChange={setSubtotalOnly} disabled={rows.length === 0} />
             <span className="cursor-pointer text-xs text-muted-foreground select-none" onClick={() => setSubtotalOnly(!subtotalOnly)}>仅显示小计</span>
           </div>
-          {can('transactions', 'export') && (
-            <Button variant="outline" size="sm" disabled={!period || exporting} onClick={handleExport}>
-              <Download className="mr-1 h-4 w-4" />
-              {exporting ? (exportProgress > 0 ? `导出中 ${exportProgress}%` : '生成中…') : '导出 Excel'}
-            </Button>
-          )}
-          {can('reports', 'create') && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="ml-auto"
-              disabled={!period}
-              onClick={() => setAnalysisTarget({
-                transactionType: typeFilter || '',
-                period: period as string,
-                defaultCompanyCode: companyFilter !== 'all' ? companyFilter : undefined,
-              })}
-            >
-              <FileText className="mr-1 h-4 w-4" /> 撰写单项分析
-            </Button>
-          )}
-          {can('reports', 'view') && (
-            <Button
-              variant="outline"
-              size="sm"
-              className={can('reports', 'create') ? undefined : 'ml-auto'}
-              onClick={() => navigate('/reports/analyses')}
-            >
-              <Eye className="mr-1 h-4 w-4" /> 查看分析
-            </Button>
-          )}
         </div>
         </Card>
 
@@ -257,7 +274,7 @@ export default function TransactionsAgingPage() {
           </div>
           <div className="pt-4">
             {isLoading ? (
-              <div className="py-8 text-center text-sm text-muted-foreground">加载中...</div>
+              <div className="py-8 text-center text-sm text-muted-foreground">加载中…</div>
             ) : rows.length === 0 ? (
               <div className="py-8 text-center text-sm text-muted-foreground">暂无数据</div>
             ) : (
@@ -291,11 +308,14 @@ export default function TransactionsAgingPage() {
                             )}
                             {effectiveGroupBy === 'account' && <td className="max-w-[200px] truncate px-2 py-2 text-xs" title={row.accountDesc || row.accountCode || '-'}>{row.accountDesc || row.accountCode || '-'}</td>}
                             <td className="px-2 py-2 text-right font-num font-medium whitespace-nowrap">{row.closingBalance.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
-                            {AGING_GROUPS.map((b) => (
-                              <td key={b} className={cn('px-2 py-2 text-right font-num text-xs whitespace-nowrap', (row.aging[b] || 0) !== 0 && 'text-foreground')}>
-                                {(row.aging[b] || 0) !== 0 ? row.aging[b].toLocaleString('zh-CN', { minimumFractionDigits: 2 }) : '-'}
-                              </td>
-                            ))}
+                            {AGING_GROUPS.map((b) => {
+                              const v = row.aging[b] || 0
+                              return (
+                                <td key={b} className={cn('px-2 py-2 text-right font-num text-xs whitespace-nowrap', v !== 0 && AGING_CELL_BG[b], b === '3年以上' && v !== 0 && 'font-medium text-destructive')}>
+                                  {v !== 0 ? v.toLocaleString('zh-CN', { minimumFractionDigits: 2 }) : '-'}
+                                </td>
+                              )
+                            })}
                           </tr>
                         )
                       }
