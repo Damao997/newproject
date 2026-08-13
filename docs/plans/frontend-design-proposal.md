@@ -74,7 +74,7 @@ React 18 + TypeScript 5.5
   /* 基础色（中性色保持暖调：色相 24-30，与品牌橙同族；页面底色为冷灰 #F5F7FA，形成现代 SaaS 层次） */
   --background: 0 0% 100%;          /* 页面背景：纯白 */
   --foreground: 24 10% 10%;        /* 主文本：暖近黑 */
-  --page: 216 33% 97%;              /* 内容区底色：冷灰 #F5F7FA，与卡片白底形成层次 */
+  --page: 0 0% 100%;                /* 内容区底色：纯白，卡片层次由边框+阴影承担 */
 
   /* 卡片与表面 */
   --card: 0 0% 100%;                /* 卡片背景 */
@@ -85,7 +85,7 @@ React 18 + TypeScript 5.5
   --muted-foreground: 25 8% 45%;   /* 辅助文字 */
 
   /* 主题色 */
-  --primary: 25 95% 53%;           /* 默认品牌橙：#F97316（可经主题预设切换，见下方主题色块） */
+    --primary: 29 100% 53%;           /* 默认品牌橙：#FF830F（可经主题预设切换，见下方主题色块） */
   --primary-foreground: 0 0% 100%;
   --secondary: 30 25% 96%;         /* 次要背景 */
   --secondary-foreground: 25 20% 18%;
@@ -104,10 +104,18 @@ React 18 + TypeScript 5.5
   /* 边框与输入 */
   --border: 30 18% 89%;             /* 边框：#E9E2DB */
   --input: 30 18% 89%;
-  --ring: 25 95% 53%;             /* Focus 光环（同 primary） */
+  --ring: 29 100% 53%;             /* Focus 光环（同 primary） */
+      /* 侧边栏浅色风格（默认）：白底 + 浅橙高亮；三风格下 --sidebar-bg 均为 HSL 三元组，经 bg-sidebar-bg 类（hsl() 包装）使用（随 data-sidebar 切换） */
+      --sidebar-bg: 0 0% 100%;
+      --sidebar-fg: 220 9% 46%;
+      --sidebar-icon: 220 9% 64%;
+      --sidebar-selected-bg: 33 100% 93%;
+      --sidebar-selected-fg: 33 100% 66%;
+      --sidebar-border: 220 13% 91%;
+      --sidebar-brand-fg: 220 9% 20%;
 
   /* 图表序列色：橙主导 + 和谐化多色，13 色覆盖分类色板全部槽位 */
-  --chart-1: 25 95% 53%;   --chart-2: 200 78% 45%;  --chart-3: 160 84% 39%;
+  --chart-1: 29 100% 53%;   --chart-2: 200 78% 45%;  --chart-3: 160 84% 39%;
   --chart-4: 38 92% 50%;   --chart-5: 262 58% 60%;  --chart-6: 25 12% 55%;
   --chart-7: 340 68% 55%;  --chart-8: 190 58% 42%;  --chart-9: 95 42% 42%;
   --chart-10: 12 68% 48%;  --chart-11: 280 42% 55%; --chart-12: 45 72% 44%;
@@ -120,11 +128,17 @@ React 18 + TypeScript 5.5
 }
 ```
 
-**品牌主题色预设（Header 主题切换器）**
+**侧边栏三风格预设（Header 风格切换器）**
 
-- 切换器位于 Header（调色板图标），选择写入 `html[data-theme]`（`themeStore`，localStorage 持久化），`globals.css` 中 `:root[data-theme='blue'|'green'|'violet']` 块覆盖品牌相关变量：`--primary` / `--primary-foreground` / `--ring` / `--chart-1` / `--accent` / `--accent-foreground`；中性色（background/page/border/muted）与 `--radius*` 不随主题变化。
-- 预设明度策略与默认橙一致（L≈50-55%），保证白字对比度相当；新增主题必须同时更新 `globals.css` 主题块与 `chart-theme.ts` 的 `THEME_PRESETS`（hex 镜像）。
-- ECharts 图表序列主色经 `getChartSeries(theme)` 返回（首位跟随主题），antd token 经 `THEME_PRESETS[theme]` 注入，均监听 `themeStore` 即时重绘。
+- 切换器位于 Header（**风格色块圆点**按钮），选择写入 `html[data-sidebar]`（`themeStore`，localStorage `sidebar-style-storage` 持久化），`globals.css` 中 `:root[data-sidebar='gradient'|'dark']` 块覆盖：交互主色（`--primary` / `--ring` / `--chart-1` / 辅助色）与侧边栏色板（`--sidebar-*`）；主页面恒白（`--background` / `--page` / `--card` 三风格均为纯白），中性色与 `--radius*` 不随风格变化。
+- **风格 3 套**（v4.0）：浅色 `light`（默认，橙交互）/ 靛蓝 `gradient`（#352F7E，原紫渐变已取消）/ 深色 `dark`（#1F2937）。
+- **浅色风格色板**：侧边栏白底 `0 0% 100%` · 未选中文字 `220 9% 46%`（#6B7280）· 图标 `220 9% 64%`（#9CA3AF）· 选中背景 `33 100% 93%`（#FFE8CC）· 选中文字 `33 100% 66%`（#FFB152）· 分界线 `220 13% 91%`（#E5E7EB）· 交互主色橙 `29 100% 53%`（#FF830F）。
+- **靛蓝风格色板**：侧边栏纯色 `245 46% 34%`（#352F7E）· 未选中文字 `231 100% 94%`（#E0E7FF）· 选中背景 `239 55% 51%`（#4338CA 更亮紫块）· 选中文字纯白 · 交互主色同 #352F7E。
+- **深色风格色板**：侧边栏 `222 47% 11%`（#111827）· 未选中文字 `220 9% 65%`（#9CA3AF）· 选中背景 `222 47% 15%`（#1F2937）· 选中文字纯白 · 交互主色 #1F2937。
+- **交互元素跟随规则**（v4.0）：按钮 / 链接 / 图表主色 / 焦点环 / 折叠条 hover 与收起态均使用当前风格的 `--primary`（浅色橙 / 靛蓝 / 深色深灰），与侧边栏主题协调；三种风格下主页面背景恒为纯白。
+- **图表主色提亮**（v4.0 修复）：图表序列首位（`--chart-1` / `getChartSeries()[0]`）使用**图表专用提亮色**，与交互主色解耦——浅色橙 `#FF830F` / 靛蓝淡紫 `#BBA9F7` / 深色亮蓝 `#7A9BF2`（白底对比充足），避免靛蓝/深色风格下白底图表主序列发暗。
+- 新增风格必须同时更新 `globals.css` 风格块与 `chart-theme.ts` 的 `SIDEBAR_PRESETS`（hex 镜像）。
+- ECharts 图表序列主色经 `getChartSeries(sidebarStyle)` 返回（首位跟随风格主色），坐标轴/网格/tooltip 经 `getChartInk()` 取色（主页面恒白，恒亮色），antd token 经 `SIDEBAR_PRESETS[sidebarStyle]` + `THEME_HEX` 注入（恒 lightAlgorithm），均监听 `themeStore` 即时重绘。
 
 **令牌使用约束（P0 强制）**
 
@@ -132,7 +146,7 @@ React 18 + TypeScript 5.5
 - 多彩强调位（KPI 图标、快捷入口、分类标签）使用 `bg-chart-N/10 text-chart-N`，四色轮换固定为 `chart-1 / chart-2 / chart-3 / chart-5`。
 - 白底上的小字号状态文本用 `-strong` 变体；图标与色块用 base 令牌。
 - ECharts（canvas 渲染）与 antd `theme.token` 无法读取 CSS 变量，统一从 `web/src/lib/chart-theme.ts` 取 hex 镜像：`CHART_SERIES`（序列色）、`CHART_INK`（坐标轴/网格/浮层）、`THEME_HEX`（antd 语义色）、`THEME_PRESETS`（品牌主题色预设）。该文件是全仓唯一允许出现 hex 的位置，修改颜色时必须与 `globals.css` 同步。
-- Tailwind 配置 `darkMode: 'class'`：平台维持纯亮色，`dark:` 变体不会被系统偏好触发。
+- Tailwind 配置 `darkMode: 'class'`：亮/暗模式由 Header 主题切换器显式切换（写入 `html.dark`），不跟随系统偏好。
 
 ### 3.2 财务专用色
 
@@ -143,6 +157,8 @@ React 18 + TypeScript 5.5
 | 预算达标 | `text-success-strong` | 达成率 ≥ 95% |
 | 预算预警 | `text-warning-strong` | 达成率 85%-95% |
 | 预算严重偏离 | `text-destructive` | 达成率 < 85% |
+
+**语义边界（P0 强制）**：`text-finance-red/green` 仅用于数值涨跌语义（同比、较年初等金额/比率着色，经 `getChangeColor` 统一返回）；操作错误、校验错误、删除按钮一律 `text-destructive`（令牌红），禁止用 finance-red 表达错误态（v3.6 已全量收敛）。
 
 ### 3.3 字体
 
@@ -186,12 +202,20 @@ React 18 + TypeScript 5.5
 
 ```
 基础样式：
-- 高度：40px（默认）/ 36px（sm，`h-9`）/ 44px（lg）
-- 圆角：calc(var(--radius) - 2px) = 10px
+- 高度：32px（default / sm / icon 均 h-8，见下方尺寸表）；44px（lg，h-11）
+- 圆角：10px（calc(var(--radius) - 2px)，lg 为 8px）
 - 字体：14px / 500
 - 过渡：all 0.15s ease
 - 点击反馈：active: scale(0.97)
 - Focus：box-shadow: 0 0 0 2px hsl(var(--ring) / 0.3)
+
+尺寸：
+┌─────────────┬──────────┬──────────────────┐
+│ default     │ h-8 px-4 │ 32px 高          │
+│ sm          │ h-8 px-3 │ 32px 高（紧凑）   │
+│ lg          │ h-11 px-8│ 44px 高          │
+│ icon        │ h-8 w-8  │ 32px 正方形      │
+└─────────────┴──────────┴──────────────────┘
 
 变体：
 ┌─────────────┬─────────────────────────────┐
@@ -201,6 +225,7 @@ React 18 + TypeScript 5.5
 │ ghost       │ 透明，hover 灰背景             │
 │ destructive │ 红底白字，删除/危险操作        │
 │ link        │ 无底色，primary 色文字 + hover 下划线 │
+│ fused       │ 与 bg-page 同色 + 灰描边，hover 描边转品牌橙 │
 └─────────────┴─────────────────────────────┘
 ```
 
@@ -210,18 +235,16 @@ React 18 + TypeScript 5.5
 
 ```
 - 背景：hsl(var(--card)) = 白色
-- 边框：1px solid hsl(var(--border)) = #E9E2DB
 - 圆角：var(--radius-card) = 8px
-- 阴影：shadow-sm（默认），hover 时 shadow-md
+- 边框与阴影：无（v3.9 平面化，内容区不依赖边框/阴影分层）
 - 内边距：card-header / card-content 统一 `p-6`（24px，content 顶部由 `pt-0` 衔接）
-- 过渡：`transition-shadow duration-200 ease-brand`（写在 Card 基类，页面不重复声明）
 ```
 
 ### 4.3 Input / Select
 
 ```
-- 高度：40px
-- 圆角：10px
+- 高度：32px（h-8，紧凑财务场景；表单弹窗内同样 h-8，不区分大档）
+- 圆角：8px（rounded-md）
 - 边框：1px solid hsl(var(--input))（`border-input`）
 - Focus：`focus-visible:ring-2 ring-ring ring-offset-2`（光环取 `--ring` = 品牌橙）
 - 背景：白色
@@ -308,16 +331,22 @@ React 18 + TypeScript 5.5
 
 ```
 遮罩：
-- 背景：rgba(0, 0, 0, 0.4)
+- 背景：bg-black/80（rgba(0, 0, 0, 0.8)）
 - 动画：fadeIn 0.2s
 
 内容：
 - 背景：白色
-- 圆角：12px
+- 圆角：8px（sm:rounded-lg）
 - 边框：1px solid hsl(var(--border))
-- 阴影：shadow-xl
-- 动画：fadeInScale 0.25s
-- 最大宽度：28rem（默认）/ 32rem（大）
+- 阴影：shadow-lg
+- 动画：fadeInScale 0.25s（data-[state=open]:fade-in-0 + zoom-in-95）
+- 最大宽度：28rem（max-w-md，默认）/ 32rem（max-w-lg）/ 42rem（max-w-2xl，含编辑器大内容）/ 48rem（max-w-3xl，宽表）；宽表对比场景可突破至 max-w-4xl
+
+右侧抽屉（Sheet，见 `components/ui/sheet-shell.tsx`，分析抽屉等场景）：
+- 遮罩：bg-black/40（与 Dialog 区分层级，抽屉内容更大故遮罩更轻）
+- 容器：max-w-xl、border-l bg-background、shadow-lg（对齐 §3.4 抽屉阴影档位）
+- 头部：图标 + 标题 + 副标题 + 关闭按钮（aria-label="关闭"，focus ring）
+- 行为：role="dialog" aria-modal="true"、初始焦点在关闭按钮、Escape 关闭（含未保存修改确认）
 ```
 
 ### 4.8 筛选器与工具栏（v3.5 新增）
@@ -328,7 +357,9 @@ React 18 + TypeScript 5.5
 - 公司/期间选择一律使用共享组件，禁止页面内联实现：
   - 公司单选 → `@/components/filters/company-select` 的 `CompanySelect`（内置"全部公司"，`entitiesOnly` 仅列单体公司）。
   - 公司多选 → 同文件 `CompanyMultiSelect`（空数组语义=全部公司，触发器文案"全部公司 / X / X 等 N 家"）。
-  - 期间单选 → `@/components/ui/month-picker` 的 `MonthPicker`。
+  - 期间单选 → `@/components/ui/month-picker` 的 `MonthPicker`（含"全部期间"筛选场景：空值语义=全部，placeholder 传"全部期间"，并传 `allowedPeriods` 限定仅可选有数据期间，对齐原 Select 行为；正例：`reports/analysis-list.tsx`、`reports/index.tsx` 新建对话框）。
+- 复选框一律用 `@/components/ui/checkbox` 的 `Checkbox`（Radix 封装，选中态品牌橙；`size="sm"` 用于表格行内紧凑场景），禁止原生 `<input type="checkbox">`（含全选 indeterminate：`checked` 传 `'indeterminate'`）。
+- 操作反馈消息一律用 `@/components/ui/flash-message` 的 `FlashMessage`（success→`text-success-strong` / error→`text-destructive` / info→`text-primary`，`autoHideMs` 控制自动消失；表单内联常驻反馈传 0）。
 - 共享组件名称统一跟随全局"显示简称"开关（`useCompanyDisplayName`）。
 
 **工具栏**：
@@ -352,31 +383,35 @@ React 18 + TypeScript 5.5
 ```
 ┌──────────┬───────────────────────────────────────┐
 │ Sidebar  │  Header (56px)                        │
-│ 展开240px│  - 主题色切换 + 财年选择器 + 头像下拉  │
-│ 收起 64px│  - 底部 1px 分割线 + shadow-sm         │
+│ 展开240px│  - 风格切换 + 财年选择器 + 头像下拉  │
+│ 收起 64px│  - 底部 1px 分割线                     │
 │          ├───────────────────────────────────────┤
 │ Logo+品牌│  Main Content                          │
 │ ──────── │  - max-width: 1536px (max-w-screen-2xl)│
 │ 导航项   │  - padding: 24px 16px → lg:32px 32px   │
 │ (按权限) │  - 独立纵向滚动                        │
 │ ──────── │                                        │
-│ 收起按钮 │                                        │
+│ 版本信息 │                                        │
 └──────────┴───────────────────────────────────────┘
 ```
 
 **侧边栏规则**：
-- 展开 `w-60`(240px) / 收起 `w-16`(64px)，宽度过渡 `duration-200 ease-brand`；收起态仅显示图标并以 Tooltip 补名称（含收起/展开按钮本身），收起状态经 `localStorage`(`sidebar-collapsed`) 持久化。
+- 展开 `w-60`(240px) / 收起 `w-16`(64px)，宽度过渡 `duration-200 ease-brand`；收起态仅显示图标并以 Tooltip 补名称，收起状态经 `localStorage`(`sidebar-collapsed`) 持久化。
+- **小尺寸自动折叠**（v3.7）：窗口 <1280px（1024-1279px 区间，对齐 §8 响应式策略）时侧边栏自动进入折叠态；小尺寸下折叠条点击仅会话内临时展开/折叠（不写 localStorage），回到 ≥1280px 自动恢复用户持久化偏好。
+- **三风格 + 悬浮卡片**（v4.0）：侧边栏背景由 `--sidebar-bg` 驱动（浅色白 / 靛蓝 #352F7E 纯色 / 深色 #111827，经 `bg-sidebar-bg` 类 `hsl()` 包装使用），品牌区/导航区/版本区统一同色不再分带；**悬浮卡片设计**：`m-2`（8px 均匀间距）+ `rounded-xl`（12px 四角圆角）+ `shadow-lg` 柔和阴影（层级区分由阴影 + 色差承担，无环绕描边），`overflow-hidden` 裁剪背景与折叠条。
+- **折叠条**（v3.7/v4.0）：侧边栏右缘**透明按钮**（仅箭头图标，无背景条）；展开态箭头 `--sidebar-fg` 60% 半透明，hover 转选中色（`--sidebar-selected-fg`：浅色橙 / 靛蓝白 / 深色白）；收起态箭头选中色常驻 + hover 微放大；含 `aria-label` 与收起态 Tooltip。
 - 导航项按 `usePermission()` 过滤，仅展示当前角色具备 view 权限的模块（对齐《安全与权限规范》§2.2），资源码见 `nav-items.ts`。
-- 激活态：`bg-gradient-to-r from-primary/[0.12] to-primary/[0.04]` + `font-semibold text-primary` + 左侧 3px 圆角竖条；非激活 hover 走 `bg-accent hover:text-accent-foreground`。
+- 激活态（v4.0）：`bg-sidebar-selected-bg`（浅色=浅橙 #FFE8CC / 靛蓝=亮紫 #4338CA / 深色=#1F2937）+ `font-semibold text-sidebar-selected-fg`（浅色=橙 / 靛蓝=白 / 深色=白）+ 左侧 3px 圆角竖条（`bg-sidebar-selected-fg`）；非激活 `text-sidebar-fg`，hover `bg-sidebar-fg/10`。
 - `<768px`：侧边栏隐藏，改为顶栏汉堡按钮唤起的抽屉（含遮罩，路由切换自动关闭）。
 
 **顶栏规则**：
-- 桌面端承载品牌主题色切换器（调色板图标）、全局财年选择器与用户菜单（品牌标识在侧边栏顶部）；移动端额外显示汉堡按钮 + 品牌标识。
-- 全局财年选择影响看板/指标/数据浏览的期间候选，状态存于 `periodStore`；主题切换器状态存于 `themeStore`（localStorage 持久化）。
-- 内容区背景为 `bg-page`（`--page`，冷灰 #F5F7FA），卡片保持纯白形成层次。
+- 顶栏背景 `bg-background`（恒白，与主页面同色，不与侧边栏同步）+ `border-b border-border` 1px 分割线；v4.0 起不再使用顶带深色。
+- 桌面端承载侧边栏风格切换器（**风格色块圆点**按钮，浅色/靛蓝/深色 3 选 1）、全局财年选择器与用户菜单（品牌标识在侧边栏顶部）；移动端额外显示汉堡按钮 + 品牌标识。
+- 全局财年选择影响看板/指标/数据浏览的期间候选，状态存于 `periodStore`；风格状态存于 `themeStore`（localStorage `sidebar-style-storage` 持久化）。
+- 内容区背景为 `bg-page`（`--page`，恒白，三风格一致），卡片平面化（无边框阴影，v3.9）。
 
 **面包屑规则**：
-- 3 级及以上层级深度的页面（如 数据管理 / 维度/科目体系 / 经营分析科目）在页头标题上方渲染面包屑（实现见 `components/layout/breadcrumb.tsx`，集成于 `PageContainer`）。
+- **位置（v4.0 上移至顶栏）**：渲染在顶栏 Header 桌面端左侧（品牌标识在侧边栏，Header 左端为面包屑区），`hidden min-w-0 flex-1 items-center md:flex` + 单行截断（`singleLine` prop）；<768px 隐藏（左侧被汉堡+品牌占用）；层级 ≥3 时显示，单级/双级页面不展示。
 - 路径链从 `nav-items.ts` 递归匹配当前 pathname 推导（单一数据源）；中间级目录项（如「维度/科目体系」，无独立页面）渲染为纯文本不可点击，叶子项渲染为 Link。
 - 样式：12px 灰色（`text-xs text-muted-foreground`）+ `/` 分隔，末级 `font-medium text-foreground`。
 
@@ -389,8 +424,7 @@ React 18 + TypeScript 5.5
 - 居中卡片布局，max-width 400px
 - 卡片：白色 + 细边框 + 圆角 12px
 - 输入框：username / password
-- 操作：记住我（Switch）+ 登录按钮（Primary，全宽）
-- 底部：公司信息 + 版本号
+- 操作：记住用户名（Switch）+ 登录按钮（Primary，全宽）
 
 ### 5.3 首页看板
 
@@ -683,6 +717,82 @@ export function cn(...inputs: ClassValue[]) {
 ---
 
 ## 变更记录
+
+### v4.0（2026-08-13）
+
+**侧边栏三风格重构 + 主题系统替换（视觉伴侣渲染评审 + 提问确认）**：
+
+- 彻底替换主题系统：删除 6 套品牌主题色与亮暗模式（`html[data-theme]` / `html.dark` 全部移除），仅保留 3 种侧边栏风格（浅色 / 靛蓝 / 深色），Header 切换器改为 3 色块圆点；`themeStore` 重构为 `{ sidebarStyle }`（localStorage `sidebar-style-storage`，旧 `brand-theme-storage` 残留自动失效）。
+- 主页面恒白：三种风格下 `--background` / `--page` / `--card` 均为纯白；顶栏 `bg-background` + `border-b`（不再与侧边栏同步）。
+- 交互元素跟随侧边栏主题色：`--primary` / `--ring` / `--chart-1` / 辅助色按风格切换（浅色橙 #FF830F / 靛蓝 #352F7E / 深色 #1F2937），按钮 / 链接 / 图表主色 / 折叠条 hover 与收起态均跟随；ECharts 恒亮色 ink，antd ProTable 恒 lightAlgorithm（`SIDEBAR_PRESETS` hex 镜像）。
+- 侧边栏三风格色板：浅色白底浅橙高亮（#FFE8CC/#FFB152）；靛蓝纯色 #352F7E + 亮紫选中 #4338CA + 白字（原紫渐变已取消）；深色 #111827 + #1F2937 选中 + 白字。
+- 四角圆角悬浮设计：容器 `rounded-xl`（12px）+ `overflow-hidden` + `ring-1 ring-sidebar-border` 分界，选中项圆角 8px；品牌区/导航区/版本区统一背景（`--sidebar-bg` 经 `bg-sidebar-bg` 类 `hsl()` 包装使用）。
+
+### v3.9（2026-08-13）
+
+**纯白主题 + 辅助色主题化 + 内容区平面化（代码 + 文档双向同步）**：
+
+- 新增纯白主题（`theme='white'`）：顶带/界面以白色为主色调（`--brand-surface` 三档 = 纯白 `0 0% 100%`），功能色用深灰蓝 `220 20% 22%`（#2F3542），Logo/导航文字深色；暗色下主色提亮为浅灰蓝 `220 15% 72%`。`themeStore`/`chart-theme.ts` 同步（THEME_KEYS 含 white）。
+- 辅助色统一随品牌主题色相：`--secondary`/`--muted`/`--accent`/`--muted-foreground`/`--border`/`--input` 由固定暖灰改为各主题色相浅色调（亮色 L≈88-96%，暗色低饱和 tint L≈24-26%），次要按钮/次要文本/辅助背景/边框全部跟随当前主题。
+- 顶带文字自适应：侧边栏/顶栏的 `text-white` 系列改为 `text-brand-surface-foreground` 系列（深色顶带白字/纯白顶带深字）；折叠条 hover 改前景色块 + 反色箭头，主题圆点描边用前景色。
+- 内容区平面化：Card 基类去除边框与阴影（含 hover 阴影），页面 4 处显式 `border border-border shadow-sm` 冗余类清除；表格行分隔线/表头浅灰底/输入控件细边框/浮层阴影保留（可读性与层级必需）。
+
+### v3.8（2026-08-13）
+
+**品牌主题色换新 + 深色统一顶带（代码 + 文档双向同步）**：
+
+色板层：
+- 主题色 5 套换新：品牌橙 `#FF830F`（`29 100% 53%`，默认）/ 罗兰紫 `#7E6BC4`（`253 43% 59%`）/ 睿智蓝 `#769FCD`（`212 47% 63%`）/ 绯红 `#F85F73`（`352 92% 67%`）/ 翡翠青 `#1FAB89`（`165 69% 40%`）；原「翡翠绿」被翡翠青取代，主题 key 为 `orange/violet/blue/red/teal`（`themeStore` 同步）。
+- 顶带统一深色：`--brand-surface/-2/-3` 三档同值 = 各主题深一档色（同色相 L≈40-45%），顶栏/侧边栏/折叠条背景完全一致；`--brand-surface-foreground` 转浅色（白 95%）。
+- 暗色面板换新：`html.dark` 全部中性色改为 `#252A34` 系（背景 `220 17% 17%` / 页面 `220 17% 14%` / 卡片 `220 17% 21%` / 边框 `220 17% 26%` / 文字反转 `220 15% 92%`）；暗色主题提亮块按新 5 主题更新。
+
+布局层：
+- 侧边栏/顶栏文字浅色化：Logo 文字白色（`text-white`）、导航非激活白色 80% + `hover:bg-white/15`、折叠条箭头白色 70%、hover 改白色渐变；二级/三级子列表按场景区分（深色顶带内联 `onSurface='sidebar'` 浅色文字 / 白底折叠弹层 `popover` 深色文字）。
+- 顶栏控件适配深色顶带：汉堡按钮/移动端品牌文字白色、财年图标与占位提示白色 70%、头像改 `bg-white/20 text-white`。
+- 主题切换器调色盘图标改为**主题色圆点**（当前主题色实心圆 + 白描边）。
+
+镜像同步：
+- `chart-theme.ts`：`THEME_PRESETS` 换新 5 主题 hex（含暗色提亮值）；`DARK_CHART_INK`/`DARK_THEME_HEX` 按 `#252A34` 面板系更新。
+
+### v3.7（2026-08-13）
+
+**侧边栏与色调系统改造（视觉伴侣多轮评审驱动，代码 + 文档双向同步）**：
+
+色板层：
+- 新增品牌淡色阶梯变量 `--brand-surface`（顶带）/ `--brand-surface-2`（导航区）/ `--brand-surface-3`（版本区）/ `--brand-surface-foreground`，随 `data-theme` 切换（四主题同色相公式生成）；新增 `html.dark` 完整暗色色板（页面 #0D1117 / 面板 #11161D / 卡片 #161C24 / 文字 #E6EDF3 / 边框 #232B36 系，状态色提亮、primary L 55→60+ 提亮、primary-foreground 转深色）与 `html.dark[data-theme]` 品牌色提亮块。
+- `--page` 由冷灰 #F5F7FA 改为纯白，卡片层次改由边框 + 阴影承担。
+
+布局层：
+- 侧边栏/顶栏品牌区同色融合为一体化顶带（无 border-b/分隔细线），导航区/版本区靠背景色差分层；选中导航项改白底（暗色面板）+ 品牌色文字 + 3px 指示条。
+- 折叠按钮由底部 ghost 按钮改为右边缘全高 5px 细条：展开态透明隐形（hover 品牌色渐变+光晕+加宽），收起态常驻品牌色实心箭头反向。
+- 小尺寸（<1280px）侧边栏自动折叠为图标态（matchMedia 监听，不覆盖用户持久化偏好，对齐 §8 响应式策略）。
+
+暗色模式接线：
+- `themeStore` 扩展 `{ theme, mode }`（localStorage 持久化）；主题切换器下拉尾部新增亮/暗分段（Sun/Moon）。
+- `chart-theme.ts` 新增 `DARK_CHART_INK`/`DARK_THEME_HEX`/`getChartInk(mode)`/`getThemeHex(mode)`，`getChartSeries(theme, mode)` 暗色用提亮主色，`tooltipShell/titleSpan/labelSpan` 改函数接收 ink；11 个 ECharts 消费组件与 antd ProTable（`darkAlgorithm` + 暗色 token）按 mode 接线。
+- `text-black` 全量改 `text-foreground`（约 30 处：ui 输入组件、表格表头/行、编辑器、rate-bar 等），暗色自动转浅色。
+
+### v3.6（2026-08-12）
+
+**全局组件一致性整改（审查驱动，代码 + 文档双向同步）**：
+
+代码侧修复：
+- 错误提示色收敛：操作错误/校验错误/删除按钮全部改 `text-destructive`，`text-finance-red` 仅保留数值涨跌语义（§3.2 语义边界 P0 强制）。波及 reports 三页、两个分析抽屉、ai-overview-panel、rich-text-editor。
+- 新增 `ui/checkbox.tsx`（Radix Checkbox，两档尺寸、支持 indeterminate 全选），替换 7 个文件的原生 `<input type="checkbox">`（公式历史、费用映射、导入批次、往来覆盖度、存货明细、重分类科目多选）。
+- 新增 `ui/sheet-shell.tsx` 抽屉共享外壳：统一遮罩 bg-black/40、容器 max-w-xl + shadow-lg、头部/关闭按钮/焦点/Escape 管理；两个分析抽屉（指标/往来）重构接入，往来抽屉关闭按钮补 aria-label。
+- 新增 `ui/flash-message.tsx` 统一操作反馈（success→success-strong / error→destructive / info→primary），替换 report-editor / analysis-list 的 msg 段落与两个抽屉的 form.feedback 渲染，flash 状态区分成功/失败语义。
+- 报告状态 Badge 映射统一：`lib/constants.ts` 新增 `REPORT_STATUS_LABEL` / `REPORT_STATUS_BADGE_VARIANT`，替换 reports 三页本地常量（此前编辑页全 secondary、列表页 published=default，跨页语义不一致）。
+- 无障碍补齐：reports/index 新建报告对话框 4 组 Label 补 `htmlFor`/`id`（CompanySelect、MonthPicker 增补 id 透传）；formula-history-dialog 驳回原因补 Label。
+- DataTable 密度 API 统一为 `density` 三档（reports 两页 `dense` → `density="dense"`）。
+- 期间选择器对齐共享组件：analysis-list 期间筛选、reports/index 新建对话框期间改 `MonthPicker`（allowedPeriods 限定有数据期间，保持原行为）。
+- 全站加载文案统一为全角"加载中…"（transactions 系 7 文件、App.tsx、subject-tree、import-panel、reclassify 面板等 16 处）。
+
+文档侧同步：
+- §3.2 补「语义边界」条款（finance 色仅数值涨跌，错误态一律 destructive）。
+- §4.1 Button 尺寸表更正为实际实现（h-8 全档 32px、lg h-11），补 fused 变体。
+- §4.3 Input/Select 高度更正为 32px（h-8）、圆角 8px。
+- §4.7 Dialog 遮罩更正为 bg-black/80、圆角 8px、阴影 shadow-lg、宽度档位表；新增右侧抽屉（Sheet）规范。
+- §4.8 补记 MonthPicker「全部期间」筛选用法、Checkbox 与 FlashMessage 组件约束。
 
 ### v3.5（2026-07-31）
 
