@@ -48,6 +48,8 @@ afterAll(async () => {
   await basePrisma.collectionLog.deleteMany({ where: { planId: { in: plans.map((p) => p.id) } } }).catch(() => undefined)
   await basePrisma.collectionPlan.deleteMany({ where: { companyCode: TEST_COMPANY } }).catch(() => undefined)
   if (detailId) await basePrisma.transactionDetail.delete({ where: { id: detailId } }).catch(() => undefined)
+  // 跨公司业务员（无外键关联，手工清理）
+  await basePrisma.salesman.deleteMany({ where: { companyCode: 'EN999902', name: '李四' } }).catch(() => undefined)
 })
 
 describe('CollectionService（真实 DB）', () => {
@@ -115,6 +117,45 @@ describe('CollectionService（真实 DB）', () => {
     expect(plan.status).toBe('pending')
     expect(plan.method).toBe('letter')
     expect(plan.overdueAmount).toBe(88.5)
+  })
+
+  it('update 扩展字段：已开票未收款金额/状态说明/业务员（含校验）', async () => {
+    if (!dbReady) return
+    const page = await CollectionService.list({ companyCodes: [TEST_COMPANY] })
+    const planId = page.items[0].id
+
+    // 负数非法
+    await expect(CollectionService.update(planId, { billedUncollectedAmount: -1 }, ctx)).rejects.toThrow('已开票未收款金额')
+    // 状态说明超长非法
+    await expect(CollectionService.update(planId, { statusNote: 'x'.repeat(501) }, ctx)).rejects.toThrow('500')
+    // 业务员不存在非法
+    await expect(CollectionService.update(planId, { salesmanId: '00000000-0000-0000-0000-000000000000' }, ctx)).rejects.toThrow('业务员不存在')
+
+    // 合法写入
+    const s1 = await CollectionService.update(planId, { billedUncollectedAmount: 300.5, statusNote: '客户承诺月底回款 300' }, ctx)
+    expect(s1.billedUncollectedAmount).toBe(300.5)
+    expect(s1.statusNote).toBe('客户承诺月底回款 300')
+
+    // 业务员：先创建再挂接；其他公司业务员不可挂接
+    const sm = await CollectionService.createSalesman({ companyCode: TEST_COMPANY, name: '张三', phone: '13800000000' }, ctx)
+    const other = await CollectionService.createSalesman({ companyCode: 'EN999902', name: '李四' }, ctx)
+    await expect(CollectionService.update(planId, { salesmanId: other.id }, ctx)).rejects.toThrow('不属于该公司')
+    const s2 = await CollectionService.update(planId, { salesmanId: sm.id }, ctx)
+    expect(s2.salesmanId).toBe(sm.id)
+    expect(s2.salesmanName).toBe('张三')
+
+    // 清空业务员
+    const s3 = await CollectionService.update(planId, { salesmanId: null }, ctx)
+    expect(s3.salesmanId).toBeNull()
+  })
+
+  it('list 返回状态统计 stats（按状态计数 + 逾期金额合计）', async () => {
+    if (!dbReady) return
+    const page = await CollectionService.list({ companyCodes: [TEST_COMPANY] })
+    expect(page.stats).toBeDefined()
+    expect(typeof page.stats.byStatus.pending).toBe('number')
+    expect(page.stats.byStatus.pending).toBeGreaterThanOrEqual(1)
+    expect(page.stats.totalOverdue).toBeGreaterThan(0)
   })
 
   it('计划不存在时报 404', async () => {

@@ -53,6 +53,10 @@ export interface CollectionPlanDto {
   actualAmount: number | null
   status: string
   remark: string | null
+  billedUncollectedAmount: number | null
+  salesmanId: string | null
+  salesmanName: string | null
+  statusNote: string | null
   createdAt: string
 }
 
@@ -79,22 +83,25 @@ interface Ctx {
   traceId?: string
 }
 
-async function buildNameMaps(plans: Array<{ companyCode: string; counterpartyCode: string }>) {
+async function buildNameMaps(plans: Array<{ companyCode: string; counterpartyCode: string; salesmanId?: string | null }>) {
   const companyCodes = [...new Set(plans.map((p) => p.companyCode))]
   const counterpartyCodes = [...new Set(plans.map((p) => p.counterpartyCode))]
-  const [companies, counterparties] = await Promise.all([
+  const salesmanIds = [...new Set(plans.map((p) => p.salesmanId).filter((x): x is string => !!x))]
+  const [companies, counterparties, salesmen] = await Promise.all([
     companyCodes.length ? prisma.company.findMany({ where: { code: { in: companyCodes } }, select: { code: true, name: true } }) : [],
     counterpartyCodes.length ? prisma.counterparty.findMany({ where: { code: { in: counterpartyCodes } }, select: { code: true, name: true } }) : [],
+    salesmanIds.length ? prisma.salesman.findMany({ where: { id: { in: salesmanIds } }, select: { id: true, name: true } }) : [],
   ])
   return {
     companyName: new Map(companies.map((c) => [c.code, c.name])),
     counterpartyName: new Map(counterparties.map((c) => [c.code, c.name])),
+    salesmanName: new Map(salesmen.map((s) => [s.id, s.name])),
   }
 }
 
 function toPlanDto(
   p: Record<string, unknown>,
-  names: { companyName: Map<string, string>; counterpartyName: Map<string, string> },
+  names: { companyName: Map<string, string>; counterpartyName: Map<string, string>; salesmanName: Map<string, string> },
 ): CollectionPlanDto {
   return {
     id: p.id as string,
@@ -107,10 +114,14 @@ function toPlanDto(
     plannedDate: (p.plannedDate as Date).toISOString().slice(0, 10),
     collectorId: p.collectorId as string | null,
     method: p.method as string,
-    expectedAmount: p.expectedAmount === null ? null : toNumber(p.expectedAmount),
-    actualAmount: p.actualAmount === null ? null : toNumber(p.actualAmount),
+    expectedAmount: p.expectedAmount === null || p.expectedAmount === undefined ? null : toNumber(p.expectedAmount),
+    actualAmount: p.actualAmount === null || p.actualAmount === undefined ? null : toNumber(p.actualAmount),
     status: p.status as string,
     remark: p.remark as string | null,
+    billedUncollectedAmount: p.billedUncollectedAmount === null || p.billedUncollectedAmount === undefined ? null : toNumber(p.billedUncollectedAmount),
+    salesmanId: p.salesmanId as string | null,
+    salesmanName: p.salesmanId ? (names.salesmanName.get(p.salesmanId as string) ?? null) : null,
+    statusNote: p.statusNote as string | null,
     createdAt: (p.createdAt as Date).toISOString(),
   }
 }
@@ -222,18 +233,55 @@ export const CollectionService = {
       where.counterpartyCode = { in: matched.map((m) => m.code) }
     }
 
-    const [items, total] = await Promise.all([
+    const [items, total, statusRows] = await Promise.all([
       prisma.collectionPlan.findMany({ where, skip: (page - 1) * pageSize, take: pageSize, orderBy: { createdAt: 'desc' } }),
       prisma.collectionPlan.count({ where }),
+      prisma.collectionPlan.groupBy({ by: ['status'], where, _count: { id: true }, _sum: { overdueAmount: true } }),
     ])
     const names = await buildNameMaps(items)
+    const stats = {
+      byStatus: Object.fromEntries(COLLECTION_STATUSES.map((s) => [s, 0])) as Record<string, number>,
+      totalOverdue: 0,
+    }
+    for (const r of statusRows) {
+      stats.byStatus[r.status] = r._count.id
+      stats.totalOverdue += toNumber(r._sum.overdueAmount)
+    }
     return {
       items: items.map((p) => toPlanDto(p as unknown as Record<string, unknown>, names)),
       total,
       page,
       pageSize,
       totalPages: Math.ceil(total / pageSize),
+      stats,
     }
+  },
+
+  /**
+   * 业务员列表（按公司过滤）
+   */
+  async listSalesmen(params: { companyCodes?: string[] }) {
+    const where: Record<string, unknown> = {}
+    if (params.companyCodes) where.companyCode = { in: params.companyCodes }
+    const rows = await prisma.salesman.findMany({ where, orderBy: { createdAt: 'desc' } })
+    return rows.map((s) => ({ id: s.id, companyCode: s.companyCode, name: s.name, phone: s.phone, remark: s.remark }))
+  },
+
+  /**
+   * 新建业务员（姓名必填，联系方式选填）
+   */
+  async createSalesman(input: { companyCode: string; name: string; phone?: string; remark?: string }, ctx: Ctx) {
+    if (!input.companyCode) throw errors.badRequest('公司必填')
+    const name = (input.name || '').trim()
+    if (!name) throw errors.badRequest('业务员姓名必填')
+    if (name.length > 50) throw errors.badRequest('业务员姓名不能超过 50 字')
+    const phone = (input.phone || '').trim()
+    if (phone.length > 30) throw errors.badRequest('联系方式不能超过 30 字')
+    const salesman = await prisma.salesman.create({
+      data: { companyCode: input.companyCode, name, phone: phone || null, remark: input.remark?.trim() || null },
+    })
+    await recordAudit({ userId: ctx.userId, module: 'transactions', action: 'create', targetId: salesman.id, detail: { action: 'create-salesman' } }, ctx.traceId)
+    return { id: salesman.id, companyCode: salesman.companyCode, name: salesman.name, phone: salesman.phone, remark: salesman.remark }
   },
 
   /**
@@ -268,7 +316,7 @@ export const CollectionService = {
   /**
    * 更新催收计划：状态流转按状态机校验；可同步更新实际回收金额等字段
    */
-  async update(id: string, patch: { status?: string; actualAmount?: number; expectedAmount?: number; plannedDate?: string; method?: string; collectorId?: string; remark?: string }, ctx: Ctx) {
+  async update(id: string, patch: { status?: string; actualAmount?: number; expectedAmount?: number; plannedDate?: string; method?: string; collectorId?: string; remark?: string; billedUncollectedAmount?: number; salesmanId?: string | null; statusNote?: string }, ctx: Ctx) {
     const plan = await prisma.collectionPlan.findUnique({ where: { id } })
     if (!plan) throw errors.notFound('催收计划不存在')
 
@@ -302,6 +350,26 @@ export const CollectionService = {
     }
     if (patch.collectorId !== undefined) data.collectorId = patch.collectorId || null
     if (patch.remark !== undefined) data.remark = patch.remark || null
+    if (patch.billedUncollectedAmount !== undefined) {
+      const v = Number(patch.billedUncollectedAmount)
+      if (!Number.isFinite(v) || v < 0) throw errors.badRequest('已开票未收款金额不合法')
+      data.billedUncollectedAmount = Number(v.toFixed(2))
+    }
+    if (patch.salesmanId !== undefined) {
+      if (patch.salesmanId === null || patch.salesmanId === '') {
+        data.salesmanId = null
+      } else {
+        const salesman = await prisma.salesman.findUnique({ where: { id: patch.salesmanId } })
+        if (!salesman) throw errors.badRequest('业务员不存在')
+        if (salesman.companyCode !== plan.companyCode) throw errors.badRequest('业务员不属于该公司')
+        data.salesmanId = salesman.id
+      }
+    }
+    if (patch.statusNote !== undefined) {
+      const note = (patch.statusNote || '').trim()
+      if (note.length > 500) throw errors.badRequest('催收状态说明不能超过 500 字')
+      data.statusNote = note || null
+    }
     if (Object.keys(data).length === 0) throw errors.badRequest('无可更新字段')
 
     const updated = await prisma.collectionPlan.update({ where: { id }, data: data as never })
