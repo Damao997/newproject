@@ -2,8 +2,9 @@ import { PageContainer } from '@/components/layout/page-container'
 import { CollectionsTab } from '../collections-tab'
 
 /**
- * 往来分析 · 催收计划：催收计划台账（筛选/分页）、账龄逾期批量生成建议、
- * 状态机流转（pending→collecting→partial|full|bad_debt）、催收记录。
+ * 往来分析 · 催收计划：应收账款客商台账（公司×客商粒度，余额>0），
+ * 关联最新催收计划（状态机流转与催收记录仅计划行可用）、
+ * 客商扩展字段（业务员/已开票未收款，未计划客商亦可维护）。
  */
 
 export default function CollectionsPlansPage() {
