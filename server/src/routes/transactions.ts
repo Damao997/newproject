@@ -240,6 +240,29 @@ router.post('/import', requirePermission('transactions:import', 'import'), uploa
   sendOk(res, data)
 }))
 
+// ===== 业务员与客商选项 =====
+router.get('/salesmen', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
+  const companyCodes = await normalizeCompanies(req.authUser as AuthUserContext, req.query.companyCode)
+  const data = await CollectionService.listSalesmen({ companyCodes })
+  sendOk(res, data)
+}))
+
+router.post('/salesmen', requirePermission('transactions:update', 'update'), asyncHandler(async (req, res) => {
+  const authUser = req.authUser as AuthUserContext
+  const body = req.body ?? {}
+  // 业务员归属单体公司：汇总主体归一化后取第一个成员
+  const companyCodes = await normalizeCompanies(authUser, body.companyCode)
+  const companyCode = companyCodes?.[0] ?? ''
+  const data = await CollectionService.createSalesman({ companyCode, name: body.name, phone: body.phone, remark: body.remark }, { userId: authUser.userId, traceId: req.traceId })
+  sendOk(res, data)
+}))
+
+router.get('/counterparties', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
+  const companyCodes = await normalizeCompanies(req.authUser as AuthUserContext, req.query.companyCode)
+  const data = await CollectionService.listCounterparties({ companyCodes, keyword: req.query.keyword ? String(req.query.keyword) : undefined })
+  sendOk(res, data)
+}))
+
 // ===== 催收管理 =====
 router.get('/collections', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
   const q = req.query

@@ -285,6 +285,22 @@ export const CollectionService = {
   },
 
   /**
+   * 客商选项（按公司过滤 + 关键词模糊匹配 code/name，供编辑抽屉选择）
+   */
+  async listCounterparties(params: { companyCodes?: string[]; keyword?: string }) {
+    const where: Record<string, unknown> = {}
+    if (params.companyCodes) where.companyCode = { in: params.companyCodes }
+    if (params.keyword) {
+      where.OR = [
+        { code: { contains: params.keyword, mode: 'insensitive' } },
+        { name: { contains: params.keyword, mode: 'insensitive' } },
+      ]
+    }
+    const rows = await prisma.counterparty.findMany({ where, take: 100, orderBy: { name: 'asc' } })
+    return rows.map((c) => ({ code: c.code, name: c.name, companyCode: c.companyCode, partyType: c.partyType, isInternal: c.isInternal }))
+  },
+
+  /**
    * 手工创建催收计划
    */
   async create(input: { companyCode: string; counterpartyCode: string; accountCode: string; overdueAmount: number; plannedDate: string; method?: string; expectedAmount?: number; remark?: string }, ctx: Ctx) {

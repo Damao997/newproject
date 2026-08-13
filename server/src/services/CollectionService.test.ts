@@ -52,6 +52,8 @@ afterAll(async () => {
   await basePrisma.salesman.deleteMany({ where: { companyCode: 'EN999902', name: '李四' } }).catch(() => undefined)
   // 测试公司业务员（无外键关联，手工清理）
   await basePrisma.salesman.deleteMany({ where: { companyCode: TEST_COMPANY, name: '张三' } }).catch(() => undefined)
+  // 测试客商主数据（无外键关联，手工清理）
+  await basePrisma.counterparty.deleteMany({ where: { code: TEST_CP } }).catch(() => undefined)
 })
 
 describe('CollectionService（真实 DB）', () => {
@@ -164,5 +166,25 @@ describe('CollectionService（真实 DB）', () => {
     if (!dbReady) return
     await expect(CollectionService.update('00000000-0000-0000-0000-000000000000', { status: 'collecting' }, ctx)).rejects.toThrow('不存在')
     await expect(CollectionService.listLogs('00000000-0000-0000-0000-000000000000')).rejects.toThrow('不存在')
+  })
+
+  it('业务员与客商选项接口', async () => {
+    if (!dbReady) return
+    // 测试客商主数据：beforeAll 未创建，本用例内创建（afterAll 清理）
+    await basePrisma.counterparty.create({
+      data: { code: TEST_CP, name: '测试客商', companyCode: TEST_COMPANY },
+    })
+    // 关键词过滤客商
+    const cps = await CollectionService.listCounterparties({ companyCodes: [TEST_COMPANY], keyword: TEST_CP.slice(0, 8) })
+    expect(cps.length).toBeGreaterThanOrEqual(1)
+    expect(cps.some((c) => c.code === TEST_CP)).toBe(true)
+    // 关键词无匹配返回空
+    const none = await CollectionService.listCounterparties({ companyCodes: [TEST_COMPANY], keyword: '__NOT_EXIST_CP__' })
+    expect(none.length).toBe(0)
+    // 业务员列表按公司过滤
+    const sms = await CollectionService.listSalesmen({ companyCodes: [TEST_COMPANY] })
+    expect(sms.some((s) => s.name === '张三')).toBe(true)
+    // 创建校验：姓名必填
+    await expect(CollectionService.createSalesman({ companyCode: TEST_COMPANY, name: '  ' }, ctx)).rejects.toThrow('必填')
   })
 })
