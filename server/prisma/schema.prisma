@@ -587,6 +587,21 @@ model CollectionPlan {
   @@map("collection_plan")
 }
 
+// 5.3b 客商扩展表（应收款台账：未创建催收计划时仍可补录业务员/已开票未收款）
+model CustomerExt {
+  id                      String   @id @default(uuid())
+  companyCode             String   @map("company_code")
+  counterpartyCode        String   @map("counterparty_code")
+  billedUncollectedAmount Decimal? @map("billed_uncollected_amount") @db.Decimal(18, 2)
+  salesmanId              String?  @map("salesman_id")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  @@unique([companyCode, counterpartyCode])
+  @@index([companyCode])
+  @@map("customer_ext")
+}
+
 // 5.4 催收记录表
 model CollectionLog {
   id            String   @id @default(uuid())
