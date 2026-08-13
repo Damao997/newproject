@@ -663,8 +663,8 @@ export function CollectionsTab() {
       <GenerateDialog open={generateOpen} companyCode={companyCode} onClose={() => setGenerateOpen(false)} />
       <UpdateStatusDialog plan={updatingPlan} onClose={() => setUpdatingPlan(null)} />
       <LogsDialog plan={logsPlan} canUpdate={canUpdate} onClose={() => setLogsPlan(null)} />
-      <BilledAmountDrawer plan={billedPlan} onClose={() => setBilledPlan(null)} />
-      <SalesmanDrawer plan={salesmanPlan} onClose={() => setSalesmanPlan(null)} />
+      {billedPlan && <BilledAmountDrawer plan={billedPlan} onClose={() => setBilledPlan(null)} />}
+      {salesmanPlan && <SalesmanDrawer plan={salesmanPlan} onClose={() => setSalesmanPlan(null)} />}
     </div>
   )
 }
