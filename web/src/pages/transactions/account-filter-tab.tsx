@@ -50,11 +50,23 @@ export function AccountFilterTab() {
       if (!map.has(a.transactionType)) map.set(a.transactionType, [])
       map.get(a.transactionType)!.push(a)
     }
-    return TYPE_ORDER.filter((t) => map.has(t)).map((t) => ({ type: t, items: map.get(t)! }))
+    // 全量分组统计（不随搜索/展开收敛，供组标题徽章使用）
+    const allMap = new Map<string, { active: number; inactive: number }>()
+    for (const a of list) {
+      if (!allMap.has(a.transactionType)) allMap.set(a.transactionType, { active: 0, inactive: 0 })
+      const e = allMap.get(a.transactionType)!
+      if (a.status === 'active') e.active += 1
+      else e.inactive += 1
+    }
+    return {
+      rows: TYPE_ORDER.filter((t) => map.has(t)).map((t) => ({ type: t, items: map.get(t)! })),
+      filteredTotal: filtered.length,
+      allStats: allMap,
+    }
   }, [list, showAll, keyword])
 
-  const visibleCount = grouped.reduce((s, g) => s + g.items.length, 0)
-  const hasHidden = visibleCount < list.length
+  const visibleCount = grouped.rows.reduce((s, g) => s + g.items.length, 0)
+  const hasHidden = visibleCount < grouped.filteredTotal
 
   const onToggle = (a: ManageAccountItem) => {
     updateStatus.mutate({ code: a.code, status: a.status === 'active' ? 'inactive' : 'active' })
@@ -87,6 +99,7 @@ export function AccountFilterTab() {
           <div className="relative">
             <Search className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
+              aria-label="搜索科目"
               placeholder="搜索科目..."
               className="h-8 w-[180px] pl-8 text-sm"
               value={keyword}
@@ -102,15 +115,17 @@ export function AccountFilterTab() {
             </div>
           ) : list.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">暂无科目主数据</div>
+          ) : grouped.rows.length === 0 ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">未找到匹配科目</div>
           ) : (
             <div className="space-y-5">
-              {grouped.map((g) => (
+              {grouped.rows.map((g) => (
                 <div key={g.type}>
                   <div className="mb-2 flex items-center gap-2 text-sm font-medium">
                     {g.type}
                     <span className="text-xs font-normal text-muted-foreground">{g.items.length} 个科目</span>
                     <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                      纳入 {g.items.filter((a) => a.status === 'active').length} · 排除 {g.items.filter((a) => a.status === 'inactive').length}
+                      纳入 {grouped.allStats.get(g.type)?.active ?? 0} · 排除 {grouped.allStats.get(g.type)?.inactive ?? 0}
                     </span>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
@@ -144,7 +159,7 @@ export function AccountFilterTab() {
               {(hasHidden || showAll) && (
                 <div className="flex justify-center border-t pt-3">
                   <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => setShowAll(!showAll)}>
-                    {showAll ? '收起无数据科目' : `显示全部 ${list.length} 个科目`}
+                    {showAll ? '收起无数据科目' : `显示全部 ${grouped.filteredTotal} 个科目`}
                   </Button>
                 </div>
               )}
