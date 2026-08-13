@@ -10,6 +10,7 @@ import { errors, AppError } from '../lib/errors'
 import { TransactionService } from '../services/TransactionService'
 import { ImportService } from '../services/ImportService'
 import { CollectionService } from '../services/CollectionService'
+import { CustomerLedgerService } from '../services/CustomerLedgerService'
 import { resolveCompanyCodes, resolveDashboardCompany } from '../services/AggregationService'
 import { fixUploadFilename } from '../lib/sanitize'
 import { recordAudit, clientIp } from '../middleware/audit'
@@ -237,6 +238,30 @@ router.post('/import', requirePermission('transactions:import', 'import'), uploa
   const files = pickUploadFiles(req)
   const authUser = req.authUser as AuthUserContext
   const data = await ImportService.uploadTransactions(files, authUser.userId, req.traceId, pickValueUnit(req.body as Record<string, unknown>))
+  sendOk(res, data)
+}))
+
+// ===== 应收款客商台账（催收计划页默认视图） =====
+router.get('/collections/customers', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
+  const companyCodes = await normalizeCompanies(req.authUser as AuthUserContext, req.query.companyCode)
+  const data = await CustomerLedgerService.list({
+    companyCodes,
+    status: req.query.status ? String(req.query.status) : undefined,
+    counterpartyKeyword: req.query.counterpartyKeyword ? String(req.query.counterpartyKeyword) : undefined,
+    page: req.query.page ? Number(req.query.page) : undefined,
+    pageSize: req.query.pageSize ? Number(req.query.pageSize) : undefined,
+  })
+  sendOk(res, data)
+}))
+
+router.patch('/collections/customers/:companyCode/:counterpartyCode', requirePermission('transactions:update', 'update'), asyncHandler(async (req, res) => {
+  const authUser = req.authUser as AuthUserContext
+  const data = await CustomerLedgerService.upsertCustomerExt(
+    req.params.companyCode as string,
+    req.params.counterpartyCode as string,
+    req.body ?? {},
+    { userId: authUser.userId, traceId: req.traceId },
+  )
   sendOk(res, data)
 }))
 
