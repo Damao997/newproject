@@ -12,9 +12,11 @@ import { downloadImportTemplate } from '@/lib/import-template'
 import { type ImportPreviewResult } from '@/lib/api'
 import { formatMoneyWan, cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Collapsible } from '@/components/ui/collapsible'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { ImportCompareDialog } from './import-compare-dialog'
+import { TransactionImportDialog } from './transaction-import-dialog'
 import type { ImportBatch } from '@/types'
 import {
   Upload,
@@ -92,6 +94,8 @@ export function ImportPanel() {
 
   // ---- 导入 ----
   const [templateType, setTemplateType] = useState('operating')
+  // 往来账龄报表专用多文件导入对话框（模板类型选「往来明细」时打开）
+  const [importOpen, setImportOpen] = useState(false)
   // 文件金额单位：系统存储口径为万元，选「元」时后端解析期自动 ÷10000 转换（默认元）
   const [valueUnit, setValueUnit] = useState('yuan')
   // ---- 目标财年（仅 budget：预算文件归属单一财年，导入时指定而非读文件内财年；operating/static 财年逐期推导无需指定）----
@@ -348,25 +352,20 @@ export function ImportPanel() {
       cols.push({
         key: 'select',
         header: (
-          <input
-            type="checkbox"
+          <Checkbox
             aria-label="全选批次"
-            className="accent-primary"
-            checked={selectedCount > 0 && selectedCount === selectableIds.length}
-            ref={(el) => { if (el) el.indeterminate = selectedCount > 0 && selectedCount < selectableIds.length }}
+            checked={selectedCount > 0 ? (selectedCount === selectableIds.length ? true : 'indeterminate') : false}
             disabled={selectableIds.length === 0 || batchActivate.isBusy}
-            onChange={(e) => setSelectedBatchIds(e.target.checked ? new Set(selectableIds) : new Set())}
+            onCheckedChange={(checked) => setSelectedBatchIds(checked === true ? new Set(selectableIds) : new Set())}
           />
         ),
         align: 'center',
         render: (b) => (
-          <input
-            type="checkbox"
+          <Checkbox
             aria-label={`选择批次 ${b.filename}`}
-            className="accent-primary"
             checked={selectedBatchIds.has(b.id)}
             disabled={b.status !== 'draft' || batchActivate.isBusy}
-            onChange={() => toggleSelect(b.id)}
+            onCheckedChange={() => toggleSelect(b.id)}
           />
         ),
       })
@@ -448,6 +447,7 @@ export function ImportPanel() {
                   <SelectItem value="operating">经营数据</SelectItem>
                   <SelectItem value="static">静态数据</SelectItem>
                   <SelectItem value="budget">年度预算</SelectItem>
+                  <SelectItem value="transaction">往来明细</SelectItem>
                 </SelectContent>
               </Select>
               <span className="text-sm font-medium">数值单位:</span>
@@ -475,38 +475,55 @@ export function ImportPanel() {
                   </Select>
                 </>
               )}
-              <Button variant="outline" size="sm" className="shrink-0" onClick={() => {
-                downloadImportTemplate(templateType as 'operating' | 'static' | 'budget').catch((e) => {
-                  setFileError(e instanceof Error ? e.message : '模板下载失败')
-                })
-              }}>
-                <Download className="mr-2 h-4 w-4" />
-                下载模板
-              </Button>
+              {templateType !== 'transaction' && (
+                <Button variant="outline" size="sm" className="shrink-0" onClick={() => {
+                  downloadImportTemplate(templateType as 'operating' | 'static' | 'budget').catch((e) => {
+                    setFileError(e instanceof Error ? e.message : '模板下载失败')
+                  })
+                }}>
+                  <Download className="mr-2 h-4 w-4" />
+                  下载模板
+                </Button>
+              )}
             </span>
           </div>
 
-          <div
-            className="flex flex-wrap items-center gap-3 rounded-lg border-2 border-dashed border-muted-foreground/25 p-3 transition-colors hover:border-primary/50 hover:bg-muted/50"
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
-          >
-            <Upload className="h-6 w-6 shrink-0 text-muted-foreground" />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm text-muted-foreground">拖拽 .xlsx 文件到此处，或点击选择文件</p>
-              <p className="text-xs text-muted-foreground">支持 .xlsx / .xls，最大 50MB</p>
-            </div>
-            <input type="file" accept=".xlsx,.xls" className="hidden" id="file-upload" onChange={handleFileSelect} />
-            <label htmlFor="file-upload" className="shrink-0">
-              <Button variant="outline" size="sm" asChild>
-                <span>选择文件</span>
+          {templateType === 'transaction' ? (
+            /* 往来明细：专用多文件上传区（ERP 账龄报表无标准模板，走对话框内预览/激活影响预告/导入闭环） */
+            <div className="flex flex-wrap items-center gap-3 rounded-lg border-2 border-dashed border-muted-foreground/25 p-3 transition-colors hover:border-primary/50 hover:bg-muted/50">
+              <Upload className="h-6 w-6 shrink-0 text-muted-foreground" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm text-muted-foreground">上传六大往来账龄报表（按账龄汇总表解析，支持多文件，最多 12 个）</p>
+                <p className="text-xs text-muted-foreground">ERP 导出的 CUX_AR/AP 账龄报表（.xls/.xlsx），按 Sheet 名自动识别 应收/其他应收/预收/应付/其他应付/预付</p>
+              </div>
+              <Button size="sm" className="shrink-0" onClick={() => setImportOpen(true)}>
+                <Upload className="mr-2 h-4 w-4" />
+                选择文件上传
               </Button>
-            </label>
-          </div>
+            </div>
+          ) : (
+            <div
+              className="flex flex-wrap items-center gap-3 rounded-lg border-2 border-dashed border-muted-foreground/25 p-3 transition-colors hover:border-primary/50 hover:bg-muted/50"
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
+            >
+              <Upload className="h-6 w-6 shrink-0 text-muted-foreground" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm text-muted-foreground">拖拽 .xlsx 文件到此处，或点击选择文件</p>
+                <p className="text-xs text-muted-foreground">支持 .xlsx / .xls，最大 50MB</p>
+              </div>
+              <input type="file" accept=".xlsx,.xls" className="hidden" id="file-upload" onChange={handleFileSelect} />
+              <label htmlFor="file-upload" className="shrink-0">
+                <Button variant="outline" size="sm" asChild>
+                  <span>选择文件</span>
+                </Button>
+              </label>
+            </div>
+          )}
 
-          {/* 模块边界：往来导入入口在往来分析页（就近维护），批次生命周期统一在下方列表管理 */}
+          {/* 模块边界：往来批次与经营/静态/预算批次统一在本页管理，激活入口两处任一可用 */}
           <p className="text-xs text-muted-foreground">
-            文件金额单位为「元」时入库自动 ÷10000 转换为万元存储；往来数据（六大往来账龄报表）请在「往来分析」页的导入入口上传，批次统一在此列表管理。
+            文件金额单位为「元」时入库自动 ÷10000 转换为万元存储（往来账龄报表为 ERP 原值，默认按元存储）；往来批次与经营/静态/预算批次统一在下方「导入质量概览」列表管理，可在本页或往来分析「导入覆盖」页激活。
           </p>
 
           {fileError && (
@@ -684,31 +701,27 @@ export function ImportPanel() {
               {previewResult.sampleRows && previewResult.sampleRows.rows.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-sm font-medium">数据抽样预览（{previewResult.sampleRows.rows.length} 行，跨科目/公司分散采样）</p>
-                  <div className="rounded-lg border">
-                    <DataTable
-                      columns={sampleColumns}
-                      data={previewResult.sampleRows.rows}
-                      rowKey={(_, i) => i}
-                      density="compact"
-                      maxHeight="280px"
-                      emptyText="无预览数据"
-                      caption="导入数据抽样预览"
-                    />
-                  </div>
+                  <DataTable
+                    columns={sampleColumns}
+                    data={previewResult.sampleRows.rows}
+                    rowKey={(_, i) => i}
+                    density="compact"
+                    maxHeight="280px"
+                    emptyText="无预览数据"
+                    caption="导入数据抽样预览"
+                  />
                 </div>
               )}
               {previewResult.errorCount > 0 && (
-                <div className="rounded-lg border">
-                  <DataTable
-                    columns={errorColumns}
-                    data={previewResult.errors.slice(0, 50)}
-                    rowKey={(e, i) => `${e.row}-${e.column}-${i}`}
-                    density="compact"
-                    maxHeight="200px"
-                    emptyText="暂无解析错误"
-                    caption="导入校验错误明细"
-                  />
-                </div>
+                <DataTable
+                  columns={errorColumns}
+                  data={previewResult.errors.slice(0, 50)}
+                  rowKey={(e, i) => `${e.row}-${e.column}-${i}`}
+                  density="compact"
+                  maxHeight="200px"
+                  emptyText="暂无解析错误"
+                  caption="导入校验错误明细"
+                />
               )}
               <p className="text-xs text-muted-foreground">确认无误后点击“确认导入”正式写入。</p>
             </div>
@@ -873,7 +886,7 @@ export function ImportPanel() {
                   rowKey={(e, i) => `${e.row}-${e.column}-${i}`}
                   dense
                   maxHeight="280px"
-                  emptyText={detailFetching ? '加载中...' : '该批次无解析异常'}
+                  emptyText={detailFetching ? '加载中…' : '该批次无解析异常'}
                 />
               </div>
             )}
@@ -888,6 +901,7 @@ export function ImportPanel() {
         candidates={compareCandidates}
         onRollbackSuccess={(msg) => setActivateMsg(msg)}
       />
+      <TransactionImportDialog open={importOpen} onOpenChange={setImportOpen} />
     </Card>
   )
 }

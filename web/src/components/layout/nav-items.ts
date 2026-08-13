@@ -52,7 +52,6 @@ export const navItems: NavItem[] = [
     children: [
       { path: '/transactions/overview', label: '总览' },
       { path: '/transactions/aging', label: '账龄分析' },
-      { path: '/transactions/internal', label: '内部往来' },
       {
         path: '/transactions/quality',
         label: '数据质量',
@@ -102,8 +101,8 @@ export const navItems: NavItem[] = [
         path: '/data/reclassify',
         label: '重分类管理',
         children: [
-          { path: '/data/reclassify', label: '重分类记录' },
-          { path: '/data/reclassify/consolidation', label: '汇总抵消调整' },
+          { path: '/data/reclassify', label: '单体公司调整' },
+          { path: '/data/reclassify/consolidation', label: '汇总主体调整' },
         ],
       },
       {

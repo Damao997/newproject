@@ -13,7 +13,6 @@ const IndicatorsOperatingPage = lazy(() => import('@/pages/indicators/operating'
 const IndicatorsStaticPage = lazy(() => import('@/pages/indicators/static'))
 const TransactionsOverviewPage = lazy(() => import('@/pages/transactions/overview'))
 const TransactionsAgingPage = lazy(() => import('@/pages/transactions/aging'))
-const TransactionsInternalPage = lazy(() => import('@/pages/transactions/internal'))
 const TransactionsCoveragePage = lazy(() => import('@/pages/transactions/coverage'))
 const TransactionsAccountFilterPage = lazy(() => import('@/pages/transactions/account-filter'))
 const CollectionsPlansPage = lazy(() => import('@/pages/transactions/collections/plans'))
@@ -45,7 +44,7 @@ const queryClient = new QueryClient({
 
 // 旧 ?tab= / &sub= URL 兼容重定向：模块根路径带 query 时映射到新的三级路径，
 // 无 query 时落到默认子页（保持收藏夹/分享链接可用性）
-const LEGACY_TRANSACTION_TABS = ['overview', 'aging', 'internal', 'coverage', 'account-filter', 'collections']
+const LEGACY_TRANSACTION_TABS = ['overview', 'aging', 'coverage', 'account-filter', 'collections']
 const DIM_SUB_TABS = ['operating', 'static', 'company', 'summary']
 const BOARD_SUB_TABS = ['category', 'expense', 'subject', 'budget-ratio']
 
@@ -91,7 +90,7 @@ function App() {
       <TooltipProvider>
         <BrowserRouter>
           <ErrorBoundary>
-            <Suspense fallback={<div className="flex h-screen items-center justify-center text-sm text-muted-foreground">加载中...</div>}>
+            <Suspense fallback={<div className="flex h-screen items-center justify-center text-sm text-muted-foreground">加载中…</div>}>
               <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/" element={<MainLayout />}>
@@ -108,7 +107,6 @@ function App() {
                 {/* 旧明细查询路径：已并入账龄分析，重定向保持分享链接可用 */}
                 <Route path="transactions/details" element={<Navigate to="/transactions/aging" replace />} />
                 <Route path="transactions/aging" element={<RequirePermission resource="transactions" action="view"><TransactionsAgingPage /></RequirePermission>} />
-                <Route path="transactions/internal" element={<RequirePermission resource="transactions" action="view"><TransactionsInternalPage /></RequirePermission>} />
                 <Route path="transactions/coverage" element={<RequirePermission resource="transactions" action="view"><TransactionsCoveragePage /></RequirePermission>} />
                 <Route path="transactions/account-filter" element={<RequirePermission resource="transactions" action="view"><TransactionsAccountFilterPage /></RequirePermission>} />
                 <Route path="transactions/collections/plans" element={<RequirePermission resource="transactions" action="view"><CollectionsPlansPage /></RequirePermission>} />

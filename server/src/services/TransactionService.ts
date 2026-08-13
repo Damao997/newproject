@@ -52,15 +52,6 @@ export interface AgingSummaryRow {
   aging: Record<string, number>
 }
 
-export interface InternalSummaryRow {
-  companyCode: string
-  internalPeerCode: string
-  direction: string
-  transactionType: string
-  closingBalance: number
-  recordCount: number
-}
-
 export interface TransactionTrendSeries {
   companyCode: string
   companyName: string | null
@@ -400,53 +391,6 @@ export const TransactionService = {
     const updated = await prisma.transactionAccount.update({ where: { code }, data: { status } })
     await recordAudit({ userId, module: 'transactions', action: 'update', targetId: code, detail: { action: 'account_status', status } }, traceId)
     return { code: updated.code, status: updated.status }
-  },
-
-  /** 内部往来汇总：按(本方公司, 内部对方公司, 方向, 往来类型)汇总
-   */
-  async getInternalSummary(companyCodes?: string[]): Promise<InternalSummaryRow[]> {
-    const where: Record<string, unknown> = { isInternal: true }
-    if (companyCodes) where.companyCode = { in: companyCodes }
-
-    const rows = await prisma.transactionDetail.groupBy({
-      by: ['companyCode', 'internalPeerCode', 'direction', 'transactionType'],
-      where,
-      _sum: { closingBalance: true },
-      _count: { id: true },
-    })
-
-    return rows.map((r) => ({
-      companyCode: r.companyCode,
-      internalPeerCode: r.internalPeerCode || '',
-      direction: r.direction,
-      transactionType: r.transactionType,
-      closingBalance: toNumber(r._sum.closingBalance),
-      recordCount: r._count.id,
-    }))
-  },
-
-  /**
-   * 内部往来镜像校验：同一对内部公司 AR侧与AP侧应相抵（余额已按科目性质归一为正号，差额 = AR - AP）
-   */
-  async getInternalMirrorCheck(companyCodes?: string[]) {
-    const summary = await this.getInternalSummary(companyCodes)
-    const pairMap = new Map<string, { companyA: string; companyB: string; arAmount: number; apAmount: number }>()
-
-    for (const row of summary) {
-      const pair = [row.companyCode, row.internalPeerCode].sort()
-      const key = pair.join('|')
-      if (!pairMap.has(key)) {
-        pairMap.set(key, { companyA: pair[0], companyB: pair[1], arAmount: 0, apAmount: 0 })
-      }
-      const entry = pairMap.get(key)!
-      if (row.direction === 'AR') entry.arAmount += row.closingBalance
-      else entry.apAmount += row.closingBalance
-    }
-
-    return Array.from(pairMap.values()).map((p) => ({
-      ...p,
-      difference: p.arAmount - p.apAmount,
-    }))
   },
 
   /**

@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
@@ -13,24 +12,19 @@ import { useTransactionOverview, useTransactionPeriods, useCompanies, useAvailab
 import { usePageStore } from '@/stores/pageStateStore'
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { CompanyMultiSelect } from '@/components/filters/company-select'
-import { usePermission } from '@/hooks/usePermission'
 import { cn, getChangeColor } from '@/lib/utils'
-import { ArrowLeftRight, TrendingUp, TrendingDown, Upload } from 'lucide-react'
-import { TransactionImportDialog } from './import-dialog'
 import { TransactionTrendCard } from './trend-card'
 import { useNavigate } from 'react-router-dom'
 import { AgingStackBar, agingRisk, AGING_GROUPS, CREDIT_NATURE_TYPES, useDefaultCompanyCode, formatAmount } from './shared'
 
 /**
- * 往来分析 · 总览：趋势图 + 债权/债务/净往来 KPI + 六大往来分类卡片。
+ * 往来分析 · 总览：趋势图 + 六大往来分类卡片。
  * 默认浙江省公司汇总口径（ET0001）；单体公司与汇总主体互斥筛选。
- * 导入往来数据入口保留在本页（默认落地页）。
+ * 往来数据导入入口统一在数据管理页（/data/import），本页仅消费分析数据。
  */
 
 export default function TransactionsOverviewPage() {
-  const { can } = usePermission()
   const navigate = useNavigate()
-  const [importOpen, setImportOpen] = useState(false)
   // 共享公司多选：同时驱动趋势图与汇总/分类卡片，空数组语义为「全部公司」；
   // 默认浙江省公司汇总（ET0001，后端按汇总映射展开为成员合并口径）；查询条件持久化到 pageStateStore
   const setTransactionsTab = usePageStore((s) => s.setTransactionsTab)
@@ -91,10 +85,6 @@ export default function TransactionsOverviewPage() {
   const { data: overview, isLoading } = useTransactionOverview({ companyCodes: selectedCompanies, period })
 
   const list = overview ?? []
-  // 净往来余额 = 债权合计(应收+其他应收+预付) - 债务合计(预收+应付+其他应付)，余额已按科目性质归一为正号
-  const totalClaims = list.filter((i) => !CREDIT_NATURE_TYPES.includes(i.transactionType)).reduce((s, i) => s + i.totalClosingBalance, 0)
-  const totalDebts = list.filter((i) => CREDIT_NATURE_TYPES.includes(i.transactionType)).reduce((s, i) => s + i.totalClosingBalance, 0)
-  const netBalance = totalClaims - totalDebts
   // 账龄分段占比（按 AGING_GROUPS 下标区间求和，返回百分比字符串）
   const agingPct = (aging: Record<string, number>, total: number, from: number, to: number): string => {
     if (total <= 0) return '0.0'
@@ -105,15 +95,6 @@ export default function TransactionsOverviewPage() {
   return (
     <PageContainer title="总览">
       <div className="space-y-4">
-        {can('transactions', 'import') && (
-          <div className="flex items-center">
-            <Button className="ml-auto" size="sm" onClick={() => setImportOpen(true)}>
-              <Upload className="mr-1 h-4 w-4" />
-              导入往来数据
-            </Button>
-          </div>
-        )}
-
         <div className="space-y-6">
           {/* 筛选卡：公司多选（图表与卡片共享，单体/汇总互斥）+ 期间单选（仅作用于卡片） */}
           <Card className="rounded-card p-4">
@@ -129,12 +110,8 @@ export default function TransactionsOverviewPage() {
                 ))}
               </SelectContent>
             </Select>
-            <span className="text-xs text-muted-foreground">单体公司与汇总主体不可同时筛选；期间仅作用于卡片，趋势图展示全期间序列</span>
           </div>
           </Card>
-
-          {/* 往来变动趋势（与卡片共享公司筛选） */}
-          <TransactionTrendCard companyCodes={selectedCompanies} />
 
           {isLoading || !period ? (
             // 有原始期间但当前财年过滤后为空：提示财年无数据而非永久"加载中"
@@ -147,43 +124,6 @@ export default function TransactionsOverviewPage() {
             <div className="py-12 text-center text-sm text-muted-foreground">暂无往来数据</div>
           ) : (
             <>
-              {/* 汇总卡片 */}
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <Card>
-                  <CardContent className="flex items-center gap-4 pt-6">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-info/10">
-                      <TrendingUp className="h-6 w-6 text-info" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">债权合计（应收+其他应收+预付）</p>
-                      <p className="text-xl font-bold">{formatAmount(totalClaims)}</p>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="flex items-center gap-4 pt-6">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-destructive/10">
-                      <TrendingDown className="h-6 w-6 text-destructive" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">债务合计（应付+其他应付+预收）</p>
-                      <p className="text-xl font-bold">{formatAmount(totalDebts)}</p>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="flex items-center gap-4 pt-6">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-success/10">
-                      <ArrowLeftRight className="h-6 w-6 text-success" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">净往来余额</p>
-                      <p className="text-xl font-bold">{formatAmount(netBalance)}</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
               {/* 六大往来分类卡片：信息增强 + 账龄堆叠条 + 风险提示，点击钻取账龄分析 */}
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {list.map((item) => {
@@ -249,10 +189,11 @@ export default function TransactionsOverviewPage() {
               </div>
             </>
           )}
+
+          {/* 往来变动趋势（与卡片共享公司筛选） */}
+          <TransactionTrendCard companyCodes={selectedCompanies} />
         </div>
       </div>
-
-      <TransactionImportDialog open={importOpen} onOpenChange={setImportOpen} />
     </PageContainer>
   )
 }

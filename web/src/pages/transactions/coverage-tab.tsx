@@ -2,6 +2,7 @@ import { Fragment, useCallback, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Select,
   SelectContent,
@@ -17,8 +18,7 @@ import { usePageStore } from '@/stores/pageStateStore'
 import { useBatchActivate, buildActivateConflictDescription } from '@/hooks/use-batch-activate'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Grid3X3, Loader2, RefreshCw, Upload } from 'lucide-react'
-import { TransactionImportDialog } from './import-dialog'
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Grid3X3, Loader2, RefreshCw } from 'lucide-react'
 import type { TransactionCoverageCell } from '@/types'
 
 /**
@@ -90,7 +90,6 @@ export function CoverageTab() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [sortBy, setSortBy] = useState<SortBy>('code')
   const [expandDrafts, setExpandDrafts] = useState(false)
-  const [importOpen, setImportOpen] = useState(false)
   const [draftCellTarget, setDraftCellTarget] = useState<DraftCellTarget | null>(null)
 
   const toggleDraftSelect = (id: string) => {
@@ -196,7 +195,7 @@ export function CoverageTab() {
     [statusFilter, data, cellMap],
   )
 
-  if (isLoading) return <div className="py-12 text-center text-sm text-muted-foreground">加载中...</div>
+  if (isLoading) return <div className="py-12 text-center text-sm text-muted-foreground">加载中…</div>
   if (isError) {
     return (
       <div className="flex flex-col items-center gap-3 py-12">
@@ -248,12 +247,10 @@ export function CoverageTab() {
             {canImport && (
               <span className="ml-auto flex shrink-0 items-center gap-2">
                 <label className="flex cursor-pointer items-center gap-1.5 text-xs font-normal">
-                  <input
-                    type="checkbox"
-                    className="accent-primary"
+                  <Checkbox
                     checked={draftBatches.length > 0 && draftBatches.every((b) => selectedDraftIds.has(b.id))}
                     disabled={batchActivate.isBusy}
-                    onChange={(e) => setSelectedDraftIds(e.target.checked ? new Set(draftBatches.map((b) => b.id)) : new Set())}
+                    onCheckedChange={(checked) => setSelectedDraftIds(checked ? new Set(draftBatches.map((b) => b.id)) : new Set())}
                   />
                   全选
                 </label>
@@ -281,12 +278,11 @@ export function CoverageTab() {
               return (
                 <li key={b.id} className="flex items-center gap-3 text-sm text-warning-strong">
                   {canImport && (
-                    <input
-                      type="checkbox"
-                      className="shrink-0 accent-primary"
+                    <Checkbox
+                      className="shrink-0"
                       checked={selectedDraftIds.has(b.id)}
                       disabled={batchActivate.isBusy}
-                      onChange={() => toggleDraftSelect(b.id)}
+                      onCheckedChange={() => toggleDraftSelect(b.id)}
                     />
                   )}
                   <span className="truncate">{b.filename}</span>
@@ -315,7 +311,7 @@ export function CoverageTab() {
         </div>
       )}
 
-      {/* 统计卡：覆盖率大数字分档变色 + 四色堆叠比例条 + 图例计数 + 月份窗口 + 导入入口 */}
+      {/* 统计卡：覆盖率大数字分档变色 + 四色堆叠比例条 + 图例计数 + 月份窗口（导入入口统一在数据管理页 /data/import） */}
       <Card className="rounded-card p-4">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <div className="flex items-baseline gap-2">
@@ -354,12 +350,6 @@ export function CoverageTab() {
               ))}
             </SelectContent>
           </Select>
-          {canImport && (
-            <Button size="sm" onClick={() => setImportOpen(true)}>
-              <Upload className="mr-1 h-4 w-4" />
-              导入往来数据
-            </Button>
-          )}
         </div>
       </Card>
 
@@ -405,7 +395,7 @@ export function CoverageTab() {
         <div className="max-h-[600px] overflow-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b bg-muted/50 text-black">
+              <tr className="border-b bg-muted/50 text-foreground">
                 <th className="sticky left-0 top-0 z-30 bg-muted/50 px-2 py-2 text-center font-medium">公司</th>
                 <th className="sticky top-0 z-30 bg-muted/50 px-2 py-2 text-center font-medium">期间</th>
                 {data.types.map((t) => (
@@ -572,7 +562,6 @@ export function CoverageTab() {
         </DialogContent>
       </Dialog>
 
-      <TransactionImportDialog open={importOpen} onOpenChange={setImportOpen} />
       {confirmElement}
     </div>
   )

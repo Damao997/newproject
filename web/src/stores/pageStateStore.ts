@@ -63,11 +63,6 @@ export interface TransactionAgingState {
   keyword: string
 }
 
-export interface TransactionInternalState {
-  /** 'all' | 公司编码 */
-  company: string
-}
-
 export interface TransactionCoverageState {
   /** 覆盖矩阵月份窗口：3 | 6 | 12 */
   months: number
@@ -91,7 +86,6 @@ export interface TransactionCollectionsState {
 export interface TransactionsState {
   overview: TransactionOverviewState
   aging: TransactionAgingState
-  internal: TransactionInternalState
   coverage: TransactionCoverageState
   'account-filter': TransactionAccountFilterState
   collections: TransactionCollectionsState
@@ -166,8 +160,6 @@ const defaultAging: TransactionAgingState = {
   keyword: '',
 }
 
-const defaultInternal: TransactionInternalState = { company: 'all' }
-
 const defaultCoverage: TransactionCoverageState = { months: 6 }
 
 const defaultAccountFilter: TransactionAccountFilterState = { showAll: false }
@@ -190,7 +182,6 @@ const defaultFormulas: FormulasState = { subjectType: 'operating', keyword: '', 
 const defaultTransactions: TransactionsState = {
   overview: defaultOverview,
   aging: defaultAging,
-  internal: defaultInternal,
   coverage: defaultCoverage,
   'account-filter': defaultAccountFilter,
   collections: defaultCollections,
@@ -229,7 +220,6 @@ function mergePersisted(persisted: unknown, current: PageStateStore): PageStateS
         trend: { ...defaultOverview.trend, ...(t?.overview?.trend ?? {}) },
       },
       aging: { ...defaultAging, ...(t?.aging ?? {}) },
-      internal: { ...defaultInternal, ...(t?.internal ?? {}) },
       coverage: { ...defaultCoverage, ...(t?.coverage ?? {}) },
       'account-filter': { ...defaultAccountFilter, ...(t?.['account-filter'] ?? {}) },
       collections: { ...defaultCollections, ...(t?.collections ?? {}) },

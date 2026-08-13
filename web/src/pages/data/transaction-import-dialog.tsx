@@ -19,7 +19,7 @@ type Step = 'select' | 'preview' | 'result'
 
 /**
  * 往来金额展示：ERP 原值单位为元，按往来模块统一约定换算为万元后走全局千分位格式化
- * （与 transactions/index.tsx、analysis-drawer.tsx 的 `formatMoneyWan(v / 10000)` 口径一致）。
+ * （与 transactions/overview.tsx、analysis-drawer.tsx 的 `formatMoneyWan(v / 10000)` 口径一致）。
  */
 function formatAmount(v: number): string {
   return `${formatMoneyWan(v / 10000)} 万`
@@ -307,7 +307,7 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
                 })()}
               </div>
             ))}
-            <p className="text-xs text-muted-foreground">激活后按 公司 × 期间 × 往来类型 替换旧生效数据；未激活批次不参与分析，可稍后在「导入覆盖」Tab 中查看并激活。</p>
+            <p className="text-xs text-muted-foreground">激活后按 公司 × 期间 × 往来类型 替换旧生效数据；未激活批次不参与分析，可稍后在「导入质量概览」列表或往来分析「导入覆盖」页中查看并激活。</p>
           </div>
         )}
 
