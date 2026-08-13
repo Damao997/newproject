@@ -68,6 +68,48 @@ export function PartyTypeTag({ partyType }: { partyType?: string }) {
   return <span className={cn('rounded px-1.5 py-0.5 text-xs', meta.className)}>{meta.label}</span>
 }
 
+/** 8 段账龄堆叠条色阶：绿→青→蓝→紫→黄→橙→红（success/info/warning/destructive 系，同系两段深浅区分） */
+export const AGING_BAR_COLORS = [
+  'bg-success', 'bg-success/60',
+  'bg-info', 'bg-info/60',
+  'bg-warning', 'bg-warning/60',
+  'bg-destructive/60', 'bg-destructive',
+] as const
+
+/** 账龄堆叠条：按 8 段占比渲染（总余额 ≤0 时不渲染）；各段 title 显示段名与金额（万） */
+export function AgingStackBar({ aging, closingBalance, className }: { aging: Record<string, number>; closingBalance: number; className?: string }) {
+  const total = closingBalance > 0 ? closingBalance : Object.values(aging).reduce((s, v) => s + (v ?? 0), 0)
+  if (total <= 0) return null
+  return (
+    <div className={cn('flex h-1.5 w-full overflow-hidden rounded-full bg-muted', className)}>
+      {AGING_GROUPS.map((g, i) => {
+        const v = aging[g] ?? 0
+        if (v <= 0) return null
+        return (
+          <div
+            key={g}
+            className={AGING_BAR_COLORS[i]}
+            style={{ width: `${Math.max((v / total) * 100, 1)}%` }}
+            title={`${g}：${formatMoneyWan(v / 10000)} 万`}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+/** 账龄风险分档（供总览卡片/分析抽屉复用）：danger=3年+>20%、watch=3年+≥5%、good=其余；余额≤0 返回 null */
+export function agingRisk(aging: Record<string, number>, closingBalance: number): { level: 'danger' | 'watch' | 'good'; text: string } | null {
+  if (closingBalance <= 0) return null
+  const total = closingBalance
+  const pct = (b: string) => ((aging[b] ?? 0) / total) * 100
+  const threePlus = pct('3年以上')
+  if (threePlus > 20) return { level: 'danger', text: `3 年以上账龄占 ${threePlus.toFixed(1)}%，存在高逾期风险` }
+  if (threePlus >= 5) return { level: 'watch', text: `3 年以上账龄占 ${threePlus.toFixed(1)}%，建议关注回收` }
+  const in1y = AGING_GROUPS.slice(0, 5).reduce((s, b) => s + pct(b), 0)
+  return { level: 'good', text: `账龄结构良好，1 年内占 ${in1y.toFixed(1)}%` }
+}
+
 // 关联方过滤下拉（全部 / 内部公司 / 关联方）
 export function PartyTypeSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
