@@ -18,7 +18,7 @@ import { useAnalysisForm } from '@/hooks/use-analysis-form'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { cn, formatMoneyWan } from '@/lib/utils'
 import type { AgingAnalysisRow } from '@/types'
-import { AgingStackBar, agingRisk } from './shared'
+import { AgingStackBar, agingRisk, AGING_GROUPS } from './shared'
 
 /**
  * 往来单项分析抽屉：针对 公司 × 往来类型 × 期间 撰写/编辑/删除分析结论（subjectType='transaction'）。
@@ -36,7 +36,6 @@ const TXN_SUBJECT_CODE: Record<string, string> = {
   预付账款: 'TXN_PER_AP',
 }
 
-const AGING_GROUPS = ['1个月', '2个月', '3个月', '4-6月', '半年以上', '1年至2年', '2年至3年', '3年以上']
 /** 往来类型选项（与 TXN_SUBJECT_CODE 键一致、固定展示顺序） */
 const TXN_TYPE_OPTIONS = ['应收账款', '其他应收款', '预收账款', '应付账款', '其他应付款', '预付账款']
 
