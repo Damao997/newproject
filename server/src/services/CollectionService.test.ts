@@ -50,6 +50,8 @@ afterAll(async () => {
   if (detailId) await basePrisma.transactionDetail.delete({ where: { id: detailId } }).catch(() => undefined)
   // 跨公司业务员（无外键关联，手工清理）
   await basePrisma.salesman.deleteMany({ where: { companyCode: 'EN999902', name: '李四' } }).catch(() => undefined)
+  // 测试公司业务员（无外键关联，手工清理）
+  await basePrisma.salesman.deleteMany({ where: { companyCode: TEST_COMPANY, name: '张三' } }).catch(() => undefined)
 })
 
 describe('CollectionService（真实 DB）', () => {
