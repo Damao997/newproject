@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -18,6 +18,8 @@ interface ReclassifyLogsPanelProps {
   onReapply?: (log: ReclassifyLog) => void
   /** 点击记录行打开只读详情对话框（预填原始操作参数） */
   onViewDetail?: (log: ReclassifyLog) => void
+  /** 筛选行右侧的操作按钮区（科目调整/跨公司调整/年度预算调整等入口） */
+  actions?: ReactNode
 }
 
 const PAGE_SIZE = 10
@@ -105,7 +107,7 @@ const invalidationText = (log: ReclassifyLog): string => {
  * 重分类记录面板（内嵌于数据管理页）：分页展示跨公司/科目归类/科目调整历史，
  * 行点击展开查看原因与行数明细；含快照的记录支持一键撤销（逆向恢复事实行）。
  */
-export function ReclassifyLogsPanel({ canRevert, onReapply, onViewDetail }: ReclassifyLogsPanelProps) {
+export function ReclassifyLogsPanel({ canRevert, onReapply, onViewDetail, actions }: ReclassifyLogsPanelProps) {
   const [type, setType] = useState('all')
   const [page, setPage] = useState(1)
   const [message, setMessage] = useState<string | null>(null)
@@ -183,7 +185,8 @@ export function ReclassifyLogsPanel({ canRevert, onReapply, onViewDetail }: Recl
           <Undo2 className="mr-1 h-4 w-4" />
           撤销
         </Button>
-      ) : (r.invalidatedAt || r.revertedAt) && (r.type === 'company' || r.type === 'subject_adjust') && onReapply ? (
+      ) : (r.invalidatedAt || r.revertedAt) && (r.type === 'company' || r.type === 'subject_adjust') && !(r.type === 'company' && r.templateType === 'budget') && onReapply ? (
+        // 历史「跨公司+预算」日志（旧月度口径）已无对应编辑入口，仅保留只读查看
         <Button
           variant="ghost"
           size="sm"
@@ -201,30 +204,31 @@ export function ReclassifyLogsPanel({ canRevert, onReapply, onViewDetail }: Recl
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-muted-foreground">类型:</span>
-        <Select value={type} onValueChange={(v) => { setType(v); setPage(1) }}>
-          <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">全部</SelectItem>
-            <SelectItem value="company">跨公司</SelectItem>
-            <SelectItem value="subject">科目归类</SelectItem>
-            <SelectItem value="subject_adjust">科目调整</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">类型:</span>
+          <Select value={type} onValueChange={(v) => { setType(v); setPage(1) }}>
+            <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部</SelectItem>
+              <SelectItem value="company">跨公司</SelectItem>
+              <SelectItem value="subject">科目归类</SelectItem>
+              <SelectItem value="subject_adjust">科目调整</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
 
       {message && <p className="text-xs text-muted-foreground">{message}</p>}
 
-      <div className="overflow-x-auto">
-        <DataTable
-          columns={columns}
-          data={items}
-          rowKey={(r) => r.id}
-          emptyText={isFetching ? '加载中...' : '暂无重分类记录'}
-          onRowClick={(r) => onViewDetail?.(r)}
-        />
-      </div>
+      <DataTable
+        columns={columns}
+        data={items}
+        rowKey={(r) => r.id}
+        emptyText={isFetching ? '加载中…' : '暂无重分类记录'}
+        onRowClick={(r) => onViewDetail?.(r)}
+      />
       <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
       {confirmElement}
     </div>

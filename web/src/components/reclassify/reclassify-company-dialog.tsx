@@ -7,7 +7,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -23,7 +22,7 @@ import {
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { formatMoney, cn } from '@/lib/utils'
 import { ArrowLeftRight } from 'lucide-react'
-import { TEMPLATE_LABEL, FeedbackAlert, PreviewStats, SubjectMultiPicker, SectionTitle, ReadonlyLogMeta, type ReclassifyLogMeta, type PreviewStatItem } from './shared'
+import { TEMPLATE_LABEL, FeedbackAlert, PreviewStats, SubjectMultiPicker, SectionTitle, ReadonlyLogMeta, TitleHint, type ReclassifyLogMeta, type PreviewStatItem } from './shared'
 
 interface ReclassifyCompanyDialogProps {
   open: boolean
@@ -219,12 +218,14 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>{readonly ? '跨公司重分类详情' : '跨公司数据重分类'}</DialogTitle>
-          {readonly ? (
-            <DialogDescription>原始操作参数只读展示{meta && <ReadonlyLogMeta meta={meta} />}</DialogDescription>
-          ) : (
-            <DialogDescription>将源公司已生效的数据转移到目标公司，看板与指标将即时刷新。</DialogDescription>
-          )}
+          <DialogTitle className="flex items-center gap-1.5">
+            {readonly ? '跨公司重分类详情' : '跨公司数据重分类'}
+            <TitleHint text={readonly
+              ? '原始操作参数只读展示'
+              : '将源公司已生效的数据转移到目标公司，看板与指标将即时刷新。'
+            } />
+          </DialogTitle>
+          {readonly && meta && <ReadonlyLogMeta meta={meta} />}
         </DialogHeader>
 
         <div className="space-y-4">
@@ -234,14 +235,17 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label>模板类型</Label>
-                <Select value={templateType} disabled={readonly} onValueChange={(v) => { setTemplateType(v); reset(); setSelectedSubjects(new Set()) }}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="operating">经营数据</SelectItem>
-                    <SelectItem value="static">静态数据</SelectItem>
-                    <SelectItem value="budget">年度预算</SelectItem>
-                  </SelectContent>
-                </Select>
+                {readonly
+                  ? <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">{TEMPLATE_LABEL[templateType] ?? templateType}</div>
+                  : (
+                    <Select value={templateType} onValueChange={(v) => { setTemplateType(v); reset(); setSelectedSubjects(new Set()) }}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="operating">经营数据</SelectItem>
+                        <SelectItem value="static">静态数据</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
               </div>
               <div className="space-y-1">
                 <Label>调整期间（单月） <span className="text-destructive">*</span></Label>
@@ -250,7 +254,6 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
                   : (
                     <>
                       <MonthPicker className="w-full" value={period} onChange={(v) => { setPeriod(v); reset() }} availablePeriods={availablePeriods} placeholder="选择月份" />
-                      {templateType === 'budget' && <p className="text-xs text-muted-foreground">预算数据按该月所属财年整体匹配。</p>}
                     </>
                   )}
               </div>

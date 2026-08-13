@@ -406,11 +406,22 @@ router.post('/metrics/formulas/import', requirePermission('data:metric:update', 
 // ===== 跨公司重分类 =====
 const TRANSFER_MODES = ['all', 'ratio', 'amount']
 const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/
+const YEAR_RE = /^\d{4}$/
+
+/** 期间校验：预算模板支持全年 YYYY 或历史月度 YYYY-MM，其余模板仅 YYYY-MM */
+function assertPeriodOk(templateType: string, period: unknown): void {
+  if (typeof period !== 'string') throw errors.badRequest('请选择调整期间')
+  if (templateType === 'budget') {
+    if (!YEAR_RE.test(period) && !PERIOD_RE.test(period)) throw errors.badRequest('请选择调整财年（YYYY）')
+    return
+  }
+  if (!PERIOD_RE.test(period)) throw errors.badRequest('请选择调整期间（单月 YYYY-MM）')
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function companyReclassifyBody(b: any) {
   if (!b.templateType || !b.sourceCompanyCode || !b.targetCompanyCode) throw errors.badRequest('模板类型、源公司、目标公司必填')
-  if (typeof b.period !== 'string' || !PERIOD_RE.test(b.period)) throw errors.badRequest('请选择调整期间（单月 YYYY-MM）')
+  assertPeriodOk(b.templateType, b.period)
   if (b.transferMode !== undefined && !TRANSFER_MODES.includes(b.transferMode)) throw errors.badRequest('转移方式不合法')
   return {
     templateType: b.templateType,
@@ -448,7 +459,7 @@ function adjustSubjectBody(b: any) {
     if (!b.targetAccountCode) throw errors.badRequest('仅调增模式下目标科目必填')
     if (b.increaseAmount === undefined || b.increaseAmount === null || b.increaseAmount === '') throw errors.badRequest('仅调增模式下调增金额必填')
   }
-  if (typeof b.period !== 'string' || !PERIOD_RE.test(b.period)) throw errors.badRequest('请选择调整期间（单月 YYYY-MM）')
+  assertPeriodOk(b.templateType, b.period)
   return {
     templateType: b.templateType,
     companyCode: b.companyCode,

@@ -3,13 +3,13 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
 import { MonthPicker } from '@/components/ui/month-picker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -26,7 +26,7 @@ import {
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { formatMoney, cn } from '@/lib/utils'
 import { ArrowLeftRight, Link2 } from 'lucide-react'
-import { FeedbackAlert, SubjectPicker, SectionTitle } from './shared'
+import { FeedbackAlert, SubjectPicker, SectionTitle, TitleHint } from './shared'
 
 interface ConsolidationAdjustDialogProps {
   open: boolean
@@ -184,10 +184,10 @@ export function ConsolidationAdjustDialog({ open, onClose }: ConsolidationAdjust
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>汇总抵消调整</DialogTitle>
-          <DialogDescription>
-            选择发生内部交易的两个单体公司，系统将按汇总映射自动匹配共同所属的汇总主体，在其口径上抵消重复计算的内部交易（如集团内现金流）；单体报表不受影响，可随时删除撤销。
-          </DialogDescription>
+          <DialogTitle className="flex items-center gap-1.5">
+            汇总抵消调整
+            <TitleHint text="选择发生内部交易的两个单体公司，系统将按汇总映射自动匹配共同所属的汇总主体，在其口径上抵消重复计算的内部交易（如集团内现金流）；单体报表不受影响，可随时删除撤销。" />
+          </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -243,11 +243,11 @@ export function ConsolidationAdjustDialog({ open, onClose }: ConsolidationAdjust
               <div className="space-y-1.5 rounded-lg border bg-muted/20 p-3">
                 {matchedSummaries.map((s) => (
                   <label key={s.code} className="flex cursor-pointer items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      className="h-3.5 w-3.5 cursor-pointer accent-primary"
+                    <Checkbox
+                      size="sm"
+                      className="shrink-0"
                       checked={selectedSummaries.has(s.code)}
-                      onChange={() => toggleSummary(s.code)}
+                      onCheckedChange={() => toggleSummary(s.code)}
                     />
                     <span className="min-w-0 flex-1 truncate" title={s.code}>{s.name}</span>
                     {!s.isInternalElimination && (

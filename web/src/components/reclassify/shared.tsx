@@ -1,9 +1,11 @@
 import { forwardRef, useMemo, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
 import { cn } from '@/lib/utils'
-import { AlertCircle, BookOpen, CheckCircle2, Search, X } from 'lucide-react'
+import { AlertCircle, BookOpen, CheckCircle2, Info, Search, X } from 'lucide-react'
 
 /**
  * 重分类模块共享基础：标签常量、反馈提示条、预览统计卡、科目选择器（单选/多选）。
@@ -41,6 +43,21 @@ export function FeedbackAlert({ kind, children }: { kind: 'success' | 'error'; c
       <Icon className="mt-0.5 h-4 w-4 shrink-0" />
       <div className="min-w-0">{children}</div>
     </div>
+  )
+}
+
+/**
+ * 弹窗标题旁说明图标：主标题下方的静态说明文字改为 Hover 提示展示（节省空间、保持界面整洁）。
+ * 依赖 App 全局 TooltipProvider；说明较长时 tooltip 限定最大宽度自动换行。
+ */
+export function TitleHint({ text, className }: { text: string; className?: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Info className={cn('h-3.5 w-3.5 shrink-0 cursor-help text-muted-foreground', className)} aria-label="说明" />
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs whitespace-normal">{text}</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -242,7 +259,7 @@ export function SubjectMultiPicker({ options, selected, onToggle, onClear, place
           onKeyword={setKeyword}
           renderItem={(s) => (
             <label key={s.code} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-muted">
-              <input type="checkbox" checked={selected.has(s.code)} onChange={() => onToggle(s.code)} />
+              <Checkbox checked={selected.has(s.code)} onCheckedChange={() => onToggle(s.code)} />
               <span className="font-mono text-xs text-muted-foreground">{s.code}</span>
               <span className="truncate">{s.name}</span>
             </label>

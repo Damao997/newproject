@@ -71,7 +71,7 @@ export function ConsolidationAdjustmentsPanel() {
         <Button
           variant="ghost"
           size="sm"
-          className="text-finance-red"
+          className="text-destructive"
           title="撤销本次抵消（汇总口径恢复原值）"
           disabled={deleteMutation.isPending}
           onClick={(e) => { e.stopPropagation(); handleDelete(r) }}
@@ -88,22 +88,20 @@ export function ConsolidationAdjustmentsPanel() {
       {message && (
         <p className={cn('text-xs', message.includes('失败') ? 'text-destructive' : 'text-muted-foreground')}>{message}</p>
       )}
-      <div className="overflow-x-auto">
-        <DataTable
-          columns={columns}
-          data={items}
-          rowKey={(r) => r.id}
-          emptyText={isFetching ? '加载中...' : '暂无汇总抵消调整记录'}
-          onRowClick={toggleExpanded}
-          expandedKeys={expandedKeys}
-          renderExpanded={(r) => (
-            <div className="space-y-1 py-1 text-xs text-muted-foreground">
-              <p className="text-foreground">调整原因：{r.reason}</p>
-              <p>生效范围：仅汇总主体「{r.summaryCompanyName}」的查询口径，单体报表不受影响。</p>
-            </div>
-          )}
-        />
-      </div>
+      <DataTable
+        columns={columns}
+        data={items}
+        rowKey={(r) => r.id}
+        emptyText={isFetching ? '加载中…' : '暂无汇总抵消调整记录'}
+        onRowClick={toggleExpanded}
+        expandedKeys={expandedKeys}
+        renderExpanded={(r) => (
+          <div className="space-y-1 py-1 text-xs text-muted-foreground">
+            <p className="text-foreground">调整原因：{r.reason}</p>
+            <p>生效范围：仅汇总主体「{r.summaryCompanyName}」的查询口径，单体报表不受影响。</p>
+          </div>
+        )}
+      />
       <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
       {confirmElement}
     </div>

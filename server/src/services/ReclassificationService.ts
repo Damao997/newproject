@@ -16,7 +16,8 @@ import type { Prisma } from '@prisma/client'
  *   both：源科目调减 + 目标科目调增，两者金额可以不相等；
  *   decrease：仅调减源科目（如修正重复计算）；increase：仅调增目标科目（如补录遗漏）。
  *   公司总额随净差变化，须填写调整原因留痕。金额单位与事实表一致（万元）。
- * - 期间口径：均按单月（period 必填 YYYY-MM）调整；预算模板按期间所属财年匹配。
+ * - 期间口径：经营/静态按单月（period 必填 YYYY-MM）调整；预算模板支持全年（period 传 YYYY，
+ *   按财年整体调整），历史月度口径（YYYY-MM）仍兼容（按期间所属财年匹配）。
  * - 科目树换父见 DataService.reclassifySubject。
  * 每次操作写 ReclassificationLog（含行级快照 snapshot，支持 revertLog 撤销）+ 审计日志；
  * 相关公司须在操作者数据范围内（scope 守卫）。
@@ -36,7 +37,7 @@ export interface ReclassifyCompanyParams {
   sourceCompanyCode: string
   targetCompanyCode: string
   accountCodes?: string[]
-  /** 调整期间（单月 YYYY-MM，必填）；预算模板按期所属财年匹配 */
+  /** 调整期间（经营/静态：单月 YYYY-MM 必填；预算：全年 YYYY，兼容历史 YYYY-MM 按财年匹配） */
   period: string
   /** 转移方式：all=整行迁移（默认）；ratio=按比例部分转移；amount=按金额部分转移 */
   transferMode?: TransferMode
@@ -67,7 +68,7 @@ export interface AdjustSubjectParams {
   decreaseAmount?: number
   /** increase/both 模式必填（万元）；可与 decreaseAmount 不相等，公司总额随净差变化 */
   increaseAmount?: number
-  /** 调整期间（单月 YYYY-MM，必填）；预算模板按期所属财年匹配 */
+  /** 调整期间（经营/静态：单月 YYYY-MM 必填；预算：全年 YYYY，兼容历史 YYYY-MM 按财年匹配） */
   period: string
   reason: string
 }
@@ -131,13 +132,23 @@ function validateTransferParams(p: ReclassifyCompanyParams): TransferMode {
 }
 
 const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/
+const YEAR_RE = /^\d{4}$/
 
-/** 单月期间校验并构造期间过滤器：经营/静态按单月精确匹配，预算按期所属财年匹配 */
+/**
+ * 期间校验并构造期间过滤器：
+ * - 经营/静态按单月精确匹配（YYYY-MM 必填）；
+ * - 预算支持全年 YYYY（直接映射 FY{year}），历史月度口径 YYYY-MM 仍兼容（按期间所属财年匹配）。
+ */
 function periodFilterOf(templateType: TemplateType, period: string): FactFilter {
-  if (typeof period !== 'string' || !PERIOD_RE.test(period)) {
+  if (typeof period !== 'string') throw errors.badRequest('请选择调整期间')
+  if (templateType === 'budget') {
+    if (YEAR_RE.test(period)) return { fiscalYear: `FY${period}` }
+    if (PERIOD_RE.test(period)) return { fiscalYear: fiscalYearLabel(period) }
+    throw errors.badRequest('请选择调整财年（YYYY）')
+  }
+  if (!PERIOD_RE.test(period)) {
     throw errors.badRequest('请选择调整期间（单月 YYYY-MM）')
   }
-  if (templateType === 'budget') return { fiscalYear: fiscalYearLabel(period) }
   return { periodFrom: period, periodTo: period }
 }
 

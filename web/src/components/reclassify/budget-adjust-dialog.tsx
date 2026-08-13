@@ -1,9 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { MonthPicker } from '@/components/ui/month-picker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Dialog,
@@ -23,31 +22,29 @@ import {
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { formatMoney, formatQuantity, cn } from '@/lib/utils'
 import { Equal, MinusCircle, PlusCircle } from 'lucide-react'
-import { TEMPLATE_LABEL, FeedbackAlert, PreviewStats, SubjectPicker, SectionTitle, ReadonlyLogMeta, TitleHint, type ReclassifyLogMeta, type PreviewStatItem } from './shared'
+import { FeedbackAlert, PreviewStats, SubjectPicker, SectionTitle, ReadonlyLogMeta, TitleHint, type ReclassifyLogMeta, type PreviewStatItem } from './shared'
 
-interface ReclassifySubjectDialogProps {
+interface BudgetAdjustDialogProps {
   open: boolean
   onClose: () => void
-  /** 预填模板类型（来自指标页当前标签） */
-  defaultTemplateType?: 'operating' | 'static'
   /** 预填公司（来自指标页当前主体） */
   defaultCompany?: string
   /** 完整预填参数（来自失效/已撤销日志的「重新应用」或只读查看）：父级以 key 强制重挂载使其生效 */
-  preset?: ReclassifySubjectPreset
+  preset?: BudgetAdjustPreset
   /** 只读查看模式：预填 preset 展示原始操作参数，禁止修改与提交（不触发任何写接口） */
   readonly?: boolean
   /** 只读模式下展示的日志元信息（操作人/时间/状态） */
   meta?: ReclassifyLogMeta
 }
 
-export interface ReclassifySubjectPreset {
-  templateType: 'operating' | 'static' | 'budget'
+export interface BudgetAdjustPreset {
   companyCode: string
   adjustMode: AdjustMode
   sourceAccountCode?: string | null
   targetAccountCode?: string | null
   decreaseAmount?: number
   increaseAmount?: number
+  /** 原始期间：全年 YYYY，或历史月度口径 YYYY-MM（展示时归一化为财年标签） */
   period: string
   reason?: string
 }
@@ -70,22 +67,26 @@ const ADJUST_MODE_LABEL: Record<AdjustMode, string> = {
   increase: '仅调增目标科目',
 }
 
+/** 预算期间归一化为财年标签：全年 YYYY 直接映射；历史月度 YYYY-MM 按财年起始月换算 */
+function fyLabelOf(period: string, fiscalStartMonth: number): string {
+  if (/^\d{4}$/.test(period)) return `FY${period}`
+  const [y, m] = period.split('-').map(Number)
+  return `FY${m >= fiscalStartMonth ? y : y - 1}`
+}
+
 /**
- * 同公司科目间调整对话框：支持三种调整方式（双向/仅调减/仅调增），
- * 调减侧与调增侧按方式按需展示，输入即实时显示净变动。
- * 调增与调减金额可不相等，公司总额随净差变化，因此调整原因必填留痕。
- * 金额单位与事实数据一致（万元）。期间按单月必选（与后端口径一致）；
- * 本年累计由查询时按财年实时聚合，自动反映调整结果。
+ * 年度预算调整对话框：仅支持按财年（全年）整体调整年度预算数据，不再按月拆分。
+ * 调整方式与科目调整一致（双向/仅调减/仅调增），期间固定为财年选择器（提交 period 传 YYYY，
+ * 后端按 fiscalYear 整体匹配）；金额类科目单位为万元，数量类按整数调整。
  */
-export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = 'operating', defaultCompany, preset, readonly = false, meta }: ReclassifySubjectDialogProps) {
-  const [templateType, setTemplateType] = useState<string>(preset?.templateType ?? defaultTemplateType)
+export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, readonly = false, meta }: BudgetAdjustDialogProps) {
   const [companyCode, setCompanyCode] = useState<string>(preset?.companyCode ?? defaultCompany ?? '')
   const [adjustMode, setAdjustMode] = useState<AdjustMode>(preset?.adjustMode ?? 'both')
   const [sourceAccountCode, setSourceAccountCode] = useState(preset?.sourceAccountCode ?? '')
   const [targetAccountCode, setTargetAccountCode] = useState(preset?.targetAccountCode ?? '')
   const [decreaseInput, setDecreaseInput] = useState(() => (preset?.decreaseAmount != null ? String(preset.decreaseAmount) : ''))
   const [increaseInput, setIncreaseInput] = useState(() => (preset?.increaseAmount != null ? String(preset.increaseAmount) : ''))
-  const [period, setPeriod] = useState(preset?.period ?? '')
+  const [fiscalYear, setFiscalYear] = useState('')
   const [reason, setReason] = useState(preset?.reason ?? '')
   const [reasonTouched, setReasonTouched] = useState(false)
   const [preview, setPreview] = useState<PreviewData | null>(null)
@@ -95,14 +96,15 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
   const { confirm, element: confirmElement } = useConfirm()
   const { data: companies } = useCompanies()
   const { data: periodsData } = useAvailablePeriods()
-  const availablePeriods = periodsData?.periods ?? []
+  // 财年候选与全局 Header 财年选择器同源（FY 标签，降序）；起始月用于历史月度口径归一化
+  const fiscalYears = periodsData?.fiscalYears ?? []
+  const fiscalStartMonth = periodsData?.fiscalStartMonth ?? 1
   const entityCompanies = useMemo(() => (companies ?? []).filter((c) => c.type === 'entity'), [companies])
   // 下拉选项跟随「显示简称」开关；确认弹窗文案仍用全称，保证高危操作确认的严谨性
   const { displayNameMap } = useCompanyDisplayName()
 
-  // 科目候选：静态模板取静态科目，否则取经营科目；比率类（公式计算）与 calc/display 类不可直接调整，从候选中排除
-  const subjectType = templateType === 'static' ? 'static' : 'operating'
-  const { data: subjectsData } = useSubjects({ type: subjectType, pageSize: 1000 })
+  // 科目候选：经营科目（预算口径同经营科目树）；比率类（公式计算）与 calc/display 类不可直接调整
+  const { data: subjectsData } = useSubjects({ type: 'operating', pageSize: 1000 })
   const subjectOptions = useMemo(
     () => (subjectsData?.items ?? []).filter((s) => s.valueType !== 'ratio' && s.dataType !== 'calc' && s.dataType !== 'display'),
     [subjectsData],
@@ -113,7 +115,6 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
   const targetVt = subjectOptions.find((s) => s.code === targetAccountCode)?.valueType ?? null
   const decSideQty = sourceVt === 'quantity'
   const incSideQty = (adjustMode === 'both' ? (sourceVt ?? targetVt) : targetVt) === 'quantity'
-  // both 模式：已选一侧后，另一侧候选仅保留同值类型科目
   const sourceOptions = useMemo(
     () => (adjustMode === 'both' && targetVt ? subjectOptions.filter((s) => (s.valueType ?? 'amount') === targetVt) : subjectOptions),
     [subjectOptions, adjustMode, targetVt],
@@ -125,18 +126,25 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
   /** 分型格式化：数量整数（无“万”），金额万元 */
   const fmt = (v: number, qty: boolean) => (qty ? formatQuantity(v) : formatMoney(v))
 
+  // 预设期间归一化为财年标签（历史月度口径日志按财年起始月换算；key 重挂载 + 起始月异步加载双保险）
+  useEffect(() => {
+    if (preset?.period) setFiscalYear(fyLabelOf(preset.period, fiscalStartMonth))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preset?.period, fiscalStartMonth])
+
   const previewMutation = usePreviewAdjustSubject()
   const adjustMutation = useAdjustSubject()
 
   const buildPayload = () => ({
-    templateType,
+    templateType: 'budget' as const,
     companyCode,
     adjustMode,
     sourceAccountCode: adjustMode !== 'increase' ? sourceAccountCode : undefined,
     targetAccountCode: adjustMode !== 'decrease' ? (targetAccountCode || undefined) : undefined,
     decreaseAmount: adjustMode !== 'increase' ? Number(decreaseInput) : undefined,
     increaseAmount: adjustMode !== 'decrease' && increaseInput !== '' ? Number(increaseInput) : undefined,
-    period,
+    // 全年粒度：财年标签去前缀（FY2026 → 2026），后端按 fiscalYear 整体匹配
+    period: fiscalYear.replace('FY', ''),
     reason: reason.trim(),
   })
 
@@ -180,10 +188,10 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
   const decValue = adjustMode === 'increase' || decreaseError || decreaseInput === '' ? 0 : Number(decreaseInput)
   const incValue = adjustMode === 'decrease' || increaseError || increaseInput === '' ? 0 : Number(increaseInput)
   const localNet = Math.round((incValue - decValue) * 100) / 100
-  // 当前调整口径是否为数量类（increase 模式看目标侧，其余看源侧），驱动全局分型格式化
   const activeQty = adjustMode === 'increase' ? incSideQty : decSideQty
 
   const validateBeforePreview = (): string | null => {
+    if (!fiscalYear) return '请选择调整财年（全年）'
     if (!companyCode) return '请选择公司'
     if (adjustMode !== 'increase') {
       if (!sourceAccountCode) return '请选择源科目'
@@ -194,7 +202,6 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
       if (increaseInput === '' || increaseError) return increaseError ?? '请输入调增金额'
     }
     if (adjustMode === 'both' && targetAccountCode === sourceAccountCode) return '源科目与目标科目不能相同'
-    if (!period) return '请选择调整期间（单月）'
     return null
   }
 
@@ -223,13 +230,13 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
     const companyName = entityCompanies.find((c) => c.code === companyCode)?.name ?? companyCode
     const sourceName = subjectOptions.find((s) => s.code === sourceAccountCode)?.name ?? sourceAccountCode
     const targetName = targetAccountCode ? (subjectOptions.find((s) => s.code === targetAccountCode)?.name ?? targetAccountCode) : ''
-    const netText = preview.netChange !== 0 ? `，公司总额将净变动 ${fmt(preview.netChange, activeQty)}` : '，公司总额不变'
+    const netText = preview.netChange !== 0 ? `，公司全年预算总额将净变动 ${fmt(preview.netChange, activeQty)}` : '，公司全年预算总额不变'
     const actionText = adjustMode === 'increase'
       ? `「${targetName}」调增 ${fmt(preview.increaseAmount, activeQty)}`
       : `「${sourceName}」调减 ${fmt(preview.decreaseAmount, activeQty)}${adjustMode === 'both' && targetName ? `，「${targetName}」调增 ${fmt(preview.increaseAmount, activeQty)}` : ''}`
     const ok = await confirm({
-      title: '确认科目间调整',
-      description: `将把「${companyName}」的${TEMPLATE_LABEL[templateType]}中${actionText}${netText}。此操作将影响看板与指标且不可撤销，确认继续？`,
+      title: '确认年度预算调整',
+      description: `将把「${companyName}」${fiscalYear} 年度预算中${actionText}${netText}。年度预算按全年整体调整，不拆分到月份。此操作将影响看板与指标且不可撤销，确认继续？`,
       danger: true,
       confirmText: '确认调整',
     })
@@ -281,10 +288,10 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-1.5">
-            {readonly ? '科目调整详情' : '科目间金额调整'}
+            {readonly ? '年度预算调整详情' : '年度预算调整'}
             <TitleHint text={readonly
               ? '原始操作参数只读展示'
-              : '同一公司内按选定方式调整科目金额：可双向调整（调减+调增）、仅调减（如修正重复计算）或仅调增（如补录遗漏）；金额类科目单位为万元，数量类按整数调整。'
+              : '仅支持按财年（全年）整体调整年度预算数据，不再按月拆分；金额类科目单位为万元，数量类按整数调整。'
             } />
           </DialogTitle>
           {readonly && meta && <ReadonlyLogMeta meta={meta} />}
@@ -296,38 +303,33 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
             <SectionTitle>数据范围</SectionTitle>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
-                <Label htmlFor="rs-template-type">模板类型</Label>
+                <Label htmlFor="ba-fiscal-year">调整财年（全年） <span className="text-destructive">*</span></Label>
                 {readonly
-                  ? <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">{TEMPLATE_LABEL[templateType] ?? templateType}</div>
+                  ? <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">{fiscalYear || '-'}</div>
                   : (
-                    <Select value={templateType} onValueChange={(v) => { setTemplateType(v); reset(); setSourceAccountCode(''); setTargetAccountCode('') }}>
-                      <SelectTrigger id="rs-template-type"><SelectValue /></SelectTrigger>
+                    <Select value={fiscalYear} onValueChange={(v) => { setFiscalYear(v); reset() }}>
+                      <SelectTrigger id="ba-fiscal-year"><SelectValue placeholder="选择财年" /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="operating">经营数据</SelectItem>
-                        <SelectItem value="static">静态数据</SelectItem>
+                        {fiscalYears.map((fy) => (
+                          <SelectItem key={fy} value={fy}>{fy}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   )}
               </div>
               <div className="space-y-1">
-                <Label htmlFor="rs-company">公司</Label>
-                <Select value={companyCode} disabled={readonly} onValueChange={(v) => { setCompanyCode(v); reset() }}>
-                  <SelectTrigger id="rs-company"><SelectValue placeholder="选择公司" /></SelectTrigger>
-                  <SelectContent className="max-h-[280px]">
-                    {entityCompanies.map((c) => (
-                      <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label>调整期间（单月） <span className="text-destructive">*</span></Label>
+                <Label htmlFor="ba-company">公司</Label>
                 {readonly
-                  ? <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">{period || '-'}</div>
+                  ? <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">{displayNameMap.get(companyCode) ?? companyCode}</div>
                   : (
-                    <>
-                      <MonthPicker className="w-full" value={period} onChange={(v) => { setPeriod(v); reset() }} availablePeriods={availablePeriods} placeholder="选择月份" />
-                    </>
+                    <Select value={companyCode} onValueChange={(v) => { setCompanyCode(v); reset() }}>
+                      <SelectTrigger id="ba-company"><SelectValue placeholder="选择公司" /></SelectTrigger>
+                      <SelectContent className="max-h-[280px]">
+                        {entityCompanies.map((c) => (
+                          <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   )}
               </div>
             </div>
@@ -337,15 +339,19 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
           <section className="space-y-2">
             <SectionTitle>调整设置</SectionTitle>
             <div className="space-y-1">
-              <Label htmlFor="rs-adjust-mode">调整方式</Label>
-              <Select value={adjustMode} disabled={readonly} onValueChange={(v) => handleModeChange(v as AdjustMode)}>
-                <SelectTrigger id="rs-adjust-mode"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(ADJUST_MODE_LABEL) as AdjustMode[]).map((m) => (
-                    <SelectItem key={m} value={m}>{ADJUST_MODE_LABEL[m]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="ba-adjust-mode">调整方式</Label>
+              {readonly
+                ? <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">{ADJUST_MODE_LABEL[adjustMode] ?? adjustMode}</div>
+                : (
+                  <Select value={adjustMode} onValueChange={(v) => handleModeChange(v as AdjustMode)}>
+                    <SelectTrigger id="ba-adjust-mode"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(ADJUST_MODE_LABEL) as AdjustMode[]).map((m) => (
+                        <SelectItem key={m} value={m}>{ADJUST_MODE_LABEL[m]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
             </div>
             <div className={cn('grid grid-cols-1 gap-3', adjustMode === 'both' && 'sm:grid-cols-2')}>
               {/* 调减侧（decrease/both） */}
@@ -375,9 +381,9 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                     )}
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="rs-decrease">{decSideQty ? '调减数量（整数）' : '调减金额（万元）'} <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="ba-decrease">{decSideQty ? '调减数量（整数）' : '调减金额（万元）'} <span className="text-destructive">*</span></Label>
                   <Input
-                    id="rs-decrease"
+                    id="ba-decrease"
                     type="number"
                     min={0}
                     step={decSideQty ? 1 : '0.01'}
@@ -434,9 +440,9 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                     )}
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="rs-increase">{incSideQty ? '调增数量（整数）' : '调增金额（万元）'} <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="ba-increase">{incSideQty ? '调增数量（整数）' : '调增金额（万元）'} <span className="text-destructive">*</span></Label>
                   <Input
-                    id="rs-increase"
+                    id="ba-increase"
                     type="number"
                     min={0}
                     step={incSideQty ? 1 : '0.01'}
@@ -462,22 +468,22 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                 )}
               >
                 {localNet !== 0
-                  ? <>本次调整将使公司总额净变动 <span className="font-num font-semibold">{fmt(localNet, activeQty)}</span>{adjustMode === 'decrease' && '（仅调减）'}{adjustMode === 'increase' && '（仅调增）'}。</>
-                  : <>调减与调增等额，公司总额不变。</>}
+                  ? <>本次调整将使公司全年预算总额净变动 <span className="font-num font-semibold">{fmt(localNet, activeQty)}</span>{adjustMode === 'decrease' && '（仅调减）'}{adjustMode === 'increase' && '（仅调增）'}。</>
+                  : <>调减与调增等额，公司全年预算总额不变。</>}
               </div>
             )}
           </section>
 
           {/* ===== 调整原因 ===== */}
           <section className="space-y-1">
-            <Label htmlFor="rs-reason">调整原因 <span className="text-destructive">*</span></Label>
+            <Label htmlFor="ba-reason">调整原因 <span className="text-destructive">*</span></Label>
             {readonly
               ? <div className="min-h-9 rounded-md border bg-muted/40 px-3 py-2 text-sm">{reason || '-'}</div>
               : (
                 <Textarea
-                  id="rs-reason"
+                  id="ba-reason"
                   rows={2}
-                  placeholder="如：××科目 5 月数据重复计算，调减重复部分"
+                  placeholder="如：××科目全年预算调整，按实际经营计划修订"
                   value={reason}
                   aria-invalid={!!reasonError}
                   className={cn(reasonError && 'border-destructive focus-visible:ring-destructive')}
@@ -499,7 +505,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                 ? <PreviewStats items={[]} empty />
                 : <PreviewStats
                     items={previewItems}
-                    warning={preview.netChange !== 0 ? <>本次调整将使公司总额净变动 <span className="font-num font-semibold">{fmt(preview.netChange, previewQty)}</span>，请确认业务依据。</> : undefined}
+                    warning={preview.netChange !== 0 ? <>本次调整将使公司全年预算总额净变动 <span className="font-num font-semibold">{fmt(preview.netChange, previewQty)}</span>，请确认业务依据。</> : undefined}
                   />)}
               {done && <FeedbackAlert kind="success">{done}</FeedbackAlert>}
               {error && <FeedbackAlert kind="error">{error}</FeedbackAlert>}
@@ -518,7 +524,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                 variant="outline"
                 onClick={handlePreview}
                 disabled={
-                  previewMutation.isPending || !companyCode || !period
+                  previewMutation.isPending || !fiscalYear || !companyCode
                   || (adjustMode !== 'increase' && (!sourceAccountCode || !decreaseInput))
                   || (adjustMode !== 'decrease' && (!targetAccountCode || !increaseInput))
                 }
