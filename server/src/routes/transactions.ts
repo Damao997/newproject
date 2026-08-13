@@ -257,7 +257,7 @@ router.post('/salesmen', requirePermission('transactions:update', 'update'), asy
   sendOk(res, data)
 }))
 
-router.get('/counterparties', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
+router.get('/collections/counterparties', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
   const companyCodes = await normalizeCompanies(req.authUser as AuthUserContext, req.query.companyCode)
   const data = await CollectionService.listCounterparties({ companyCodes, keyword: req.query.keyword ? String(req.query.keyword) : undefined })
   sendOk(res, data)
