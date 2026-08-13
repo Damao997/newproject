@@ -242,8 +242,14 @@ router.get('/collections/customers', requirePermission('transactions:view', 'vie
 
 router.patch('/collections/customers/:companyCode/:counterpartyCode', requirePermission('transactions:update', 'update'), asyncHandler(async (req, res) => {
   const authUser = req.authUser as AuthUserContext
+  const pathCompany = req.params.companyCode as string
+  // 数据范围守卫：归一化结果必须包含路径公司（越权/不存在的编码直接拒绝，不做静默降级——写入路径语义要求明确）
+  const companyCodes = await normalizeCompanies(authUser, pathCompany)
+  if (!companyCodes?.includes(pathCompany)) {
+    throw errors.notFound('公司不存在或无权访问')
+  }
   const data = await CustomerLedgerService.upsertCustomerExt(
-    req.params.companyCode as string,
+    pathCompany,
     req.params.counterpartyCode as string,
     req.body ?? {},
     { userId: authUser.userId, traceId: req.traceId },
