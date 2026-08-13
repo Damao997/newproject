@@ -101,7 +101,7 @@ function UpdateStatusDialog({ row, onClose }: { row: CustomerLedgerItem | null; 
   }, [row])
 
   const currentStatus = (row?.planStatus ?? 'pending') as CollectionStatus
-  const allowed = row?.planId ? STATUS_TRANSITIONS[currentStatus] : []
+  const allowed = row?.planId ? (STATUS_TRANSITIONS[currentStatus] ?? []) : []
 
   const handleSubmit = async () => {
     if (!row?.planId) return
@@ -488,8 +488,8 @@ export function CollectionsTab() {
       render: (row) => {
         const statusKey = (row.planStatus ?? 'unplanned') as CollectionStatus | 'unplanned'
         return (
-          <span className={cn('rounded px-1.5 py-0.5 text-xs', STATUS_STYLES[statusKey])} title={row.statusNote ?? undefined}>
-            {STATUS_LABELS[statusKey]}
+          <span className={cn('rounded px-1.5 py-0.5 text-xs', STATUS_STYLES[statusKey] ?? 'bg-muted text-muted-foreground')} title={row.statusNote ?? undefined}>
+            {STATUS_LABELS[statusKey] ?? statusKey}
           </span>
         )
       },
