@@ -234,6 +234,7 @@ router.get('/collections/customers', requirePermission('transactions:view', 'vie
     companyCodes,
     status: req.query.status ? String(req.query.status) : undefined,
     counterpartyKeyword: req.query.counterpartyKeyword ? String(req.query.counterpartyKeyword) : undefined,
+    period: req.query.period ? String(req.query.period) : undefined,
     page: req.query.page ? Number(req.query.page) : undefined,
     pageSize: req.query.pageSize ? Number(req.query.pageSize) : undefined,
   })
