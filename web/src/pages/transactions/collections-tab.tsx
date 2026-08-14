@@ -311,7 +311,7 @@ function SalesmanDrawer({ target, onClose }: { target: LedgerTarget; onClose: ()
     setErrorMsg('')
     if (!newName.trim()) { setErrorMsg('请输入业务员姓名'); return }
     try {
-      const created = await createMutation.mutateAsync({ companyCode, name: newName.trim(), phone: newPhone.trim() || undefined })
+      const created = await createMutation.mutateAsync({ companyCodes: [companyCode], name: newName.trim(), phone: newPhone.trim() || undefined })
       setSelectedId(created.id)
       setNewName('')
       setNewPhone('')

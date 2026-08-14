@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -19,11 +20,11 @@ import { usePermission } from '@/hooks/usePermission'
 import { useSalesmenManage, useCreateSalesman, useUpdateSalesman, useSetSalesmanStatus } from '@/hooks/api-queries'
 import { usePageStore } from '@/stores/pageStateStore'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
-import { CompanySelect } from '@/components/filters/company-select'
+import { CompanyMultiSelect, CompanySelect } from '@/components/filters/company-select'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { SheetShell } from '@/components/ui/sheet-shell'
 import { FlashMessage } from '@/components/ui/flash-message'
-import { Loader2, UserPlus } from 'lucide-react'
+import { ArrowLeft, Loader2, UserPlus } from 'lucide-react'
 import type { SalesmanManageItem } from '@/types'
 
 /**
@@ -33,10 +34,9 @@ import type { SalesmanManageItem } from '@/types'
 
 const STATUS_LABELS: Record<string, string> = { active: '启用', inactive: '停用' }
 
-/** 表单抽屉：新增（公司可选）与编辑（公司只读）共用 */
+/** 表单抽屉：新增与编辑共用，所属公司可多选 */
 function SalesmanFormDrawer({ target, onClose }: { target: SalesmanManageItem | null; onClose: () => void }) {
-  const { getDisplayName } = useCompanyDisplayName()
-  const [companyCode, setCompanyCode] = useState(target?.companyCode ?? '')
+  const [companyCodes, setCompanyCodes] = useState<string[]>(target?.companyCodes ?? [])
   const [name, setName] = useState(target?.name ?? '')
   const [phone, setPhone] = useState(target?.phone ?? '')
   const [remark, setRemark] = useState(target?.remark ?? '')
@@ -46,13 +46,13 @@ function SalesmanFormDrawer({ target, onClose }: { target: SalesmanManageItem | 
 
   const handleSave = async () => {
     setErrorMsg('')
-    if (!target && !companyCode) { setErrorMsg('请选择所属公司'); return }
+    if (companyCodes.length === 0) { setErrorMsg('请选择所属公司'); return }
     if (!name.trim()) { setErrorMsg('请输入业务员姓名'); return }
     try {
       if (target) {
-        await updateMutation.mutateAsync({ id: target.id, data: { name: name.trim(), phone: phone.trim() || undefined, remark: remark.trim() || undefined } })
+        await updateMutation.mutateAsync({ id: target.id, data: { name: name.trim(), phone: phone.trim() || undefined, remark: remark.trim() || undefined, companyCodes } })
       } else {
-        await createMutation.mutateAsync({ companyCode, name: name.trim(), phone: phone.trim() || undefined, remark: remark.trim() || undefined })
+        await createMutation.mutateAsync({ companyCodes, name: name.trim(), phone: phone.trim() || undefined, remark: remark.trim() || undefined })
       }
       onClose()
     } catch (e) {
@@ -65,7 +65,7 @@ function SalesmanFormDrawer({ target, onClose }: { target: SalesmanManageItem | 
       onClose={onClose}
       className="max-w-md"
       title={target ? '编辑业务员' : '新增业务员'}
-      description={target ? `${target.name} · ${getDisplayName(target.companyCode, undefined)}` : '录入业务员主数据（所属公司不可修改）'}
+      description={target ? `${target.name} · ${target.companyCodes.join('、')}` : '录入业务员主数据（所属公司可多选）'}
       footer={(
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={onClose} disabled={createMutation.isPending || updateMutation.isPending}>取消</Button>
@@ -78,12 +78,8 @@ function SalesmanFormDrawer({ target, onClose }: { target: SalesmanManageItem | 
     >
       <div className="space-y-3 p-5">
         <div className="space-y-1.5">
-          <Label htmlFor="salesman-form-company">所属公司</Label>
-          {target ? (
-            <Input id="salesman-form-company" value={target.companyCode} disabled />
-          ) : (
-            <CompanySelect value={companyCode} onChange={setCompanyCode} allowAll={false} placeholder="选择公司" id="salesman-form-company" />
-          )}
+          <Label>所属公司（可多选）</Label>
+          <CompanyMultiSelect value={companyCodes} onChange={setCompanyCodes} />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="salesman-form-name">姓名（必填）</Label>
@@ -104,6 +100,7 @@ function SalesmanFormDrawer({ target, onClose }: { target: SalesmanManageItem | 
 }
 
 export default function SalesmenPage() {
+  const navigate = useNavigate()
   const setTransactionsTab = usePageStore((s) => s.setTransactionsTab)
   const page = usePageStore((s) => s.transactions.salesmen.page)
   const pageSize = usePageStore((s) => s.transactions.salesmen.pageSize)
@@ -155,15 +152,19 @@ export default function SalesmenPage() {
   }, [confirm, statusMutation])
 
   const columns: DataTableColumn<SalesmanManageItem>[] = useMemo(() => [
-    { key: 'name', header: '姓名' },
-    { key: 'phone', header: '联系方式', render: (row) => <span className="text-xs">{row.phone || '-'}</span> },
+    { key: 'name', header: '姓名', align: 'center', headerClassName: 'text-center' },
+    { key: 'phone', header: '联系方式', align: 'center', headerClassName: 'text-center', render: (row) => <span className="text-xs">{row.phone || '-'}</span> },
     {
-      key: 'companyCode', header: '所属公司',
-      render: (row) => <span title={row.companyCode}>{getDisplayName(row.companyCode, undefined)}</span>,
+      key: 'companyCodes', header: '所属公司', align: 'center', headerClassName: 'text-center',
+      render: (row) => (
+        <span className="text-xs" title={row.companyCodes.join('、')}>
+          {row.companyCodes.map((c) => getDisplayName(c, undefined)).join('、') || '-'}
+        </span>
+      ),
     },
-    { key: 'remark', header: '备注', render: (row) => <span className="text-xs text-muted-foreground">{row.remark || '-'}</span> },
+    { key: 'remark', header: '备注', align: 'center', headerClassName: 'text-center', render: (row) => <span className="text-xs text-muted-foreground">{row.remark || '-'}</span> },
     {
-      key: 'status', header: '状态',
+      key: 'status', header: '状态', align: 'center', headerClassName: 'text-center',
       render: (row) => (
         <span className={cn('rounded px-1.5 py-0.5 text-xs', row.status === 'active' ? 'bg-success/10 text-success-strong' : 'bg-muted text-muted-foreground')}>
           {STATUS_LABELS[row.status] ?? row.status}
@@ -171,13 +172,13 @@ export default function SalesmenPage() {
       ),
     },
     {
-      key: 'createdAt', header: '创建时间',
+      key: 'createdAt', header: '创建时间', align: 'center', headerClassName: 'text-center',
       render: (row) => <span className="text-xs">{new Date(row.createdAt).toLocaleDateString('zh-CN')}</span>,
     },
     {
-      key: 'actions', header: '操作',
+      key: 'actions', header: '操作', align: 'center', headerClassName: 'text-center',
       render: (row) => (
-        <div className="flex gap-1">
+        <div className="flex justify-center gap-1">
           {canUpdate && (
             <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => { setFormTarget(row); setFormOpen(true) }}>
               编辑
@@ -194,7 +195,16 @@ export default function SalesmenPage() {
   ], [canUpdate, getDisplayName, handleToggleStatus])
 
   return (
-    <PageContainer title="业务员管理">
+    <PageContainer
+      title={(
+        <span className="flex items-center gap-1">
+          <Button variant="ghost" size="icon" className="-ml-2 h-8 w-8" onClick={() => navigate('/transactions/collections')} aria-label="返回催收管理">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          业务员管理
+        </span>
+      )}
+    >
       <div className="space-y-4">
         {/* 筛选卡 */}
         <Card className="rounded-card p-4">

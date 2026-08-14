@@ -729,7 +729,8 @@ export interface CollectionLogItem {
 
 export interface SalesmanItem {
   id: string
-  companyCode: string
+  /** 所属公司编码（可多选，后端 SalesmanCompany 关联表） */
+  companyCodes: string[]
   name: string
   phone: string | null
   remark: string | null
