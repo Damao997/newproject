@@ -924,11 +924,17 @@ export function ImportPanel() {
             onOpenChange={handleCoverageOpenChange}
             trigger={(open) => (
               <span className="flex flex-wrap items-center justify-between gap-2 px-6 py-3">
-                <span className="flex items-center gap-2 text-base font-semibold leading-none tracking-tight">
+                <span className="flex items-center text-base font-semibold leading-none tracking-tight">
                   <Grid3X3 className="mr-2 h-5 w-5" />
                   往来导入覆盖
                 </span>
-                {!open && <span className="text-sm font-normal text-muted-foreground">往来批次覆盖率矩阵（公司×期间×类型）</span>}
+                <span className="flex items-center gap-3 text-muted-foreground">
+                  {!open && <span className="text-sm">往来批次覆盖率矩阵（公司×期间×类型）</span>}
+                  <span className="flex items-center gap-1 text-xs">
+                    {open ? '收起' : '展开'}
+                    {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                  </span>
+                </span>
               </span>
             )}
           >
