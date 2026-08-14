@@ -1,12 +1,14 @@
 /* eslint-disable react/only-export-components -- OPERATING_COLUMNS/STATIC_COLUMNS 列配置导出供后续任务（排序/筛选/列设置）复用 */
 import { Fragment, useState, type ReactNode } from 'react'
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronRight, ChevronDown, MessageSquarePlus } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronRight, ChevronDown, Filter, MessageSquarePlus } from 'lucide-react'
 import type { SortDirection } from '@/components/data-table/data-table'
 import { cn, formatMetricValue, getChangeColor } from '@/lib/utils'
 import { TABLE_HEAD_BASE } from '@/components/data-table/styles'
 import { calcYoy, calcAchievement, calcYtdYoy, type MetricValue } from '@/lib/metric-values'
 import type { SubjectNode } from '@/types'
 import { RateBar } from '@/components/ui/rate-bar'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Checkbox } from '@/components/ui/checkbox'
 
 export type MetricTreeVariant = 'operating' | 'static'
 
@@ -36,6 +38,10 @@ interface MetricTreeProps {
   sortDirection?: SortDirection | null
   /** 排序变更回调（方向循环：升序 → 降序 → 取消，取消时 direction 为 null） */
   onSortChange?: (key: string, direction: SortDirection | null) => void
+  /** 分类列筛选（null = 全部；否则为勾选 level0 code 列表）；仅 categoryColumn 时生效 */
+  categoryFilter?: string[] | null
+  /** 分类筛选变更回调（null = 全部） */
+  onCategoryFilterChange?: (codes: string[] | null) => void
 }
 
 /** 涨跌彩色变化值（红涨绿跌、无箭头、等宽数字居中）：统一按相对增长率百分比显示；零值显示 '-' */
@@ -357,6 +363,8 @@ export function MetricTree({
   sortKey,
   sortDirection,
   onSortChange,
+  categoryFilter,
+  onCategoryFilterChange,
 }: MetricTreeProps) {
   const isOperating = variant === 'operating'
   const valueCols = isOperating ? OPERATING_COLUMNS : STATIC_COLUMNS
@@ -407,7 +415,63 @@ export function MetricTree({
                       className={cn(headBase, 'sticky left-0 z-[3] border-r bg-muted text-center shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)]')}
                       style={{ width: CATEGORY_COL_WIDTH, minWidth: CATEGORY_COL_WIDTH, maxWidth: CATEGORY_COL_WIDTH }}
                     >
-                      分类
+                      {categoryColumn && onCategoryFilterChange ? (
+                        <div className="flex flex-col items-center gap-0.5">
+                          <span>分类</span>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <button
+                                type="button"
+                                aria-label="筛选分类"
+                                className={cn(
+                                  'rounded p-0.5 transition-colors hover:bg-muted',
+                                  categoryFilter && categoryFilter.length > 0 ? 'text-primary' : 'text-muted-foreground',
+                                )}
+                              >
+                                <Filter className="h-3.5 w-3.5" />
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent align="start" sideOffset={4} className="w-48 p-2">
+                              <div className="space-y-1">
+                                {nodes.map((n) => (
+                                  <label
+                                    key={n.code}
+                                    className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-[13px] hover:bg-muted/60"
+                                  >
+                                    <Checkbox
+                                      checked={categoryFilter ? categoryFilter.includes(n.code) : true}
+                                      onCheckedChange={() => {
+                                        const cur = categoryFilter ?? nodes.map((x) => x.code)
+                                        const next = cur.includes(n.code) ? cur.filter((c) => c !== n.code) : [...cur, n.code]
+                                        onCategoryFilterChange(next.length === nodes.length ? null : next)
+                                      }}
+                                    />
+                                    <span className="truncate">{n.name}</span>
+                                  </label>
+                                ))}
+                              </div>
+                              <div className="mt-2 flex items-center justify-between border-t border-border/60 pt-1.5">
+                                <button
+                                  type="button"
+                                  className="text-xs text-muted-foreground hover:text-foreground"
+                                  onClick={() => onCategoryFilterChange(null)}
+                                >
+                                  全选
+                                </button>
+                                <button
+                                  type="button"
+                                  className="text-xs text-muted-foreground hover:text-foreground"
+                                  onClick={() => onCategoryFilterChange([])}
+                                >
+                                  清空
+                                </button>
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                      ) : (
+                        <span>分类</span>
+                      )}
                     </th>
                   )}
                   <th

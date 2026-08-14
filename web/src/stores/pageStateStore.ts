@@ -27,6 +27,8 @@ export interface IndicatorsState {
   sortKey: string | null
   /** 列排序方向 */
   sortDirection: 'asc' | 'desc' | null
+  /** 分类列筛选（null = 全部；否则为勾选 level0 code 列表） */
+  categoryFilter: string[] | null
 }
 
 export interface DataBrowseState {
@@ -153,6 +155,7 @@ const defaultIndicators: IndicatorsState = {
   subjectKeyword: '',
   sortKey: null,
   sortDirection: null,
+  categoryFilter: null,
 }
 
 const defaultDataBrowse: DataBrowseState = {

@@ -27,6 +27,7 @@ import { usePageStore } from '@/stores/pageStateStore'
 import { exportToExcel } from '@/lib/export'
 import { filterTreeKeepSubtree } from '@/lib/subject-tree'
 import { sortTreeByLevel, type MetricSortKey } from '@/lib/metric-sort'
+import { filterByCategories } from '@/lib/metric-filter'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { MetricValue } from '@/lib/metric-values'
@@ -100,6 +101,7 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
   const subjectKeyword = usePageStore((s) => s.indicators.subjectKeyword)
   const sortKey = usePageStore((s) => s.indicators.sortKey)
   const sortDirection = usePageStore((s) => s.indicators.sortDirection)
+  const categoryFilter = usePageStore((s) => s.indicators.categoryFilter)
   const [analysisTarget, setAnalysisTarget] = useState<AnalysisTarget | null>(null)
   // AI 预分析弹窗开关（数据就绪后令牌递增，由弹窗内自动打开）
   const [overviewOpen, setOverviewOpen] = useState(false)
@@ -121,6 +123,10 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
   const setSubjectKeyword = useCallback((v: string) => setIndicators({ subjectKeyword: v }), [setIndicators])
   const setSort = useCallback(
     (key: string, direction: 'asc' | 'desc' | null) => setIndicators({ sortKey: key, sortDirection: direction }),
+    [setIndicators],
+  )
+  const setCategoryFilter = useCallback(
+    (codes: string[] | null) => setIndicators({ categoryFilter: codes }),
     [setIndicators],
   )
   // 小屏（<lg）搜索框浮层展开态（图标按钮点击切换）
@@ -198,6 +204,11 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
 
   // 科目关键字过滤：命中节点保留整棵子树 + 祖先链；过滤时强制展开可见路径（清空后恢复用户展开态）
   const visibleTree = useMemo(() => filterTreeKeepSubtree(activeTree, subjectKeyword), [activeTree, subjectKeyword])
+  // 分类列筛选：按 level0 大类过滤（复用 filterByCategories；null/空 = 全部）
+  const categoryFilteredTree = useMemo(
+    () => filterByCategories(visibleTree, categoryFilter),
+    [visibleTree, categoryFilter],
+  )
   const effectiveExpanded = useMemo(() => {
     if (!subjectKeyword.trim()) return expandedSet
     const next = new Set(expandedSet)
@@ -216,13 +227,13 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
   // 列排序：树内同级排序（经营指标分类根不排序 fromLevel=1 保护分类列分组；静态指标全层级）；
   // sortKey 不属于当前 tab 列集合时不排序（跨 tab 共享排序状态的计算层防护）
   const sortedTree = useMemo(() => {
-    if (!sortKey || !sortDirection) return visibleTree
+    if (!sortKey || !sortDirection) return categoryFilteredTree
     const cols = isOperating ? OPERATING_COLUMNS : STATIC_COLUMNS
-    if (!cols.some((c) => c.key === sortKey)) return visibleTree
-    return sortTreeByLevel(visibleTree, activeValueMap, sortKey as MetricSortKey, sortDirection, {
+    if (!cols.some((c) => c.key === sortKey)) return categoryFilteredTree
+    return sortTreeByLevel(categoryFilteredTree, activeValueMap, sortKey as MetricSortKey, sortDirection, {
       fromLevel: isOperating ? 1 : 0,
     })
-  }, [visibleTree, activeValueMap, sortKey, sortDirection, isOperating])
+  }, [categoryFilteredTree, activeValueMap, sortKey, sortDirection, isOperating])
 
   // 数据到达后默认展开 level0 根节点
   useEffect(() => {
@@ -623,6 +634,8 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
                 sortKey={sortKey}
                 sortDirection={sortDirection}
                 onSortChange={setSort}
+                categoryFilter={categoryFilter}
+                onCategoryFilterChange={setCategoryFilter}
               />
             </div>
           )}
