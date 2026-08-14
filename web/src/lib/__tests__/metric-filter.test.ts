@@ -17,8 +17,8 @@ describe('filterByCategories', () => {
     expect(filterByCategories(tree, null)).toBe(tree)
   })
 
-  it('codes 为空数组时返回原树', () => {
-    expect(filterByCategories(tree, [])).toBe(tree)
+  it('codes 为空数组时表示无分类（返回空数组，表格显示空态）', () => {
+    expect(filterByCategories(tree, [])).toEqual([])
   })
 
   it('按 level0 编码过滤并保留整棵子树', () => {

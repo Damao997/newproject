@@ -204,10 +204,10 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
 
   // 科目关键字过滤：命中节点保留整棵子树 + 祖先链；过滤时强制展开可见路径（清空后恢复用户展开态）
   const visibleTree = useMemo(() => filterTreeKeepSubtree(activeTree, subjectKeyword), [activeTree, subjectKeyword])
-  // 分类列筛选：按 level0 大类过滤（复用 filterByCategories；null/空 = 全部）
+  // 分类列筛选：仅经营指标（有分类列）；null = 全部；[] = 无分类（空态）。静态页不受经营页筛选影响
   const categoryFilteredTree = useMemo(
-    () => filterByCategories(visibleTree, categoryFilter),
-    [visibleTree, categoryFilter],
+    () => (isOperating ? filterByCategories(visibleTree, categoryFilter) : visibleTree),
+    [visibleTree, categoryFilter, isOperating],
   )
   const effectiveExpanded = useMemo(() => {
     if (!subjectKeyword.trim()) return expandedSet
@@ -316,12 +316,13 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
   )
   const hasOverviewData = overviewOperatingRows.length + overviewStaticRows.length > 0
 
-  /** 重置筛选：恢复默认主体/期间/重分类口径/科目搜索（空状态引导动作） */
+  /** 重置筛选：恢复默认主体/期间/重分类口径/科目搜索/分类筛选（空状态引导动作） */
   const handleResetFilters = () => {
     setDimFilter('all')
     setPeriodFilter('')
     setExcludeReclassify(false)
     setSubjectKeyword('')
+    setCategoryFilter(null)
   }
 
   const handleExport = async () => {
