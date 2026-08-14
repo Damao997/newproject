@@ -15,8 +15,9 @@ import { cn, formatMoneyWan } from '@/lib/utils'
 import { Pagination } from '@/components/data-table/pagination'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { usePermission } from '@/hooks/usePermission'
-import { useCustomerLedger, useUpdateCustomerExt, useUpdateCollection, useCollectionLogs, useAddCollectionLog } from '@/hooks/api-queries'
+import { useCustomerLedger, useUpdateCustomerExt, useUpdateCollection, useCollectionLogs, useAddCollectionLog, useTransactionPeriods, useAvailablePeriods } from '@/hooks/api-queries'
 import { usePageStore } from '@/stores/pageStateStore'
+import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { CompanySelect } from '@/components/filters/company-select'
 import { Loader2 } from 'lucide-react'
@@ -394,6 +395,22 @@ export function CollectionsTab() {
   const setCompanyFilter = useCallback((v: string) => setTransactionsTab('collections', { company: v }), [setTransactionsTab])
   const setStatusFilter = useCallback((v: string) => setTransactionsTab('collections', { status: v }), [setTransactionsTab])
   const setKeyword = useCallback((v: string) => setTransactionsTab('collections', { keyword: v }), [setTransactionsTab])
+  // 空串表示跟随最新期间（后端自动取最近一期有数据的期间，与账龄分析页约定一致）
+  const periodFilter = usePageStore((s) => s.transactions.collections.period)
+  const setPeriodFilter = useCallback((v: string) => setTransactionsTab('collections', { period: v }), [setTransactionsTab])
+  // 期间候选按全局财年过滤（与账龄分析页口径一致）
+  const { data: periodsData } = useAvailablePeriods()
+  const fiscalYear = usePeriodStore((s) => s.fiscalYear)
+  const { data: rawPeriods } = useTransactionPeriods()
+  const periods = useMemo(
+    () => filterPeriodsByFiscalYear(rawPeriods ?? [], fiscalYear, periodsData?.fiscalStartMonth ?? 1),
+    [rawPeriods, fiscalYear, periodsData?.fiscalStartMonth],
+  )
+  // 持久化期间校验：已选期间不在候选（如财年切换）时回退跟随最新
+  useEffect(() => {
+    const cur = usePageStore.getState().transactions.collections.period
+    if (cur !== '' && !periods.includes(cur)) setPeriodFilter('')
+  }, [periods, setPeriodFilter])
   const [updatingRow, setUpdatingRow] = useState<CustomerLedgerItem | null>(null)
   const [logsRow, setLogsRow] = useState<CustomerLedgerItem | null>(null)
   const [billedTarget, setBilledTarget] = useState<LedgerTarget | null>(null)
@@ -410,6 +427,7 @@ export function CollectionsTab() {
     companyCode,
     status: statusFilter || undefined,
     counterpartyKeyword: keyword || undefined,
+    period: periodFilter || undefined,
   })
 
   const items = data?.items || []
@@ -523,6 +541,17 @@ export function CollectionsTab() {
       {/* 筛选卡：公司 / 客商状态 / 客商关键词 */}
       <Card className="rounded-card p-4">
       <div className="flex flex-wrap items-center gap-3">
+        <Select value={periodFilter} onValueChange={(v) => { setPeriodFilter(v === 'all' ? '' : v); setPage(1) }}>
+          <SelectTrigger className="w-[140px]">
+            <SelectValue placeholder="期间" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">最新期间</SelectItem>
+            {(periods || []).map((p) => (
+              <SelectItem key={p} value={p}>{p}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <CompanySelect value={companyFilter} onChange={(v) => { setCompanyFilter(v); setPage(1) }} />
         <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v === 'all' ? '' : v); setPage(1) }}>
           <SelectTrigger className="w-[140px]">

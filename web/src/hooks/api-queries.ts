@@ -1289,7 +1289,7 @@ export function useCollections(params: { page?: number; pageSize?: number; compa
   })
 }
 
-export function useCustomerLedger(params: { page?: number; pageSize?: number; companyCode?: string; status?: string; counterpartyKeyword?: string }) {
+export function useCustomerLedger(params: { page?: number; pageSize?: number; companyCode?: string; status?: string; counterpartyKeyword?: string; period?: string }) {
   return useQuery({
     queryKey: ['transactions', 'collections', 'customers', params] as const,
     queryFn: () => api.getCustomerLedger(params as Record<string, unknown>) as Promise<CustomerLedgerResponse>,

@@ -81,6 +81,8 @@ export interface TransactionCollectionsState {
   /** '' = 全部状态 */
   status: string
   keyword: string
+  /** '' = 跟随最新期间 */
+  period: string
 }
 
 export interface TransactionsState {
@@ -170,6 +172,7 @@ const defaultCollections: TransactionCollectionsState = {
   company: 'all',
   status: '',
   keyword: '',
+  period: '',
 }
 
 const defaultDashboard: DashboardState = { period: '', dim: '', trendMetric: 'revenue', trendMode: 'month', analysisTab: 'trend' }
