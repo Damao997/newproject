@@ -17,7 +17,7 @@ import { AiOverviewDialog } from '@/components/indicators/ai-overview-panel'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { usePermission } from '@/hooks/usePermission'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
@@ -574,6 +574,38 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
                         {exporting ? '导出中…' : '导出 Excel'}
                       </DropdownMenuItem>
                     )}
+                    {/* 视图设置：密度 + 列设置（小屏收纳于下拉，大屏独立显示于右侧按钮组） */}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel className="text-xs text-muted-foreground">密度</DropdownMenuLabel>
+                    <DropdownMenuRadioGroup value={density} onValueChange={(v) => setDensity(v as 'default' | 'dense' | 'compact')}>
+                      {(
+                        [
+                          ['default', '标准'],
+                          ['dense', '紧凑'],
+                          ['compact', '极简'],
+                        ] as const
+                      ).map(([v, label]) => (
+                        <DropdownMenuRadioItem key={v} value={v}>
+                          {label}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel className="text-xs text-muted-foreground">列设置</DropdownMenuLabel>
+                    {(isOperating ? OPERATING_COLUMN_META : STATIC_COLUMN_META).map((col) => (
+                      <DropdownMenuCheckboxItem
+                        key={col.key}
+                        checked={!hiddenColumns.includes(col.key)}
+                        onCheckedChange={(checked) => {
+                          const next = checked
+                            ? hiddenColumns.filter((k) => k !== col.key)
+                            : [...hiddenColumns, col.key]
+                          setHiddenColumns(next)
+                        }}
+                      >
+                        {col.header}
+                      </DropdownMenuCheckboxItem>
+                    ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -602,6 +634,52 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
                   {exporting ? '导出中…' : '导出 Excel'}
                 </Button>
               ) : null}
+              {/* 视图设置：密度切换 + 列设置（大屏独立显示，状态持久化） */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="fused" size="sm">
+                    <Rows3 className="mr-1 h-3.5 w-3.5" /> 密度
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-32">
+                  <DropdownMenuRadioGroup value={density} onValueChange={(v) => setDensity(v as 'default' | 'dense' | 'compact')}>
+                    {(
+                      [
+                        ['default', '标准'],
+                        ['dense', '紧凑'],
+                        ['compact', '极简'],
+                      ] as const
+                    ).map(([v, label]) => (
+                      <DropdownMenuRadioItem key={v} value={v}>
+                        {label}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="fused" size="sm">
+                    <Columns3 className="mr-1 h-3.5 w-3.5" /> 列设置
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44">
+                  {(isOperating ? OPERATING_COLUMN_META : STATIC_COLUMN_META).map((col) => (
+                    <DropdownMenuCheckboxItem
+                      key={col.key}
+                      checked={!hiddenColumns.includes(col.key)}
+                      onCheckedChange={(checked) => {
+                        const next = checked
+                          ? hiddenColumns.filter((k) => k !== col.key)
+                          : [...hiddenColumns, col.key]
+                        setHiddenColumns(next)
+                      }}
+                    >
+                      {col.header}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </div>
@@ -654,54 +732,6 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
       {/* 科目树表格卡片：筛选条在页头 actions 吸顶，树区承载于卡片内 */}
       <Card className="animate-fade-in overflow-hidden rounded-card">
         <div className="min-h-[420px] px-4 py-3">
-          {/* 表格工具栏：密度切换 + 列设置（状态持久化） */}
-          <div className="mb-2 flex items-center justify-end gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="fused" size="sm" className="h-7 gap-1 text-xs">
-                  <Rows3 className="h-3.5 w-3.5" /> 密度
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-32">
-                <DropdownMenuRadioGroup value={density} onValueChange={(v) => setDensity(v as 'default' | 'dense' | 'compact')}>
-                  {(
-                    [
-                      ['default', '标准'],
-                      ['dense', '紧凑'],
-                      ['compact', '极简'],
-                    ] as const
-                  ).map(([v, label]) => (
-                    <DropdownMenuRadioItem key={v} value={v}>
-                      {label}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="fused" size="sm" className="h-7 gap-1 text-xs">
-                  <Columns3 className="h-3.5 w-3.5" /> 列设置
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-44">
-                {(isOperating ? OPERATING_COLUMN_META : STATIC_COLUMN_META).map((col) => (
-                  <DropdownMenuCheckboxItem
-                    key={col.key}
-                    checked={!hiddenColumns.includes(col.key)}
-                    onCheckedChange={(checked) => {
-                      const next = checked
-                        ? hiddenColumns.filter((k) => k !== col.key)
-                        : [...hiddenColumns, col.key]
-                      setHiddenColumns(next)
-                    }}
-                  >
-                    {col.header}
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
           {isLoading ? (
             /* 加载骨架：保持表格占位高度，避免内容区塌陷再撑回导致跳动 */
             <div className="py-3">
