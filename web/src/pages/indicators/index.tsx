@@ -429,8 +429,8 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
       headerRef={headerRef}
       actionsFullWidth
       actions={
-        // 筛选条响应式：flex-nowrap 强制单行；控件固定宽度，极小屏时期间下拉可压缩省略号，搜索缩为图标浮层，按钮组恒完整
-        <div className="flex min-w-0 max-w-full flex-nowrap items-center gap-2">
+        // 筛选条响应式：全尺寸单行不横滚，超宽自然换行；控件宽度随断点缩小，极小屏搜索缩为图标浮层
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
           {/* 左侧：主体维度选择（加宽，保证公司名称完整显示；选项前缀+简称跟随全局开关，触发器仅显名称） */}
           <CompanySelect
             value={dimFilter}
@@ -438,11 +438,11 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
             valueFormat="prefixed"
             allLabel="全部主体"
             ariaLabel="主体维度"
-            className="h-8 w-[150px] shrink-0 border-input/60 bg-page hover:bg-muted/60"
+            className="h-8 w-[120px] shrink-0 border-input/60 bg-page hover:bg-muted/60 min-[800px]:w-[140px] lg:w-[200px] min-[1300px]:w-[250px]"
           />
 
-          {/* 右侧：科目搜索 + 期间 + 重分类 + 操作按钮组（恒右对齐；空间不足时期间下拉先压缩省略号） */}
-          <div className="ml-auto flex min-w-0 items-center gap-2">
+          {/* 右侧：科目搜索 + 期间 + 重分类 + 操作按钮组（lg 以上靠右对齐） */}
+          <div className="flex shrink-0 items-center gap-2 lg:ml-auto">
             {/* 科目列关键字筛选：实时过滤科目树（命中节点保留整棵子树与祖先链） */}
             <div className="relative shrink-0">
               {/* >=600px：完整输入框 */}
@@ -511,7 +511,7 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
             </div>
 
             <Select value={periodFilter} onValueChange={setPeriodFilter}>
-              <SelectTrigger className="h-8 w-[100px] min-w-[44px] border-input/60 bg-page hover:bg-muted/60" aria-label="期间">
+              <SelectTrigger className="h-8 w-[100px] shrink-0 border-input/60 bg-page hover:bg-muted/60 min-[800px]:w-[120px] lg:w-[140px] min-[1300px]:w-[160px]" aria-label="期间">
                 <SelectValue placeholder="选择期间" />
               </SelectTrigger>
               <SelectContent>
