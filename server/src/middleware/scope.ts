@@ -34,6 +34,7 @@ const SCOPED_MODELS = new Set<string>([
   'CollectionPlan',
   'InventoryRecord',
   'Counterparty',
+  'Salesman',
   'SubjectAnalysis',
 ])
 

@@ -1,6 +1,7 @@
 ﻿import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
+import { assertCompaniesInScope } from '../lib/scope-guard'
 
 /**
  * 催收管理服务：催收建议生成、催收计划 CRUD 与状态机流转、催收记录。
@@ -326,6 +327,8 @@ export const CollectionService = {
   async updateSalesman(id: string, patch: { name?: string; phone?: string; remark?: string; companyCode?: string }, ctx: Ctx) {
     const salesman = await prisma.salesman.findUnique({ where: { id } })
     if (!salesman) throw errors.notFound('业务员不存在')
+    // 数据范围守卫：业务员所属公司必须在当前用户数据范围内（写入路径显式校验）
+    await assertCompaniesInScope([salesman.companyCode], undefined, '修改业务员')
     if (patch.companyCode !== undefined && patch.companyCode !== salesman.companyCode) {
       throw errors.badRequest('业务员所属公司不可修改')
     }
@@ -354,6 +357,8 @@ export const CollectionService = {
   async setSalesmanStatus(id: string, status: 'active' | 'inactive', ctx: Ctx) {
     const salesman = await prisma.salesman.findUnique({ where: { id } })
     if (!salesman) throw errors.notFound('业务员不存在')
+    // 数据范围守卫：业务员所属公司必须在当前用户数据范围内
+    await assertCompaniesInScope([salesman.companyCode], undefined, '停用/启用业务员')
     if (status !== 'active' && status !== 'inactive') throw errors.badRequest('业务员状态不合法')
     const updated = await prisma.salesman.update({ where: { id }, data: { status } })
     await recordAudit({ userId: ctx.userId, module: 'transactions', action: 'update', targetId: id, detail: { action: 'set-salesman-status', status } }, ctx.traceId)
