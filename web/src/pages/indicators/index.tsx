@@ -622,6 +622,7 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
             <div className={cn('transition-opacity duration-200', isFetching && 'opacity-60')}>
               <MetricTree
                 nodes={sortedTree}
+                categoryCandidates={visibleTree}
                 valueMap={activeValueMap}
                 variant={activeTab}
                 categoryColumn={isOperating}

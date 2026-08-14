@@ -14,6 +14,9 @@ export type MetricTreeVariant = 'operating' | 'static'
 
 interface MetricTreeProps {
   nodes: SubjectNode[]
+  /** 分类筛选候选集（Popover 列表与「全部勾选回退 null」判定的基准；缺省回退 nodes）：
+   * 页面传搜索过滤后、分类过滤前的 level0 树，避免部分筛选态下候选集被截断 */
+  categoryCandidates?: SubjectNode[]
   /** 科目编码 → 指标值映射 */
   valueMap: Map<string, MetricValue>
   /** 经营指标（期间维度多列）或静态指标（本期/同期/变动率） */
@@ -350,6 +353,7 @@ function CategoryRows({
  */
 export function MetricTree({
   nodes,
+  categoryCandidates,
   valueMap,
   variant,
   expandedCodes,
@@ -433,7 +437,8 @@ export function MetricTree({
                             </PopoverTrigger>
                             <PopoverContent align="start" sideOffset={4} className="w-48 p-2">
                               <div className="space-y-1">
-                                {nodes.map((n) => (
+                                {/* 分类候选集：categoryCandidates 优先（完整候选），缺省回退 nodes（无候选传参场景） */}
+                                {(categoryCandidates ?? nodes).map((n) => (
                                   <label
                                     key={n.code}
                                     className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-[13px] hover:bg-muted/60"
@@ -441,9 +446,9 @@ export function MetricTree({
                                     <Checkbox
                                       checked={categoryFilter ? categoryFilter.includes(n.code) : true}
                                       onCheckedChange={() => {
-                                        const cur = categoryFilter ?? nodes.map((x) => x.code)
+                                        const cur = categoryFilter ?? (categoryCandidates ?? nodes).map((x) => x.code)
                                         const next = cur.includes(n.code) ? cur.filter((c) => c !== n.code) : [...cur, n.code]
-                                        onCategoryFilterChange(next.length === nodes.length ? null : next)
+                                        onCategoryFilterChange(next.length === (categoryCandidates ?? nodes).length ? null : next)
                                       }}
                                     />
                                     <span className="truncate">{n.name}</span>
