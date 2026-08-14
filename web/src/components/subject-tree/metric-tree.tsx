@@ -442,7 +442,7 @@ export function MetricTree({
         {/* 斑马纹：tbody 偶数行浅灰底；hover:!bg-muted 加 important 盖过斑马纹选择器（[&_tbody_tr:nth-child(even)] 特异性更高，不加 important 时偶数行悬停高亮不生效） */}
         <table
           className="w-full caption-bottom border-separate border-spacing-0 text-[13px] [&_tbody_tr:nth-child(even)]:bg-muted/30"
-          style={{ minWidth: isOperating ? 1112 : 464 }}
+          style={{ minWidth: isOperating ? 1128 : 464 }}
         >
           <thead>
             {isOperating ? (
@@ -535,8 +535,8 @@ export function MetricTree({
                     </th>
                   ))}
                 </tr>
-                {/* 明细行：sticky 固定于组名行下方（top = 组名行高 44px） */}
-                <tr className="sticky bg-muted" style={{ top: GROUP_HEAD_H }}>
+                {/* 明细行：sticky 固定于组名行下方（top = 组名行高 44px）；白底与组名行灰底形成层次（sticky 需不透明背景） */}
+                <tr className="sticky bg-background" style={{ top: GROUP_HEAD_H }}>
                   {visibleGroups.flatMap((g) => g.keys).map((key) => {
                     const col = OPERATING_COL_BY_KEY.get(key)!
                     const sortState = sortKey === col.key ? sortDirection : null
@@ -545,7 +545,7 @@ export function MetricTree({
                         key={col.key}
                         scope="col"
                         aria-sort={sortState ? (sortState === 'asc' ? 'ascending' : 'descending') : undefined}
-                        className={cn(headBase, 'text-center')}
+                        className={cn(headBase, 'bg-background text-center')}
                         style={{ minWidth: col.minWidth }}
                       >
                         <button

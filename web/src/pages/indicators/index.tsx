@@ -31,7 +31,7 @@ import { filterByCategories } from '@/lib/metric-filter'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { MetricValue } from '@/lib/metric-values'
-import { Download, ChevronsDownUp, ChevronsUpDown, History, Eye, Sparkles, Loader2, Search, X, MoreHorizontal, Rows3, Columns3, CheckCircle2 } from 'lucide-react'
+import { Download, ChevronsDownUp, ChevronsUpDown, History, Eye, Sparkles, Loader2, Search, X, MoreHorizontal, Rows3, Columns3, CheckCircle2, TriangleAlert } from 'lucide-react'
 import type { SubjectNode } from '@/types'
 
 /** 收集含子节点的科目编码（用于全部展开） */
@@ -141,9 +141,10 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
   )
   // 小屏（<lg）搜索框浮层展开态（图标按钮点击切换）
   const [searchOpen, setSearchOpen] = useState(false)
-  // 导出中状态（按钮 loading 反馈）与结果提示（内联提示条）
+  // 导出中状态（按钮 loading 反馈）与结果提示（内联提示条：成功/失败）
   const [exporting, setExporting] = useState(false)
   const [exportMsg, setExportMsg] = useState<string | null>(null)
+  const [exportErr, setExportErr] = useState<string | null>(null)
   // 展开集合由持久化数组派生（Set 不可序列化，store 以数组存储）
   const expandedSet = useMemo(() => new Set(expandedCodes), [expandedCodes])
   const setExpandedCodes = useCallback((updater: (prev: Set<string>) => Set<string>) => {
@@ -358,6 +359,7 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
     if (exporting) return
     setExporting(true)
     setExportMsg(null)
+    setExportErr(null)
     try {
       const pct = (v: number) => `${v.toFixed(1)}%`
       // 分型导出：比率列乘 100 加 %，数量取整，金额保持数值；同比统一按增长率百分比（后端已按增长率返回）
@@ -416,6 +418,9 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
         })
         setExportMsg(`已导出：${filename}`)
       }
+    } catch (err) {
+      // 导出失败：仅提示错误（不误设成功提示），按钮状态由 finally 复位
+      setExportErr(`导出失败：${err instanceof Error ? err.message : '未知错误'}`)
     } finally {
       setExporting(false)
     }
@@ -632,11 +637,17 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
         </div>
       )}
 
-      {/* 导出成功提示条（瞬时反馈，保持直到下次导出/筛选操作） */}
+      {/* 导出结果提示条（瞬时反馈，保持直到下次导出；成功/失败分色） */}
       {exportMsg && (
         <div className="flex items-center gap-2 rounded-md border border-success/30 bg-success/[0.08] px-4 py-2 text-sm text-success-strong">
           <CheckCircle2 className="h-4 w-4 shrink-0" />
           {exportMsg}
+        </div>
+      )}
+      {exportErr && (
+        <div className="flex items-center gap-2 rounded-md border border-destructive/25 bg-destructive/[0.06] px-4 py-2 text-sm text-destructive">
+          <TriangleAlert className="h-4 w-4 shrink-0" />
+          {exportErr}
         </div>
       )}
 
