@@ -85,7 +85,7 @@ export const OPERATING_COLUMNS: MetricColumn[] = [
   { key: 'ytd', header: '本年累计', minWidth: 112, kind: 'amount', primary: true },
   { key: 'samePeriodYtd', header: '同期累计', minWidth: 112, kind: 'amount', secondary: true },
   { key: 'ytdYoy', header: '累计同比', minWidth: 80, kind: 'pct' },
-  { key: 'achievement', header: '达成率', minWidth: 120, kind: 'achievement' },
+  { key: 'achievement', header: '达成率', minWidth: 152, kind: 'achievement' },
 ]
 
 /** 经营指标分组表头：组名 → 明细列 keys */
@@ -101,7 +101,7 @@ export const STATIC_COLUMNS: MetricColumn[] = [
   { key: 'yoy', header: '变动率', minWidth: 80, kind: 'pct' },
 ]
 
-/** 数值单元格：按列配置渲染（金额/数量/比率分型格式化；同比红涨绿跌；达成率进度条 + 浮于条上方的百分比） */
+/** 数值单元格：按列配置渲染（金额/数量/比率分型格式化；同比红涨绿跌；达成率进度条 + 条内居中的百分比） */
 function renderValueCells(
   mv: MetricValue | undefined,
   columns: MetricColumn[],
@@ -405,7 +405,7 @@ export function MetricTree({
         {/* 斑马纹：tbody 偶数行浅灰底；hover:!bg-muted 加 important 盖过斑马纹选择器（[&_tbody_tr:nth-child(even)] 特异性更高，不加 important 时偶数行悬停高亮不生效） */}
         <table
           className="w-full caption-bottom border-separate border-spacing-0 text-[13px] [&_tbody_tr:nth-child(even)]:bg-muted/30"
-          style={{ minWidth: isOperating ? 1080 : 464 }}
+          style={{ minWidth: isOperating ? 1112 : 464 }}
         >
           <thead>
             {isOperating ? (

@@ -21,12 +21,9 @@ describe('RateBar', () => {
     expect(fill.style.width).toBe('100%')
   })
 
-  it('above 变体：百分比文字渲染在色条上方', () => {
-    const { container } = render(<RateBar rate={0.823} variant="above" />)
+  it('above 变体：0-1 语义（与 calcAchievement 对接），百分比文字在条内居中', () => {
+    render(<RateBar rate={0.823} variant="above" />)
     expect(screen.getByText('82.3%')).toBeInTheDocument()
-    // 文字 span 出现在色条 span 之前（DOM 顺序 = 上方）
-    const html = container.innerHTML
-    expect(html.indexOf('82.3%')).toBeLessThan(html.indexOf('bg-chart-1'))
   })
 
   it('above 变体：无预算显示 – 与空条', () => {
