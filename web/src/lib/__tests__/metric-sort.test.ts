@@ -15,6 +15,9 @@ describe('metricValueOf', () => {
   it('原始字段直接取值', () => {
     expect(metricValueOf('budget', MV({ budget: 200 }))).toBe(200)
     expect(metricValueOf('actual', MV({ actual: 30 }))).toBe(30)
+    expect(metricValueOf('samePeriod', MV({ samePeriod: 12 }))).toBe(12)
+    expect(metricValueOf('ytd', MV({ ytd: 60 }))).toBe(60)
+    expect(metricValueOf('samePeriodYtd', MV({ samePeriodYtd: 44 }))).toBe(44)
   })
   it('yoy/achievement/ytdYoy 按口径计算', () => {
     expect(metricValueOf('yoy', MV({ actual: 10, samePeriod: 8 }))).toBeCloseTo(0.25)
@@ -68,11 +71,12 @@ describe('sortTreeByLevel', () => {
   })
 
   it('不修改原树（纯函数）', () => {
-    const a = node('a')
+    const a = node('a', [node('a1')])
     const b = node('b')
     const map = new Map<string, MetricValue>([['a', MV({ actual: 10 })], ['b', MV({ actual: 30 })]])
     const before = [a, b]
     sortTreeByLevel(before, map, 'actual', 'asc')
     expect(before.map((n) => n.code)).toEqual(['a', 'b'])
+    expect(before[0].children).toBe(a.children)
   })
 })

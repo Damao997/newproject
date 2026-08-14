@@ -44,6 +44,7 @@ export function sortTreeByLevel(
       sorted = [...ns].sort((a, b) => {
         const va = valueMap.get(a.code)
         const vb = valueMap.get(b.code)
+        if (!va && !vb) return 0
         if (!va) return 1
         if (!vb) return -1
         return (metricValueOf(key, va) - metricValueOf(key, vb)) * factor
