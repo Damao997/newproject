@@ -550,7 +550,6 @@ model AgingRecord {
   @@map("aging_record")
 }
 
-// 5.3a 业务员表（催收计划归属业务员，按公司隔离）
 // 5.3a 业务员表（催收计划归属业务员，按公司隔离；status=inactive 为停用软删除）
 model Salesman {
   id          String       @id @default(uuid())
