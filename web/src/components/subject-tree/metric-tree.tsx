@@ -1,9 +1,11 @@
-import { Fragment, useState } from 'react'
+/* eslint-disable react/only-export-components -- OPERATING_COLUMNS/STATIC_COLUMNS 列配置导出供后续任务（排序/筛选/列设置）复用 */
+import { Fragment, useState, type ReactNode } from 'react'
 import { ChevronRight, ChevronDown, MessageSquarePlus } from 'lucide-react'
-import { cn, formatMetricValue, formatPercent, getChangeColor } from '@/lib/utils'
+import { cn, formatMetricValue, getChangeColor } from '@/lib/utils'
 import { TABLE_HEAD_BASE } from '@/components/data-table/styles'
 import { calcYoy, calcAchievement, calcYtdYoy, type MetricValue } from '@/lib/metric-values'
 import type { SubjectNode } from '@/types'
+import { RateBar } from '@/components/ui/rate-bar'
 
 export type MetricTreeVariant = 'operating' | 'static'
 
@@ -41,42 +43,77 @@ function ChangeText({ value }: { value: number }) {
 /** 分类列固定宽度（px）：sticky 偏移与列宽单一来源（用户要求 96px） */
 const CATEGORY_COL_WIDTH = 96
 
-/** 值列数（不含科目/分类列） */
-function valueColCount(isOperating: boolean): number {
-  return isOperating ? 8 : 3
+/** 值列形态：amount 金额 / pct 红涨绿跌百分比 / achievement 达成率进度条 */
+type MetricColKind = 'amount' | 'pct' | 'achievement'
+
+interface MetricColumn {
+  key: string
+  header: string
+  minWidth: number
+  kind: MetricColKind
+  /** 主列强调（font-medium） */
+  primary?: boolean
+  /** 次要列降权（text-muted-foreground） */
+  secondary?: boolean
 }
 
-/** 数值单元格：按 variant + 值类型输出各期间维度列（金额/数量/比率分型格式化）；同比统一按相对增长率 */
-function renderValueCells(mv: MetricValue | undefined, isOperating: boolean, valueType?: SubjectNode['valueType']) {
-  // 金额/数量列预留最小宽度，保证窄容器下数值完整显示（类名与 AMOUNT_COL_MIN_WIDTH/PCT_COL_MIN_WIDTH 常量一致）；百分比列较窄（px-3：压缩列宽，小屏多释放数值列空间）
-  const cellAmt = 'whitespace-nowrap border-b px-3 py-2 align-middle text-center font-num min-w-[112px]'
-  const cellPct = 'whitespace-nowrap border-b px-3 py-2 align-middle text-center font-num min-w-[80px]'
+/** 经营指标值列（达成率归「本年累计」组尾：累计达成率 = 本年累计/全年预算） */
+export const OPERATING_COLUMNS: MetricColumn[] = [
+  { key: 'budget', header: '预算金额', minWidth: 112, kind: 'amount' },
+  { key: 'actual', header: '本月实际', minWidth: 112, kind: 'amount', primary: true },
+  { key: 'samePeriod', header: '同期实际', minWidth: 112, kind: 'amount', secondary: true },
+  { key: 'yoy', header: '同比', minWidth: 80, kind: 'pct' },
+  { key: 'ytd', header: '本年累计', minWidth: 112, kind: 'amount', primary: true },
+  { key: 'samePeriodYtd', header: '同期累计', minWidth: 112, kind: 'amount', secondary: true },
+  { key: 'ytdYoy', header: '累计同比', minWidth: 80, kind: 'pct' },
+  { key: 'achievement', header: '达成率', minWidth: 104, kind: 'achievement' },
+]
+
+/** 经营指标分组表头：组名 → 明细列 keys */
+const OPERATING_GROUPS: { label: string; keys: string[] }[] = [
+  { label: '本月实际', keys: ['budget', 'actual', 'samePeriod', 'yoy'] },
+  { label: '本年累计', keys: ['ytd', 'samePeriodYtd', 'ytdYoy', 'achievement'] },
+]
+
+/** 静态指标值列（单行表头，无分组） */
+export const STATIC_COLUMNS: MetricColumn[] = [
+  { key: 'actual', header: '本期金额', minWidth: 112, kind: 'amount', primary: true },
+  { key: 'samePeriod', header: '同期金额', minWidth: 112, kind: 'amount', secondary: true },
+  { key: 'yoy', header: '变动率', minWidth: 80, kind: 'pct' },
+]
+
+/** 数值单元格：按列配置渲染（金额/数量/比率分型格式化；同比红涨绿跌；达成率进度条 + 浮于条上方的百分比） */
+function renderValueCells(
+  mv: MetricValue | undefined,
+  columns: MetricColumn[],
+  valueType?: SubjectNode['valueType'],
+) {
   const fmt = (v: number) => formatMetricValue(v, valueType)
-  // 同比 = 相对同期增长率（比率科目同样用增长率，如 20%→22% 显示 +10.0%）
-  const yoy = (mv: MetricValue) => <ChangeText value={calcYoy(mv)} />
-  if (isOperating) {
-    return (
-      <>
-        <td className={cellAmt}>{mv ? fmt(mv.budget) : '-'}</td>
-        <td className={cellAmt}>{mv ? fmt(mv.actual) : '-'}</td>
-        <td className={cellAmt}>{mv ? fmt(mv.samePeriod) : '-'}</td>
-        <td className={cn(cellPct, 'font-medium')}>{mv ? yoy(mv) : '-'}</td>
-        <td className={cellPct}>{mv ? formatPercent(calcAchievement(mv)) : '-'}</td>
-        <td className={cellAmt}>{mv ? fmt(mv.ytd) : '-'}</td>
-        <td className={cellAmt}>{mv ? fmt(mv.samePeriodYtd) : '-'}</td>
-        <td className={cn(cellPct, 'font-medium')}>
-          {mv ? <ChangeText value={calcYtdYoy(mv)} /> : '-'}
-        </td>
-      </>
+  const yoyOf = (key: string, value: MetricValue) => (key === 'ytdYoy' ? calcYtdYoy(value) : calcYoy(value))
+  return columns.map((col) => {
+    const cellBase = cn(
+      'whitespace-nowrap border-b px-3 py-2 align-middle text-center font-num',
+      col.primary && 'font-medium',
+      col.secondary && 'text-muted-foreground',
     )
-  }
-  return (
-    <>
-      <td className={cellAmt}>{mv ? fmt(mv.actual) : '-'}</td>
-      <td className={cellAmt}>{mv ? fmt(mv.samePeriod) : '-'}</td>
-      <td className={cn(cellPct, 'font-medium')}>{mv ? yoy(mv) : '-'}</td>
-    </>
-  )
+    let content: ReactNode = '-'
+    if (mv) {
+      if (col.kind === 'amount') {
+        content = fmt(mv[col.key as 'budget' | 'actual' | 'samePeriod' | 'ytd' | 'samePeriodYtd'])
+      } else if (col.kind === 'pct') {
+        content = <ChangeText value={yoyOf(col.key, mv)} />
+      } else {
+        // 达成率 = 累计达成率（本年累计/全年预算）；无预算时 RateBar 传 null 显示空条
+        const rate = mv.budget === 0 ? null : calcAchievement(mv)
+        content = <RateBar rate={rate} variant="above" />
+      }
+    }
+    return (
+      <td key={col.key} className={cellBase} style={{ minWidth: col.minWidth }}>
+        {content}
+      </td>
+    )
+  })
 }
 
 /** 科目名称单元格：缩进 + 展开折叠箭头 + 名称 + 悬停浮现分析图标；sticky 锁定首列（横向滚动时保持科目上下文） */
@@ -149,7 +186,7 @@ function MetricRows({
   nodes,
   depth,
   valueMap,
-  isOperating,
+  columns,
   expandedCodes,
   onToggle,
   onAnalyze,
@@ -159,7 +196,7 @@ function MetricRows({
   nodes: SubjectNode[]
   depth: number
   valueMap: Map<string, MetricValue>
-  isOperating: boolean
+  columns: MetricColumn[]
   expandedCodes: Set<string>
   onToggle: (code: string) => void
   onAnalyze?: (node: SubjectNode) => void
@@ -173,7 +210,7 @@ function MetricRows({
         const isExpanded = expandedCodes.has(node.code)
         return (
           <Fragment key={node.code}>
-            <tr className="group transition-colors hover:bg-muted/50">
+            <tr className="group transition-colors hover:!bg-muted/50">
               <SubjectCell
                 node={node}
                 indentDepth={depth}
@@ -183,14 +220,14 @@ function MetricRows({
                 analyzeDisabled={analyzeDisabled}
                 analyzeHint={analyzeHint}
               />
-              {renderValueCells(valueMap.get(node.code), isOperating, node.valueType)}
+              {renderValueCells(valueMap.get(node.code), columns, node.valueType)}
             </tr>
             {hasChildren && isExpanded && (
               <MetricRows
                 nodes={node.children}
                 depth={depth + 1}
                 valueMap={valueMap}
-                isOperating={isOperating}
+                columns={columns}
                 expandedCodes={expandedCodes}
                 onToggle={onToggle}
                 onAnalyze={onAnalyze}
@@ -222,7 +259,7 @@ function collectVisibleRows(children: SubjectNode[], expandedCodes: Set<string>)
 function CategoryRows({
   level0Nodes,
   valueMap,
-  isOperating,
+  columns,
   expandedCodes,
   onToggle,
   onAnalyze,
@@ -231,7 +268,7 @@ function CategoryRows({
 }: {
   level0Nodes: SubjectNode[]
   valueMap: Map<string, MetricValue>
-  isOperating: boolean
+  columns: MetricColumn[]
   expandedCodes: Set<string>
   onToggle: (code: string) => void
   onAnalyze?: (node: SubjectNode) => void
@@ -251,7 +288,7 @@ function CategoryRows({
             {rows.map((node, idx) => (
               <tr
                 key={node.code}
-                className="group transition-colors hover:bg-muted/50"
+                className="group transition-colors hover:!bg-muted/50"
                 onMouseEnter={() => setHoverCat(cat.code)}
                 onMouseLeave={() => setHoverCat((prev) => (prev === cat.code ? null : prev))}
               >
@@ -278,7 +315,7 @@ function CategoryRows({
                   analyzeDisabled={analyzeDisabled}
                   analyzeHint={analyzeHint}
                 />
-                {renderValueCells(valueMap.get(node.code), isOperating, node.valueType)}
+                {renderValueCells(valueMap.get(node.code), columns, node.valueType)}
               </tr>
             ))}
           </Fragment>
@@ -291,9 +328,9 @@ function CategoryRows({
 /**
  * 财务指标科目树：以树形结构展示科目层级，并按当前主体维度 + 期间渲染期间维度数值列。
  *
- * 经营指标列：分类(可选) / 科目 / 预算金额 / 本月实际 / 同期实际 / 同比 / 达成率 / 本年累计 / 同期累计 / 累计同比。
+ * 经营指标列：分类(可选) / 科目 / 本月实际组(预算金额/本月实际/同期实际/同比) / 本年累计组(本年累计/同期累计/累计同比/达成率)。
  * 静态指标列：科目 / 本期金额 / 同期金额 / 变动率。
- * 数值列等宽居中；同比/累计同比/变动率红涨绿跌无箭头；达成率纯百分比无徽标（= 本年累计 / 全年预算）。
+ * 数值列按列配置渲染；同比/累计同比/变动率红涨绿跌无箭头；达成率进度条（RateBar above）= 本年累计 / 全年预算。
  */
 export function MetricTree({
   nodes,
@@ -309,10 +346,12 @@ export function MetricTree({
   stickyHeaderTop = 0,
 }: MetricTreeProps) {
   const isOperating = variant === 'operating'
-  const colSpan = 1 + valueColCount(isOperating) + (categoryColumn ? 1 : 0)
-  // sticky top-0 + z-[2]：容器内部滚动时表头固定在容器顶（高于表体 sticky 列的 z-[1]）；bg-muted 保证吸顶时不透明遮挡下方行
+  const valueCols = isOperating ? OPERATING_COLUMNS : STATIC_COLUMNS
+  const colSpan = 1 + valueCols.length + (categoryColumn ? 1 : 0)
+  // 表头 sticky：组名行 top-0、明细行 top-[44px]（组名行 h-11=44px，单一来源常量）
+  const GROUP_HEAD_H = 44
   // TABLE_HEAD_BASE（13px/500 黑字居中）为共享样式常量，对齐《统一表格设计标准》
-  const headBase = cn(TABLE_HEAD_BASE, 'sticky top-0 z-[2] h-11 border-b bg-muted px-3')
+  const headBase = cn(TABLE_HEAD_BASE, 'h-11 border-b bg-muted px-3')
   return (
     // 浅灰圆角容器（与 DataTable 视觉一致）：overflow-hidden 将白底表格直角裁剪为 8px 圆角（rounded-card）
     <div className="overflow-hidden rounded-card bg-muted/40 p-2">
@@ -326,45 +365,69 @@ export function MetricTree({
       >
         {/* border-separate：sticky 单元格边框随滚动稳定跟随（collapse 模式下边框渲染异常） */}
         {/* minWidth 兜底：窄容器下表格保持完整列宽走横向滚动，列宽永不小于各列 min-w，杜绝浏览器压缩截断 */}
+        {/* 斑马纹：tbody 偶数行浅灰底；hover:!bg-muted 加 important 盖过斑马纹选择器（[&_tbody_tr:nth-child(even)] 特异性更高，不加 important 时偶数行悬停高亮不生效） */}
         <table
-          className="w-full caption-bottom border-separate border-spacing-0 text-[13px]"
+          className="w-full caption-bottom border-separate border-spacing-0 text-[13px] [&_tbody_tr:nth-child(even)]:bg-muted/30"
           style={{ minWidth: isOperating ? 1056 : 464 }}
         >
           <thead>
-            <tr className="bg-muted">
-              {categoryColumn && (
+            {isOperating ? (
+              <>
+                {/* 组名行：sticky top-0 固定容器顶 */}
+                <tr className="sticky top-0 z-[2] bg-muted">
+                  {categoryColumn && (
+                    <th
+                      rowSpan={2}
+                      className={cn(headBase, 'sticky left-0 z-[3] border-r bg-muted text-center shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)]')}
+                      style={{ width: CATEGORY_COL_WIDTH, minWidth: CATEGORY_COL_WIDTH, maxWidth: CATEGORY_COL_WIDTH }}
+                    >
+                      分类
+                    </th>
+                  )}
+                  <th
+                    rowSpan={2}
+                    className={cn(headBase, 'sticky z-[3] min-w-[160px] border-r bg-muted text-center shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)]')}
+                    style={{ left: categoryColumn ? CATEGORY_COL_WIDTH : 0 }}
+                  >
+                    科目
+                  </th>
+                  {OPERATING_GROUPS.map((g) => (
+                    <th
+                      key={g.label}
+                      colSpan={g.keys.length}
+                      className={cn(headBase, 'border-l border-border/60 text-[13px] font-semibold')}
+                    >
+                      {g.label}
+                    </th>
+                  ))}
+                </tr>
+                {/* 明细行：sticky 固定于组名行下方（top = 组名行高 44px） */}
+                <tr className="sticky bg-muted" style={{ top: GROUP_HEAD_H }}>
+                  {OPERATING_GROUPS.flatMap((g) => g.keys).map((key) => {
+                    const col = OPERATING_COLUMNS.find((c) => c.key === key)!
+                    return (
+                      <th key={col.key} scope="col" className={cn(headBase, 'text-center')} style={{ minWidth: col.minWidth }}>
+                        {col.header}
+                      </th>
+                    )
+                  })}
+                </tr>
+              </>
+            ) : (
+              <tr className="sticky top-0 z-[2] bg-muted">
                 <th
-                  className={cn(headBase, 'sticky left-0 z-[2] border-r bg-muted text-center shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)]')}
-                  style={{ width: CATEGORY_COL_WIDTH, minWidth: CATEGORY_COL_WIDTH, maxWidth: CATEGORY_COL_WIDTH }}
+                  className={cn(headBase, 'sticky z-[3] min-w-[160px] border-r bg-muted text-center shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)]')}
+                  style={{ left: 0 }}
                 >
-                  分类
+                  科目
                 </th>
-              )}
-              <th
-                className={cn(headBase, 'sticky z-[2] min-w-[160px] border-r bg-muted text-center shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)]')}
-                style={{ left: categoryColumn ? CATEGORY_COL_WIDTH : 0 }}
-              >
-                科目
-              </th>
-              {isOperating ? (
-                <>
-                  <th className={cn(headBase, 'min-w-[112px] text-center')}>预算金额</th>
-                  <th className={cn(headBase, 'min-w-[112px] text-center')}>本月实际</th>
-                  <th className={cn(headBase, 'min-w-[112px] text-center')}>同期实际</th>
-                  <th className={cn(headBase, 'min-w-[80px] text-center')}>同比</th>
-                  <th className={cn(headBase, 'min-w-[80px] text-center')}>达成率</th>
-                  <th className={cn(headBase, 'min-w-[112px] text-center')}>本年累计</th>
-                  <th className={cn(headBase, 'min-w-[112px] text-center')}>同期累计</th>
-                  <th className={cn(headBase, 'min-w-[80px] text-center')}>累计同比</th>
-                </>
-              ) : (
-                <>
-                  <th className={cn(headBase, 'min-w-[112px] text-center')}>本期金额</th>
-                  <th className={cn(headBase, 'min-w-[112px] text-center')}>同期金额</th>
-                  <th className={cn(headBase, 'min-w-[80px] text-center')}>变动率</th>
-                </>
-              )}
-            </tr>
+                {STATIC_COLUMNS.map((col) => (
+                  <th key={col.key} scope="col" className={cn(headBase, 'text-center')} style={{ minWidth: col.minWidth }}>
+                    {col.header}
+                  </th>
+                ))}
+              </tr>
+            )}
           </thead>
           <tbody>
             {nodes.length === 0 ? (
@@ -377,7 +440,7 @@ export function MetricTree({
               <CategoryRows
                 level0Nodes={nodes}
                 valueMap={valueMap}
-                isOperating={isOperating}
+                columns={valueCols}
                 expandedCodes={expandedCodes}
                 onToggle={onToggle}
                 onAnalyze={onAnalyze}
@@ -389,7 +452,7 @@ export function MetricTree({
                 nodes={nodes}
                 depth={0}
                 valueMap={valueMap}
-                isOperating={isOperating}
+                columns={valueCols}
                 expandedCodes={expandedCodes}
                 onToggle={onToggle}
                 onAnalyze={onAnalyze}
