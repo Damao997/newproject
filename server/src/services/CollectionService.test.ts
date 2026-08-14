@@ -50,8 +50,8 @@ afterAll(async () => {
   if (detailId) await basePrisma.transactionDetail.delete({ where: { id: detailId } }).catch(() => undefined)
   // 跨公司业务员（无外键关联，手工清理）
   await basePrisma.salesman.deleteMany({ where: { companyCode: 'EN999902', name: '李四' } }).catch(() => undefined)
-  // 测试公司业务员（无外键关联，手工清理）
-  await basePrisma.salesman.deleteMany({ where: { companyCode: TEST_COMPANY, name: '张三' } }).catch(() => undefined)
+  // 测试公司业务员（无外键关联，手工清理：按公司清理，覆盖张三及业务员管理用例自建数据）
+  await basePrisma.salesman.deleteMany({ where: { companyCode: TEST_COMPANY } }).catch(() => undefined)
   // 测试客商主数据（无外键关联，手工清理）
   await basePrisma.counterparty.deleteMany({ where: { code: TEST_CP } }).catch(() => undefined)
 })
@@ -186,5 +186,42 @@ describe('CollectionService（真实 DB）', () => {
     expect(sms.some((s) => s.name === '张三')).toBe(true)
     // 创建校验：姓名必填
     await expect(CollectionService.createSalesman({ companyCode: TEST_COMPANY, name: '  ' }, ctx)).rejects.toThrow('必填')
+  })
+
+  it('业务员管理：管理列表分页/关键词/状态筛选、编辑、停用', async () => {
+    if (!dbReady) return
+    // 自建两个业务员：A（active）、B（active 后停用）
+    const a = await CollectionService.createSalesman({ companyCode: TEST_COMPANY, name: '管理甲', phone: '13900000001' }, ctx)
+    const b = await CollectionService.createSalesman({ companyCode: TEST_COMPANY, name: '管理乙', phone: '13900000002' }, ctx)
+
+    // 管理列表：全部
+    const all = await CollectionService.listSalesmenManage({ companyCodes: [TEST_COMPANY], pageSize: 50 })
+    expect(all.items.some((s) => s.id === a.id)).toBe(true)
+    // 关键词（姓名）
+    const kw = await CollectionService.listSalesmenManage({ companyCodes: [TEST_COMPANY], keyword: '管理甲', pageSize: 50 })
+    expect(kw.items.map((s) => s.id)).toEqual([a.id])
+    // 关键词（电话）
+    const kwPhone = await CollectionService.listSalesmenManage({ companyCodes: [TEST_COMPANY], keyword: '13900000002', pageSize: 50 })
+    expect(kwPhone.items.map((s) => s.id)).toEqual([b.id])
+    // 状态筛选
+    const activeOnly = await CollectionService.listSalesmenManage({ companyCodes: [TEST_COMPANY], status: 'active', pageSize: 50 })
+    expect(activeOnly.items.some((s) => s.id === b.id)).toBe(true)
+
+    // 编辑：姓名/电话修改；公司不可改
+    const edited = await CollectionService.updateSalesman(a.id, { name: '管理甲改', phone: '13900000009' }, ctx)
+    expect(edited.name).toBe('管理甲改')
+    expect(edited.phone).toBe('13900000009')
+    await expect(CollectionService.updateSalesman(a.id, { name: 'x', companyCode: 'EN999902' } as never, ctx)).rejects.toThrow('公司不可修改')
+
+    // 停用：选项接口不再返回，管理列表状态为 inactive
+    const deactivated = await CollectionService.setSalesmanStatus(b.id, 'inactive', ctx)
+    expect(deactivated.status).toBe('inactive')
+    const options = await CollectionService.listSalesmen({ companyCodes: [TEST_COMPANY] })
+    expect(options.some((s) => s.id === b.id)).toBe(false)
+    const manageInactive = await CollectionService.listSalesmenManage({ companyCodes: [TEST_COMPANY], status: 'inactive', pageSize: 50 })
+    expect(manageInactive.items.some((s) => s.id === b.id)).toBe(true)
+
+    // 非法状态
+    await expect(CollectionService.setSalesmanStatus(a.id, 'bogus' as never, ctx)).rejects.toThrow('状态不合法')
   })
 })

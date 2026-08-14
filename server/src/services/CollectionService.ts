@@ -261,10 +261,10 @@ export const CollectionService = {
   },
 
   /**
-   * 业务员列表（按公司过滤）
+   * 业务员选项列表（按公司过滤；仅 active——停用业务员不再可选，历史关联保留）
    */
   async listSalesmen(params: { companyCodes?: string[] }) {
-    const where: Record<string, unknown> = {}
+    const where: Record<string, unknown> = { status: 'active' }
     if (params.companyCodes) where.companyCode = { in: params.companyCodes }
     const rows = await prisma.salesman.findMany({ where, orderBy: { createdAt: 'desc' } })
     return rows.map((s) => ({ id: s.id, companyCode: s.companyCode, name: s.name, phone: s.phone, remark: s.remark }))
@@ -285,6 +285,79 @@ export const CollectionService = {
     })
     await recordAudit({ userId: ctx.userId, module: 'transactions', action: 'create', targetId: salesman.id, detail: { action: 'create-salesman' } }, ctx.traceId)
     return { id: salesman.id, companyCode: salesman.companyCode, name: salesman.name, phone: salesman.phone, remark: salesman.remark }
+  },
+
+  /**
+   * 业务员管理列表（分页 + 姓名/电话关键词 + 公司 + 状态筛选；status 空/''/'all' 不过滤）
+   */
+  async listSalesmenManage(params: { companyCodes?: string[]; keyword?: string; status?: string; page?: number; pageSize?: number }) {
+    const page = Math.max(params.page || 1, 1)
+    const pageSize = Math.min(Math.max(params.pageSize || 20, 1), 200)
+    const where: Record<string, unknown> = {}
+    if (params.companyCodes) where.companyCode = { in: params.companyCodes }
+    const kw = (params.keyword || '').trim()
+    if (kw) {
+      where.OR = [
+        { name: { contains: kw, mode: 'insensitive' } },
+        { phone: { contains: kw, mode: 'insensitive' } },
+      ]
+    }
+    const status = params.status || ''
+    if (status && status !== 'all') {
+      if (status !== 'active' && status !== 'inactive') throw errors.badRequest('业务员状态不合法')
+      where.status = status
+    }
+    const [items, total] = await Promise.all([
+      prisma.salesman.findMany({ where, skip: (page - 1) * pageSize, take: pageSize, orderBy: { createdAt: 'desc' } }),
+      prisma.salesman.count({ where }),
+    ])
+    return {
+      items: items.map((s) => ({ id: s.id, companyCode: s.companyCode, name: s.name, phone: s.phone, remark: s.remark, status: s.status, createdAt: s.createdAt.toISOString() })),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    }
+  },
+
+  /**
+   * 编辑业务员：姓名/电话/备注；companyCode 不可修改（防止历史关联语义漂移）
+   */
+  async updateSalesman(id: string, patch: { name?: string; phone?: string; remark?: string; companyCode?: string }, ctx: Ctx) {
+    const salesman = await prisma.salesman.findUnique({ where: { id } })
+    if (!salesman) throw errors.notFound('业务员不存在')
+    if (patch.companyCode !== undefined && patch.companyCode !== salesman.companyCode) {
+      throw errors.badRequest('业务员所属公司不可修改')
+    }
+    const data: Record<string, unknown> = {}
+    if (patch.name !== undefined) {
+      const name = (patch.name || '').trim()
+      if (!name) throw errors.badRequest('业务员姓名必填')
+      if (name.length > 50) throw errors.badRequest('业务员姓名不能超过 50 字')
+      data.name = name
+    }
+    if (patch.phone !== undefined) {
+      const phone = (patch.phone || '').trim()
+      if (phone.length > 30) throw errors.badRequest('联系方式不能超过 30 字')
+      data.phone = phone || null
+    }
+    if (patch.remark !== undefined) data.remark = (patch.remark || '').trim() || null
+    if (Object.keys(data).length === 0) throw errors.badRequest('无可更新字段')
+    const updated = await prisma.salesman.update({ where: { id }, data: data as never })
+    await recordAudit({ userId: ctx.userId, module: 'transactions', action: 'update', targetId: id, detail: { action: 'update-salesman', fields: Object.keys(data) } }, ctx.traceId)
+    return { id: updated.id, companyCode: updated.companyCode, name: updated.name, phone: updated.phone, remark: updated.remark, status: updated.status }
+  },
+
+  /**
+   * 停用/启用业务员（软删除：历史关联 customer_ext/collection_plan 的 salesmanId 保留）
+   */
+  async setSalesmanStatus(id: string, status: 'active' | 'inactive', ctx: Ctx) {
+    const salesman = await prisma.salesman.findUnique({ where: { id } })
+    if (!salesman) throw errors.notFound('业务员不存在')
+    if (status !== 'active' && status !== 'inactive') throw errors.badRequest('业务员状态不合法')
+    const updated = await prisma.salesman.update({ where: { id }, data: { status } })
+    await recordAudit({ userId: ctx.userId, module: 'transactions', action: 'update', targetId: id, detail: { action: 'set-salesman-status', status } }, ctx.traceId)
+    return { id: updated.id, companyCode: updated.companyCode, name: updated.name, phone: updated.phone, remark: updated.remark, status: updated.status }
   },
 
   /**
