@@ -579,7 +579,7 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
       )}
 
       {/* 科目树表格卡片：筛选条在页头 actions 吸顶，树区承载于卡片内 */}
-      <Card className="animate-fade-in overflow-hidden rounded-card border border-border">
+      <Card className="animate-fade-in overflow-hidden rounded-card">
         <div className="min-h-[420px] px-4 py-3">
           {isLoading ? (
             /* 加载骨架：保持表格占位高度，避免内容区塌陷再撑回导致跳动 */
