@@ -410,7 +410,7 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
           sheetName: '静态指标',
           columns: [
             { header: '科目', key: 'account', width: 40 },
-            ...keys.map((k) => ({ header: k === 'actual' ? '本期金额(万)' : k === 'samePeriod' ? '同期金额(万)' : '变动率', key: k, width: 16 })),
+            ...keys.map((k) => ({ header: k === 'actual' ? '本期金额(万)' : k === 'samePeriod' ? '同期金额(万)' : '变动率', key: k, width: k === 'yoy' ? 10 : 16 })),
           ],
           rows,
         })
