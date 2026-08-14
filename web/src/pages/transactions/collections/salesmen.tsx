@@ -35,6 +35,7 @@ const STATUS_LABELS: Record<string, string> = { active: '启用', inactive: '停
 
 /** 表单抽屉：新增（公司可选）与编辑（公司只读）共用 */
 function SalesmanFormDrawer({ target, onClose }: { target: SalesmanManageItem | null; onClose: () => void }) {
+  const { getDisplayName } = useCompanyDisplayName()
   const [companyCode, setCompanyCode] = useState(target?.companyCode ?? '')
   const [name, setName] = useState(target?.name ?? '')
   const [phone, setPhone] = useState(target?.phone ?? '')
@@ -64,7 +65,7 @@ function SalesmanFormDrawer({ target, onClose }: { target: SalesmanManageItem | 
       onClose={onClose}
       className="max-w-md"
       title={target ? '编辑业务员' : '新增业务员'}
-      description={target ? `${target.name} · ${target.companyCode}` : '录入业务员主数据（所属公司不可修改）'}
+      description={target ? `${target.name} · ${getDisplayName(target.companyCode, undefined)}` : '录入业务员主数据（所属公司不可修改）'}
       footer={(
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={onClose} disabled={createMutation.isPending || updateMutation.isPending}>取消</Button>
@@ -81,7 +82,7 @@ function SalesmanFormDrawer({ target, onClose }: { target: SalesmanManageItem | 
           {target ? (
             <Input id="salesman-form-company" value={target.companyCode} disabled />
           ) : (
-            <CompanySelect value={companyCode} onChange={setCompanyCode} />
+            <CompanySelect value={companyCode} onChange={setCompanyCode} allowAll={false} placeholder="选择公司" id="salesman-form-company" />
           )}
         </div>
         <div className="space-y-1.5">
@@ -116,6 +117,7 @@ export default function SalesmenPage() {
   const setKeyword = useCallback((v: string) => setTransactionsTab('salesmen', { keyword: v }), [setTransactionsTab])
   const [formTarget, setFormTarget] = useState<SalesmanManageItem | null>(null)
   const [formOpen, setFormOpen] = useState(false)
+  const [actionError, setActionError] = useState('')
   const { can } = usePermission()
   const { getDisplayName } = useCompanyDisplayName()
   const { confirm, element: confirmElement } = useConfirm()
@@ -148,7 +150,7 @@ export default function SalesmenPage() {
     try {
       await statusMutation.mutateAsync({ id: row.id, status: next })
     } catch (e) {
-      console.error(e)
+      setActionError(e instanceof Error ? e.message : '操作失败')
     }
   }, [confirm, statusMutation])
 
@@ -222,6 +224,10 @@ export default function SalesmenPage() {
             )}
           </div>
         </Card>
+
+        {actionError && (
+          <FlashMessage type="error" autoHideMs={4000} onAutoHide={() => setActionError('')}>{actionError}</FlashMessage>
+        )}
 
         {/* 列表卡 */}
         <Card className="rounded-card overflow-hidden">
