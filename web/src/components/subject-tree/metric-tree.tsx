@@ -1,6 +1,7 @@
 /* eslint-disable react/only-export-components -- OPERATING_COLUMNS/STATIC_COLUMNS 列配置导出供后续任务（排序/筛选/列设置）复用 */
 import { Fragment, useState, type ReactNode } from 'react'
-import { ChevronRight, ChevronDown, MessageSquarePlus } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronRight, ChevronDown, MessageSquarePlus } from 'lucide-react'
+import type { SortDirection } from '@/components/data-table/data-table'
 import { cn, formatMetricValue, getChangeColor } from '@/lib/utils'
 import { TABLE_HEAD_BASE } from '@/components/data-table/styles'
 import { calcYoy, calcAchievement, calcYtdYoy, type MetricValue } from '@/lib/metric-values'
@@ -29,6 +30,12 @@ interface MetricTreeProps {
   emptyText?: string
   /** 吸顶筛选区高度（px）：>0 时表格容器吸顶于该偏移并内部滚动，表头 th 固定在容器顶部（配合 PageContainer stickyHeader 使用） */
   stickyHeaderTop?: number
+  /** 受控排序键（null 表示不排序；传 onSortChange 时建议同时传入） */
+  sortKey?: string | null
+  /** 受控排序方向 */
+  sortDirection?: SortDirection | null
+  /** 排序变更回调（方向循环：升序 → 降序 → 取消，取消时 direction 为 null） */
+  onSortChange?: (key: string, direction: SortDirection | null) => void
 }
 
 /** 涨跌彩色变化值（红涨绿跌、无箭头、等宽数字居中）：统一按相对增长率百分比显示；零值显示 '-' */
@@ -347,6 +354,9 @@ export function MetricTree({
   analyzeHint,
   emptyText = '暂无数据',
   stickyHeaderTop = 0,
+  sortKey,
+  sortDirection,
+  onSortChange,
 }: MetricTreeProps) {
   const isOperating = variant === 'operating'
   const valueCols = isOperating ? OPERATING_COLUMNS : STATIC_COLUMNS
@@ -354,6 +364,19 @@ export function MetricTree({
   // 表头 sticky：组名行 top-0、明细行 top-GROUP_HEAD_H（组名行 h-11=44px，模块级 GROUP_HEAD_H 单一来源）
   // TABLE_HEAD_BASE（13px/500 黑字居中）为共享样式常量，对齐《统一表格设计标准》
   const headBase = cn(TABLE_HEAD_BASE, 'h-11 border-b bg-muted px-3')
+
+  /** 排序三态循环：升序 → 降序 → 取消（受控，与 DataTable 一致；取消时 sortKey 保持键值、direction 为 null，再次点击回升序） */
+  const handleSort = (key: string) => {
+    const next =
+      sortKey === key
+        ? sortDirection === 'asc'
+          ? { key, direction: 'desc' as const }
+          : sortDirection === 'desc'
+            ? { key, direction: null as const }
+            : { key, direction: 'asc' as const }
+        : { key, direction: 'asc' as const }
+    onSortChange?.(next.key, next.direction)
+  }
   return (
     // 浅灰圆角容器（与 DataTable 视觉一致）：overflow-hidden 将白底表格直角裁剪为 8px 圆角（rounded-card）
     <div className="overflow-hidden rounded-card bg-muted/40 p-2">
@@ -410,9 +433,28 @@ export function MetricTree({
                 <tr className="sticky bg-muted" style={{ top: GROUP_HEAD_H }}>
                   {OPERATING_GROUPS.flatMap((g) => g.keys).map((key) => {
                     const col = OPERATING_COLUMNS.find((c) => c.key === key)!
+                    const sortState = sortKey === col.key ? sortDirection : null
                     return (
-                      <th key={col.key} scope="col" className={cn(headBase, 'text-center')} style={{ minWidth: col.minWidth }}>
-                        {col.header}
+                      <th
+                        key={col.key}
+                        scope="col"
+                        aria-sort={sortState ? (sortState === 'asc' ? 'ascending' : 'descending') : undefined}
+                        className={cn(headBase, 'text-center')}
+                        style={{ minWidth: col.minWidth }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleSort(col.key)}
+                          className="inline-flex items-center gap-1 font-medium hover:text-foreground"
+                          aria-label={`按${col.header}排序`}
+                        >
+                          {col.header}
+                          {sortState ? (
+                            sortState === 'asc' ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />
+                          ) : (
+                            <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />
+                          )}
+                        </button>
                       </th>
                     )
                   })}
@@ -427,11 +469,32 @@ export function MetricTree({
                 >
                   科目
                 </th>
-                {STATIC_COLUMNS.map((col) => (
-                  <th key={col.key} scope="col" className={cn(headBase, 'text-center')} style={{ minWidth: col.minWidth }}>
-                    {col.header}
-                  </th>
-                ))}
+                {STATIC_COLUMNS.map((col) => {
+                  const sortState = sortKey === col.key ? sortDirection : null
+                  return (
+                    <th
+                      key={col.key}
+                      scope="col"
+                      aria-sort={sortState ? (sortState === 'asc' ? 'ascending' : 'descending') : undefined}
+                      className={cn(headBase, 'text-center')}
+                      style={{ minWidth: col.minWidth }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleSort(col.key)}
+                        className="inline-flex items-center gap-1 font-medium hover:text-foreground"
+                        aria-label={`按${col.header}排序`}
+                      >
+                        {col.header}
+                        {sortState ? (
+                          sortState === 'asc' ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />
+                        ) : (
+                          <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />
+                        )}
+                      </button>
+                    </th>
+                  )
+                })}
               </tr>
             )}
           </thead>

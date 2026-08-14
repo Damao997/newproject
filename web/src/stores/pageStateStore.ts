@@ -23,6 +23,10 @@ export interface IndicatorsState {
   expandedCodes: string[]
   /** 科目列关键字筛选（'' = 不过滤） */
   subjectKeyword: string
+  /** 列排序键（null 不排序；受控，持久化） */
+  sortKey: string | null
+  /** 列排序方向 */
+  sortDirection: 'asc' | 'desc' | null
 }
 
 export interface DataBrowseState {
@@ -147,6 +151,8 @@ const defaultIndicators: IndicatorsState = {
   excludeReclassify: false,
   expandedCodes: [],
   subjectKeyword: '',
+  sortKey: null,
+  sortDirection: null,
 }
 
 const defaultDataBrowse: DataBrowseState = {

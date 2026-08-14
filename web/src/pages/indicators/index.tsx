@@ -26,6 +26,7 @@ import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { usePageStore } from '@/stores/pageStateStore'
 import { exportToExcel } from '@/lib/export'
 import { filterTreeKeepSubtree } from '@/lib/subject-tree'
+import { sortTreeByLevel, type MetricSortKey } from '@/lib/metric-sort'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { MetricValue } from '@/lib/metric-values'
@@ -97,6 +98,8 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
   const excludeReclassify = usePageStore((s) => s.indicators.excludeReclassify)
   const expandedCodes = usePageStore((s) => s.indicators.expandedCodes)
   const subjectKeyword = usePageStore((s) => s.indicators.subjectKeyword)
+  const sortKey = usePageStore((s) => s.indicators.sortKey)
+  const sortDirection = usePageStore((s) => s.indicators.sortDirection)
   const [analysisTarget, setAnalysisTarget] = useState<AnalysisTarget | null>(null)
   // AI 预分析弹窗开关（数据就绪后令牌递增，由弹窗内自动打开）
   const [overviewOpen, setOverviewOpen] = useState(false)
@@ -116,6 +119,10 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
   const setPeriodFilter = useCallback((v: string) => setIndicators({ periodFilter: v }), [setIndicators])
   const setExcludeReclassify = useCallback((v: boolean) => setIndicators({ excludeReclassify: v }), [setIndicators])
   const setSubjectKeyword = useCallback((v: string) => setIndicators({ subjectKeyword: v }), [setIndicators])
+  const setSort = useCallback(
+    (key: string, direction: 'asc' | 'desc' | null) => setIndicators({ sortKey: key, sortDirection: direction }),
+    [setIndicators],
+  )
   // 小屏（<lg）搜索框浮层展开态（图标按钮点击切换）
   const [searchOpen, setSearchOpen] = useState(false)
   // 展开集合由持久化数组派生（Set 不可序列化，store 以数组存储）
@@ -205,6 +212,14 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
     collect(visibleTree)
     return next
   }, [visibleTree, subjectKeyword, expandedSet])
+
+  // 列排序：树内同级排序（经营指标分类根不排序 fromLevel=1 保护分类列分组；静态指标全层级）
+  const sortedTree = useMemo(() => {
+    if (!sortKey || !sortDirection) return visibleTree
+    return sortTreeByLevel(visibleTree, activeValueMap, sortKey as MetricSortKey, sortDirection, {
+      fromLevel: isOperating ? 1 : 0,
+    })
+  }, [visibleTree, activeValueMap, sortKey, sortDirection, isOperating])
 
   // 数据到达后默认展开 level0 根节点
   useEffect(() => {
@@ -561,7 +576,7 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
       )}
 
       {/* 科目树表格卡片：筛选条在页头 actions 吸顶，树区承载于卡片内 */}
-      <Card className="animate-fade-in overflow-hidden rounded-card">
+      <Card className="animate-fade-in overflow-hidden rounded-card border border-border">
         <div className="min-h-[420px] px-4 py-3">
           {isLoading ? (
             /* 加载骨架：保持表格占位高度，避免内容区塌陷再撑回导致跳动 */
@@ -591,7 +606,7 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
           ) : (
             <div className={cn('transition-opacity duration-200', isFetching && 'opacity-60')}>
               <MetricTree
-                nodes={visibleTree}
+                nodes={sortedTree}
                 valueMap={activeValueMap}
                 variant={activeTab}
                 categoryColumn={isOperating}
@@ -602,6 +617,9 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
                 analyzeHint="请先在「主体维度」选择单一公司，再对该公司的科目撰写单项分析"
                 stickyHeaderTop={headerHeight}
                 emptyText={subjectKeyword.trim() ? '未找到匹配科目' : undefined}
+                sortKey={sortKey}
+                sortDirection={sortDirection}
+                onSortChange={setSort}
               />
             </div>
           )}
