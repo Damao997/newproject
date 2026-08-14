@@ -29,6 +29,10 @@ export interface IndicatorsState {
   sortDirection: 'asc' | 'desc' | null
   /** 分类列筛选（null = 全部；否则为勾选 level0 code 列表） */
   categoryFilter: string[] | null
+  /** 表格密度三档（对齐 DataTable 命名） */
+  density: 'default' | 'dense' | 'compact'
+  /** 隐藏的值列 key 列表（默认全部显示） */
+  hiddenColumns: string[]
 }
 
 export interface DataBrowseState {
@@ -59,8 +63,8 @@ export interface TransactionAgingState {
   type: string
   /** 科目多选，空数组 = 全部科目 */
   accounts: string[]
-  /** 'all' | 'internal' | 'related' | 'external' */
-  party: string
+  /** 对象类型多选（external/related/internal），空数组 = 全部对象 */
+  party: string[]
   /** 'type' | 'counterparty' */
   groupBy: string
   /** 仅显示小计：隐藏明细数据行，仅保留各组小计与合计行 */
@@ -156,6 +160,8 @@ const defaultIndicators: IndicatorsState = {
   sortKey: null,
   sortDirection: null,
   categoryFilter: null,
+  density: 'default',
+  hiddenColumns: [],
 }
 
 const defaultDataBrowse: DataBrowseState = {
@@ -176,7 +182,8 @@ const defaultAging: TransactionAgingState = {
   period: '',
   type: '应收账款',
   accounts: [],
-  party: 'external',
+  // 默认口径：外部+关联方（排除内部公司，内部往来通常已抵消）
+  party: ['external', 'related'],
   groupBy: 'type',
   subtotalOnly: false,
   keyword: '',
@@ -283,18 +290,30 @@ export const usePageStore = create<PageStateStore>()(
     }),
     {
       name: 'page-state-storage',
-      version: 2,
+      version: 4,
       // v1→v2：旧默认「全部公司」[]（非用户显式多选）迁移为 ET0001，与新默认主体口径一致；
       // 注意：空数组同时是显式「全部公司」的语义，此迁移仅覆盖从未改过默认值的存量会话
+      // v3→v4：账龄对象类型由单选字符串改为多选数组（默认外部+关联方），存量值统一转为数组
       migrate: (persistedState, version) => {
+        let next = persistedState as Record<string, unknown> | null
         if (version < 2) {
-          const p = persistedState as { inventory?: { companies?: string[] } } | null
+          const p = next as { inventory?: { companies?: string[] } } | null
           const inv = p?.inventory
           if (inv && Array.isArray(inv.companies) && inv.companies.length === 0) {
-            return { ...p, inventory: { ...inv, companies: [DEFAULT_SUMMARY_CODE] } }
+            next = { ...p, inventory: { ...inv, companies: [DEFAULT_SUMMARY_CODE] } }
           }
         }
-        return persistedState
+        if (version < 4) {
+          const p = next as { transactions?: { aging?: { party?: unknown } } } | null
+          const aging = p?.transactions?.aging
+          if (aging && typeof aging.party === 'string') {
+            const party = aging.party === '' || aging.party === 'all'
+              ? []
+              : aging.party.split(',').map((s) => s.trim()).filter((s) => s === 'internal' || s === 'related' || s === 'external')
+            next = { ...p, transactions: { ...(p?.transactions ?? {}), aging: { ...aging, party } } }
+          }
+        }
+        return next ?? persistedState
       },
       partialize: (state) => ({
         indicators: state.indicators,

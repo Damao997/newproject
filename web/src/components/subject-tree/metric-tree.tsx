@@ -45,6 +45,10 @@ interface MetricTreeProps {
   categoryFilter?: string[] | null
   /** 分类筛选变更回调（null = 全部） */
   onCategoryFilterChange?: (codes: string[] | null) => void
+  /** 表格密度（对齐 DataTable 三档；缺省 default） */
+  density?: 'default' | 'dense' | 'compact'
+  /** 隐藏的值列 key 列表 */
+  hiddenColumns?: string[]
 }
 
 /** 涨跌彩色变化值（红涨绿跌、无箭头、等宽数字居中）：统一按相对增长率百分比显示；零值显示 '-' */
@@ -61,6 +65,13 @@ const CATEGORY_COL_WIDTH = 96
 
 /** 表头组名行高度（px）：与 h-11（44px）对应，明细行 sticky top 偏移的单一来源；修改表头行高需同步此值 */
 const GROUP_HEAD_H = 44
+
+/** 密度 → 数据行纵向内边距（对齐 DataTable 三档命名） */
+const ROW_PAD: Record<'default' | 'dense' | 'compact', string> = {
+  default: 'py-2',
+  dense: 'py-1.5',
+  compact: 'py-1',
+}
 
 /** 值列形态：amount 金额 / pct 红涨绿跌百分比 / achievement 达成率进度条 */
 type MetricColKind = 'amount' | 'pct' | 'achievement'
@@ -94,6 +105,9 @@ const OPERATING_GROUPS: { label: string; keys: string[] }[] = [
   { label: '本年累计', keys: ['ytd', 'samePeriodYtd', 'ytdYoy', 'achievement'] },
 ]
 
+/** 列 key → 列对象（表头渲染单源查找，避免 find 重复与拼写漂移） */
+const OPERATING_COL_BY_KEY = new Map(OPERATING_COLUMNS.map((c) => [c.key, c]))
+
 /** 静态指标值列（单行表头，无分组） */
 export const STATIC_COLUMNS: MetricColumn[] = [
   { key: 'actual', header: '本期金额', minWidth: 112, kind: 'amount', primary: true },
@@ -106,12 +120,14 @@ function renderValueCells(
   mv: MetricValue | undefined,
   columns: MetricColumn[],
   valueType?: SubjectNode['valueType'],
+  rowPad = 'py-2',
 ) {
   const fmt = (v: number) => formatMetricValue(v, valueType)
   const yoyOf = (key: string, value: MetricValue) => (key === 'ytdYoy' ? calcYtdYoy(value) : calcYoy(value))
   return columns.map((col) => {
     const cellBase = cn(
-      'whitespace-nowrap border-b px-3 py-2 align-middle text-center font-num',
+      'whitespace-nowrap border-b px-3 align-middle text-center font-num',
+      rowPad,
       col.primary && 'font-medium',
       col.secondary && 'text-muted-foreground',
     )
@@ -211,6 +227,7 @@ function MetricRows({
   onAnalyze,
   analyzeDisabled,
   analyzeHint,
+  rowPad,
 }: {
   nodes: SubjectNode[]
   depth: number
@@ -221,6 +238,7 @@ function MetricRows({
   onAnalyze?: (node: SubjectNode) => void
   analyzeDisabled?: boolean
   analyzeHint?: string
+  rowPad: string
 }) {
   return (
     <>
@@ -239,7 +257,7 @@ function MetricRows({
                 analyzeDisabled={analyzeDisabled}
                 analyzeHint={analyzeHint}
               />
-              {renderValueCells(valueMap.get(node.code), columns, node.valueType)}
+              {renderValueCells(valueMap.get(node.code), columns, node.valueType, rowPad)}
             </tr>
             {hasChildren && isExpanded && (
               <MetricRows
@@ -252,6 +270,7 @@ function MetricRows({
                 onAnalyze={onAnalyze}
                 analyzeDisabled={analyzeDisabled}
                 analyzeHint={analyzeHint}
+                rowPad={rowPad}
               />
             )}
           </Fragment>
@@ -284,6 +303,7 @@ function CategoryRows({
   onAnalyze,
   analyzeDisabled,
   analyzeHint,
+  rowPad,
 }: {
   level0Nodes: SubjectNode[]
   valueMap: Map<string, MetricValue>
@@ -293,6 +313,7 @@ function CategoryRows({
   onAnalyze?: (node: SubjectNode) => void
   analyzeDisabled?: boolean
   analyzeHint?: string
+  rowPad: string
 }) {
   // 悬停高亮分类列：rowSpan 单元格 DOM 只属于组内首行，group-hover 无法响应其他行悬停，改为 JS 跟踪悬停行所属组
   const [hoverCat, setHoverCat] = useState<string | null>(null)
@@ -334,7 +355,7 @@ function CategoryRows({
                   analyzeDisabled={analyzeDisabled}
                   analyzeHint={analyzeHint}
                 />
-                {renderValueCells(valueMap.get(node.code), columns, node.valueType)}
+                {renderValueCells(valueMap.get(node.code), columns, node.valueType, rowPad)}
               </tr>
             ))}
           </Fragment>
@@ -369,9 +390,17 @@ export function MetricTree({
   onSortChange,
   categoryFilter,
   onCategoryFilterChange,
+  density,
+  hiddenColumns,
 }: MetricTreeProps) {
   const isOperating = variant === 'operating'
-  const valueCols = isOperating ? OPERATING_COLUMNS : STATIC_COLUMNS
+  // 密度 → 数据行纵向内边距（py-2 / py-1.5 / py-1，对齐 DataTable 三档）
+  const rowPad = ROW_PAD[density ?? 'default']
+  // 列显隐：隐藏列不渲染表头与数据行（分组表头 colSpan 同步按可见列数）
+  const valueCols = (isOperating ? OPERATING_COLUMNS : STATIC_COLUMNS).filter((c) => !hiddenColumns?.includes(c.key))
+  const visibleGroups = isOperating
+    ? OPERATING_GROUPS.map((g) => ({ ...g, keys: g.keys.filter((k) => !hiddenColumns?.includes(k)) })).filter((g) => g.keys.length > 0)
+    : []
   const colSpan = 1 + valueCols.length + (categoryColumn ? 1 : 0)
   // 表头 sticky：组名行 top-0、明细行 top-GROUP_HEAD_H（组名行 h-11=44px，模块级 GROUP_HEAD_H 单一来源）
   // TABLE_HEAD_BASE（13px/500 黑字居中）为共享样式常量，对齐《统一表格设计标准》
@@ -487,7 +516,7 @@ export function MetricTree({
                   >
                     科目
                   </th>
-                  {OPERATING_GROUPS.map((g) => (
+                  {visibleGroups.map((g) => (
                     <th
                       key={g.label}
                       colSpan={g.keys.length}
@@ -500,8 +529,8 @@ export function MetricTree({
                 </tr>
                 {/* 明细行：sticky 固定于组名行下方（top = 组名行高 44px） */}
                 <tr className="sticky bg-muted" style={{ top: GROUP_HEAD_H }}>
-                  {OPERATING_GROUPS.flatMap((g) => g.keys).map((key) => {
-                    const col = OPERATING_COLUMNS.find((c) => c.key === key)!
+                  {visibleGroups.flatMap((g) => g.keys).map((key) => {
+                    const col = OPERATING_COL_BY_KEY.get(key)!
                     const sortState = sortKey === col.key ? sortDirection : null
                     return (
                       <th
@@ -538,7 +567,7 @@ export function MetricTree({
                 >
                   科目
                 </th>
-                {STATIC_COLUMNS.map((col) => {
+                {valueCols.map((col) => {
                   const sortState = sortKey === col.key ? sortDirection : null
                   return (
                     <th
@@ -584,6 +613,7 @@ export function MetricTree({
                 onAnalyze={onAnalyze}
                 analyzeDisabled={analyzeDisabled}
                 analyzeHint={analyzeHint}
+                rowPad={rowPad}
               />
             ) : (
               <MetricRows
@@ -596,6 +626,7 @@ export function MetricTree({
                 onAnalyze={onAnalyze}
                 analyzeDisabled={analyzeDisabled}
                 analyzeHint={analyzeHint}
+                rowPad={rowPad}
               />
             )}
           </tbody>

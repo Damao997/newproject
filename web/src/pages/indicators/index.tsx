@@ -18,6 +18,7 @@ import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { usePermission } from '@/hooks/usePermission'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
@@ -31,7 +32,7 @@ import { filterByCategories } from '@/lib/metric-filter'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { MetricValue } from '@/lib/metric-values'
-import { Download, ChevronsDownUp, ChevronsUpDown, History, Eye, Sparkles, Loader2, Search, X, MoreHorizontal } from 'lucide-react'
+import { Download, ChevronsDownUp, ChevronsUpDown, History, Eye, Sparkles, Loader2, Search, X, MoreHorizontal, Rows3, Columns3, Check } from 'lucide-react'
 import type { SubjectNode } from '@/types'
 
 /** 收集含子节点的科目编码（用于全部展开） */
@@ -47,6 +48,10 @@ function collectExpandableCodes(nodes: SubjectNode[]): string[] {
 }
 
 type Row = OperatingRow | StaticRow
+
+// 列设置面板元数据（复用 metric-tree 列配置，仅取 key/header）
+const OPERATING_COLUMN_META = OPERATING_COLUMNS.map((c) => ({ key: c.key, header: c.header }))
+const STATIC_COLUMN_META = STATIC_COLUMNS.map((c) => ({ key: c.key, header: c.header }))
 
 /** 将后端嵌套行转为 MetricTree 需要的结构树 + 数值 Map */
 function adapt(items: Row[], isOperating: boolean): { nodes: SubjectNode[]; map: Map<string, MetricValue> } {
@@ -127,6 +132,17 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
   )
   const setCategoryFilter = useCallback(
     (codes: string[] | null) => setIndicators({ categoryFilter: codes }),
+    [setIndicators],
+  )
+  // 表格密度与隐藏列（持久化到 pageStateStore，刷新保持）
+  const density = usePageStore((s) => s.indicators.density)
+  const hiddenColumns = usePageStore((s) => s.indicators.hiddenColumns)
+  const setDensity = useCallback(
+    (v: 'default' | 'dense' | 'compact') => setIndicators({ density: v }),
+    [setIndicators],
+  )
+  const setHiddenColumns = useCallback(
+    (cols: string[]) => setIndicators({ hiddenColumns: cols }),
     [setIndicators],
   )
   // 小屏（<lg）搜索框浮层展开态（图标按钮点击切换）
@@ -593,6 +609,53 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
       {/* 科目树表格卡片：筛选条在页头 actions 吸顶，树区承载于卡片内 */}
       <Card className="animate-fade-in overflow-hidden rounded-card">
         <div className="min-h-[420px] px-4 py-3">
+          {/* 表格工具栏：密度切换 + 列设置（状态持久化） */}
+          <div className="mb-2 flex items-center justify-end gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="fused" size="sm" className="h-7 gap-1 text-xs">
+                  <Rows3 className="h-3.5 w-3.5" /> 密度
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-32">
+                {(
+                  [
+                    ['default', '标准'],
+                    ['dense', '紧凑'],
+                    ['compact', '极简'],
+                  ] as const
+                ).map(([v, label]) => (
+                  <DropdownMenuItem key={v} onClick={() => setDensity(v)}>
+                    <span className="flex-1">{label}</span>
+                    {density === v && <Check className="h-3.5 w-3.5 text-primary" />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="fused" size="sm" className="h-7 gap-1 text-xs">
+                  <Columns3 className="h-3.5 w-3.5" /> 列设置
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                {(isOperating ? OPERATING_COLUMN_META : STATIC_COLUMN_META).map((col) => (
+                  <label key={col.key} className="flex cursor-pointer items-center gap-2 px-2 py-1 text-[13px] hover:bg-muted/60">
+                    <Checkbox
+                      checked={!hiddenColumns.includes(col.key)}
+                      onCheckedChange={(checked) => {
+                        const next = checked
+                          ? hiddenColumns.filter((k) => k !== col.key)
+                          : [...hiddenColumns, col.key]
+                        setHiddenColumns(next)
+                      }}
+                    />
+                    <span>{col.header}</span>
+                  </label>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
           {isLoading ? (
             /* 加载骨架：保持表格占位高度，避免内容区塌陷再撑回导致跳动 */
             <div className="py-3">
@@ -638,6 +701,8 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
                 onSortChange={setSort}
                 categoryFilter={categoryFilter}
                 onCategoryFilterChange={setCategoryFilter}
+                density={density}
+                hiddenColumns={hiddenColumns}
               />
             </div>
           )}
