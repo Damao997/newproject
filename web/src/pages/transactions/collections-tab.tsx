@@ -406,11 +406,12 @@ export function CollectionsTab() {
     () => filterPeriodsByFiscalYear(rawPeriods ?? [], fiscalYear, periodsData?.fiscalStartMonth ?? 1),
     [rawPeriods, fiscalYear, periodsData?.fiscalStartMonth],
   )
-  // 持久化期间校验：已选期间不在候选（如财年切换）时回退跟随最新
+  // 持久化期间校验：已选期间不在候选（如财年切换）时回退跟随最新；候选未加载时跳过（避免冷启动误回退）
   useEffect(() => {
+    if (!rawPeriods || rawPeriods.length === 0) return
     const cur = usePageStore.getState().transactions.collections.period
     if (cur !== '' && !periods.includes(cur)) setPeriodFilter('')
-  }, [periods, setPeriodFilter])
+  }, [rawPeriods, periods, setPeriodFilter])
   const [updatingRow, setUpdatingRow] = useState<CustomerLedgerItem | null>(null)
   const [logsRow, setLogsRow] = useState<CustomerLedgerItem | null>(null)
   const [billedTarget, setBilledTarget] = useState<LedgerTarget | null>(null)
@@ -541,7 +542,7 @@ export function CollectionsTab() {
       {/* 筛选卡：公司 / 客商状态 / 客商关键词 */}
       <Card className="rounded-card p-4">
       <div className="flex flex-wrap items-center gap-3">
-        <Select value={periodFilter} onValueChange={(v) => { setPeriodFilter(v === 'all' ? '' : v); setPage(1) }}>
+        <Select value={periodFilter || 'all'} onValueChange={(v) => { setPeriodFilter(v === 'all' ? '' : v); setPage(1) }}>
           <SelectTrigger className="w-[140px]">
             <SelectValue placeholder="期间" />
           </SelectTrigger>
