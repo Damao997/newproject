@@ -141,4 +141,32 @@ describe('CustomerLedgerService（真实 DB）', () => {
     await expect(CustomerLedgerService.upsertCustomerExt(CO, CP_A, { salesmanId: '00000000-0000-0000-0000-000000000000' }, ctx)).rejects.toThrow('业务员不存在')
     await expect(CustomerLedgerService.upsertCustomerExt(CO, CP_A, {}, ctx)).rejects.toThrow('无可更新字段')
   })
+
+  it('期间过滤：显式期间只取该期；不传 period 自动取最新期间', async () => {
+    if (!dbReady) return
+    // 插入 2099-02 明细（CP_A 余额 800，最新期间）
+    const extra = await basePrisma.transactionDetail.create({
+      data: {
+        companyCode: CO, transactionType: '应收账款', direction: 'AR', counterpartyCode: CP_A,
+        accountCode: ACC_AR, closingBalance: 800, aging1m: 800,
+        isInternal: false, isEliminated: false, period: '2099-02',
+      },
+    })
+    try {
+      // 显式 2099-01：CP_A 仍为 1500（单期）
+      const old = await CustomerLedgerService.list({ companyCodes: [CO], period: '2099-01', pageSize: 50 })
+      const aOld = old.items.find((r) => r.counterpartyCode === CP_A)!
+      expect(aOld.closingBalance).toBe(1500)
+      // 显式 2099-02：CP_A 为 800
+      const cur = await CustomerLedgerService.list({ companyCodes: [CO], period: '2099-02', pageSize: 50 })
+      const aCur = cur.items.find((r) => r.counterpartyCode === CP_A)!
+      expect(aCur.closingBalance).toBe(800)
+      // 不传 period：自动取最新（2099-02）
+      const latest = await CustomerLedgerService.list({ companyCodes: [CO], pageSize: 50 })
+      const aLatest = latest.items.find((r) => r.counterpartyCode === CP_A)!
+      expect(aLatest.closingBalance).toBe(800)
+    } finally {
+      await basePrisma.transactionDetail.delete({ where: { id: extra.id } }).catch(() => undefined)
+    }
+  })
 })

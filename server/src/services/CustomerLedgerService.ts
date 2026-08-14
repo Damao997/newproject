@@ -63,10 +63,27 @@ export const CustomerLedgerService = {
   /**
    * 应收款客商台账分页列表（含状态统计）
    */
-  async list(params: { companyCodes?: string[]; status?: string; counterpartyKeyword?: string; page?: number; pageSize?: number }) {
+  async list(params: { companyCodes?: string[]; status?: string; counterpartyKeyword?: string; period?: string; page?: number; pageSize?: number }) {
     const page = Math.max(params.page || 1, 1)
     const pageSize = Math.min(Math.max(params.pageSize || 20, 1), 200)
     const status = params.status || ''
+    // 期间口径：单期数据（期末余额为时点数，跨期求和会重复累加）
+    // period 为空时自动取最新期间（periods 倒序首项）；无任何期间数据时返回空
+    let period = params.period
+    if (!period) {
+      const latest = await prisma.transactionDetail.findFirst({
+        where: { period: { not: null } },
+        select: { period: true },
+        orderBy: { period: 'desc' },
+      })
+      period = (latest?.period as string | null) ?? ''
+    }
+    if (!period) {
+      return {
+        items: [], total: 0, page, pageSize, totalPages: 0,
+        stats: { byStatus: { unplanned: 0, pending: 0, collecting: 0, partial: 0, full: 0, bad_debt: 0 }, totalBalance: 0 },
+      }
+    }
     if (status && status !== 'unplanned' && !PLAN_STATUSES.includes(status as never)) {
       throw errors.badRequest('催收状态不合法')
     }
@@ -85,6 +102,7 @@ export const CustomerLedgerService = {
       isInternal: false,
       isEliminated: false,
       closingBalance: { gt: 0 },
+      period,
     }
     if (params.companyCodes) where.companyCode = { in: params.companyCodes }
     if (inactiveCodes.length) where.accountCode = { notIn: inactiveCodes }
