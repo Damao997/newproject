@@ -43,6 +43,9 @@ function ChangeText({ value }: { value: number }) {
 /** 分类列固定宽度（px）：sticky 偏移与列宽单一来源（用户要求 96px） */
 const CATEGORY_COL_WIDTH = 96
 
+/** 表头组名行高度（px）：与 h-11（44px）对应，明细行 sticky top 偏移的单一来源；修改表头行高需同步此值 */
+const GROUP_HEAD_H = 44
+
 /** 值列形态：amount 金额 / pct 红涨绿跌百分比 / achievement 达成率进度条 */
 type MetricColKind = 'amount' | 'pct' | 'achievement'
 
@@ -66,7 +69,7 @@ export const OPERATING_COLUMNS: MetricColumn[] = [
   { key: 'ytd', header: '本年累计', minWidth: 112, kind: 'amount', primary: true },
   { key: 'samePeriodYtd', header: '同期累计', minWidth: 112, kind: 'amount', secondary: true },
   { key: 'ytdYoy', header: '累计同比', minWidth: 80, kind: 'pct' },
-  { key: 'achievement', header: '达成率', minWidth: 104, kind: 'achievement' },
+  { key: 'achievement', header: '达成率', minWidth: 120, kind: 'achievement' },
 ]
 
 /** 经营指标分组表头：组名 → 明细列 keys */
@@ -348,8 +351,7 @@ export function MetricTree({
   const isOperating = variant === 'operating'
   const valueCols = isOperating ? OPERATING_COLUMNS : STATIC_COLUMNS
   const colSpan = 1 + valueCols.length + (categoryColumn ? 1 : 0)
-  // 表头 sticky：组名行 top-0、明细行 top-[44px]（组名行 h-11=44px，单一来源常量）
-  const GROUP_HEAD_H = 44
+  // 表头 sticky：组名行 top-0、明细行 top-GROUP_HEAD_H（组名行 h-11=44px，模块级 GROUP_HEAD_H 单一来源）
   // TABLE_HEAD_BASE（13px/500 黑字居中）为共享样式常量，对齐《统一表格设计标准》
   const headBase = cn(TABLE_HEAD_BASE, 'h-11 border-b bg-muted px-3')
   return (
@@ -368,7 +370,7 @@ export function MetricTree({
         {/* 斑马纹：tbody 偶数行浅灰底；hover:!bg-muted 加 important 盖过斑马纹选择器（[&_tbody_tr:nth-child(even)] 特异性更高，不加 important 时偶数行悬停高亮不生效） */}
         <table
           className="w-full caption-bottom border-separate border-spacing-0 text-[13px] [&_tbody_tr:nth-child(even)]:bg-muted/30"
-          style={{ minWidth: isOperating ? 1056 : 464 }}
+          style={{ minWidth: isOperating ? 1080 : 464 }}
         >
           <thead>
             {isOperating ? (
@@ -378,6 +380,7 @@ export function MetricTree({
                   {categoryColumn && (
                     <th
                       rowSpan={2}
+                      scope="col"
                       className={cn(headBase, 'sticky left-0 z-[3] border-r bg-muted text-center shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)]')}
                       style={{ width: CATEGORY_COL_WIDTH, minWidth: CATEGORY_COL_WIDTH, maxWidth: CATEGORY_COL_WIDTH }}
                     >
@@ -386,6 +389,7 @@ export function MetricTree({
                   )}
                   <th
                     rowSpan={2}
+                    scope="col"
                     className={cn(headBase, 'sticky z-[3] min-w-[160px] border-r bg-muted text-center shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)]')}
                     style={{ left: categoryColumn ? CATEGORY_COL_WIDTH : 0 }}
                   >
@@ -395,6 +399,7 @@ export function MetricTree({
                     <th
                       key={g.label}
                       colSpan={g.keys.length}
+                      scope="colgroup"
                       className={cn(headBase, 'border-l border-border/60 text-[13px] font-semibold')}
                     >
                       {g.label}
@@ -416,8 +421,9 @@ export function MetricTree({
             ) : (
               <tr className="sticky top-0 z-[2] bg-muted">
                 <th
+                  scope="col"
                   className={cn(headBase, 'sticky z-[3] min-w-[160px] border-r bg-muted text-center shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)]')}
-                  style={{ left: 0 }}
+                  style={{ left: categoryColumn ? CATEGORY_COL_WIDTH : 0 }}
                 >
                   科目
                 </th>
