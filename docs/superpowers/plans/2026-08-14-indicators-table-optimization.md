@@ -42,17 +42,14 @@ import { render, screen } from '@testing-library/react'
 import { RateBar } from '@/components/ui/rate-bar'
 
 describe('RateBar', () => {
-  it('default 变体：文字在条内（现状行为）', () => {
-    render(<RateBar rate={0.823} />)
+  it('default 变体：0-100 语义，文字在条内（现状行为，dashboard 传 96.5 等百分比数值）', () => {
+    render(<RateBar rate={82.3} />)
     expect(screen.getByText('82.3%')).toBeInTheDocument()
   })
 
-  it('above 变体：百分比文字渲染在色条上方', () => {
-    const { container } = render(<RateBar rate={0.823} variant="above" />)
+  it('above 变体：0-1 语义（与 calcAchievement 对接），百分比文字在条内居中', () => {
+    render(<RateBar rate={0.823} variant="above" />)
     expect(screen.getByText('82.3%')).toBeInTheDocument()
-    // 文字 span 出现在色条 span 之前（DOM 顺序 = 上方）
-    const html = container.innerHTML
-    expect(html.indexOf('82.3%')).toBeLessThan(html.indexOf('bg-chart-1'))
   })
 
   it('above 变体：无预算显示 – 与空条', () => {
@@ -85,21 +82,24 @@ import { formatPercent } from '@/lib/utils'
 
 /**
  * 达成率/使用率进度条：固定宽度圆角条，填充色跟随图表主色（--chart-1，随侧边栏风格切换：橙/亮紫/中性蓝灰）。
- * variant="default"：条内黑色加粗文字显示百分比（dashboard 卡牌使用）；
- * variant="above"：百分比文字浮于色条上方（财务指标表格达成率单元格使用）。
+ * rate 语义：default 变体传 0-100 百分比数值（dashboard 传 monthRate 96.5 等）；above 变体传 0-1 小数（与 calcAchievement 返回值一致）。
+ * variant="default"：96px 条内黑色加粗文字显示百分比（dashboard 卡牌使用）；
+ * variant="above"：128px 宽条，百分比文字在条内居中黑色加粗（财务指标表格达成率单元格使用）。
  * rate 为 null（无预算）显示 "–" 空条；超过 100% 时填充截断 100%，文字显示实际值。
  */
 export function RateBar({ rate, variant = 'default' }: { rate: number | null; variant?: 'default' | 'above' }) {
-  const pct = rate === null ? null : Math.min(Math.max(rate, 0), 100)
+  const pct = rate === null ? null : Math.min(Math.max(rate, 0), variant === 'above' ? 1 : 100)
   if (variant === 'above') {
     return (
-      <span className="inline-flex flex-col items-center gap-0.5">
-        <span className="font-num text-xs font-bold leading-none text-foreground">
-          {rate === null ? '–' : formatPercent(rate / 100)}
-        </span>
-        <span className="inline-block h-2 w-24 overflow-hidden rounded bg-muted">
-          {pct !== null && <span className="block h-full bg-chart-1" style={{ width: `${pct}%` }} />}
-        </span>
+      <span className="inline-flex h-5 w-32 items-center justify-center overflow-hidden rounded bg-muted align-middle">
+        {pct === null ? (
+          <span className="text-xs text-muted-foreground">–</span>
+        ) : (
+          <span className="relative flex h-full w-full items-center justify-center">
+            <span className={cn('absolute inset-y-0 left-0 bg-chart-1')} style={{ width: `${pct * 100}%` }} />
+            <span className="relative font-num text-xs font-bold text-foreground">{formatPercent(rate!)}</span>
+          </span>
+        )}
       </span>
     )
   }
@@ -433,7 +433,7 @@ export const OPERATING_COLUMNS: MetricColumn[] = [
   { key: 'ytd', header: '本年累计', minWidth: 112, kind: 'amount', primary: true },
   { key: 'samePeriodYtd', header: '同期累计', minWidth: 112, kind: 'amount', secondary: true },
   { key: 'ytdYoy', header: '累计同比', minWidth: 80, kind: 'pct' },
-  { key: 'achievement', header: '达成率', minWidth: 104, kind: 'achievement' },
+  { key: 'achievement', header: '达成率', minWidth: 152, kind: 'achievement' },
 ]
 
 /** 经营指标分组表头：组名 → 明细列 keys */
@@ -511,7 +511,7 @@ function renderValueCells(
       >
         <table
           className="w-full caption-bottom border-separate border-spacing-0 text-[13px] [&_tbody_tr:nth-child(even)]:bg-muted/30"
-          style={{ minWidth: isOperating ? 1056 : 464 }}
+          style={{ minWidth: isOperating ? 1112 : 464 }}
         >
           <thead>
             {isOperating ? (
@@ -1078,11 +1078,13 @@ git commit -m "feat: 指标表分类列筛选（level0 大类过滤，持久化�
 ```ts
   /** 表格密度三档（对齐 DataTable 命名） */
   density: 'default' | 'dense' | 'compact'
-  /** 隐藏的值列 key 列表（默认全部显示） */
-  hiddenColumns: string[]
+  /** 经营指标隐藏的值列 key 列表（默认全部显示；与静态分区独立，避免重叠 key 泄漏） */
+  hiddenOperatingColumns: string[]
+  /** 静态指标隐藏的值列 key 列表（默认全部显示） */
+  hiddenStaticColumns: string[]
 ```
 
-`defaultIndicators` 追加：`density: 'default'`、`hiddenColumns: []`。
+`defaultIndicators` 追加：`density: 'default'`、`hiddenOperatingColumns: []`、`hiddenStaticColumns: []`。
 
 - [ ] **Step 2: MetricTree 支持密度与列显隐**
 

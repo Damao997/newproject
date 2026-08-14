@@ -39,7 +39,7 @@
 | # | 问题 | 改进措施 |
 |---|---|---|
 | P0-1 | 表头扁平单层，9 列一字排开，无法区分本月/累计维度 | 两级分组表头：「本月实际」「本年累计」两组（对齐运营费用卡牌先例） |
-| P0-2 | 列宽僵硬无弹性（min-w 固定，达成率仅 80px 放不下 96px 进度条） | 达成率列加宽至 104px；分类列保持 96px（用户既有要求） |
+| P0-2 | 列宽僵硬无弹性（min-w 固定，达成率仅 80px 放不下进度条） | 达成率列加宽至 152px（128px 宽进度条 + 内边距）；分类列保持 96px（用户既有要求） |
 | P0-3 | 无列排序，无法快速定位超支最多/增长最快科目 | 数值列头三态排序（前端，树内同级排序） |
 | P0-4 | 达成率无可视化（纯百分比文本） | 单元格嵌入主题色进度条（RateBar above 变体） |
 
@@ -91,14 +91,13 @@
 
 **列顺序微调**：`达成率` 从同比后移至「本年累计」组尾（紧邻本年累计）；导出列顺序同步。
 
-**达成率单元格**（RateBar above 变体，视觉同源首页运营费用使用率）：
+**达成率单元格**（RateBar above 变体，视觉同源首页运营费用使用率；2026-08-14 修订：加大进度条宽度，比率文字置于条内）：
 
 ```
-       82.3%        ← 比率文字（font-num 加粗，浮于色条上方）
-[████████░░░░]       ← 主题色条（bg-chart-1，96px 圆角条）
+[████████████░░░░] 82.3%   ← 宽进度条（128px），百分比文字在条内居中（黑色加粗）
 
-无预算：    –        ← 灰底空条 + "–"
-超 100%： 110.2%     ← 填充截断 100%，文字显示实际值
+无预算：    –              ← 灰底空条 + "–"
+超 100%： 110.2%           ← 填充截断 100%，文字显示实际值
 ```
 
 **排序交互**：点列头循环 升序 → 降序 → 取消（三态，与 DataTable 一致）；树形排序策略 = **每层同级排序**（递归对 children 排序），保持父子层级结构与分类列 rowSpan 安全；排序不跨分类重排；展开态以 code 为键不受排序影响。
@@ -133,27 +132,29 @@
 
 | 文件 | 变更 | 职责 |
 |---|---|---|
-| `components/subject-tree/metric-tree.tsx` | 改 | 两行分组表头（thead 双层 tr + rowSpan）、达成率列宽 104px、斑马纹、密度类、排序/筛选/列显隐受控 props |
+| `components/subject-tree/metric-tree.tsx` | 改 | 两行分组表头（thead 双层 tr + rowSpan）、达成率列宽 152px、斑马纹、密度类、排序/筛选/列显隐受控 props |
 | `lib/metric-sort.ts` | 新增 | 树形同级排序纯函数 `sortTreeByLevel(nodes, key, dir)`：递归对每层 children 排序 |
 | `lib/metric-filter.ts` | 新增 | 分类列过滤纯函数：按 level0 大类保留子树（复用 `filterTreeKeepSubtree` 语义） |
-| `components/ui/rate-bar.tsx` | 改 | 新增 `variant?: 'default' \| 'above'`（默认 default 保持 dashboard 现状）；above = flex-col：上行 font-num text-xs font-bold 百分比 + 下行 h-2 主题色条；填充/截断/null 空条逻辑共用 |
+| `components/ui/rate-bar.tsx` | 改 | 新增 `variant?: 'default' \| 'above'`（默认 default 保持 dashboard 现状）；above = 宽进度条（128px）条内居中黑色加粗百分比（0-1 小数语义）；填充/截断/null 空条逻辑共用 |
 | `pages/indicators/index.tsx` | 改 | 工具栏（密度/列设置）、排序与分类筛选状态接线、导出列顺序同步、导出 loading 反馈 |
 
 ### 4.2 状态管理（沿用 pageStateStore，无新增全局状态）
 
 ```ts
-// indicators store 扩展（序列化友好，与 expandedCodes 同机制持久化）
-sort: { key: string | null; direction: 'asc' | 'desc' | null }
-hiddenColumns: string[]            // 列设置，默认 []
+// indicators store 扩展（序列化友好，与 expandedCodes 同机制持久化；2026-08-14 实现修订：扁平字段 + 列设置按 tab 分区）
+sortKey: string | null            // 列排序键（null 不排序）
+sortDirection: 'asc' | 'desc' | null
+categoryFilter: string[] | null   // null = 全部；[] = 无分类（空态）；否则为勾选 level0 code 列表
+hiddenOperatingColumns: string[]  // 经营指标隐藏的值列 key（与静态分区独立，避免重叠 key 泄漏）
+hiddenStaticColumns: string[]     // 静态指标隐藏的值列 key
 density: 'default' | 'dense' | 'compact'   // 对齐 DataTable 密度三档命名
-categoryFilter: string[] | null    // null = 全部；否则为勾选 level0 code 列表
 ```
 
 ### 4.3 实现要点与风险控制
 
 1. **双行表头 sticky**：现有单行 `sticky top-0`；双行需组名行 `sticky top-0 z-[2]`、明细行 `sticky top-[44px]`（第一行 h-11=44px，用 CSS 变量保持单一来源）。分类/科目列 `rowSpan=2` + sticky 左列的垂直合并需在 border-separate 下先做兼容性验证（Chromium 行为）
 2. **排序与 rowSpan 安全**：排序仅作用于分类组内每层兄弟序列，不跨分类重排
-3. **达成率列**：`min-w-[104px]`（96px 条 + 内边距）；`budget === 0` 时 RateBar 传 `null` 显示空条；达成率 = `calcAchievement(mv)`（YTD/预算，`lib/metric-values.ts` 现有函数）
+3. **达成率列**：`min-w-[152px]`（128px 条 + 内边距）；`budget === 0` 时 RateBar 传 `null` 显示空条；达成率 = `calcAchievement(mv)`（YTD/预算，`lib/metric-values.ts` 现有函数）
 4. **导出对齐**：`handleExport` 列顺序同步为「科目/预算金额/本月实际/同期实际/同比/本年累计/同期累计/累计同比/达成率」；达成率导出保留百分比文本（现状格式）
 5. **回归策略**：纯前端增强、零后端改动；新增纯函数（排序/过滤）配 vitest 单测；页面交互（排序/筛选/列设置/密度/导出）手动回归；受控 props 保持 DataTable 同 API 风格
 
@@ -172,7 +173,7 @@ categoryFilter: string[] | null    // null = 全部；否则为勾选 level0 cod
 ## 5. 验收标准
 
 1. 经营指标出现两级分组表头（本月实际 / 本年累计），达成率位于本年累计组尾且为累计达成率口径
-2. 达成率单元格为主题色进度条 + 浮于条上方的百分比文字；无预算显示空条；超 100% 填充截断文字显示实际值
+2. 达成率单元格为主题色进度条（128px）+ 条内居中的百分比文字；无预算显示空条；超 100% 填充截断文字显示实际值
 3. 数值列头支持三态排序且树形层级不被破坏；分类列支持大类筛选
 4. 密度切换/列设置生效并刷新后保持（pageStateStore 持久化）
 5. 导出 Excel 列顺序与表格一致；导出过程按钮 loading
