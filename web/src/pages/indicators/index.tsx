@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/select'
 import { CompanySelect } from '@/components/filters/company-select'
 import { PageContainer } from '@/components/layout/page-container'
-import { MetricTree } from '@/components/subject-tree/metric-tree'
+import { MetricTree, OPERATING_COLUMNS, STATIC_COLUMNS } from '@/components/subject-tree/metric-tree'
 import { AnalysisDrawer, type AnalysisTarget } from '@/components/indicators/analysis-drawer'
 import { AiOverviewDialog } from '@/components/indicators/ai-overview-panel'
 import { Switch } from '@/components/ui/switch'
@@ -213,9 +213,12 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
     return next
   }, [visibleTree, subjectKeyword, expandedSet])
 
-  // 列排序：树内同级排序（经营指标分类根不排序 fromLevel=1 保护分类列分组；静态指标全层级）
+  // 列排序：树内同级排序（经营指标分类根不排序 fromLevel=1 保护分类列分组；静态指标全层级）；
+  // sortKey 不属于当前 tab 列集合时不排序（跨 tab 共享排序状态的计算层防护）
   const sortedTree = useMemo(() => {
     if (!sortKey || !sortDirection) return visibleTree
+    const cols = isOperating ? OPERATING_COLUMNS : STATIC_COLUMNS
+    if (!cols.some((c) => c.key === sortKey)) return visibleTree
     return sortTreeByLevel(visibleTree, activeValueMap, sortKey as MetricSortKey, sortDirection, {
       fromLevel: isOperating ? 1 : 0,
     })
