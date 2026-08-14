@@ -52,8 +52,9 @@ beforeAll(async () => {
         { companyCode: CO, counterpartyCode: CP_B, accountCode: ACC_OTHER, overdueAmount: 100, plannedDate: new Date('2099-02-03'), status: 'collecting', method: 'phone', createdAt: new Date('2099-01-03') },
       ],
     })
-    // 业务员（供扩展表挂接测试）
-    await basePrisma.salesman.create({ data: { companyCode: CO, name: '台账测试员' } })
+    // 业务员（供扩展表挂接测试；多公司改造：Salesman + SalesmanCompany 关联两步创建）
+    const sm = await basePrisma.salesman.create({ data: { name: '台账测试员' } })
+    await basePrisma.salesmanCompany.create({ data: { salesmanId: sm.id, companyCode: CO } })
     dbReady = true
   } catch {
     dbReady = false
@@ -66,7 +67,9 @@ afterAll(async () => {
   await basePrisma.collectionPlan.deleteMany({ where: { companyCode: CO } }).catch(() => undefined)
   await basePrisma.transactionDetail.deleteMany({ where: { companyCode: CO } }).catch(() => undefined)
   await basePrisma.transactionAccount.deleteMany({ where: { code: { in: [ACC_AR, ACC_AR2, ACC_OTHER, ACC_INACTIVE] } } }).catch(() => undefined)
-  await basePrisma.salesman.deleteMany({ where: { companyCode: CO } }).catch(() => undefined)
+  const smIds = (await basePrisma.salesman.findMany({ where: { name: '台账测试员' }, select: { id: true } })).map((s) => s.id)
+  await basePrisma.salesmanCompany.deleteMany({ where: { salesmanId: { in: smIds } } }).catch(() => undefined)
+  await basePrisma.salesman.deleteMany({ where: { id: { in: smIds } } }).catch(() => undefined)
 })
 
 describe('CustomerLedgerService（真实 DB）', () => {
