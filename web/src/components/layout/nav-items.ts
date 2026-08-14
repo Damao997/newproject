@@ -52,14 +52,7 @@ export const navItems: NavItem[] = [
     children: [
       { path: '/transactions/overview', label: '总览' },
       { path: '/transactions/aging', label: '账龄分析' },
-      {
-        path: '/transactions/quality',
-        label: '数据质量',
-        children: [
-          { path: '/transactions/coverage', label: '导入覆盖' },
-          { path: '/transactions/account-filter', label: '科目过滤' },
-        ],
-      },
+      { path: '/transactions/account-filter', label: '科目过滤' },
       { path: '/transactions/collections/plans', label: '催收计划' },
     ],
   },
