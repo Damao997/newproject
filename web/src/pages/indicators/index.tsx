@@ -31,7 +31,7 @@ import { filterByCategories } from '@/lib/metric-filter'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { MetricValue } from '@/lib/metric-values'
-import { Download, ChevronsDownUp, ChevronsUpDown, History, Eye, Sparkles, Loader2, Search, X, MoreHorizontal, Rows3, Columns3 } from 'lucide-react'
+import { Download, ChevronsDownUp, ChevronsUpDown, History, Eye, Sparkles, Loader2, Search, X, MoreHorizontal, Rows3, Columns3, CheckCircle2 } from 'lucide-react'
 import type { SubjectNode } from '@/types'
 
 /** 收集含子节点的科目编码（用于全部展开） */
@@ -141,6 +141,9 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
   )
   // 小屏（<lg）搜索框浮层展开态（图标按钮点击切换）
   const [searchOpen, setSearchOpen] = useState(false)
+  // 导出中状态（按钮 loading 反馈）与结果提示（内联提示条）
+  const [exporting, setExporting] = useState(false)
+  const [exportMsg, setExportMsg] = useState<string | null>(null)
   // 展开集合由持久化数组派生（Set 不可序列化，store 以数组存储）
   const expandedSet = useMemo(() => new Set(expandedCodes), [expandedCodes])
   const setExpandedCodes = useCallback((updater: (prev: Set<string>) => Set<string>) => {
@@ -352,58 +355,69 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
   }
 
   const handleExport = async () => {
-    const pct = (v: number) => `${v.toFixed(1)}%`
-    // 分型导出：比率列乘 100 加 %，数量取整，金额保持数值；同比统一按增长率百分比（后端已按增长率返回）
-    const fmtVal = (v: number, vt: string) => (vt === 'ratio' ? `${(v * 100).toFixed(1)}%` : vt === 'quantity' ? Math.round(v) : v)
-    const fmtYoy = (v: number) => pct(v)
-    const flat = flattenForExport(activeItems as Row[])
-    // 去重分类口径导出时文件名标识区分，避免与正式口径混淆
-    const scopeSuffix = excludeReclassify ? '_原始口径' : ''
-    if (isOperating) {
-      const rows = flat.map(({ row, depth }) => {
-        const o = row as OperatingRow
-        return {
-          account: `${'　'.repeat(depth)}${o.name}`,
-          budget: fmtVal(o.budget, o.valueType), actual: fmtVal(o.actual, o.valueType), samePeriod: fmtVal(o.samePeriod, o.valueType),
-          yoy: fmtYoy(o.yoy), achievement: pct(o.achievement),
-          ytd: fmtVal(o.ytd, o.valueType), samePeriodYtd: fmtVal(o.samePeriodYtd, o.valueType), ytdYoy: fmtYoy(o.ytdYoy),
+    if (exporting) return
+    setExporting(true)
+    setExportMsg(null)
+    try {
+      const pct = (v: number) => `${v.toFixed(1)}%`
+      // 分型导出：比率列乘 100 加 %，数量取整，金额保持数值；同比统一按增长率百分比（后端已按增长率返回）
+      const fmtVal = (v: number, vt: string) => (vt === 'ratio' ? `${(v * 100).toFixed(1)}%` : vt === 'quantity' ? Math.round(v) : v)
+      const fmtYoy = (v: number) => pct(v)
+      const flat = flattenForExport(activeItems as Row[])
+      // 去重分类口径导出时文件名标识区分，避免与正式口径混淆
+      const scopeSuffix = excludeReclassify ? '_原始口径' : ''
+      if (isOperating) {
+        // 导出列顺序与表格一致（达成率归累计组尾）；跳过列设置中隐藏的列
+        const keys = (['budget', 'actual', 'samePeriod', 'yoy', 'ytd', 'samePeriodYtd', 'ytdYoy', 'achievement'] as const)
+          .filter((k) => !hiddenColumns.includes(k))
+        const rows = flat.map(({ row, depth }) => {
+          const o = row as OperatingRow
+          const cols: Record<string, string | number> = {
+            budget: fmtVal(o.budget, o.valueType), actual: fmtVal(o.actual, o.valueType), samePeriod: fmtVal(o.samePeriod, o.valueType),
+            yoy: fmtYoy(o.yoy), ytd: fmtVal(o.ytd, o.valueType), samePeriodYtd: fmtVal(o.samePeriodYtd, o.valueType),
+            ytdYoy: fmtYoy(o.ytdYoy), achievement: pct(o.achievement),
+          }
+          return { account: `${'　'.repeat(depth)}${o.name}`, ...Object.fromEntries(keys.map((k) => [k, cols[k]])) }
+        })
+        const headerMap: Record<string, string> = {
+          budget: '预算金额(万)', actual: '本月实际(万)', samePeriod: '同期实际(万)', yoy: '同比',
+          ytd: '本年累计(万)', samePeriodYtd: '同期累计(万)', ytdYoy: '累计同比', achievement: '达成率',
         }
-      })
-      await exportToExcel({
-        filename: `财务指标_经营指标${scopeSuffix}_${new Date().toISOString().slice(0, 10)}.xlsx`,
-        sheetName: '经营指标',
-        columns: [
-          { header: '科目', key: 'account', width: 40 },
-          { header: '预算金额(万)', key: 'budget', width: 14 },
-          { header: '本月实际(万)', key: 'actual', width: 14 },
-          { header: '同期实际(万)', key: 'samePeriod', width: 14 },
-          { header: '同比', key: 'yoy', width: 10 },
-          { header: '达成率', key: 'achievement', width: 10 },
-          { header: '本年累计(万)', key: 'ytd', width: 14 },
-          { header: '同期累计(万)', key: 'samePeriodYtd', width: 14 },
-          { header: '累计同比', key: 'ytdYoy', width: 10 },
-        ],
-        rows,
-      })
-    } else {
-      const rows = flat.map(({ row, depth }) => {
-        const s = row as StaticRow
-        return {
-          account: `${'　'.repeat(depth)}${s.name}`,
-          actual: fmtVal(s.current, s.valueType), samePeriod: fmtVal(s.samePeriod, s.valueType), yoy: fmtYoy(s.yoy),
-        }
-      })
-      await exportToExcel({
-        filename: `财务指标_静态指标${scopeSuffix}_${new Date().toISOString().slice(0, 10)}.xlsx`,
-        sheetName: '静态指标',
-        columns: [
-          { header: '科目', key: 'account', width: 40 },
-          { header: '本期金额(万)', key: 'actual', width: 16 },
-          { header: '同期金额(万)', key: 'samePeriod', width: 16 },
-          { header: '变动率', key: 'yoy', width: 10 },
-        ],
-        rows,
-      })
+        const filename = `财务指标_经营指标${scopeSuffix}_${new Date().toISOString().slice(0, 10)}.xlsx`
+        await exportToExcel({
+          filename,
+          sheetName: '经营指标',
+          columns: [
+            { header: '科目', key: 'account', width: 40 },
+            ...keys.map((k) => ({ header: headerMap[k], key: k, width: (k === 'yoy' || k === 'ytdYoy' || k === 'achievement') ? 10 : 14 })),
+          ],
+          rows,
+        })
+        setExportMsg(`已导出：${filename}`)
+      } else {
+        // 静态分支同理：科目 + ['actual','samePeriod','yoy'] 过滤 hiddenColumns
+        const keys = (['actual', 'samePeriod', 'yoy'] as const).filter((k) => !hiddenColumns.includes(k))
+        const rows = flat.map(({ row, depth }) => {
+          const s = row as StaticRow
+          const cols: Record<string, string | number> = {
+            actual: fmtVal(s.current, s.valueType), samePeriod: fmtVal(s.samePeriod, s.valueType), yoy: fmtYoy(s.yoy),
+          }
+          return { account: `${'　'.repeat(depth)}${s.name}`, ...Object.fromEntries(keys.map((k) => [k, cols[k]])) }
+        })
+        const filename = `财务指标_静态指标${scopeSuffix}_${new Date().toISOString().slice(0, 10)}.xlsx`
+        await exportToExcel({
+          filename,
+          sheetName: '静态指标',
+          columns: [
+            { header: '科目', key: 'account', width: 40 },
+            ...keys.map((k) => ({ header: k === 'actual' ? '本期金额(万)' : k === 'samePeriod' ? '同期金额(万)' : '变动率', key: k, width: 16 })),
+          ],
+          rows,
+        })
+        setExportMsg(`已导出：${filename}`)
+      }
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -415,8 +429,8 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
       headerRef={headerRef}
       actionsFullWidth
       actions={
-        // 筛选条响应式：全尺寸单行不横滚，超宽自然换行；控件宽度随断点缩小，极小屏搜索缩为图标浮层
-        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
+        // 筛选条响应式：flex-nowrap 强制单行；控件固定宽度，极小屏时期间下拉可压缩省略号，搜索缩为图标浮层，按钮组恒完整
+        <div className="flex min-w-0 max-w-full flex-nowrap items-center gap-2">
           {/* 左侧：主体维度选择（加宽，保证公司名称完整显示；选项前缀+简称跟随全局开关，触发器仅显名称） */}
           <CompanySelect
             value={dimFilter}
@@ -424,11 +438,11 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
             valueFormat="prefixed"
             allLabel="全部主体"
             ariaLabel="主体维度"
-            className="h-8 w-[120px] shrink-0 border-input/60 bg-page hover:bg-muted/60 min-[800px]:w-[140px] lg:w-[200px] min-[1300px]:w-[250px]"
+            className="h-8 w-[150px] shrink-0 border-input/60 bg-page hover:bg-muted/60"
           />
 
-          {/* 右侧：科目搜索 + 期间 + 重分类 + 操作按钮组（lg 以上靠右对齐） */}
-          <div className="flex shrink-0 items-center gap-2 lg:ml-auto">
+          {/* 右侧：科目搜索 + 期间 + 重分类 + 操作按钮组（恒右对齐；空间不足时期间下拉先压缩省略号） */}
+          <div className="ml-auto flex min-w-0 items-center gap-2">
             {/* 科目列关键字筛选：实时过滤科目树（命中节点保留整棵子树与祖先链） */}
             <div className="relative shrink-0">
               {/* >=600px：完整输入框 */}
@@ -497,7 +511,7 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
             </div>
 
             <Select value={periodFilter} onValueChange={setPeriodFilter}>
-              <SelectTrigger className="h-8 w-[100px] shrink-0 border-input/60 bg-page hover:bg-muted/60 min-[800px]:w-[120px] lg:w-[140px] min-[1300px]:w-[160px]" aria-label="期间">
+              <SelectTrigger className="h-8 w-[100px] min-w-[44px] border-input/60 bg-page hover:bg-muted/60" aria-label="期间">
                 <SelectValue placeholder="选择期间" />
               </SelectTrigger>
               <SelectContent>
@@ -550,8 +564,9 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
                       </DropdownMenuItem>
                     )}
                     {can('indicators', 'export') && (
-                      <DropdownMenuItem onClick={handleExport} disabled={isLoading || activeItems.length === 0}>
-                        <Download className="mr-2 h-3.5 w-3.5" /> 导出 Excel
+                      <DropdownMenuItem onClick={handleExport} disabled={isLoading || activeItems.length === 0 || exporting}>
+                        {exporting ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-2 h-3.5 w-3.5" />}
+                        {exporting ? '导出中…' : '导出 Excel'}
                       </DropdownMenuItem>
                     )}
                   </DropdownMenuContent>
@@ -577,8 +592,9 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
                 </Button>
               ) : null}
               {can('indicators', 'export') ? (
-                <Button variant="fused" size="sm" onClick={handleExport} disabled={isLoading || activeItems.length === 0}>
-                  <Download className="mr-1 h-3.5 w-3.5" /> 导出 Excel
+                <Button variant="fused" size="sm" onClick={handleExport} disabled={isLoading || activeItems.length === 0 || exporting}>
+                  {exporting ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1 h-3.5 w-3.5" />}
+                  {exporting ? '导出中…' : '导出 Excel'}
                 </Button>
               ) : null}
             </div>
@@ -613,6 +629,14 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
             当前展示的是去除跨公司重分类影响后的模拟口径，不修改任何数据。
             {skippedReclassifyLogs > 0 && `另有 ${skippedReclassifyLogs} 条记录因数据批次已替换无法回溯。`}
           </span>
+        </div>
+      )}
+
+      {/* 导出成功提示条（瞬时反馈，保持直到下次导出/筛选操作） */}
+      {exportMsg && (
+        <div className="flex items-center gap-2 rounded-md border border-success/30 bg-success/[0.08] px-4 py-2 text-sm text-success-strong">
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
+          {exportMsg}
         </div>
       )}
 
