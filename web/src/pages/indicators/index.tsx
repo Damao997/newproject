@@ -17,8 +17,7 @@ import { AiOverviewDialog } from '@/components/indicators/ai-overview-panel'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu'
-import { Checkbox } from '@/components/ui/checkbox'
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@/components/ui/dropdown-menu'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { usePermission } from '@/hooks/usePermission'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
@@ -32,7 +31,7 @@ import { filterByCategories } from '@/lib/metric-filter'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { MetricValue } from '@/lib/metric-values'
-import { Download, ChevronsDownUp, ChevronsUpDown, History, Eye, Sparkles, Loader2, Search, X, MoreHorizontal, Rows3, Columns3, Check } from 'lucide-react'
+import { Download, ChevronsDownUp, ChevronsUpDown, History, Eye, Sparkles, Loader2, Search, X, MoreHorizontal, Rows3, Columns3 } from 'lucide-react'
 import type { SubjectNode } from '@/types'
 
 /** 收集含子节点的科目编码（用于全部展开） */
@@ -142,7 +141,16 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
     [setIndicators],
   )
   const setHiddenColumns = useCallback(
-    (cols: string[]) => setIndicators({ hiddenColumns: cols }),
+    (cols: string[]) => {
+      // 隐藏当前排序列时联动清空排序（避免无表头入口的静默排序）
+      const patch: { hiddenColumns: string[]; sortKey?: string | null; sortDirection?: 'asc' | 'desc' | null } = { hiddenColumns: cols }
+      const cur = usePageStore.getState().indicators
+      if (cur.sortKey && cols.includes(cur.sortKey)) {
+        patch.sortKey = null
+        patch.sortDirection = null
+      }
+      setIndicators(patch)
+    },
     [setIndicators],
   )
   // 小屏（<lg）搜索框浮层展开态（图标按钮点击切换）
@@ -155,6 +163,12 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
   }, [])
 
   const isOperating = activeTab === 'operating'
+
+  // 隐藏列按当前 tab 列集合过滤（跨 tab 共享 hiddenColumns 的计算层防护：静态页不受经营页隐藏列影响）
+  const effectiveHidden = useMemo(() => {
+    const cols = isOperating ? OPERATING_COLUMNS : STATIC_COLUMNS
+    return hiddenColumns.filter((k) => cols.some((c) => c.key === k))
+  }, [hiddenColumns, isOperating])
 
   const fiscalYear = usePeriodStore((s) => s.fiscalYear)
   const { data: periodsData } = useAvailablePeriods()
@@ -618,18 +632,19 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-32">
-                {(
-                  [
-                    ['default', '标准'],
-                    ['dense', '紧凑'],
-                    ['compact', '极简'],
-                  ] as const
-                ).map(([v, label]) => (
-                  <DropdownMenuItem key={v} onClick={() => setDensity(v)}>
-                    <span className="flex-1">{label}</span>
-                    {density === v && <Check className="h-3.5 w-3.5 text-primary" />}
-                  </DropdownMenuItem>
-                ))}
+                <DropdownMenuRadioGroup value={density} onValueChange={(v) => setDensity(v as 'default' | 'dense' | 'compact')}>
+                  {(
+                    [
+                      ['default', '标准'],
+                      ['dense', '紧凑'],
+                      ['compact', '极简'],
+                    ] as const
+                  ).map(([v, label]) => (
+                    <DropdownMenuRadioItem key={v} value={v}>
+                      {label}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
               </DropdownMenuContent>
             </DropdownMenu>
             <DropdownMenu>
@@ -640,18 +655,18 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
                 {(isOperating ? OPERATING_COLUMN_META : STATIC_COLUMN_META).map((col) => (
-                  <label key={col.key} className="flex cursor-pointer items-center gap-2 px-2 py-1 text-[13px] hover:bg-muted/60">
-                    <Checkbox
-                      checked={!hiddenColumns.includes(col.key)}
-                      onCheckedChange={(checked) => {
-                        const next = checked
-                          ? hiddenColumns.filter((k) => k !== col.key)
-                          : [...hiddenColumns, col.key]
-                        setHiddenColumns(next)
-                      }}
-                    />
-                    <span>{col.header}</span>
-                  </label>
+                  <DropdownMenuCheckboxItem
+                    key={col.key}
+                    checked={!hiddenColumns.includes(col.key)}
+                    onCheckedChange={(checked) => {
+                      const next = checked
+                        ? hiddenColumns.filter((k) => k !== col.key)
+                        : [...hiddenColumns, col.key]
+                      setHiddenColumns(next)
+                    }}
+                  >
+                    {col.header}
+                  </DropdownMenuCheckboxItem>
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
@@ -702,7 +717,7 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
                 categoryFilter={categoryFilter}
                 onCategoryFilterChange={setCategoryFilter}
                 density={density}
-                hiddenColumns={hiddenColumns}
+                hiddenColumns={effectiveHidden}
               />
             </div>
           )}

@@ -105,7 +105,7 @@ const OPERATING_GROUPS: { label: string; keys: string[] }[] = [
   { label: '本年累计', keys: ['ytd', 'samePeriodYtd', 'ytdYoy', 'achievement'] },
 ]
 
-/** 列 key → 列对象（表头渲染单源查找，避免 find 重复与拼写漂移） */
+/** 列 key → 列对象索引（消除表头渲染的 find 重复遍历；注意 OPERATING_GROUPS 与 OPERATING_COLUMNS 仍为双源，新增列需同步两处；下方 `!` 非空断言依赖 key 拼写与 OPERATING_COLUMNS 完全一致） */
 const OPERATING_COL_BY_KEY = new Map(OPERATING_COLUMNS.map((c) => [c.key, c]))
 
 /** 静态指标值列（单行表头，无分组） */
@@ -120,7 +120,7 @@ function renderValueCells(
   mv: MetricValue | undefined,
   columns: MetricColumn[],
   valueType?: SubjectNode['valueType'],
-  rowPad = 'py-2',
+  rowPad = ROW_PAD.default,
 ) {
   const fmt = (v: number) => formatMetricValue(v, valueType)
   const yoyOf = (key: string, value: MetricValue) => (key === 'ytdYoy' ? calcYtdYoy(value) : calcYoy(value))
@@ -161,7 +161,7 @@ function SubjectCell({
   onAnalyze,
   analyzeDisabled,
   analyzeHint,
-  rowPad = 'py-2',
+  rowPad = ROW_PAD.default,
 }: {
   node: SubjectNode
   indentDepth: number
