@@ -228,10 +228,13 @@ export const CustomerLedgerService = {
       if (patch.salesmanId === null || patch.salesmanId === '') {
         data.salesmanId = null
       } else {
-        const salesman = await prisma.salesman.findUnique({ where: { id: patch.salesmanId } })
-        if (!salesman) throw errors.badRequest('业务员不存在')
-        if (salesman.companyCode !== companyCode) throw errors.badRequest('业务员不属于该公司')
-        data.salesmanId = salesman.id
+        const salesmanCompanies = await prisma.salesmanCompany.findMany({
+          where: { salesmanId: patch.salesmanId },
+          select: { companyCode: true },
+        })
+        if (salesmanCompanies.length === 0) throw errors.badRequest('业务员不存在')
+        if (!salesmanCompanies.some((c) => c.companyCode === companyCode)) throw errors.badRequest('业务员不属于该公司')
+        data.salesmanId = patch.salesmanId
       }
     }
     if (Object.keys(data).length === 0) throw errors.badRequest('无可更新字段')

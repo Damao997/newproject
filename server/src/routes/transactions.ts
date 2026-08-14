@@ -268,10 +268,17 @@ router.get('/salesmen', requirePermission('transactions:salesmen:view', 'view'),
 router.post('/salesmen', requirePermission('transactions:salesmen:create', 'create'), asyncHandler(async (req, res) => {
   const authUser = req.authUser as AuthUserContext
   const body = req.body ?? {}
-  // 业务员归属单体公司：汇总主体归一化后取第一个成员（排序确定化，避免依赖 DB 返回顺序）
-  const companyCodes = await normalizeCompanies(authUser, body.companyCode)
-  const companyCode = [...(companyCodes ?? [])].sort()[0] ?? ''
-  const data = await CollectionService.createSalesman({ companyCode, name: body.name, phone: body.phone, remark: body.remark }, { userId: authUser.userId, traceId: req.traceId })
+  // 多公司归属：body.companyCodes 数组逐个归一化（汇总主体展开成员），去重后交服务层做数据范围校验
+  const raw = Array.isArray(body.companyCodes) ? body.companyCodes : []
+  const normalized: string[] = []
+  for (const c of raw) {
+    const codes = await normalizeCompanies(authUser, c)
+    if (codes) normalized.push(...codes)
+  }
+  const data = await CollectionService.createSalesman(
+    { companyCodes: [...new Set(normalized)], name: body.name, phone: body.phone, remark: body.remark },
+    { userId: authUser.userId, traceId: req.traceId },
+  )
   sendOk(res, data)
 }))
 
