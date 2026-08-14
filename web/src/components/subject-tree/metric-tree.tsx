@@ -161,6 +161,7 @@ function SubjectCell({
   onAnalyze,
   analyzeDisabled,
   analyzeHint,
+  rowPad = 'py-2',
 }: {
   node: SubjectNode
   indentDepth: number
@@ -171,12 +172,17 @@ function SubjectCell({
   onAnalyze?: (node: SubjectNode) => void
   analyzeDisabled?: boolean
   analyzeHint?: string
+  /** 数据行纵向内边距（对齐密度三档；缺省 py-2） */
+  rowPad?: string
 }) {
   const hasChildren = node.children.length > 0
   const isExpanded = expandedCodes.has(node.code)
   return (
     <td
-      className="sticky z-[1] min-w-[160px] border-b border-r bg-background px-4 py-2 align-middle shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)] transition-colors group-hover:bg-muted"
+      className={cn(
+        'sticky z-[1] min-w-[160px] border-b border-r bg-background px-4 align-middle shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)] transition-colors group-hover:bg-muted',
+        rowPad,
+      )}
       style={{ left: stickyLeftPx }}
     >
       <div className="relative flex items-center" style={{ paddingLeft: indentDepth * 20 }}>
@@ -256,6 +262,7 @@ function MetricRows({
                 onAnalyze={onAnalyze}
                 analyzeDisabled={analyzeDisabled}
                 analyzeHint={analyzeHint}
+                rowPad={rowPad}
               />
               {renderValueCells(valueMap.get(node.code), columns, node.valueType, rowPad)}
             </tr>
@@ -354,6 +361,7 @@ function CategoryRows({
                   onAnalyze={onAnalyze}
                   analyzeDisabled={analyzeDisabled}
                   analyzeHint={analyzeHint}
+                  rowPad={rowPad}
                 />
                 {renderValueCells(valueMap.get(node.code), columns, node.valueType, rowPad)}
               </tr>
