@@ -17,6 +17,7 @@ import { Collapsible } from '@/components/ui/collapsible'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { ImportCompareDialog } from './import-compare-dialog'
 import { TransactionImportDialog } from './transaction-import-dialog'
+import { CoverageTab } from '@/pages/transactions/coverage-tab'
 import type { ImportBatch } from '@/types'
 import {
   Upload,
@@ -32,6 +33,7 @@ import {
   ChevronRight,
   Loader2,
   GitCompareArrows,
+  Grid3X3,
 } from 'lucide-react'
 
 /** 批次生命周期状态中文标签 */
@@ -73,6 +75,7 @@ export function ImportPanel() {
   // 高危操作（仅 superadmin 持有对应权限码）
   const canArchive = can('data:import', 'archive')
   const canPurgeBatch = can('data:import', 'purge')
+  const canViewTransactions = can('transactions', 'view')
   const { confirm, element: confirmElement } = useConfirm()
 
   // 导入质量概览折叠偏好：localStorage 持久化（'1' = 收起），读写失败静默降级为展开
@@ -87,6 +90,23 @@ export function ImportPanel() {
     setQualityOpen(open)
     try {
       localStorage.setItem(QUALITY_COLLAPSED_KEY, open ? '0' : '1')
+    } catch {
+      /* 隐私模式等场景忽略 */
+    }
+  }
+
+  // 往来导入覆盖折叠偏好：localStorage 持久化（'1' = 收起），读写失败静默降级为展开
+  const [coverageOpen, setCoverageOpen] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('data-import-coverage-collapsed') !== '1'
+    } catch {
+      return true
+    }
+  })
+  const handleCoverageOpenChange = (open: boolean) => {
+    setCoverageOpen(open)
+    try {
+      localStorage.setItem('data-import-coverage-collapsed', open ? '0' : '1')
     } catch {
       /* 隐私模式等场景忽略 */
     }
@@ -893,6 +913,35 @@ export function ImportPanel() {
           </CardContent>
         </Collapsible>
       </div>
+
+      {/* 分区三：往来导入覆盖（合并自往来分析「数据质量」目录；仅持有往来查看权限的用户可见） */}
+      {canViewTransactions && (
+        <div className="border-t">
+          <Collapsible
+            open={coverageOpen}
+            onOpenChange={handleCoverageOpenChange}
+            trigger={(open) => (
+              <span className="flex flex-wrap items-center justify-between gap-2 px-6 py-3">
+                <span className="flex items-center gap-2 text-sm font-medium">
+                  <Grid3X3 className="h-4 w-4 text-muted-foreground" />
+                  往来导入覆盖
+                </span>
+                <span className="flex items-center gap-3 text-muted-foreground">
+                  {!open && <span className="text-xs text-muted-foreground">往来批次覆盖率矩阵（公司×期间×类型）</span>}
+                  <span className="flex items-center gap-1 text-xs">
+                    {open ? '收起' : '展开'}
+                    {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                  </span>
+                </span>
+              </span>
+            )}
+          >
+            <CardContent>
+              <CoverageTab />
+            </CardContent>
+          </Collapsible>
+        </div>
+      )}
       {confirmElement}
       <ImportCompareDialog
         open={!!compareSource}
