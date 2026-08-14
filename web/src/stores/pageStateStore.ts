@@ -31,8 +31,10 @@ export interface IndicatorsState {
   categoryFilter: string[] | null
   /** 表格密度三档（对齐 DataTable 命名） */
   density: 'default' | 'dense' | 'compact'
-  /** 隐藏的值列 key 列表（默认全部显示） */
-  hiddenColumns: string[]
+  /** 经营指标隐藏的值列 key 列表（默认全部显示；与静态分区独立） */
+  hiddenOperatingColumns: string[]
+  /** 静态指标隐藏的值列 key 列表（默认全部显示） */
+  hiddenStaticColumns: string[]
 }
 
 export interface DataBrowseState {
@@ -161,7 +163,8 @@ const defaultIndicators: IndicatorsState = {
   sortDirection: null,
   categoryFilter: null,
   density: 'default',
-  hiddenColumns: [],
+  hiddenOperatingColumns: [],
+  hiddenStaticColumns: [],
 }
 
 const defaultDataBrowse: DataBrowseState = {

@@ -135,22 +135,8 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
   )
   // 表格密度与隐藏列（持久化到 pageStateStore，刷新保持）
   const density = usePageStore((s) => s.indicators.density)
-  const hiddenColumns = usePageStore((s) => s.indicators.hiddenColumns)
   const setDensity = useCallback(
     (v: 'default' | 'dense' | 'compact') => setIndicators({ density: v }),
-    [setIndicators],
-  )
-  const setHiddenColumns = useCallback(
-    (cols: string[]) => {
-      // 隐藏当前排序列时联动清空排序（避免无表头入口的静默排序）
-      const patch: { hiddenColumns: string[]; sortKey?: string | null; sortDirection?: 'asc' | 'desc' | null } = { hiddenColumns: cols }
-      const cur = usePageStore.getState().indicators
-      if (cur.sortKey && cols.includes(cur.sortKey)) {
-        patch.sortKey = null
-        patch.sortDirection = null
-      }
-      setIndicators(patch)
-    },
     [setIndicators],
   )
   // 小屏（<lg）搜索框浮层展开态（图标按钮点击切换）
@@ -164,11 +150,21 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
 
   const isOperating = activeTab === 'operating'
 
-  // 隐藏列按当前 tab 列集合过滤（跨 tab 共享 hiddenColumns 的计算层防护：静态页不受经营页隐藏列影响）
-  const effectiveHidden = useMemo(() => {
-    const cols = isOperating ? OPERATING_COLUMNS : STATIC_COLUMNS
-    return hiddenColumns.filter((k) => cols.some((c) => c.key === k))
-  }, [hiddenColumns, isOperating])
+  // 隐藏列按 tab 分区（经营/静态独立存储，天然隔离同名列 key）
+  const hiddenColumns = usePageStore((s) => (isOperating ? s.indicators.hiddenOperatingColumns : s.indicators.hiddenStaticColumns))
+  const setHiddenColumns = useCallback(
+    (cols: string[]) => {
+      // 隐藏当前排序列时联动清空排序（避免无表头入口的静默排序）
+      const patch: Record<string, unknown> = isOperating ? { hiddenOperatingColumns: cols } : { hiddenStaticColumns: cols }
+      const cur = usePageStore.getState().indicators
+      if (cur.sortKey && cols.includes(cur.sortKey)) {
+        patch.sortKey = null
+        patch.sortDirection = null
+      }
+      setIndicators(patch as Parameters<typeof setIndicators>[0])
+    },
+    [isOperating, setIndicators],
+  )
 
   const fiscalYear = usePeriodStore((s) => s.fiscalYear)
   const { data: periodsData } = useAvailablePeriods()
@@ -717,7 +713,7 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
                 categoryFilter={categoryFilter}
                 onCategoryFilterChange={setCategoryFilter}
                 density={density}
-                hiddenColumns={effectiveHidden}
+                hiddenColumns={hiddenColumns}
               />
             </div>
           )}
