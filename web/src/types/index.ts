@@ -733,12 +733,16 @@ export interface SalesmanItem {
   name: string
   phone: string | null
   remark: string | null
-  status: 'active' | 'inactive'
-  createdAt: string
 }
 
+/** 业务员管理列表行（含状态与创建时间） */
+export type SalesmanManageItem = SalesmanItem & { status: 'active' | 'inactive'; createdAt: string }
+
+/** 业务员变更响应（含状态，无创建时间） */
+export type SalesmanMutationItem = SalesmanItem & { status: 'active' | 'inactive' }
+
 /** 业务员管理分页响应 */
-export type SalesmanListResponse = PaginatedResponse<SalesmanItem>
+export type SalesmanListResponse = PaginatedResponse<SalesmanManageItem>
 
 export interface CounterpartyOption {
   code: string

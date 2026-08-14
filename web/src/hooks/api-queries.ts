@@ -1051,7 +1051,7 @@ export function useRollbackReportVersion() {
 
 // ---------------- 往来分析 ----------------
 import type { TransactionOverviewItem, AgingAnalysisRow } from '@/types'
-import type { TransactionImportPreview, TransactionImportUploadResult, CollectionPlanItem, CollectionLogItem, SalesmanItem, SalesmanListResponse, CounterpartyOption, CollectionListResponse, CustomerLedgerResponse } from '@/types'
+import type { TransactionImportPreview, TransactionImportUploadResult, CollectionPlanItem, CollectionLogItem, SalesmanItem, SalesmanMutationItem, SalesmanListResponse, CounterpartyOption, CollectionListResponse, CustomerLedgerResponse } from '@/types'
 import type { TransactionTrendResult } from '@/types'
 import type { TransactionCoverageResult, BatchCoverageRow } from '@/types'
 import type { TransactionAccountOption, ManageAccountItem } from '@/types'
@@ -1269,7 +1269,7 @@ export function useSalesmenManage(params: { page?: number; pageSize?: number; co
 export function useUpdateSalesman() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (vars: { id: string; data: Record<string, unknown> }) => api.updateSalesman(vars.id, vars.data) as Promise<SalesmanItem>,
+    mutationFn: (vars: { id: string; data: Record<string, unknown> }) => api.updateSalesman(vars.id, vars.data) as Promise<SalesmanMutationItem>,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['transactions', 'salesmen'] }),
   })
 }
@@ -1277,7 +1277,7 @@ export function useUpdateSalesman() {
 export function useSetSalesmanStatus() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (vars: { id: string; status: string }) => api.setSalesmanStatus(vars.id, vars.status) as Promise<SalesmanItem>,
+    mutationFn: (vars: { id: string; status: string }) => api.setSalesmanStatus(vars.id, vars.status) as Promise<SalesmanMutationItem>,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['transactions', 'salesmen'] }),
   })
 }
