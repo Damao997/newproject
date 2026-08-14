@@ -259,19 +259,44 @@ router.patch('/collections/customers/:companyCode/:counterpartyCode', requirePer
 }))
 
 // ===== 业务员与客商选项 =====
-router.get('/salesmen', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
+router.get('/salesmen', requirePermission('transactions:salesmen:view', 'view'), asyncHandler(async (req, res) => {
   const companyCodes = await normalizeCompanies(req.authUser as AuthUserContext, req.query.companyCode)
   const data = await CollectionService.listSalesmen({ companyCodes })
   sendOk(res, data)
 }))
 
-router.post('/salesmen', requirePermission('transactions:update', 'update'), asyncHandler(async (req, res) => {
+router.post('/salesmen', requirePermission('transactions:salesmen:create', 'create'), asyncHandler(async (req, res) => {
   const authUser = req.authUser as AuthUserContext
   const body = req.body ?? {}
   // 业务员归属单体公司：汇总主体归一化后取第一个成员（排序确定化，避免依赖 DB 返回顺序）
   const companyCodes = await normalizeCompanies(authUser, body.companyCode)
   const companyCode = [...(companyCodes ?? [])].sort()[0] ?? ''
   const data = await CollectionService.createSalesman({ companyCode, name: body.name, phone: body.phone, remark: body.remark }, { userId: authUser.userId, traceId: req.traceId })
+  sendOk(res, data)
+}))
+
+// 业务员管理（独立管理页面：列表/编辑/停用）
+router.get('/salesmen/manage', requirePermission('transactions:salesmen:view', 'view'), asyncHandler(async (req, res) => {
+  const companyCodes = await normalizeCompanies(req.authUser as AuthUserContext, req.query.companyCode)
+  const data = await CollectionService.listSalesmenManage({
+    companyCodes,
+    keyword: req.query.keyword ? String(req.query.keyword) : undefined,
+    status: req.query.status ? String(req.query.status) : undefined,
+    page: req.query.page ? Number(req.query.page) : undefined,
+    pageSize: req.query.pageSize ? Number(req.query.pageSize) : undefined,
+  })
+  sendOk(res, data)
+}))
+
+router.patch('/salesmen/:id', requirePermission('transactions:salesmen:update', 'update'), asyncHandler(async (req, res) => {
+  const authUser = req.authUser as AuthUserContext
+  const data = await CollectionService.updateSalesman(req.params.id as string, req.body ?? {}, { userId: authUser.userId, traceId: req.traceId })
+  sendOk(res, data)
+}))
+
+router.patch('/salesmen/:id/status', requirePermission('transactions:salesmen:update', 'update'), asyncHandler(async (req, res) => {
+  const authUser = req.authUser as AuthUserContext
+  const data = await CollectionService.setSalesmanStatus(req.params.id as string, req.body?.status as 'active' | 'inactive', { userId: authUser.userId, traceId: req.traceId })
   sendOk(res, data)
 }))
 

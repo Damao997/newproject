@@ -46,6 +46,11 @@ const PERMISSIONS: { resource: string; action: PermissionAction }[] = [
   { resource: 'transactions:delete', action: 'delete' },
   { resource: 'transactions:import', action: 'import' },
   { resource: 'transactions:export', action: 'export' },
+  // 往来分析 · 业务员管理
+  { resource: 'transactions:salesmen:view', action: 'view' },
+  { resource: 'transactions:salesmen:create', action: 'create' },
+  { resource: 'transactions:salesmen:update', action: 'update' },
+  { resource: 'transactions:salesmen:delete', action: 'delete' },
   // 存货管理
   { resource: 'inventory:view', action: 'view' },
   { resource: 'inventory:create', action: 'create' },
@@ -131,6 +136,7 @@ const FINANCE_MANAGER_GRANTS = [
   'indicators:view', 'indicators:export',
   'transactions:view', 'transactions:create', 'transactions:update',
   'transactions:delete', 'transactions:import', 'transactions:export',
+  'transactions:salesmen:view', 'transactions:salesmen:create', 'transactions:salesmen:update',
   'inventory:view', 'inventory:export',
   'reports:view', 'reports:create', 'reports:update', 'reports:export',
   'data:browse:view', 'data:import:upload', 'data:export',
@@ -142,6 +148,7 @@ const DEPARTMENT_MANAGER_GRANTS = [
   'dashboard:view', 'dashboard:export',
   'indicators:view', 'indicators:export',
   'transactions:view', 'transactions:create', 'transactions:update', 'transactions:export',
+  'transactions:salesmen:view', 'transactions:salesmen:create', 'transactions:salesmen:update',
   'inventory:view', 'inventory:export',
   'reports:view', 'reports:export',
   'data:browse:view',
