@@ -85,12 +85,23 @@ export interface TransactionCollectionsState {
   period: string
 }
 
+export interface TransactionSalesmenState {
+  page: number
+  pageSize: number
+  /** 'all' | 公司编码 */
+  company: string
+  /** '' = 全部状态 */
+  status: string
+  keyword: string
+}
+
 export interface TransactionsState {
   overview: TransactionOverviewState
   aging: TransactionAgingState
   coverage: TransactionCoverageState
   'account-filter': TransactionAccountFilterState
   collections: TransactionCollectionsState
+  salesmen: TransactionSalesmenState
 }
 
 export interface DashboardState {
@@ -175,6 +186,14 @@ const defaultCollections: TransactionCollectionsState = {
   period: '',
 }
 
+const defaultSalesmen: TransactionSalesmenState = {
+  page: 1,
+  pageSize: PAGINATION.DEFAULT_PAGE_SIZE,
+  company: 'all',
+  status: '',
+  keyword: '',
+}
+
 const defaultDashboard: DashboardState = { period: '', dim: '', trendMetric: 'revenue', trendMode: 'month', analysisTab: 'trend' }
 
 // 默认主体：浙江省公司汇总（与往来总览 overview 默认口径一致；空数组=全部公司仍可显式选择）
@@ -188,6 +207,7 @@ const defaultTransactions: TransactionsState = {
   coverage: defaultCoverage,
   'account-filter': defaultAccountFilter,
   collections: defaultCollections,
+  salesmen: defaultSalesmen,
 }
 
 // ===== Store =====
@@ -226,6 +246,7 @@ function mergePersisted(persisted: unknown, current: PageStateStore): PageStateS
       coverage: { ...defaultCoverage, ...(t?.coverage ?? {}) },
       'account-filter': { ...defaultAccountFilter, ...(t?.['account-filter'] ?? {}) },
       collections: { ...defaultCollections, ...(t?.collections ?? {}) },
+      salesmen: { ...defaultSalesmen, ...(t?.salesmen ?? {}) },
     },
     dashboard: { ...defaultDashboard, ...(p.dashboard ?? {}) },
     inventory: { ...defaultInventory, ...(p.inventory ?? {}) },

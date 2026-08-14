@@ -16,6 +16,7 @@ const TransactionsAgingPage = lazy(() => import('@/pages/transactions/aging'))
 const TransactionsCoveragePage = lazy(() => import('@/pages/transactions/coverage'))
 const TransactionsAccountFilterPage = lazy(() => import('@/pages/transactions/account-filter'))
 const CollectionsPlansPage = lazy(() => import('@/pages/transactions/collections/plans'))
+const SalesmenPage = lazy(() => import('@/pages/transactions/collections/salesmen'))
 const InventoryPage = lazy(() => import('@/pages/inventory'))
 const ReportsPage = lazy(() => import('@/pages/reports'))
 const ReportsAnalysesPage = lazy(() => import('@/pages/reports/analyses'))
@@ -110,6 +111,7 @@ function App() {
                 <Route path="transactions/coverage" element={<RequirePermission resource="transactions" action="view"><TransactionsCoveragePage /></RequirePermission>} />
                 <Route path="transactions/account-filter" element={<RequirePermission resource="transactions" action="view"><TransactionsAccountFilterPage /></RequirePermission>} />
                 <Route path="transactions/collections/plans" element={<RequirePermission resource="transactions" action="view"><CollectionsPlansPage /></RequirePermission>} />
+                <Route path="transactions/collections/salesmen" element={<RequirePermission resource="transactions:salesmen" action="view"><SalesmenPage /></RequirePermission>} />
                 <Route path="inventory" element={<RequirePermission resource="inventory" action="view"><InventoryPage /></RequirePermission>} />
                 {/* 分析报告：汇总报告列表页（旧 ?tab=analyses 兼容重定向在页面内处理） */}
                 <Route path="reports" element={<RequirePermission resource="reports" action="view"><ReportsPage /></RequirePermission>} />

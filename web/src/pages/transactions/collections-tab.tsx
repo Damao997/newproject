@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -20,7 +21,7 @@ import { usePageStore } from '@/stores/pageStateStore'
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { CompanySelect } from '@/components/filters/company-select'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Users } from 'lucide-react'
 import { SheetShell } from '@/components/ui/sheet-shell'
 import { Label } from '@/components/ui/label'
 import { FlashMessage } from '@/components/ui/flash-message'
@@ -418,6 +419,8 @@ export function CollectionsTab() {
   const [salesmanTarget, setSalesmanTarget] = useState<LedgerTarget | null>(null)
   const { can } = usePermission()
   const { getDisplayName } = useCompanyDisplayName()
+  const navigate = useNavigate()
+  const canViewSalesmen = can('transactions:salesmen', 'view')
 
   const companyCode = companyFilter === 'all' ? undefined : companyFilter
   const canUpdate = can('transactions', 'update')
@@ -572,6 +575,12 @@ export function CollectionsTab() {
           value={keyword}
           onChange={(e) => { setKeyword(e.target.value); setPage(1) }}
         />
+        {canViewSalesmen && (
+          <Button variant="outline" size="sm" className="ml-auto" onClick={() => navigate('/transactions/collections/salesmen')}>
+            <Users className="mr-1 h-4 w-4" />
+            业务员管理
+          </Button>
+        )}
       </div>
       {stats && (
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-dashed border-border pt-2.5 text-xs">
