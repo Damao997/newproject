@@ -1297,6 +1297,19 @@ class ApiClient {
   }
 
   // 催收管理
+  // 业务员管理（独立管理页面）
+  async getSalesmenManage(params: Record<string, unknown>) {
+    return this.request({ method: 'GET', url: '/transactions/salesmen/manage', params })
+  }
+
+  async updateSalesman(id: string, data: Record<string, unknown>) {
+    return this.request({ method: 'PATCH', url: `/transactions/salesmen/${id}`, data })
+  }
+
+  async setSalesmanStatus(id: string, status: string) {
+    return this.request({ method: 'PATCH', url: `/transactions/salesmen/${id}/status`, data: { status } })
+  }
+
   // 业务员与客商选项
   async getSalesmen(params: Record<string, unknown>) {
     return this.request({ method: 'GET', url: '/transactions/salesmen', params })

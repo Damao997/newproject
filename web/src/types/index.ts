@@ -733,7 +733,12 @@ export interface SalesmanItem {
   name: string
   phone: string | null
   remark: string | null
+  status: 'active' | 'inactive'
+  createdAt: string
 }
+
+/** 业务员管理分页响应 */
+export type SalesmanListResponse = PaginatedResponse<SalesmanItem>
 
 export interface CounterpartyOption {
   code: string

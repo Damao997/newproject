@@ -1051,7 +1051,7 @@ export function useRollbackReportVersion() {
 
 // ---------------- 往来分析 ----------------
 import type { TransactionOverviewItem, AgingAnalysisRow } from '@/types'
-import type { TransactionImportPreview, TransactionImportUploadResult, CollectionPlanItem, CollectionLogItem, SalesmanItem, CounterpartyOption, CollectionListResponse, CustomerLedgerResponse } from '@/types'
+import type { TransactionImportPreview, TransactionImportUploadResult, CollectionPlanItem, CollectionLogItem, SalesmanItem, SalesmanListResponse, CounterpartyOption, CollectionListResponse, CustomerLedgerResponse } from '@/types'
 import type { TransactionTrendResult } from '@/types'
 import type { TransactionCoverageResult, BatchCoverageRow } from '@/types'
 import type { TransactionAccountOption, ManageAccountItem } from '@/types'
@@ -1253,6 +1253,32 @@ export function useTransactionBatchCoverage(batchId: string | null) {
     queryKey: ['transactions', 'batch-coverage', batchId] as const,
     queryFn: () => api.getTransactionBatchCoverage(batchId as string) as Promise<BatchCoverageRow[]>,
     enabled: !!batchId,
+  })
+}
+
+// ===== 业务员管理（独立管理页面） =====
+
+export function useSalesmenManage(params: { page?: number; pageSize?: number; companyCode?: string; status?: string; keyword?: string }) {
+  return useQuery({
+    queryKey: ['transactions', 'salesmen', 'manage', params] as const,
+    queryFn: () => api.getSalesmenManage(params as Record<string, unknown>) as Promise<SalesmanListResponse>,
+    placeholderData: keepPreviousData,
+  })
+}
+
+export function useUpdateSalesman() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { id: string; data: Record<string, unknown> }) => api.updateSalesman(vars.id, vars.data) as Promise<SalesmanItem>,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transactions', 'salesmen'] }),
+  })
+}
+
+export function useSetSalesmanStatus() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { id: string; status: string }) => api.setSalesmanStatus(vars.id, vars.status) as Promise<SalesmanItem>,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transactions', 'salesmen'] }),
   })
 }
 
