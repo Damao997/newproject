@@ -551,15 +551,18 @@ model AgingRecord {
 }
 
 // 5.3a 业务员表（催收计划归属业务员，按公司隔离）
+// 5.3a 业务员表（催收计划归属业务员，按公司隔离；status=inactive 为停用软删除）
 model Salesman {
-  id          String   @id @default(uuid())
-  companyCode String   @map("company_code")
+  id          String       @id @default(uuid())
+  companyCode String       @map("company_code")
   name        String
   phone       String?
   remark      String?
-  createdAt   DateTime @default(now()) @map("created_at")
+  status      RecordStatus @default(active)   // active / inactive（停用）
+  createdAt   DateTime     @default(now()) @map("created_at")
 
   @@index([companyCode])
+  @@index([status])
   @@map("salesman")
 }
 
