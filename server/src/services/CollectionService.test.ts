@@ -48,10 +48,13 @@ afterAll(async () => {
   await basePrisma.collectionLog.deleteMany({ where: { planId: { in: plans.map((p) => p.id) } } }).catch(() => undefined)
   await basePrisma.collectionPlan.deleteMany({ where: { companyCode: TEST_COMPANY } }).catch(() => undefined)
   if (detailId) await basePrisma.transactionDetail.delete({ where: { id: detailId } }).catch(() => undefined)
-  // 跨公司业务员（无外键关联，手工清理）
-  await basePrisma.salesman.deleteMany({ where: { companyCode: 'EN999902', name: '李四' } }).catch(() => undefined)
-  // 测试公司业务员（无外键关联，手工清理：按公司清理，覆盖张三及业务员管理用例自建数据）
-  await basePrisma.salesman.deleteMany({ where: { companyCode: TEST_COMPANY } }).catch(() => undefined)
+  // 业务员-公司关联 + 业务员（多公司改造：先删关联再删业务员；按测试专属名字精确清理，避免误删真实数据，'管理甲改' 为编辑用例改名后）
+  const testSalesmanIds = (await basePrisma.salesman.findMany({
+    where: { name: { in: ['张三', '管理甲', '管理乙', '管理甲改', '跨公司甲', '外部乙', '李四'] } },
+    select: { id: true },
+  })).map((s) => s.id)
+  await basePrisma.salesmanCompany.deleteMany({ where: { salesmanId: { in: testSalesmanIds } } }).catch(() => undefined)
+  await basePrisma.salesman.deleteMany({ where: { id: { in: testSalesmanIds } } }).catch(() => undefined)
   // 测试客商主数据（无外键关联，手工清理）
   await basePrisma.counterparty.deleteMany({ where: { code: TEST_CP } }).catch(() => undefined)
 })
@@ -141,8 +144,8 @@ describe('CollectionService（真实 DB）', () => {
     expect(s1.statusNote).toBe('客户承诺月底回款 300')
 
     // 业务员：先创建再挂接；其他公司业务员不可挂接
-    const sm = await CollectionService.createSalesman({ companyCode: TEST_COMPANY, name: '张三', phone: '13800000000' }, ctx)
-    const other = await CollectionService.createSalesman({ companyCode: 'EN999902', name: '李四' }, ctx)
+    const sm = await CollectionService.createSalesman({ companyCodes: [TEST_COMPANY], name: '张三', phone: '13800000000' }, ctx)
+    const other = await CollectionService.createSalesman({ companyCodes: ['EN999902'], name: '李四' }, ctx)
     await expect(CollectionService.update(planId, { salesmanId: other.id }, ctx)).rejects.toThrow('不属于该公司')
     const s2 = await CollectionService.update(planId, { salesmanId: sm.id }, ctx)
     expect(s2.salesmanId).toBe(sm.id)
@@ -185,14 +188,14 @@ describe('CollectionService（真实 DB）', () => {
     const sms = await CollectionService.listSalesmen({ companyCodes: [TEST_COMPANY] })
     expect(sms.some((s) => s.name === '张三')).toBe(true)
     // 创建校验：姓名必填
-    await expect(CollectionService.createSalesman({ companyCode: TEST_COMPANY, name: '  ' }, ctx)).rejects.toThrow('必填')
+    await expect(CollectionService.createSalesman({ companyCodes: [TEST_COMPANY], name: '  ' }, ctx)).rejects.toThrow('必填')
   })
 
   it('业务员管理：管理列表分页/关键词/状态筛选、编辑、停用', async () => {
     if (!dbReady) return
     // 自建两个业务员：A（active）、B（active 后停用）
-    const a = await CollectionService.createSalesman({ companyCode: TEST_COMPANY, name: '管理甲', phone: '13900000001' }, ctx)
-    const b = await CollectionService.createSalesman({ companyCode: TEST_COMPANY, name: '管理乙', phone: '13900000002' }, ctx)
+    const a = await CollectionService.createSalesman({ companyCodes: [TEST_COMPANY], name: '管理甲', phone: '13900000001' }, ctx)
+    const b = await CollectionService.createSalesman({ companyCodes: [TEST_COMPANY], name: '管理乙', phone: '13900000002' }, ctx)
 
     // 管理列表：全部
     const all = await CollectionService.listSalesmenManage({ companyCodes: [TEST_COMPANY], pageSize: 50 })
@@ -211,7 +214,8 @@ describe('CollectionService（真实 DB）', () => {
     const edited = await CollectionService.updateSalesman(a.id, { name: '管理甲改', phone: '13900000009' }, ctx)
     expect(edited.name).toBe('管理甲改')
     expect(edited.phone).toBe('13900000009')
-    await expect(CollectionService.updateSalesman(a.id, { name: 'x', companyCode: 'EN999902' } as never, ctx)).rejects.toThrow('公司不可修改')
+    // 公司集合编辑：空集合报错（多公司改造后 companyCodes 可编辑）
+    await expect(CollectionService.updateSalesman(a.id, { companyCodes: [] }, ctx)).rejects.toThrow('请选择所属公司')
 
     // 停用：选项接口不再返回，管理列表状态为 inactive
     const deactivated = await CollectionService.setSalesmanStatus(b.id, 'inactive', ctx)
@@ -223,5 +227,34 @@ describe('CollectionService（真实 DB）', () => {
 
     // 非法状态
     await expect(CollectionService.setSalesmanStatus(a.id, 'bogus' as never, ctx)).rejects.toThrow('状态不合法')
+  })
+
+  it('业务员多公司归属：创建多公司、按任一公司过滤、编辑公司集合、挂接校验包含语义', async () => {
+    if (!dbReady) return
+    // 创建归属两公司的业务员
+    const multi = await CollectionService.createSalesman({ companyCodes: [TEST_COMPANY, 'EN999902'], name: '跨公司甲', phone: '13700000001' }, ctx)
+    expect(multi.companyCodes).toEqual([TEST_COMPANY, 'EN999902'])
+    // 按任一公司过滤均命中
+    const byA = await CollectionService.listSalesmen({ companyCodes: [TEST_COMPANY] })
+    expect(byA.some((s) => s.id === multi.id)).toBe(true)
+    const byB = await CollectionService.listSalesmen({ companyCodes: ['EN999902'] })
+    expect(byB.some((s) => s.id === multi.id)).toBe(true)
+    const manageA = await CollectionService.listSalesmenManage({ companyCodes: [TEST_COMPANY], pageSize: 50 })
+    expect(manageA.items.some((s) => s.id === multi.id)).toBe(true)
+    // 编辑公司集合：替换为仅 TEST_COMPANY
+    const edited = await CollectionService.updateSalesman(multi.id, { companyCodes: [TEST_COMPANY] }, ctx)
+    expect(edited.companyCodes).toEqual([TEST_COMPANY])
+    const afterEdit = await CollectionService.listSalesmen({ companyCodes: ['EN999902'] })
+    expect(afterEdit.some((s) => s.id === multi.id)).toBe(false)
+    // 挂接校验：归属含计划公司的业务员可挂接
+    const plan = await CollectionService.create({ companyCode: TEST_COMPANY, counterpartyCode: TEST_CP, accountCode: TEST_ACCOUNT, overdueAmount: 10, plannedDate: '2099-03-01' }, ctx)
+    const linked = await CollectionService.update(plan.id, { salesmanId: multi.id }, ctx)
+    expect(linked.salesmanId).toBe(multi.id)
+    // 挂接校验：归属不含目标公司的业务员不可挂接
+    const other = await CollectionService.createSalesman({ companyCodes: ['EN999902'], name: '外部乙' }, ctx)
+    await expect(CollectionService.update(plan.id, { salesmanId: other.id }, ctx)).rejects.toThrow('不属于该公司')
+    // 清理（本用例自建数据；afterAll 也会按名字兜底清理）
+    await basePrisma.salesmanCompany.deleteMany({ where: { salesmanId: { in: [multi.id, other.id] } } }).catch(() => undefined)
+    await basePrisma.salesman.deleteMany({ where: { id: { in: [multi.id, other.id] } } }).catch(() => undefined)
   })
 })

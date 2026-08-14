@@ -39,6 +39,38 @@ function toNumber(v: unknown): number {
   return Number(v) || 0
 }
 
+/**
+ * 批量回查业务员归属公司集合（SalesmanCompany 与 Salesman 未定义 Prisma 关系，直接查关联表）。
+ * 返回 salesmanId → companyCode[]；无关联返回空 Map。
+ */
+async function buildSalesmanCompanyMap(salesmanIds: string[]) {
+  const map = new Map<string, string[]>()
+  if (salesmanIds.length === 0) return map
+  const rels = await prisma.salesmanCompany.findMany({
+    where: { salesmanId: { in: salesmanIds } },
+    select: { salesmanId: true, companyCode: true },
+  })
+  for (const r of rels) {
+    const arr = map.get(r.salesmanId)
+    if (arr) arr.push(r.companyCode)
+    else map.set(r.salesmanId, [r.companyCode])
+  }
+  return map
+}
+
+/**
+ * 按公司编码集合取业务员 id（包含语义：归属任一目标公司的业务员命中）。
+ * 无公司过滤时返回 null（调用方不施加过滤）。
+ */
+async function salesmanIdsByCompanies(companyCodes: string[]) {
+  if (!companyCodes || companyCodes.length === 0) return null
+  const rels = await prisma.salesmanCompany.findMany({
+    where: { companyCode: { in: companyCodes } },
+    select: { salesmanId: true },
+  })
+  return [...new Set(rels.map((r) => r.salesmanId))]
+}
+
 export interface CollectionPlanDto {
   id: string
   companyCode: string
@@ -266,26 +298,34 @@ export const CollectionService = {
    */
   async listSalesmen(params: { companyCodes?: string[] }) {
     const where: Record<string, unknown> = { status: 'active' }
-    if (params.companyCodes) where.companyCode = { in: params.companyCodes }
+    const matchedIds = await salesmanIdsByCompanies(params.companyCodes ?? [])
+    if (matchedIds !== null) where.id = { in: matchedIds }
     const rows = await prisma.salesman.findMany({ where, orderBy: { createdAt: 'desc' } })
-    return rows.map((s) => ({ id: s.id, companyCode: s.companyCode, name: s.name, phone: s.phone, remark: s.remark }))
+    const companyMap = await buildSalesmanCompanyMap(rows.map((s) => s.id))
+    return rows.map((s) => ({ id: s.id, companyCodes: companyMap.get(s.id) ?? [], name: s.name, phone: s.phone, remark: s.remark }))
   },
 
   /**
    * 新建业务员（姓名必填，联系方式选填）
    */
-  async createSalesman(input: { companyCode: string; name: string; phone?: string; remark?: string }, ctx: Ctx) {
-    if (!input.companyCode) throw errors.badRequest('公司必填')
+  async createSalesman(input: { companyCodes: string[]; name: string; phone?: string; remark?: string }, ctx: Ctx) {
+    const companyCodes = [...new Set(input.companyCodes ?? [])]
+    if (companyCodes.length === 0) throw errors.badRequest('请选择所属公司')
+    // 数据范围守卫：全部归属公司必须在当前用户数据范围内
+    await assertCompaniesInScope(companyCodes, undefined, '新增业务员')
     const name = (input.name || '').trim()
     if (!name) throw errors.badRequest('业务员姓名必填')
     if (name.length > 50) throw errors.badRequest('业务员姓名不能超过 50 字')
     const phone = (input.phone || '').trim()
     if (phone.length > 30) throw errors.badRequest('联系方式不能超过 30 字')
     const salesman = await prisma.salesman.create({
-      data: { companyCode: input.companyCode, name, phone: phone || null, remark: input.remark?.trim() || null },
+      data: { name, phone: phone || null, remark: input.remark?.trim() || null },
     })
-    await recordAudit({ userId: ctx.userId, module: 'transactions', action: 'create', targetId: salesman.id, detail: { action: 'create-salesman' } }, ctx.traceId)
-    return { id: salesman.id, companyCode: salesman.companyCode, name: salesman.name, phone: salesman.phone, remark: salesman.remark }
+    await prisma.salesmanCompany.createMany({
+      data: companyCodes.map((c) => ({ salesmanId: salesman.id, companyCode: c })),
+    })
+    await recordAudit({ userId: ctx.userId, module: 'transactions', action: 'create', targetId: salesman.id, detail: { action: 'create-salesman', companyCodes } }, ctx.traceId)
+    return { id: salesman.id, companyCodes, name: salesman.name, phone: salesman.phone, remark: salesman.remark }
   },
 
   /**
@@ -295,7 +335,8 @@ export const CollectionService = {
     const page = Math.max(params.page || 1, 1)
     const pageSize = Math.min(Math.max(params.pageSize || 20, 1), 200)
     const where: Record<string, unknown> = {}
-    if (params.companyCodes) where.companyCode = { in: params.companyCodes }
+    const matchedIds = await salesmanIdsByCompanies(params.companyCodes ?? [])
+    if (matchedIds !== null) where.id = { in: matchedIds }
     const kw = (params.keyword || '').trim()
     if (kw) {
       where.OR = [
@@ -312,8 +353,9 @@ export const CollectionService = {
       prisma.salesman.findMany({ where, skip: (page - 1) * pageSize, take: pageSize, orderBy: { createdAt: 'desc' } }),
       prisma.salesman.count({ where }),
     ])
+    const companyMap = await buildSalesmanCompanyMap(items.map((s) => s.id))
     return {
-      items: items.map((s) => ({ id: s.id, companyCode: s.companyCode, name: s.name, phone: s.phone, remark: s.remark, status: s.status, createdAt: s.createdAt.toISOString() })),
+      items: items.map((s) => ({ id: s.id, companyCodes: companyMap.get(s.id) ?? [], name: s.name, phone: s.phone, remark: s.remark, status: s.status, createdAt: s.createdAt.toISOString() })),
       total,
       page,
       pageSize,
@@ -322,16 +364,14 @@ export const CollectionService = {
   },
 
   /**
-   * 编辑业务员：姓名/电话/备注；companyCode 不可修改（防止历史关联语义漂移）
+   * 编辑业务员：姓名/电话/备注；公司归属集合可编辑（整集合替换）
    */
-  async updateSalesman(id: string, patch: { name?: string; phone?: string; remark?: string; companyCode?: string }, ctx: Ctx) {
+  async updateSalesman(id: string, patch: { name?: string; phone?: string; remark?: string; companyCodes?: string[] }, ctx: Ctx) {
     const salesman = await prisma.salesman.findUnique({ where: { id } })
     if (!salesman) throw errors.notFound('业务员不存在')
-    // 数据范围守卫：业务员所属公司必须在当前用户数据范围内（写入路径显式校验）
-    await assertCompaniesInScope([salesman.companyCode], undefined, '修改业务员')
-    if (patch.companyCode !== undefined && patch.companyCode !== salesman.companyCode) {
-      throw errors.badRequest('业务员所属公司不可修改')
-    }
+    // 数据范围守卫：现有归属公司必须在当前用户数据范围内（修改影响该业务员全部关联）
+    const existing = await prisma.salesmanCompany.findMany({ where: { salesmanId: id }, select: { companyCode: true } })
+    await assertCompaniesInScope(existing.map((c) => c.companyCode), undefined, '修改业务员')
     const data: Record<string, unknown> = {}
     if (patch.name !== undefined) {
       const name = (patch.name || '').trim()
@@ -345,10 +385,26 @@ export const CollectionService = {
       data.phone = phone || null
     }
     if (patch.remark !== undefined) data.remark = (patch.remark || '').trim() || null
-    if (Object.keys(data).length === 0) throw errors.badRequest('无可更新字段')
-    const updated = await prisma.salesman.update({ where: { id }, data: data as never })
+    let companyCodes: string[] | null = null
+    if (patch.companyCodes !== undefined) {
+      companyCodes = [...new Set(patch.companyCodes)]
+      if (companyCodes.length === 0) throw errors.badRequest('请选择所属公司')
+      // 数据范围守卫：目标归属公司也须在范围内
+      await assertCompaniesInScope(companyCodes, undefined, '修改业务员')
+    }
+    if (Object.keys(data).length === 0 && companyCodes === null) throw errors.badRequest('无可更新字段')
+    // 写入（事务内完成普通字段更新 + 公司集合整集合替换）
+    await prisma.$transaction(async (tx) => {
+      if (Object.keys(data).length > 0) await tx.salesman.update({ where: { id }, data: data as never })
+      if (companyCodes !== null) {
+        await tx.salesmanCompany.deleteMany({ where: { salesmanId: id } })
+        await tx.salesmanCompany.createMany({ data: companyCodes.map((c) => ({ salesmanId: id, companyCode: c })) })
+      }
+    })
+    const updated = await prisma.salesman.findUniqueOrThrow({ where: { id } })
+    const updatedCompanyCodes = companyCodes ?? existing.map((c) => c.companyCode)
     await recordAudit({ userId: ctx.userId, module: 'transactions', action: 'update', targetId: id, detail: { action: 'update-salesman', fields: Object.keys(data) } }, ctx.traceId)
-    return { id: updated.id, companyCode: updated.companyCode, name: updated.name, phone: updated.phone, remark: updated.remark, status: updated.status }
+    return { id: updated.id, companyCodes: updatedCompanyCodes, name: updated.name, phone: updated.phone, remark: updated.remark, status: updated.status }
   },
 
   /**
@@ -357,12 +413,13 @@ export const CollectionService = {
   async setSalesmanStatus(id: string, status: 'active' | 'inactive', ctx: Ctx) {
     const salesman = await prisma.salesman.findUnique({ where: { id } })
     if (!salesman) throw errors.notFound('业务员不存在')
-    // 数据范围守卫：业务员所属公司必须在当前用户数据范围内
-    await assertCompaniesInScope([salesman.companyCode], undefined, '停用/启用业务员')
+    // 数据范围守卫：全部归属公司必须在当前用户数据范围内（影响该业务员全部关联）
+    const companies = await prisma.salesmanCompany.findMany({ where: { salesmanId: id }, select: { companyCode: true } })
+    await assertCompaniesInScope(companies.map((c) => c.companyCode), undefined, '停用/启用业务员')
     if (status !== 'active' && status !== 'inactive') throw errors.badRequest('业务员状态不合法')
     const updated = await prisma.salesman.update({ where: { id }, data: { status } })
     await recordAudit({ userId: ctx.userId, module: 'transactions', action: 'update', targetId: id, detail: { action: 'set-salesman-status', status } }, ctx.traceId)
-    return { id: updated.id, companyCode: updated.companyCode, name: updated.name, phone: updated.phone, remark: updated.remark, status: updated.status }
+    return { id: updated.id, companyCodes: companies.map((c) => c.companyCode), name: updated.name, phone: updated.phone, remark: updated.remark, status: updated.status }
   },
 
   /**
@@ -457,10 +514,14 @@ export const CollectionService = {
       if (patch.salesmanId === null || patch.salesmanId === '') {
         data.salesmanId = null
       } else {
-        const salesman = await prisma.salesman.findUnique({ where: { id: patch.salesmanId } })
-        if (!salesman) throw errors.badRequest('业务员不存在')
-        if (salesman.companyCode !== plan.companyCode) throw errors.badRequest('业务员不属于该公司')
-        data.salesmanId = salesman.id
+        // 挂接校验改为“归属包含”语义：业务员任一归属公司等于计划公司即可
+        const salesmanCompanies = await prisma.salesmanCompany.findMany({
+          where: { salesmanId: patch.salesmanId },
+          select: { companyCode: true },
+        })
+        if (salesmanCompanies.length === 0) throw errors.badRequest('业务员不存在')
+        if (!salesmanCompanies.some((c) => c.companyCode === plan.companyCode)) throw errors.badRequest('业务员不属于该公司')
+        data.salesmanId = patch.salesmanId
       }
     }
     if (patch.statusNote !== undefined) {
