@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type Ref } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -16,6 +16,7 @@ import {
 import { CompanySelect } from '@/components/filters/company-select'
 import { MonthPicker } from '@/components/ui/month-picker'
 import { PageContainer } from '@/components/layout/page-container'
+import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { Pagination } from '@/components/data-table/pagination'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { PAGINATION, REPORT_STATUS_LABEL, REPORT_STATUS_BADGE_VARIANT } from '@/lib/constants'
@@ -41,6 +42,9 @@ export default function ReportsPage() {
   const canCreate = can('reports', 'create')
   const canDelete = can('reports', 'delete')
   const navigate = useNavigate()
+  // 吸顶测量：标题区 + 筛选卡高度实时测量，驱动筛选卡/表格容器吸顶偏移
+  const { headerRef, filterRef, headerHeight, filterHeight } = useStickyHeader()
+  const stickyTop = headerHeight + filterHeight
   const [searchParams] = useSearchParams()
 
   // 旧 ?tab=analyses URL 兼容：重定向到独立三级路径 /reports/analyses
@@ -56,17 +60,32 @@ export default function ReportsPage() {
     <PageContainer
       title="分析报告"
       description="汇总各公司/汇总主体的单项分析，编制总体分析报告"
-      actions={canCreate ? (
-        <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="mr-2 h-4 w-4" /> 新建报告</Button>
-      ) : null}
+      stickyHeader
+      headerRef={headerRef}
     >
-      <ReportList onOpen={(id) => navigate(`/reports/${id}/edit`)} canDelete={canDelete} />
+      <ReportList
+        onOpen={(id) => navigate(`/reports/${id}/edit`)}
+        canCreate={canCreate}
+        onCreate={() => setCreateOpen(true)}
+        canDelete={canDelete}
+        filterRef={filterRef}
+        headerHeight={headerHeight}
+        stickyTop={stickyTop}
+      />
       <CreateReportDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={(id) => navigate(`/reports/${id}/edit`)} />
     </PageContainer>
   )
 }
 
-function ReportList({ onOpen, canDelete }: { onOpen: (id: string) => void; canDelete: boolean }) {
+function ReportList({ onOpen, canCreate, onCreate, canDelete, filterRef, headerHeight, stickyTop }: {
+  onOpen: (id: string) => void
+  canCreate: boolean
+  onCreate: () => void
+  canDelete: boolean
+  filterRef: Ref<HTMLDivElement>
+  headerHeight: number
+  stickyTop: number
+}) {
   const [status, setStatus] = useState('')
   const [keyword, setKeyword] = useState('')
   const [page, setPage] = useState(1)
@@ -123,8 +142,8 @@ function ReportList({ onOpen, canDelete }: { onOpen: (id: string) => void; canDe
 
   return (
     <>
-      {/* 控制层：筛选工具条（状态 Tab + 搜索，筛选卡） */}
-      <Card className="rounded-card p-4">
+      {/* 控制层：筛选工具条（状态 Tab + 搜索，筛选卡，吸顶） */}
+      <Card ref={filterRef} className="sticky z-10 rounded-card p-4" style={{ top: headerHeight }}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Tabs value={status} onValueChange={(v) => { setStatus(v); setPage(1) }}>
           <TabsList variant="line">
@@ -133,37 +152,45 @@ function ReportList({ onOpen, canDelete }: { onOpen: (id: string) => void; canDe
             ))}
           </TabsList>
         </Tabs>
-        <div className="relative w-56">
-          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={keyword}
-            onChange={(e) => { setKeyword(e.target.value); setPage(1) }}
-            placeholder="按标题搜索…"
-            className="h-8 pl-8"
-          />
+        <div className="flex items-center gap-2">
+          {canCreate && (
+            <Button size="sm" onClick={onCreate}><Plus className="mr-2 h-4 w-4" /> 新建报告</Button>
+          )}
+          <div className="relative w-56">
+            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={keyword}
+              onChange={(e) => { setKeyword(e.target.value); setPage(1) }}
+              placeholder="按标题搜索…"
+              className="h-8 pl-8"
+            />
+          </div>
         </div>
       </div>
       </Card>
 
-      {/* 展示层：报告列表（表格卡） */}
-      <Card className="animate-fade-in overflow-hidden rounded-card">
+      {/* 展示层：报告列表（表格卡，表格容器吸顶） */}
+      <Card className="animate-fade-in rounded-card border border-border">
         {isLoading ? (
           <div className="py-16 text-center text-sm text-muted-foreground">加载中…</div>
         ) : items.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <FileText className="mb-3 h-10 w-10 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">
-              {keyword.trim() ? '未找到匹配的报告。' : '暂无分析报告，点击右上角「新建报告」开始编制。'}
+              {keyword.trim() ? '未找到匹配的报告。' : '暂无分析报告，点击「新建报告」开始编制。'}
             </p>
           </div>
         ) : (
-          <DataTable
-            columns={reportColumns}
-            data={items}
-            rowKey={(r) => r.id}
-            density="dense"
-            caption="分析报告列表"
-          />
+          <div className="sticky rounded-card bg-background" style={{ top: stickyTop }}>
+            <DataTable
+              columns={reportColumns}
+              data={items}
+              rowKey={(r) => r.id}
+              density="dense"
+              caption="分析报告列表"
+              maxHeight={`calc(100dvh - ${stickyTop}px - 24px)`}
+            />
+          </div>
         )}
 
         {/* 分页 */}

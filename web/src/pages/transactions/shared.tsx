@@ -8,13 +8,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { useCompanies, useTransactionAccounts } from '@/hooks/api-queries'
 import { cn, formatMoneyWan } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -110,20 +103,53 @@ export function agingRisk(aging: Record<string, number>, closingBalance: number)
   return { level: 'good', text: `账龄结构良好，1 年内占 ${in1y.toFixed(1)}%` }
 }
 
-// 关联方过滤下拉（全部 / 内部公司 / 关联方）
-export function PartyTypeSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+// 对象类型多选选项（空数组 = 全部对象；默认勾选外部+关联方，排除内部公司）
+export const PARTY_TYPES: { value: string; label: string }[] = [
+  { value: 'external', label: '外部' },
+  { value: 'related', label: '关联方' },
+  { value: 'internal', label: '内部公司' },
+]
+
+// 对象类型多选筛选器（空数组 = 全部对象）
+export function PartyTypeSelect({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const label = useMemo(() => {
+    if (value.length === 0) return '全部对象'
+    const firstName = PARTY_TYPES.find((t) => t.value === value[0])?.label ?? value[0]
+    return value.length === 1 ? firstName : `${firstName} 等 ${value.length} 个`
+  }, [value])
+
+  const toggle = (v: string, checked: boolean) => {
+    onChange(checked ? [...value, v] : value.filter((x) => x !== v))
+  }
+
   return (
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="w-[130px]">
-        <SelectValue placeholder="对象类型" />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="external">外部</SelectItem>
-        <SelectItem value="related">关联方</SelectItem>
-        <SelectItem value="internal">内部公司</SelectItem>
-        <SelectItem value="all">全部对象</SelectItem>
-      </SelectContent>
-    </Select>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" className="h-9 w-[150px] justify-between px-3 font-normal">
+          <span className="truncate">{label}</span>
+          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="w-[150px]">
+        <DropdownMenuItem
+          className="text-xs text-muted-foreground"
+          onSelect={(e) => { e.preventDefault(); onChange([]) }}
+        >
+          清空（全部对象）
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        {PARTY_TYPES.map((t) => (
+          <DropdownMenuCheckboxItem
+            key={t.value}
+            checked={value.includes(t.value)}
+            onCheckedChange={(checked) => toggle(t.value, checked === true)}
+            onSelect={(e) => e.preventDefault()}
+          >
+            {t.label}
+          </DropdownMenuCheckboxItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -187,4 +213,19 @@ export function AccountMultiSelect({ value, onChange, transactionType }: { value
       </DropdownMenuContent>
     </DropdownMenu>
   )
+}
+
+/** 明细筛选生效条件摘要（供折叠 trigger 展示；空数组 = 无生效条件） */
+export function buildDetailSummary(
+  accountFilter: string[],
+  partyFilter: string[],
+  keyword: string,
+  subtotalOnly: boolean,
+): string[] {
+  const parts: string[] = []
+  if (accountFilter.length > 0) parts.push(`${accountFilter.length} 个科目`)
+  if (partyFilter.length > 0) parts.push('已选对象类型')
+  if (keyword.trim()) parts.push('有关键词')
+  if (subtotalOnly) parts.push('仅显示小计')
+  return parts
 }

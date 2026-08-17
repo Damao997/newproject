@@ -421,7 +421,7 @@ export function MetricTree({
         ? sortDirection === 'asc'
           ? { key, direction: 'desc' as const }
           : sortDirection === 'desc'
-            ? { key, direction: null as const }
+            ? { key, direction: null as 'asc' | 'desc' | null }
             : { key, direction: 'asc' as const }
         : { key, direction: 'asc' as const }
     onSortChange?.(next.key, next.direction)
@@ -430,11 +430,11 @@ export function MetricTree({
     // 浅灰圆角容器（与 DataTable 视觉一致）：overflow-hidden 将白底表格直角裁剪为 8px 圆角（rounded-card）
     <div className="overflow-hidden rounded-card bg-muted/40 p-2">
       <div
-        className={cn('bg-background', 'overflow-x-auto', stickyHeaderTop > 0 && 'overflow-y-auto')}
+        className={cn('bg-background', 'overflow-x-auto', 'overflow-y-auto')}
         style={
           stickyHeaderTop > 0
             ? { position: 'sticky', top: stickyHeaderTop, maxHeight: `calc(100dvh - ${stickyHeaderTop}px - 24px)` }
-            : undefined
+            : { maxHeight: '60vh' }
         }
       >
         {/* border-separate：sticky 单元格边框随滚动稳定跟随（collapse 模式下边框渲染异常） */}
@@ -535,8 +535,8 @@ export function MetricTree({
                     </th>
                   ))}
                 </tr>
-                {/* 明细行：sticky 固定于组名行下方（top = 组名行高 44px）；白底与组名行灰底形成层次（sticky 需不透明背景） */}
-                <tr className="sticky bg-background" style={{ top: GROUP_HEAD_H }}>
+                {/* 明细行：sticky 固定于组名行下方（top = 组名行高 44px）；白底与组名行灰底形成层次（sticky 需不透明背景）；z-[2] 盖过 tbody 冻结列 z-[1]，防止科目列内容滚过时覆盖表头 */}
+                <tr className="sticky z-[2] bg-background" style={{ top: GROUP_HEAD_H }}>
                   {visibleGroups.flatMap((g) => g.keys).map((key) => {
                     const col = OPERATING_COL_BY_KEY.get(key)!
                     const sortState = sortKey === col.key ? sortDirection : null

@@ -3,6 +3,7 @@ import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { PageContainer } from '@/components/layout/page-container'
+import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { Pagination } from '@/components/data-table/pagination'
 import { useRoles, useAuditLogs, type RoleItem } from '@/hooks/api-queries'
@@ -14,6 +15,9 @@ const AUDIT_PAGE_SIZE = 20
 
 /** 审计日志：查看系统操作日志、用户行为记录与安全审计信息（按角色/模块/时间/用户检索）。 */
 export default function AuditLogsPage() {
+  // 吸顶测量：标题区 + 筛选卡高度实时测量，驱动筛选卡/表格容器吸顶偏移
+  const { headerRef, filterRef, headerHeight, filterHeight } = useStickyHeader()
+  const stickyTop = headerHeight + filterHeight
   const [auditPage, setAuditPage] = useState(1)
   // 审计日志筛选：角色/模块/用户关键字/时间范围（任一变化重置到第一页）
   const [auditRole, setAuditRole] = useState('all')
@@ -49,9 +53,9 @@ export default function AuditLogsPage() {
   ]
 
   return (
-    <PageContainer title="审计日志" description="查看系统操作日志、用户行为记录与安全审计信息">
-      {/* 控制层：筛选工具条（筛选卡） */}
-      <Card className="rounded-card p-4">
+    <PageContainer title="审计日志" description="查看系统操作日志、用户行为记录与安全审计信息" stickyHeader headerRef={headerRef}>
+      {/* 控制层：筛选工具条（筛选卡，吸顶） */}
+      <Card ref={filterRef} className="sticky z-10 rounded-card p-4" style={{ top: headerHeight }}>
       <div className="flex flex-col space-y-2 lg:flex-row lg:items-center lg:space-x-2 lg:space-y-0">
             <Select value={auditRole} onValueChange={(v) => { setAuditRole(v); setAuditPage(1) }}>
               <SelectTrigger className="w-full lg:w-[160px]">
@@ -105,10 +109,12 @@ export default function AuditLogsPage() {
           </div>
       </Card>
 
-          {/* 展示层：审计日志表格（表格卡） */}
-          <Card className="overflow-hidden rounded-card">
+          {/* 展示层：审计日志表格（表格卡，表格容器吸顶） */}
+          <Card className="rounded-card border border-border">
           <div className="pt-2">
-            <DataTable columns={auditColumns} data={auditLogs} rowKey={(log) => log.id} emptyText="暂无审计日志" />
+            <div className="sticky rounded-card bg-background" style={{ top: stickyTop }}>
+              <DataTable columns={auditColumns} data={auditLogs} rowKey={(log) => log.id} emptyText="暂无审计日志" maxHeight={`calc(100dvh - ${stickyTop}px - 24px)`} />
+            </div>
             <div className="border-t px-4 py-2.5">
               <Pagination page={auditPage} pageSize={AUDIT_PAGE_SIZE} total={auditTotal} onPageChange={setAuditPage} />
             </div>

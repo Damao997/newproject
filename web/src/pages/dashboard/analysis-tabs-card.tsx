@@ -24,8 +24,6 @@ interface AnalysisTabsCardProps {
   /** 趋势图金额口径：month=本月合计/月度预算，ytd=累计实际/年度预算 */
   trendMode: TrendMode
   onTrendModeChange: (m: TrendMode) => void
-  /** 财年标签（如 FY2026），用于趋势页说明 X 轴范围 */
-  fiscalYearLabel?: string | null
   /** 当前激活标签（父级持久化，模式同 trendMetric） */
   tab: AnalysisTab
   onTabChange: (t: AnalysisTab) => void
@@ -54,12 +52,11 @@ export function AnalysisTabsCard({
   onTrendMetricChange,
   trendMode,
   onTrendModeChange,
-  fiscalYearLabel,
   tab,
   onTabChange,
 }: AnalysisTabsCardProps) {
   return (
-    <Card className="animate-fade-in" style={{ animationDelay: '120ms' }}>
+    <Card className="animate-fade-in border border-border" style={{ animationDelay: '120ms' }}>
       <Tabs value={tab} onValueChange={(v) => onTabChange(v as AnalysisTab)}>
         <CardContent className="px-6 py-6">
           <TabsList variant="line" className="mb-4 justify-start">
@@ -76,7 +73,7 @@ export function AnalysisTabsCard({
               onMetricChange={onTrendMetricChange}
               mode={trendMode}
               onModeChange={onTrendModeChange}
-              fiscalYearLabel={fiscalYearLabel}
+              period={period}
               subjectName={subjectName}
             />
           </TabsContent>

@@ -75,14 +75,14 @@ export function AccountFilterTab() {
   return (
     <div className="space-y-4">
       {/* 科目过滤卡：标题统计 + 交互说明 + 科目标签云 */}
-      <Card className="rounded-card overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5">
-          <div className="flex flex-wrap items-center gap-3">
+      <Card className="rounded-card border border-border overflow-hidden">
+        <div className="flex flex-col gap-2 border-b px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
             <h3 className="flex items-center gap-2 text-base font-semibold tracking-tight">
               <FilterX className="h-4 w-4" />
               科目过滤
             </h3>
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">
               已纳入 <span className="font-medium text-success-strong">{activeCount}</span> 个 · 已排除 <span className="font-medium text-warning-strong">{excludedCount}</span> 个
             </span>
             <Tooltip>
@@ -96,12 +96,12 @@ export function AccountFilterTab() {
               </TooltipContent>
             </Tooltip>
           </div>
-          <div className="relative">
+          <div className="relative w-full sm:w-[180px]">
             <Search className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               aria-label="搜索科目"
               placeholder="搜索科目..."
-              className="h-8 w-[180px] pl-8 text-sm"
+              className="h-8 w-full pl-8 text-sm"
               value={keyword}
               onChange={(e) => setKeyword(e.target.value)}
             />

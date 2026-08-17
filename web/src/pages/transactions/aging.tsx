@@ -11,7 +11,16 @@ import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
+import { Collapsible } from '@/components/ui/collapsible'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { PageContainer } from '@/components/layout/page-container'
+import { useStickyHeader } from '@/hooks/useStickyHeader'
+import { TABLE_HEADER_STICKY } from '@/components/data-table/styles'
 import { useTransactionAging, useTransactionPeriods, useCompanies, useAvailablePeriods } from '@/hooks/api-queries'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { usePageStore } from '@/stores/pageStateStore'
@@ -20,9 +29,9 @@ import { CompanySelect } from '@/components/filters/company-select'
 import { usePermission } from '@/hooks/usePermission'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { Download, FileText, Eye } from 'lucide-react'
+import { Download, FileText, Eye, ChevronDown, MoreHorizontal } from 'lucide-react'
 import { TransactionAnalysisDrawer, type TransactionAnalysisTarget } from './analysis-drawer'
-import { AccountMultiSelect, PartyTypeSelect, PartyTypeTag, AGING_GROUPS, TRANSACTION_TYPES, useDefaultCompanyCode } from './shared'
+import { AccountMultiSelect, PartyTypeSelect, PartyTypeTag, AGING_GROUPS, TRANSACTION_TYPES, buildDetailSummary, useDefaultCompanyCode } from './shared'
 import type { AgingAnalysisRow } from '@/types'
 
 /** 账龄表渲染行：数据行 / 公司小计行 / 总合计行 */
@@ -50,6 +59,9 @@ const AGING_CELL_BG: Record<string, string> = {
 export default function TransactionsAgingPage() {
   const { can } = usePermission()
   const navigate = useNavigate()
+  // 吸顶测量：标题区 + 筛选卡高度实时测量，驱动筛选卡/表格容器吸顶偏移
+  const { headerRef, filterRef, headerHeight, filterHeight } = useStickyHeader()
+  const stickyTop = headerHeight + filterHeight
   // 抽屉目标为瞬时状态
   const [analysisTarget, setAnalysisTarget] = useState<TransactionAnalysisTarget | null>(null)
   // 筛选与分组持久化到 pageStateStore（切路由/刷新后恢复）
@@ -61,7 +73,7 @@ export default function TransactionsAgingPage() {
   const setPeriodFilter = useCallback((v: string) => setTransactionsTab('aging', { period: v }), [setTransactionsTab])
   const setTypeFilter = useCallback((v: string) => setTransactionsTab('aging', { type: v }), [setTransactionsTab])
   const setAccountFilter = useCallback((v: string[]) => setTransactionsTab('aging', { accounts: v }), [setTransactionsTab])
-  const setPartyFilter = useCallback((v: string) => setTransactionsTab('aging', { party: v }), [setTransactionsTab])
+  const setPartyFilter = useCallback((v: string[]) => setTransactionsTab('aging', { party: v }), [setTransactionsTab])
   const keyword = usePageStore((s) => s.transactions.aging.keyword)
   const setKeyword = useCallback((v: string) => setTransactionsTab('aging', { keyword: v }), [setTransactionsTab])
   const setGroupBy = useCallback((v: string) => setTransactionsTab('aging', { groupBy: v }), [setTransactionsTab])
@@ -70,6 +82,22 @@ export default function TransactionsAgingPage() {
   // 导出状态：exporting 期间显示生成/下载进度（响应头未达时 total 为 undefined，仅显示"生成中…"）
   const [exporting, setExporting] = useState(false)
   const [exportProgress, setExportProgress] = useState(0)
+  // 明细筛选折叠：≥1024px（Tailwind lg）恒展开直排（trigger 隐藏）；<1024px 默认收起、可手动切换；断点变化时跟随默认值
+  const DETAIL_QUERY = '(min-width: 1024px)'
+  const [isDesktop, setIsDesktop] = useState(
+    () => typeof window.matchMedia === 'function' && window.matchMedia(DETAIL_QUERY).matches,
+  )
+  const [detailOpen, setDetailOpen] = useState(isDesktop)
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    const mq = window.matchMedia(DETAIL_QUERY)
+    const onChange = (e: MediaQueryListEvent) => {
+      setIsDesktop(e.matches)
+      setDetailOpen(e.matches)
+    }
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
   // 持久化公司校验：编码已删除/越权时回退默认主体（候选加载后生效，用户手动切换后不再覆盖）
   const { data: companies } = useCompanies()
   useEffect(() => {
@@ -110,7 +138,7 @@ export default function TransactionsAgingPage() {
     groupBy: effectiveGroupBy,
     period,
     accountCodes: accountFilter.length ? accountFilter.join(',') : undefined,
-    partyType: partyFilter === 'all' ? undefined : partyFilter,
+    partyType: partyFilter.length ? partyFilter.join(',') : undefined,
     counterpartyKeyword: keyword || undefined,
   }, { enabled: !!period }) // 等期间确定后再查，避免跨期重复累加的首次查询
 
@@ -148,6 +176,17 @@ export default function TransactionsAgingPage() {
   // 仅显示小计：渲染层过滤（renderRows 计算不变，小计/合计由全量数据聚合，不影响数据完整性）
   const visibleRows = subtotalOnly ? renderRows.filter((r) => r.kind !== 'data') : renderRows
   const hiddenDetailCount = renderRows.filter((r) => r.kind === 'data').length
+  // 明细筛选生效条件摘要（折叠 trigger 展示）
+  const detailSummary = buildDetailSummary(accountFilter, partyFilter, keyword, subtotalOnly)
+
+  // 撰写单项分析：以当前筛选快照为分析目标（平铺按钮与操作下拉共用）
+  const openAnalysis = useCallback(() => {
+    setAnalysisTarget({
+      transactionType: typeFilter || '',
+      period: period as string,
+      defaultCompanyCode: companyFilter !== 'all' ? companyFilter : undefined,
+    })
+  }, [setAnalysisTarget, typeFilter, period, companyFilter])
 
   // Excel 导出：参数与当前表格查询一致（含小计开关），服务端生成（transactions:export 权限 + 审计）
   const handleExport = async () => {
@@ -161,7 +200,7 @@ export default function TransactionsAgingPage() {
         groupBy: effectiveGroupBy,
         period,
         accountCodes: accountFilter.length ? accountFilter.join(',') : undefined,
-        partyType: partyFilter === 'all' ? undefined : partyFilter,
+        partyType: partyFilter.length ? partyFilter.join(',') : undefined,
         counterpartyKeyword: keyword || undefined,
         subtotalOnly,
       }, setExportProgress)
@@ -179,15 +218,16 @@ export default function TransactionsAgingPage() {
   const labelColSpan = 2 + (effectiveGroupBy === 'counterparty' || effectiveGroupBy === 'account' ? 1 : 0)
 
   return (
-    <PageContainer title="账龄分析">
+    <PageContainer title="账龄分析" stickyHeader headerRef={headerRef}>
       <div className="space-y-4">
-        {/* 筛选卡：公司 / 期间 / 类型 / 科目 / 客商 / 分组 / 导出 */}
-        <Card className="rounded-card p-4">
-        {/* 行 1：核心筛选 + 高频操作 */}
-        <div className="flex flex-wrap items-center gap-3">
-          <CompanySelect value={companyFilter} onChange={setCompanyFilter} />
+        {/* 筛选卡：公司 / 期间 / 类型 / 科目 / 客商 / 分组 / 导出（吸顶） */}
+        <Card ref={filterRef} className="sticky z-10 rounded-card p-4" style={{ top: headerHeight }}>
+        {/* 行 1：核心筛选 + 高频操作（flex-nowrap 强制单行：小屏时下拉收缩省略号，按钮组恒完整） */}
+        <div className="flex flex-nowrap items-center gap-2">
+          <CompanySelect value={companyFilter} onChange={setCompanyFilter} className="w-[150px]" />
           <Select value={period ?? ''} onValueChange={setPeriodFilter}>
-            <SelectTrigger className="w-[140px]">
+            {/* 期间 YYYY-MM 共 7 字符（约 54px 文本 + 24px 内边距 + 16px 箭头） */}
+            <SelectTrigger className="w-[94px] min-w-0">
               <SelectValue placeholder="期间" />
             </SelectTrigger>
             <SelectContent>
@@ -195,7 +235,8 @@ export default function TransactionsAgingPage() {
             </SelectContent>
           </Select>
           <Select value={typeFilter} onValueChange={(v) => { setTypeFilter(v === 'all' ? '' : v); setAccountFilter([]) }}>
-            <SelectTrigger className="w-[160px]">
+            {/* 宽度刚好容纳最长选项「其他应收款」等 5 字（70px 文本 + 24px 内边距 + 16px 箭头） */}
+            <SelectTrigger className="w-[110px] min-w-0">
               <SelectValue placeholder="往来类型" />
             </SelectTrigger>
             <SelectContent>
@@ -203,63 +244,110 @@ export default function TransactionsAgingPage() {
               {TRANSACTION_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Select value={groupBy} onValueChange={setGroupBy}>
-            <SelectTrigger className="w-[160px]">
+          <Select value={groupBy} onValueChange={(v) => { setGroupBy(v); if (v !== 'counterparty') setKeyword('') }}>
+            {/* 选项已精简为 3 字，宽度随之收窄（42px 文本 + 24px 内边距 + 16px 箭头） */}
+            <SelectTrigger className="w-[84px] min-w-0">
               <SelectValue placeholder="分组方式" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="type">按往来类型</SelectItem>
-              <SelectItem value="counterparty">按往来对象</SelectItem>
+              <SelectItem value="type">按类型</SelectItem>
+              <SelectItem value="counterparty">按对象</SelectItem>
             </SelectContent>
           </Select>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            {can('transactions', 'export') && (
-              <Button variant="outline" size="sm" disabled={!period || exporting} onClick={handleExport}>
-                <Download className="mr-1 h-4 w-4" />
-                {exporting ? (exportProgress > 0 ? `导出中 ${exportProgress}%` : '生成中…') : '导出 Excel'}
-              </Button>
-            )}
-            {can('reports', 'create') && (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!period}
-                onClick={() => setAnalysisTarget({
-                  transactionType: typeFilter || '',
-                  period: period as string,
-                  defaultCompanyCode: companyFilter !== 'all' ? companyFilter : undefined,
-                })}
-              >
-                <FileText className="mr-1 h-4 w-4" /> 撰写单项分析
-              </Button>
-            )}
-            {can('reports', 'view') && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => navigate('/reports/analyses')}
-              >
-                <Eye className="mr-1 h-4 w-4" /> 查看分析
-              </Button>
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            {/* ≥lg 三按钮平铺；<lg 收缩为「操作」下拉，节省筛选条宽度 */}
+            {isDesktop ? (
+              <>
+                {can('reports', 'create') && (
+                  <Button size="sm" disabled={!period} onClick={openAnalysis}>
+                    <FileText className="mr-1 h-4 w-4" /> 撰写单项分析
+                  </Button>
+                )}
+                {can('reports', 'view') && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate('/reports/analyses')}
+                  >
+                    <Eye className="mr-1 h-4 w-4" /> 查看分析
+                  </Button>
+                )}
+                {can('transactions', 'export') && (
+                  <Button variant="outline" size="sm" disabled={!period || exporting} onClick={handleExport}>
+                    <Download className="mr-1 h-4 w-4" />
+                    {exporting ? (exportProgress > 0 ? `导出中 ${exportProgress}%` : '生成中…') : '导出 Excel'}
+                  </Button>
+                )}
+              </>
+            ) : (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <MoreHorizontal className="mr-1 h-4 w-4" /> 操作
+                    <ChevronDown className="ml-1 h-3.5 w-3.5 opacity-50" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44">
+                  {can('reports', 'create') && (
+                    <DropdownMenuItem disabled={!period} onSelect={openAnalysis}>
+                      <FileText className="mr-2 h-4 w-4" /> 撰写单项分析
+                    </DropdownMenuItem>
+                  )}
+                  {can('reports', 'view') && (
+                    <DropdownMenuItem onSelect={() => navigate('/reports/analyses')}>
+                      <Eye className="mr-2 h-4 w-4" /> 查看分析
+                    </DropdownMenuItem>
+                  )}
+                  {can('transactions', 'export') && (
+                    <DropdownMenuItem disabled={!period || exporting} onSelect={handleExport}>
+                      <Download className="mr-2 h-4 w-4" />
+                      {exporting ? (exportProgress > 0 ? `导出中 ${exportProgress}%` : '生成中…') : '导出 Excel'}
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </div>
         </div>
-        {/* 行 2：明细筛选 */}
-        <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-dashed border-border pt-3">
-          <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">明细筛选</span>
-          <AccountMultiSelect value={accountFilter} onChange={setAccountFilter} transactionType={typeFilter || undefined} />
-          <PartyTypeSelect value={partyFilter} onChange={setPartyFilter} />
-          <Input
-            placeholder="搜索往来对象..."
-            className="w-[200px]"
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-          />
-          <div className="flex items-center gap-2">
-            <Switch id="aging-subtotal-only" checked={subtotalOnly} onCheckedChange={setSubtotalOnly} disabled={rows.length === 0} />
-            <span className="cursor-pointer text-xs text-muted-foreground select-none" onClick={() => setSubtotalOnly(!subtotalOnly)}>仅显示小计</span>
+        {/* 行 2：明细筛选（≥lg 恒展开直排与现状一致；<lg 收进折叠面板，trigger 展示生效条件摘要） */}
+        <Collapsible
+          open={detailOpen}
+          onOpenChange={setDetailOpen}
+          trigger={(open) => (
+            <div className={cn('flex w-full items-center gap-3 pt-1', isDesktop && 'hidden')}>
+              <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">明细筛选</span>
+              {detailSummary.length > 0 && (
+                <span className="min-w-0 truncate text-xs text-muted-foreground">{detailSummary.join(' · ')}</span>
+              )}
+              {detailSummary.length > 0 && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />}
+              <ChevronDown
+                className={cn('ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')}
+              />
+            </div>
+          )}
+        >
+          <div className="mt-1 flex flex-wrap items-center gap-3 border-t border-dashed border-border pt-1">
+            {/* 桌面直排时展示区段徽标；移动端徽标在 trigger 行，避免展开后重复 */}
+            {isDesktop && (
+              <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">明细筛选</span>
+            )}
+            <AccountMultiSelect value={accountFilter} onChange={(v) => { setAccountFilter(v); if (v.length > 0) setKeyword('') }} transactionType={typeFilter || undefined} />
+            <PartyTypeSelect value={partyFilter} onChange={setPartyFilter} />
+            {/* 搜索框仅在按往来对象分组时展示（按科目展开时无往来对象列，避免隐藏筛选残留） */}
+            {effectiveGroupBy === 'counterparty' && (
+              <Input
+                placeholder="搜索往来对象..."
+                className="w-full sm:w-[200px]"
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+              />
+            )}
+            <div className="flex items-center gap-2">
+              <Switch id="aging-subtotal-only" checked={subtotalOnly} onCheckedChange={setSubtotalOnly} disabled={rows.length === 0} />
+              <span className="cursor-pointer text-xs text-muted-foreground select-none" onClick={() => setSubtotalOnly(!subtotalOnly)}>仅显示小计</span>
+            </div>
           </div>
-        </div>
+        </Collapsible>
         </Card>
 
         {/* 仅显示小计提示：明细行数仍参与小计/合计聚合，仅隐藏展示 */}
@@ -267,21 +355,21 @@ export default function TransactionsAgingPage() {
           <p className="text-xs text-muted-foreground">已隐藏 {hiddenDetailCount} 条明细，仅显示小计/合计</p>
         )}
 
-        {/* 表格卡：账龄明细（含小计/合计行） */}
-        <Card className="rounded-card overflow-hidden">
-          <div className="border-b px-4 py-2.5">
-            <p className="text-xs text-muted-foreground">共 {rows.length} 行（含小计/合计）</p>
-          </div>
+        {/* 表格卡：账龄明细（含小计/合计行，表格容器吸顶） */}
+        <Card className="rounded-card border border-border">
           <div className="pt-4">
             {isLoading ? (
               <div className="py-8 text-center text-sm text-muted-foreground">加载中…</div>
             ) : rows.length === 0 ? (
               <div className="py-8 text-center text-sm text-muted-foreground">暂无数据</div>
             ) : (
-              <div className="overflow-x-auto">
+              <div
+                className="sticky overflow-auto rounded-card bg-background"
+                style={{ top: stickyTop, maxHeight: `calc(100dvh - ${stickyTop}px - 24px)` }}
+              >
                 <table className="w-full text-sm" style={{ minWidth: 1240 }}>
                   <thead>
-                    <tr className="border-b bg-muted/50 text-center text-foreground">
+                    <tr className={cn('border-b bg-muted text-center text-foreground', TABLE_HEADER_STICKY)}>
                       <th className="w-[150px] px-2 py-2 font-medium">公司</th>
                       <th className="w-[90px] px-2 py-2 font-medium">往来类型</th>
                       {effectiveGroupBy === 'counterparty' && <th className="min-w-[140px] px-2 py-2 font-medium">往来对象</th>}

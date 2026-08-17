@@ -10,8 +10,6 @@ import { buildExcel } from '../lib/excel'
  * 六大往来类型：应收账款(AR)、其他应收款(AR)、预收账款(AR)、应付账款(AP)、其他应付款(AP)、预付账款(AP)
  */
 
-const AGING_BUCKETS = ['1个月', '2个月', '3个月', '4个月', '5个月', '6个月', '半年到1年', '1年到2年', '2年到3年', '3年以上'] as const
-
 const AGING_FIELDS = ['aging1m', 'aging2m', 'aging3m', 'aging4m', 'aging5m', 'aging6m', 'aging6mTo1y', 'aging1yTo2y', 'aging2yTo3y', 'aging3yPlus'] as const
 
 /** 账龄分析展示归集：10 段 → 8 段（1-3月按单月展开为 1/2/3 个月；半年以上 = 半年到1年段；1年至3年按年拆为 1-2 年 + 2-3 年） */
@@ -174,10 +172,10 @@ export const TransactionService = {
       const s = r._sum
       const ie = internalMap.get(r.transactionType) || { internal: 0, external: 0 }
       const aging: Record<string, number> = {}
-      AGING_BUCKETS.forEach((bucket, i) => {
-        const field = AGING_FIELDS[i]
-        aging[bucket] = toNumber((s as Record<string, unknown>)[field])
-      })
+      // 账龄 10 段归集为 8 段（与 getAgingAnalysis/AGING_GROUP_DEFS 一致），前端卡片按 8 段键渲染
+      for (const [group, fields] of AGING_GROUP_DEFS) {
+        aging[group] = Math.round(fields.reduce((sum, f) => sum + toNumber((s as Record<string, unknown>)[f]), 0) * 100) / 100
+      }
       return {
         transactionType: r.transactionType,
         direction: r.direction,
@@ -207,12 +205,12 @@ export const TransactionService = {
    * counterpartyKeyword 对往来对象编码/名称做模糊搜索（聚合前过滤底层记录）；
    * 结果按期末余额倒序。
    */
-  async getAgingAnalysis(params: { companyCodes?: string[]; transactionType?: string; groupBy?: 'type' | 'counterparty' | 'account'; period?: string; accountCodes?: string[]; partyType?: string; counterpartyKeyword?: string }) {
+  async getAgingAnalysis(params: { companyCodes?: string[]; transactionType?: string; groupBy?: 'type' | 'counterparty' | 'account'; period?: string; accountCodes?: string[]; partyType?: string[]; counterpartyKeyword?: string }) {
     const where: Record<string, unknown> = {}
     if (params.companyCodes) where.companyCode = { in: params.companyCodes }
     if (params.transactionType) where.transactionType = params.transactionType
     if (params.period) where.period = params.period
-    if (params.partyType) where.partyType = params.partyType
+    if (params.partyType?.length) where.partyType = { in: params.partyType }
     // 往来对象关键词搜索：编码或名称模糊匹配（不区分大小写），在 groupBy 聚合前过滤底层记录
     if (params.counterpartyKeyword) {
       where.OR = [
@@ -274,7 +272,7 @@ export const TransactionService = {
    * 按前端表格同规则重组为 数据行 + 公司小计 + 合计（subtotalOnly 时仅小计/合计），
    * 数值以元为单位原值导出，保证导出内容 = 当前视图。
    */
-  async exportAgingAnalysis(params: { companyCodes?: string[]; transactionType?: string; groupBy?: 'type' | 'counterparty' | 'account'; period?: string; accountCodes?: string[]; partyType?: string; counterpartyKeyword?: string; subtotalOnly?: boolean }): Promise<Buffer> {
+  async exportAgingAnalysis(params: { companyCodes?: string[]; transactionType?: string; groupBy?: 'type' | 'counterparty' | 'account'; period?: string; accountCodes?: string[]; partyType?: string[]; counterpartyKeyword?: string; subtotalOnly?: boolean }): Promise<Buffer> {
     const groupBy = params.groupBy || 'type'
     type ExportRow = AgingSummaryRow & { accountCode?: string; accountDesc?: string | null }
     const rows = (await this.getAgingAnalysis(params)) as unknown as ExportRow[]

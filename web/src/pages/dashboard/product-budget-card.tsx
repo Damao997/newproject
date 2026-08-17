@@ -66,7 +66,7 @@ export function ProductBudgetCard({ period, companyCode, subjectName }: ProductB
     <>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
-          期间 {data?.period ?? period ?? '—'} · 单位：万元{subjectName ? ` · 主体：${subjectName}` : ''}
+          期间 {data?.period ?? period ?? '—'} · 单位：万元{subjectName ? ` · 当前主体：${subjectName}` : ''}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <Tabs value={amountMode} onValueChange={(v) => setAmountMode(v as AmountMode)}>
@@ -88,8 +88,8 @@ export function ProductBudgetCard({ period, companyCode, subjectName }: ProductB
               <thead>
                 <tr className="border-b border-border">
                   <th rowSpan={2} className="px-3 py-2 text-left text-[13px] font-medium text-foreground">品类</th>
-                  <th colSpan={6} className="border-l border-border px-3 py-2 text-center text-[13px] font-semibold text-foreground">收入</th>
-                  <th colSpan={6} className="border-l border-border px-3 py-2 text-center text-[13px] font-semibold text-foreground">毛利</th>
+                  <th colSpan={6} className="px-3 py-2 text-center text-[13px] font-semibold text-foreground">收入</th>
+                  <th colSpan={6} className="px-3 py-2 text-center text-[13px] font-semibold text-foreground">毛利</th>
                 </tr>
                 <tr className="border-b border-border">
                   <th className={TH_CLS}>{amountMode === 'month' ? '月度预算' : '年度预算'}</th>

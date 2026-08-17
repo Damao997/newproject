@@ -64,28 +64,28 @@
    * 由 Header 风格切换器写入 html[data-sidebar]；仅 3 种风格（浅色/紫渐变/深色）。
    * 主页面恒白：--background/--page/--card 三种风格下均为纯白；
    * 交互元素（--primary/--ring/--chart-1/辅助色）跟随侧边栏主题色。
-   * 靛蓝纯色：侧边栏 #352F7E，选中用更亮的紫 #4338CA。
+   * 深紫纯色：侧边栏 #472159，选中用更亮的紫蓝 ≈#3D41C6（--sidebar-selected-bg: 239 55% 51%）。
    */
-  /* 靛蓝纯色：侧边栏背景与交互主色统一 #352F7E（原紫渐变已取消，收敛为纯色方案）；图表主色用淡紫提亮 #BBA9F7 */
+  /* 深紫纯色：侧边栏背景与交互主色统一 #472159（深紫）；图表主色用淡紫提亮 #BBA9F7 */
   :root[data-sidebar='gradient'] {
-    --primary: 245 46% 34%;
+    --primary: 281 46% 24%;
     --primary-foreground: 0 0% 100%;
-    --ring: 245 46% 34%;
+    --ring: 281 46% 24%;
     --chart-1: 254 83% 82%;
-    --secondary: 245 30% 96%;
-    --secondary-foreground: 245 45% 26%;
-    --muted: 245 30% 96%;
-    --muted-foreground: 245 22% 45%;
-    --accent: 245 40% 94%;
-    --accent-foreground: 245 45% 26%;
-    --border: 245 25% 88%;
-    --input: 245 25% 88%;
-    --sidebar-bg: 245 46% 34%;
+    --secondary: 281 30% 96%;
+    --secondary-foreground: 281 45% 26%;
+    --muted: 281 30% 96%;
+    --muted-foreground: 281 22% 45%;
+    --accent: 281 40% 94%;
+    --accent-foreground: 281 45% 26%;
+    --border: 281 25% 88%;
+    --input: 281 25% 88%;
+    --sidebar-bg: 281 46% 24%;
     --sidebar-fg: 231 100% 94%;
     --sidebar-icon: 231 100% 90%;
     --sidebar-selected-bg: 239 55% 51%;
     --sidebar-selected-fg: 0 0% 100%;
-    --sidebar-border: 245 46% 40%;
+    --sidebar-border: 281 46% 30%;
     --sidebar-brand-fg: 0 0% 100%;
   }
 

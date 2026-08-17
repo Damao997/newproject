@@ -95,7 +95,7 @@ export function CompanyShareCard({ rows, loading }: { rows: InventoryDetailRow[]
   }, [pieData, sum, sidebarStyle])
 
   return (
-    <Card className="animate-fade-in">
+    <Card className="animate-fade-in border border-border">
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-base">
           <PieChart className="h-4 w-4" />

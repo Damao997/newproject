@@ -39,7 +39,7 @@ export function Collapsible({ open, onOpenChange, defaultOpen = true, trigger, c
         aria-expanded={actualOpen}
         aria-controls={panelId}
         onClick={handleToggle}
-        className={cn('w-full text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-ring')}
+        className={cn('block w-full text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-ring')}
       >
         {trigger(actualOpen)}
       </button>

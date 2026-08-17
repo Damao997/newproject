@@ -197,6 +197,10 @@ export interface ReclassifyLogDetail {
   increaseAmount?: number
   netChange?: number
   reason?: string
+  /** subject：科目归类（换父）记录 */
+  subjectCode?: string | null
+  fromCategory?: string
+  toCategory?: string
 }
 
 export interface ReclassifyLog {

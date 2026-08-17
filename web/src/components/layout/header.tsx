@@ -56,19 +56,21 @@ export function Header({ onMenuClick }: HeaderProps) {
   return (
     <header className="z-40 w-full shrink-0 border-b border-border bg-background font-sans">
       <div className="flex h-14 items-center px-4">
-        {/* 移动端：菜单按钮 + 品牌标识 */}
-        <div className="flex items-center gap-2 md:hidden">
+        {/* 移动端：菜单按钮 + 品牌标识（<640px 仅 Logo 最大化内容空间，640-767px 标题单行截断） */}
+        <div className="flex min-w-0 flex-1 items-center gap-2 md:hidden">
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 text-foreground"
+            className="h-8 w-8 shrink-0 text-foreground"
             aria-label="打开导航菜单"
             onClick={onMenuClick}
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <img src="/logo.png" alt="壹品慧" className="h-7 w-7 object-contain" />
-          <span className="text-base font-bold text-foreground">浙江壹品慧经营分析平台</span>
+          <img src="/logo.png" alt="壹品慧" className="h-7 w-7 shrink-0 object-contain" />
+          <span className="hidden min-w-0 truncate text-base font-bold text-foreground sm:inline">
+            浙江壹品慧经营分析平台
+          </span>
         </div>
 
         {/* 桌面端面包屑：层级 ≥3 时显示，左对齐占满剩余空间（单行截断）；<768px 隐藏（左侧为汉堡+品牌） */}

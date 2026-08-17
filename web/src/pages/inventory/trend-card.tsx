@@ -114,7 +114,7 @@ export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes:
   }, [data, getDisplayName, sidebarStyle])
 
   return (
-    <Card className="animate-fade-in">
+    <Card className="animate-fade-in border border-border">
       <CardHeader className="pb-2">
         <div className="flex flex-wrap items-center gap-3">
           <CardTitle className="flex items-center gap-2 text-base">

@@ -101,8 +101,8 @@ export function ExpenseAnalysisCard({ period, companyCode, subjectName }: Expens
               <thead>
                 <tr className="border-b border-border">
                   <th rowSpan={2} className="px-3 py-2 text-left text-[13px] font-medium text-foreground">指标名称</th>
-                  <th colSpan={6} className="border-l border-border px-3 py-2 text-center text-[13px] font-semibold text-foreground">月度完成情况</th>
-                  <th colSpan={6} className="border-l border-border px-3 py-2 text-center text-[13px] font-semibold text-foreground">财年累计完成情况</th>
+                  <th colSpan={6} className="px-3 py-2 text-center text-[13px] font-semibold text-foreground">月度完成情况</th>
+                  <th colSpan={6} className="px-3 py-2 text-center text-[13px] font-semibold text-foreground">财年累计完成情况</th>
                 </tr>
                 <tr className="border-b border-border">
                   <th className={TH_CLS}>月度预算</th>

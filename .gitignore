@@ -50,6 +50,16 @@ review-diff*.txt
 .qoder/edge-profile-*
 .qoder/mcp.json
 
+# 浏览器测试产物（无头浏览器 profile / 截图 / 验证脚本，不入库）
+.qoder/edge-headless-profile/
+.qoder/browser-check/
+.qoder/better-harness-runs/
+.qoder/*.png
+.qoder/*.mjs
+
+# Superpowers 插件工作区缓存（brainstorm 设计稿/运行状态，不入库）
+.superpowers/
+
 # 诊断脚本与请求体（可能含测试口令，不入库）
 server/scripts/diag-*
 

@@ -10,7 +10,7 @@ export const SIDEBAR_STYLE_KEYS: readonly SidebarStyle[] = ['light', 'gradient',
 /** 风格选项（Header 风格切换器渲染用；hex 色值见 lib/chart-theme.ts 的 SIDEBAR_PRESETS） */
 export const SIDEBAR_STYLE_OPTIONS: { key: SidebarStyle; label: string }[] = [
   { key: 'light', label: '浅色' },
-  { key: 'gradient', label: '靛蓝' },
+  { key: 'gradient', label: '深紫' },
   { key: 'dark', label: '深色' },
 ]
 

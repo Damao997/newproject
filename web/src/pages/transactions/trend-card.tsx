@@ -173,7 +173,7 @@ export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] 
   }
 
   return (
-    <Card>
+    <Card className="border border-border">
       <CardHeader className="pb-2">
         <div className="flex flex-wrap items-center gap-3">
           <CardTitle className="flex items-center gap-2 text-base">

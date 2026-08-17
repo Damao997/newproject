@@ -45,7 +45,7 @@ const TXN_SUBJECT_OPTIONS = [
   { code: 'TXN_PER_AP', name: '预付账款' },
 ]
 
-export function AnalysisManager() {
+export function AnalysisManager({ stickyTop = 0 }: { stickyTop?: number }) {
   const { can } = usePermission()
   const canUpdate = can('reports', 'update')
   const canDelete = can('reports', 'delete')
@@ -231,18 +231,18 @@ export function AnalysisManager() {
 
   return (
     <>
-      {/* 控制层：筛选工具条（筛选卡） */}
-      <Card className="rounded-card p-4">
-      <div className="flex flex-wrap items-center gap-2">
+      {/* 控制层：筛选工具条（筛选卡，吸顶；flex-nowrap 强制单行：空间不足时科目/期间/搜索先压缩省略号，公司名与开关恒完整） */}
+      <Card className="sticky z-10 rounded-card p-4" style={{ top: stickyTop }}>
+      <div className="flex flex-nowrap items-center gap-1.5">
           <Select value={companyCode} onValueChange={(v) => { setCompanyCode(v); resetPage() }}>
-            <SelectTrigger className="h-8 w-44"><SelectValue placeholder="公司" /></SelectTrigger>
+            <SelectTrigger className="h-8 w-44 min-w-[96px]"><SelectValue placeholder="公司" /></SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL}>全部公司</SelectItem>
               {entityCompanies.map((c) => <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={analysisKind} onValueChange={(v) => { setAnalysisKind(v as 'all' | 'overview' | 'subject'); resetPage() }}>
-            <SelectTrigger className="h-8 w-32"><SelectValue placeholder="分析类型" /></SelectTrigger>
+            <SelectTrigger className="h-8 w-32 min-w-0"><SelectValue placeholder="分析类型" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">全部分析</SelectItem>
               <SelectItem value="overview">AI 预分析</SelectItem>
@@ -254,7 +254,7 @@ export function AnalysisManager() {
             onValueChange={(v) => { setSubjectType(v); setSubjectCode(ALL); resetPage() }}
             disabled={analysisKind === 'overview'}
           >
-            <SelectTrigger className="h-8 w-28"><SelectValue placeholder="科目类型" /></SelectTrigger>
+            <SelectTrigger className="h-8 w-28 min-w-0"><SelectValue placeholder="科目类型" /></SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL}>全部类型</SelectItem>
               <SelectItem value="operating">经营科目</SelectItem>
@@ -263,7 +263,7 @@ export function AnalysisManager() {
             </SelectContent>
           </Select>
           <Select value={subjectCode} onValueChange={(v) => { setSubjectCode(v); resetPage() }} disabled={subjectType === ALL || analysisKind === 'overview'}>
-            <SelectTrigger className="h-8 w-44"><SelectValue placeholder={subjectType === ALL ? '先选科目类型' : '科目'} /></SelectTrigger>
+            <SelectTrigger className="h-8 w-44 min-w-0"><SelectValue placeholder={subjectType === ALL ? '先选科目类型' : '科目'} /></SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL}>全部科目</SelectItem>
               {subjects.map((s) => <SelectItem key={s.code} value={s.code}>{s.name}</SelectItem>)}
@@ -275,9 +275,9 @@ export function AnalysisManager() {
             availablePeriods={periods}
             allowedPeriods={periods}
             placeholder="全部期间"
-            className="h-8 w-32"
+            className="h-8 w-32 min-w-0"
           />
-          <div className="relative w-52">
+          <div className="relative w-52 min-w-0">
             <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={keyword}
@@ -286,7 +286,7 @@ export function AnalysisManager() {
               className="h-8 pl-8"
             />
           </div>
-          <label className="ml-auto flex items-center gap-1.5 text-[13px] text-muted-foreground">
+          <label className="ml-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[13px] text-muted-foreground">
             <Switch checked={includeInactive} onCheckedChange={(v) => { setIncludeInactive(v); resetPage() }} />
             包含已删除
           </label>
@@ -294,7 +294,7 @@ export function AnalysisManager() {
       </Card>
 
       {/* 展示层：分析列表（表格卡） */}
-      <Card className="animate-fade-in overflow-hidden rounded-card">
+      <Card className="animate-fade-in overflow-hidden rounded-card border border-border">
         {msg && <FlashMessage type={msg.type} className="pt-2">{msg.text}</FlashMessage>}
 
         {isLoading ? (
@@ -311,6 +311,7 @@ export function AnalysisManager() {
             rowKey={(a) => a.id}
             density="dense"
             caption="单项分析列表"
+            maxHeight="60vh"
           />
         )}
 

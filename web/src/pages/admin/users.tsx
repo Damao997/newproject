@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { PageContainer } from '@/components/layout/page-container'
+import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { FlashMessage } from '@/components/ui/flash-message'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { Pagination } from '@/components/data-table/pagination'
@@ -41,6 +42,9 @@ const USER_FETCH_LIMIT = 500
 /** 用户管理：用户增删改查、角色分配与启用/停用状态管理。 */
 export default function UsersPage() {
   const { can, role: currentRole } = usePermission()
+  // 吸顶测量：标题区 + 筛选卡高度实时测量，驱动筛选卡/表格容器吸顶偏移
+  const { headerRef, filterRef, headerHeight, filterHeight } = useStickyHeader()
+  const stickyTop = headerHeight + filterHeight
   const canCreateUser = can('admin:users', 'create')
   const canUpdateUser = can('admin:users', 'update')
   const canResetPassword = can('admin:users', 'reset-password')
@@ -241,10 +245,10 @@ export default function UsersPage() {
   }
 
   return (
-    <PageContainer title="用户管理" description="用户增删改查、角色分配与启用状态管理">
+    <PageContainer title="用户管理" description="用户增删改查、角色分配与启用状态管理" stickyHeader headerRef={headerRef}>
       {/* 统计卡片 */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 animate-fade-in">
-        <Card>
+        <Card className="border border-border">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
@@ -255,7 +259,7 @@ export default function UsersPage() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border border-border">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
@@ -266,7 +270,7 @@ export default function UsersPage() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border border-border">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
@@ -286,8 +290,8 @@ export default function UsersPage() {
         </FlashMessage>
       )}
 
-      {/* 用户列表（筛选卡 + 表格卡） */}
-      <Card className="animate-fade-in overflow-hidden rounded-card">
+      {/* 用户列表（筛选卡 + 表格卡，筛选卡/表格容器吸顶） */}
+      <Card className="animate-fade-in rounded-card border border-border">
         <div className="flex items-center justify-between border-b px-4 py-2.5">
           <h3 className="text-base font-semibold tracking-tight">用户列表</h3>
           <div className="flex items-center space-x-2">
@@ -306,8 +310,8 @@ export default function UsersPage() {
           </div>
         </div>
 
-        {/* 控制层：筛选工具条（筛选卡） */}
-        <Card className="m-4 rounded-card">
+        {/* 控制层：筛选工具条（筛选卡，吸顶） */}
+        <Card ref={filterRef} className="sticky z-10 m-4 rounded-card" style={{ top: headerHeight }}>
         <div className="flex flex-col space-y-2 sm:flex-row sm:items-center sm:space-x-2 sm:space-y-0">
             <Select value={roleFilter} onValueChange={(v) => { setRoleFilter(v); resetPage() }}>
               <SelectTrigger className="w-full sm:w-[180px]">
@@ -344,14 +348,16 @@ export default function UsersPage() {
           </div>
         </Card>
 
-          {/* 展示层：用户表格 */}
+          {/* 展示层：用户表格（表格容器吸顶） */}
           <div className="min-h-[360px] px-4 pb-4">
             {usersTruncated && (
               <p className="mb-2 text-sm text-warning-strong">
                 用户总数超过 {USER_FETCH_LIMIT}，当前仅展示前 {USER_FETCH_LIMIT} 条，请用搜索缩小范围
               </p>
             )}
-            <DataTable columns={userColumns} data={pagedUsers} rowKey={(u) => u.id} emptyText="暂无用户" />
+            <div className="sticky rounded-card bg-background" style={{ top: stickyTop }}>
+              <DataTable columns={userColumns} data={pagedUsers} rowKey={(u) => u.id} emptyText="暂无用户" maxHeight={`calc(100dvh - ${stickyTop}px - 24px)`} />
+            </div>
           </div>
 
           <div className="border-t px-4 py-2.5">

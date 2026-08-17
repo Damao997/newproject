@@ -1,5 +1,6 @@
 import { useParams } from 'react-router-dom'
 import { PageContainer } from '@/components/layout/page-container'
+import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { usePermission } from '@/hooks/usePermission'
 import { SubjectTreePanel } from '@/components/subject-tree/subject-tree-panel'
 import { CompanyPanel } from '@/components/dimension/company-panel'
@@ -15,6 +16,7 @@ type DimSubTab = (typeof DIM_SUB_TABS)[number]
  */
 export default function DataDimensionsPage() {
   const { can } = usePermission()
+  const { headerRef, headerHeight } = useStickyHeader()
   const { sub } = useParams<{ sub: string }>()
   const dimSubTab: DimSubTab = DIM_SUB_TABS.includes(sub as DimSubTab) ? (sub as DimSubTab) : 'operating'
 
@@ -25,10 +27,11 @@ export default function DataDimensionsPage() {
   const pageTitle = { operating: '经营分析科目', static: '静态科目', company: '公司', summary: '汇总主体' }[dimSubTab]
 
   return (
-    <PageContainer title={pageTitle}>
+    <PageContainer title={pageTitle} stickyHeader headerRef={headerRef}>
       {dimSubTab === 'operating' && (
         <SubjectTreePanel
           type="operating"
+          stickyTop={headerHeight}
           canCreate={can('data:subject', 'create')}
           canUpdate={can('data:subject', 'update')}
           canDelete={can('data:subject', 'delete')}
@@ -42,6 +45,7 @@ export default function DataDimensionsPage() {
       {dimSubTab === 'static' && (
         <SubjectTreePanel
           type="static"
+          stickyTop={headerHeight}
           canCreate={can('data:subject', 'create')}
           canUpdate={can('data:subject', 'update')}
           canDelete={can('data:subject', 'delete')}
@@ -54,6 +58,7 @@ export default function DataDimensionsPage() {
       )}
       {dimSubTab === 'company' && (
         <CompanyPanel
+          stickyTop={headerHeight}
           canCreate={can('data:company', 'create')}
           canUpdate={can('data:company', 'update')}
           canDelete={can('data:company', 'delete')}

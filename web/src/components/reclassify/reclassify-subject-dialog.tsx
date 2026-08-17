@@ -38,6 +38,8 @@ interface ReclassifySubjectDialogProps {
   readonly?: boolean
   /** 只读模式下展示的日志元信息（操作人/时间/状态） */
   meta?: ReclassifyLogMeta
+  /** 只读模式下还原的当时执行结果统计（来自日志 detail，如调减/调增金额、净变动、新建行数） */
+  result?: PreviewStatItem[]
 }
 
 export interface ReclassifySubjectPreset {
@@ -77,7 +79,7 @@ const ADJUST_MODE_LABEL: Record<AdjustMode, string> = {
  * 金额单位与事实数据一致（万元）。期间按单月必选（与后端口径一致）；
  * 本年累计由查询时按财年实时聚合，自动反映调整结果。
  */
-export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = 'operating', defaultCompany, preset, readonly = false, meta }: ReclassifySubjectDialogProps) {
+export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = 'operating', defaultCompany, preset, readonly = false, meta, result }: ReclassifySubjectDialogProps) {
   const [templateType, setTemplateType] = useState<string>(preset?.templateType ?? defaultTemplateType)
   const [companyCode, setCompanyCode] = useState<string>(preset?.companyCode ?? defaultCompany ?? '')
   const [adjustMode, setAdjustMode] = useState<AdjustMode>(preset?.adjustMode ?? 'both')
@@ -487,6 +489,14 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
               )}
             {reasonError && <p className="text-xs text-destructive">{reasonError}</p>}
           </section>
+
+          {/* ===== 执行结果（只读模式：还原当时的执行结果统计） ===== */}
+          {readonly && result && result.length > 0 && (
+            <section className="space-y-2">
+              <SectionTitle>执行结果</SectionTitle>
+              <PreviewStats items={result} />
+            </section>
+          )}
 
           {/* ===== 预览与执行（只读模式隐藏） ===== */}
           {!readonly && (

@@ -18,7 +18,7 @@ const ADMIN_PERMISSIONS: string[] = [
   'dashboard:view', 'dashboard:export',
   'indicators:view', 'indicators:export',
   'transactions:view', 'transactions:create', 'transactions:update', 'transactions:delete', 'transactions:import', 'transactions:export',
-  'transactions:salesmen:view', 'transactions:salesmen:create', 'transactions:salesmen:update', 'transactions:salesmen:delete',
+  'transactions:salesmen:view', 'transactions:salesmen:create', 'transactions:salesmen:update', 'transactions:salesmen:delete', // delete 为预留：后端暂无对应删除端点
   'inventory:view', 'inventory:create', 'inventory:update', 'inventory:delete', 'inventory:import', 'inventory:export',
   'reports:view', 'reports:create', 'reports:update', 'reports:delete', 'reports:export',
   'data:browse:view', 'data:import:upload',
@@ -95,7 +95,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     'dashboard:view', 'dashboard:export',
     'indicators:view', 'indicators:export',
     'transactions:view', 'transactions:create', 'transactions:update', 'transactions:delete', 'transactions:import', 'transactions:export',
-    'transactions:salesmen:view', 'transactions:salesmen:create', 'transactions:salesmen:update', 'transactions:salesmen:delete',
+    'transactions:salesmen:view', 'transactions:salesmen:create', 'transactions:salesmen:update', 'transactions:salesmen:delete', // delete 为预留：后端暂无对应删除端点
     'inventory:view', 'inventory:create', 'inventory:update', 'inventory:delete', 'inventory:import', 'inventory:export',
     'reports:view', 'reports:create', 'reports:update', 'reports:delete', 'reports:export',
     'data:browse:view', 'data:import:upload',

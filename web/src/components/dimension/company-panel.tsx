@@ -40,7 +40,7 @@ const emptyForm: CompanyForm = { code: '', name: '', shortName: '', entityType: 
  * 公司主体管理：列表 + 搜索 + 新增/编辑（编码不可变）+ 停用（软删除，引用保护）+ 重新启用。
  * 公司为基础数据，仅允许软删除（status→inactive），不允许物理删除。
  */
-export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete = false }: CompanyPanelProps) {
+export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete = false, stickyTop = 0 }: CompanyPanelProps & { stickyTop?: number }) {
   const showInactive = canUpdate || canDelete
   const { data, isLoading } = useCompanies(showInactive ? { includeInactive: 'true' } : undefined)
   const createCompany = useCreateCompany()
@@ -174,7 +174,8 @@ export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete =
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col space-y-2 sm:flex-row sm:items-center sm:space-x-2 sm:space-y-0">
+      {/* 搜索 + 显隐开关 + 操作按钮（吸顶） */}
+      <div className="sticky z-10 flex flex-col space-y-2 rounded-card bg-page p-4 sm:flex-row sm:items-center sm:space-x-2 sm:space-y-0" style={{ top: stickyTop }}>
         <div className="relative flex-1">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input placeholder="搜索公司名称或编码..." value={keyword} onChange={(e) => setKeyword(e.target.value)} className="pl-8" />

@@ -7,6 +7,7 @@ import { CompanySelect } from '@/components/filters/company-select'
 import { KpiCard } from '@/components/charts/kpi-card'
 import { type TrendMetric, type TrendMode } from '@/components/charts/trend-metrics'
 import { PageContainer } from '@/components/layout/page-container'
+import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { StatusIndicator } from '@/components/ui/status-indicator'
 import { KpiGridSkeleton, ChartSkeleton, ListSkeleton } from '@/components/ui/skeleton-blocks'
 import { useCompanies, useDashboardOverview, useAvailablePeriods } from '@/hooks/api-queries'
@@ -18,6 +19,8 @@ import { InventoryPieCard } from './inventory-pie-card'
 import { AlertTriangle, Inbox, Loader2, RefreshCw } from 'lucide-react'
 
 export default function DashboardPage() {
+  // 吸顶测量：标题区高度实时测量（标题区含 actions 筛选控件，吸顶时筛选随标题区固定）
+  const { headerRef } = useStickyHeader()
   // 查询条件与图表指标持久化到 pageStateStore（路由切换/刷新后恢复）
   const setDashboard = usePageStore((s) => s.setDashboard)
   const selectedPeriod = usePageStore((s) => s.dashboard.period)
@@ -112,6 +115,8 @@ export default function DashboardPage() {
       title="首页"
       description={`数据更新时间: ${lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleString('zh-CN') : new Date().toLocaleDateString('zh-CN')}${currentPeriod ? ` · 当前期间: ${currentPeriod}` : ''} · 当前主体: ${currentSubjectName}`}
       stickyHeader
+      headerRef={headerRef}
+      actionsFullWidth
       actions={
         <div className="flex flex-wrap items-center gap-3">
           <StatusIndicator
@@ -206,7 +211,6 @@ export default function DashboardPage() {
             onTrendMetricChange={setTrendMetric}
             trendMode={trendMode}
             onTrendModeChange={setTrendMode}
-            fiscalYearLabel={fiscalYear}
             tab={analysisTab}
             onTabChange={setAnalysisTab}
           />

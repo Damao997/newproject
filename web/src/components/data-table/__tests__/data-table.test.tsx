@@ -225,6 +225,35 @@ describe('DataTable', () => {
     expect(col?.getAttribute('style')).toContain('80px')
     fireEvent(window, new MouseEvent('pointerup'))
   })
+
+  it('maxHeight 限高模式：容器 overflow-auto + maxHeight 内联，thead sticky 表头 + th 不透明背景', () => {
+    const { container } = render(<DataTable columns={columns} data={rows} rowKey={(r) => r.id} maxHeight="300px" />)
+    const scrollBox = container.querySelector('.overflow-auto')
+    expect(scrollBox).not.toBeNull()
+    expect((scrollBox as HTMLElement).style.maxHeight).toBe('300px')
+    const thead = container.querySelector('thead')
+    expect(thead?.className).toContain('sticky')
+    expect(thead?.className).toContain('top-0')
+    const th = container.querySelector('thead th')
+    expect(th?.className).toContain('bg-muted')
+    expect(th?.className).toContain('border-b')
+  })
+
+  it('maxHeight 限高模式：表格切换 border-separate，行边框下沉到单元格（sticky 边框跟随滚动）', () => {
+    const { container } = render(<DataTable columns={columns} data={rows} rowKey={(r) => r.id} maxHeight="300px" />)
+    const table = container.querySelector('table')
+    expect(table?.className).toContain('border-separate')
+    expect(table?.className).toContain('border-spacing-0')
+    // 行边框由 table 级变体下沉到单元格（separate 下 tr 边框不渲染），thead tr 不再携带 border-b
+    expect(table?.className).toContain('[&_th]:border-b')
+    expect(table?.className).toContain('[&_td]:border-b')
+    expect(container.querySelector('thead tr')?.className).not.toContain('border-b')
+  })
+
+  it('不传 maxHeight 时表头不启用 sticky（默认随页面滚动，回归保护）', () => {
+    const { container } = render(<DataTable columns={columns} data={rows} rowKey={(r) => r.id} />)
+    expect(container.querySelector('thead')?.className).not.toContain('sticky')
+  })
 })
 
 describe('Pagination', () => {

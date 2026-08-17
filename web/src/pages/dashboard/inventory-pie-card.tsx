@@ -90,7 +90,7 @@ export function InventoryPieCard({ period, companyCode }: InventoryPieCardProps)
   }, [pieData, sidebarStyle])
 
   return (
-    <Card className="animate-fade-in" style={{ animationDelay: '240ms' }}>
+    <Card className="animate-fade-in border border-border" style={{ animationDelay: '240ms' }}>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 px-6 pb-3 pt-5">
         <div>
           <CardTitle className="text-lg font-semibold">

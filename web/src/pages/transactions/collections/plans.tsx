@@ -1,4 +1,5 @@
 import { PageContainer } from '@/components/layout/page-container'
+import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { CollectionsTab } from '../collections-tab'
 
 /**
@@ -8,9 +9,10 @@ import { CollectionsTab } from '../collections-tab'
  */
 
 export default function CollectionsPlansPage() {
+  const { headerRef, headerHeight } = useStickyHeader()
   return (
-    <PageContainer title="催收计划">
-      <CollectionsTab />
+    <PageContainer title="催收计划" stickyHeader headerRef={headerRef}>
+      <CollectionsTab stickyTop={headerHeight} />
     </PageContainer>
   )
 }

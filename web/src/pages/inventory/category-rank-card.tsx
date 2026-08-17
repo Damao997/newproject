@@ -98,7 +98,7 @@ export function CategoryRankCard({ categories, loading, onCategoryClick }: {
   }, [ranked, sidebarStyle])
 
   return (
-    <Card className="animate-fade-in">
+    <Card className="animate-fade-in border border-border">
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-base">
           <BarChart3 className="h-4 w-4" />

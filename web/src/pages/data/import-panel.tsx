@@ -450,7 +450,7 @@ export function ImportPanel() {
   }, [canImport, canArchive, canPurgeBatch, activateMutation.isPending, archiveMutation.isPending, purgeMutation.isPending, selectedBatchIds, selectableIds, selectedCount, batchActivate.isBusy])
 
   return (
-    <Card>
+    <Card className="border border-border">
       {/* 分区一：数据导入（紧凑布局：标题与模板工具栏同行 + 横向拖拽区） */}
       {canImport && (
         <div className="space-y-3 p-6 pb-4">

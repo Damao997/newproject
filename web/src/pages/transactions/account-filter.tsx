@@ -1,4 +1,5 @@
 import { PageContainer } from '@/components/layout/page-container'
+import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { AccountFilterTab } from './account-filter-tab'
 
 /**
@@ -7,8 +8,9 @@ import { AccountFilterTab } from './account-filter-tab'
  */
 
 export default function TransactionsAccountFilterPage() {
+  const { headerRef } = useStickyHeader()
   return (
-    <PageContainer title="科目过滤">
+    <PageContainer title="科目过滤" stickyHeader headerRef={headerRef}>
       <AccountFilterTab />
     </PageContainer>
   )

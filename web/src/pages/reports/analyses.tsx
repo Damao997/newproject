@@ -1,4 +1,5 @@
 import { PageContainer } from '@/components/layout/page-container'
+import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { AnalysisManager } from './analysis-list'
 
 /**
@@ -8,9 +9,10 @@ import { AnalysisManager } from './analysis-list'
  */
 
 export default function ReportsAnalysesPage() {
+  const { headerRef, headerHeight } = useStickyHeader()
   return (
-    <PageContainer title="单项分析管理">
-      <AnalysisManager />
+    <PageContainer title="单项分析管理" stickyHeader headerRef={headerRef}>
+      <AnalysisManager stickyTop={headerHeight} />
     </PageContainer>
   )
 }

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, type EnterpriseSearchResult } from '@/lib/api'
 import { PageContainer } from '@/components/layout/page-container'
+import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -59,6 +60,7 @@ function InfoField({ label, value, mono }: { label: string; value: string | null
 
 export function EnterpriseLookup() {
   const queryClient = useQueryClient()
+  const { headerRef } = useStickyHeader()
   const [keyword, setKeyword] = useState('')
   const [result, setResult] = useState<EnterpriseSearchResult | null>(null)
   const [searched, setSearched] = useState(false)
@@ -99,11 +101,11 @@ export function EnterpriseLookup() {
   }
 
   return (
-    <PageContainer title="企业查询">
+    <PageContainer title="企业查询" stickyHeader headerRef={headerRef}>
     <div className="grid animate-fade-in gap-4 lg:grid-cols-3">
       {/* 左侧：搜索 + 结果 */}
       <div className="space-y-4 lg:col-span-2">
-        <Card>
+        <Card className="border border-border">
           <CardContent className="pt-6">
             <div className="flex gap-2">
               <Input
@@ -128,7 +130,7 @@ export function EnterpriseLookup() {
         </Card>
 
         {searchMutation.isPending && (
-          <Card>
+          <Card className="border border-border">
             <CardContent className="space-y-3 pt-6">
               <Skeleton className="h-6 w-1/2" />
               <Skeleton className="h-4 w-full" />
@@ -138,7 +140,7 @@ export function EnterpriseLookup() {
         )}
 
         {!searchMutation.isPending && searched && !result && (
-          <Card>
+          <Card className="border border-border">
             <CardContent className="flex flex-col items-center justify-center py-12 text-center">
               <Building2 className="mb-3 h-10 w-10 text-muted-foreground/50" />
               <p className="text-sm text-muted-foreground">未查询到相关企业，请检查名称或信用代码是否正确</p>
@@ -150,7 +152,7 @@ export function EnterpriseLookup() {
         )}
 
         {!searchMutation.isPending && result && (
-          <Card className="animate-fade-in">
+          <Card className="animate-fade-in border border-border">
             <CardHeader className="pb-3">
               <div className="flex flex-wrap items-center gap-2">
                 <CardTitle className="text-lg">{result.name}</CardTitle>
@@ -213,7 +215,7 @@ export function EnterpriseLookup() {
       </div>
 
       {/* 右侧：最近查询 */}
-      <Card className="h-fit">
+      <Card className="h-fit border border-border">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center text-base">
             <History className="mr-1.5 h-4 w-4 text-muted-foreground" />

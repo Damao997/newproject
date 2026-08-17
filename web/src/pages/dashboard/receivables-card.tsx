@@ -102,7 +102,7 @@ export function ReceivablesCard({ period, companyCode }: ReceivablesCardProps) {
   }, [rows, sidebarStyle])
 
   return (
-    <Card className="animate-fade-in" style={{ animationDelay: '200ms' }}>
+    <Card className="animate-fade-in border border-border" style={{ animationDelay: '200ms' }}>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 px-6 pb-3 pt-5">
         <div>
           <CardTitle className="text-lg font-semibold">

@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { PageContainer } from '@/components/layout/page-container'
+import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { Pagination } from '@/components/data-table/pagination'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { usePermission } from '@/hooks/usePermission'
@@ -101,6 +102,9 @@ function SalesmanFormDrawer({ target, onClose }: { target: SalesmanManageItem | 
 
 export default function SalesmenPage() {
   const navigate = useNavigate()
+  // 吸顶测量：标题区 + 筛选卡高度实时测量，驱动筛选卡/表格容器吸顶偏移
+  const { headerRef, filterRef, headerHeight, filterHeight } = useStickyHeader()
+  const stickyTop = headerHeight + filterHeight
   const setTransactionsTab = usePageStore((s) => s.setTransactionsTab)
   const page = usePageStore((s) => s.transactions.salesmen.page)
   const pageSize = usePageStore((s) => s.transactions.salesmen.pageSize)
@@ -204,10 +208,12 @@ export default function SalesmenPage() {
           业务员管理
         </span>
       )}
+      stickyHeader
+      headerRef={headerRef}
     >
       <div className="space-y-4">
-        {/* 筛选卡 */}
-        <Card className="rounded-card p-4">
+        {/* 筛选卡（吸顶） */}
+        <Card ref={filterRef} className="sticky z-10 rounded-card p-4" style={{ top: headerHeight }}>
           <div className="flex flex-wrap items-center gap-3">
             <CompanySelect value={companyFilter} onChange={(v) => { setCompanyFilter(v); setPage(1) }} />
             <Select value={statusFilter || 'all'} onValueChange={(v) => { setStatusFilter(v === 'all' ? '' : v); setPage(1) }}>
@@ -239,8 +245,8 @@ export default function SalesmenPage() {
           <FlashMessage type="error" autoHideMs={4000} onAutoHide={() => setActionError('')}>{actionError}</FlashMessage>
         )}
 
-        {/* 列表卡 */}
-        <Card className="rounded-card overflow-hidden">
+        {/* 列表卡（表格容器吸顶） */}
+        <Card className="rounded-card border border-border">
           <div className="pt-4">
             {isLoading ? (
               <div className="py-8 text-center text-sm text-muted-foreground">加载中…</div>
@@ -248,13 +254,16 @@ export default function SalesmenPage() {
               <div className="py-8 text-center text-sm text-muted-foreground">暂无业务员数据</div>
             ) : (
               <div className="px-2 pb-2">
-                <DataTable
-                  columns={columns}
-                  data={items}
-                  rowKey={(row) => row.id}
-                  density="compact"
-                  caption="业务员列表"
-                />
+                <div className="sticky rounded-card bg-background" style={{ top: stickyTop }}>
+                  <DataTable
+                    columns={columns}
+                    data={items}
+                    rowKey={(row) => row.id}
+                    density="compact"
+                    caption="业务员列表"
+                    maxHeight={`calc(100dvh - ${stickyTop}px - 24px)`}
+                  />
+                </div>
               </div>
             )}
           </div>

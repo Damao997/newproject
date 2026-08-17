@@ -29,9 +29,9 @@ export const SIDEBAR_PRESETS: Record<
     chart1: '#FF830F',
   },
   gradient: {
-    label: '靛蓝',
-    primary: '#352F7E',
-    primaryHover: '#4338CA',
+    label: '深紫',
+    primary: '#472159',
+    primaryHover: '#5B2E73',
     chart1: '#BBA9F7',
   },
   dark: {

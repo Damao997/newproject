@@ -8,6 +8,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { PageContainer } from '@/components/layout/page-container'
+import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { useTransactionOverview, useTransactionPeriods, useCompanies, useAvailablePeriods } from '@/hooks/api-queries'
 import { usePageStore } from '@/stores/pageStateStore'
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
@@ -25,6 +26,8 @@ import { AgingStackBar, agingRisk, AGING_GROUPS, CREDIT_NATURE_TYPES, useDefault
 
 export default function TransactionsOverviewPage() {
   const navigate = useNavigate()
+  // 吸顶测量：标题区 + 筛选卡高度实时测量，驱动筛选卡吸顶偏移
+  const { headerRef, filterRef, headerHeight } = useStickyHeader()
   // 共享公司多选：同时驱动趋势图与汇总/分类卡片，空数组语义为「全部公司」；
   // 默认浙江省公司汇总（ET0001，后端按汇总映射展开为成员合并口径）；查询条件持久化到 pageStateStore
   const setTransactionsTab = usePageStore((s) => s.setTransactionsTab)
@@ -93,11 +96,11 @@ export default function TransactionsOverviewPage() {
   }
 
   return (
-    <PageContainer title="总览">
+    <PageContainer title="总览" stickyHeader headerRef={headerRef}>
       <div className="space-y-4">
         <div className="space-y-6">
-          {/* 筛选卡：公司多选（图表与卡片共享，单体/汇总互斥）+ 期间单选（仅作用于卡片） */}
-          <Card className="rounded-card p-4">
+          {/* 筛选卡：公司多选（图表与卡片共享，单体/汇总互斥）+ 期间单选（仅作用于卡片）；吸顶 */}
+          <Card ref={filterRef} className="sticky z-10 rounded-card p-4" style={{ top: headerHeight }}>
           <div className="flex flex-wrap items-center gap-3">
             <CompanyMultiSelect value={selectedCompanies} onChange={handleCompaniesChange} selectAllType="entity" />
             <Select value={period ?? ''} onValueChange={setPeriodFilter}>
@@ -138,7 +141,7 @@ export default function TransactionsOverviewPage() {
                   return (
                     <Card
                       key={item.transactionType}
-                      className={cn(item.totalClosingBalance !== 0 && 'cursor-pointer transition-shadow duration-200 ease-brand hover:shadow-md')}
+                      className={cn('border border-border', item.totalClosingBalance !== 0 && 'cursor-pointer transition-shadow duration-200 ease-brand hover:shadow-md')}
                       onClick={item.totalClosingBalance !== 0 ? () => {
                         // 预选该类型并跳转账龄分析（pageStateStore 持久化，刷新后仍生效）
                         setTransactionsTab('aging', { type: item.transactionType })
@@ -169,8 +172,6 @@ export default function TransactionsOverviewPage() {
                                   {changePct > 0 ? '↑' : changePct < 0 ? '↓' : ''} {Math.abs(changePct).toFixed(1)}% 较期初
                                 </span>
                               )}
-                              <span>{item.recordCount} 笔</span>
-                              <span>内 {item.internalCount} / 外 {item.externalCount}</span>
                             </div>
                             {risk && (
                               <p className={cn('mt-1.5 flex items-center gap-1.5 text-[11px]', risk.level === 'danger' ? 'text-destructive' : risk.level === 'watch' ? 'text-warning-strong' : 'text-success-strong')}>

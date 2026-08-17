@@ -87,9 +87,9 @@ export function SubjectBudgetCard({ period, companyCode, subjectName }: SubjectB
               <thead>
                 <tr className="border-b border-border">
                   <th rowSpan={2} className="px-3 py-2 text-left text-[13px] font-medium text-foreground">主体</th>
-                  <th colSpan={5} className="border-l border-border px-3 py-2 text-center text-[13px] font-semibold text-foreground">收入</th>
-                  <th colSpan={5} className="border-l border-border px-3 py-2 text-center text-[13px] font-semibold text-foreground">毛利</th>
-                  <th colSpan={5} className="border-l border-border px-3 py-2 text-center text-[13px] font-semibold text-foreground">净利润</th>
+                  <th colSpan={5} className="px-3 py-2 text-center text-[13px] font-semibold text-foreground">收入</th>
+                  <th colSpan={5} className="px-3 py-2 text-center text-[13px] font-semibold text-foreground">毛利</th>
+                  <th colSpan={5} className="px-3 py-2 text-center text-[13px] font-semibold text-foreground">净利润</th>
                 </tr>
                 <tr className="border-b border-border">
                   <th className={TH_CLS}>{amountMode === 'month' ? '月度预算' : '年度预算'}</th>

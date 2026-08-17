@@ -65,7 +65,7 @@ function cellKey(companyCode: string, period: string, type: string): string {
   return `${companyCode}|${period}|${type}`
 }
 
-export function CoverageTab() {
+export function CoverageTab({ stickyTop = 0 }: { stickyTop?: number }) {
   // 覆盖窗口月份持久化到 pageStateStore（切 tab/切路由/刷新后恢复）
   const setTransactionsTab = usePageStore((s) => s.setTransactionsTab)
   const months = usePageStore((s) => s.transactions.coverage.months)
@@ -311,8 +311,8 @@ export function CoverageTab() {
         </div>
       )}
 
-      {/* 统计卡：覆盖率大数字分档变色 + 四色堆叠比例条 + 图例计数 + 月份窗口（导入入口统一在数据管理页 /data/import） */}
-      <Card className="rounded-card p-4">
+      {/* 统计卡：覆盖率大数字分档变色 + 四色堆叠比例条 + 图例计数 + 月份窗口（导入入口统一在数据管理页 /data/import）；吸顶 */}
+      <Card className="sticky z-10 rounded-card p-4" style={{ top: stickyTop }}>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <div className="flex items-baseline gap-2">
             <span className="text-sm text-muted-foreground">覆盖率</span>
@@ -354,7 +354,7 @@ export function CoverageTab() {
       </Card>
 
       {/* 覆盖矩阵（表格卡）：工具条 + 限高滚动/sticky 表头与公司列 */}
-      <Card className="rounded-card overflow-hidden">
+      <Card className="rounded-card border border-border overflow-hidden">
         <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2.5">
           <h3 className="flex items-center gap-2 text-base font-semibold tracking-tight">
             <Grid3X3 className="h-4 w-4" />
@@ -396,10 +396,10 @@ export function CoverageTab() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/50 text-foreground">
-                <th className="sticky left-0 top-0 z-30 bg-muted/50 px-2 py-2 text-center font-medium">公司</th>
-                <th className="sticky top-0 z-30 bg-muted/50 px-2 py-2 text-center font-medium">期间</th>
+                <th className="sticky left-0 top-0 z-30 bg-muted px-2 py-2 text-center font-medium">公司</th>
+                <th className="sticky top-0 z-30 bg-muted px-2 py-2 text-center font-medium">期间</th>
                 {data.types.map((t) => (
-                  <th key={t} className="sticky top-0 z-30 bg-muted/50 px-2 py-2 text-center font-medium whitespace-nowrap">{t}</th>
+                  <th key={t} className="sticky top-0 z-30 bg-muted px-2 py-2 text-center font-medium whitespace-nowrap">{t}</th>
                 ))}
               </tr>
             </thead>

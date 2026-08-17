@@ -155,6 +155,7 @@ export function HistoryDialog({ metric, formatFormula, onClose, canApprove = fal
             rowKey={(h) => h.version}
             density="compact"
             caption="公式版本历史列表"
+            maxHeight="55vh"
           />
         )}
         {compareVersions.length === 2 && (() => {

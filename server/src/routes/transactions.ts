@@ -30,10 +30,12 @@ function sendXlsx(res: Response, buffer: Buffer, filename: string): void {
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } })
 
-/** 关联方过滤参数校验：仅接受 internal/related/external，其余视为不过滤 */
-function parsePartyType(v: unknown): 'internal' | 'related' | 'external' | undefined {
+/** 关联方过滤参数校验：接受 internal/related/external，支持逗号分隔多选（如 external,related），其余值忽略 */
+function parsePartyType(v: unknown): string[] | undefined {
   const s = String(v ?? '')
-  return s === 'internal' || s === 'related' || s === 'external' ? s : undefined
+  if (!s) return undefined
+  const list = s.split(',').map((x) => x.trim()).filter((x) => x === 'internal' || x === 'related' || x === 'external')
+  return list.length > 0 ? list : undefined
 }
 
 function scopeOf(authUser: AuthUserContext) {

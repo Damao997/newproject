@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { CompanyMultiSelect } from '@/components/filters/company-select'
 import { PageContainer } from '@/components/layout/page-container'
+import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { usePermission } from '@/hooks/usePermission'
 import { useCompanies, useCrossTable, useAvailablePeriods } from '@/hooks/api-queries'
@@ -30,6 +31,9 @@ type CrossRow = { code: string; name: string; valueType?: 'amount' | 'quantity' 
 export default function DataBrowsePage() {
   const { can } = usePermission()
   const canExport = can('data', 'export')
+  // 吸顶测量：标题区 + 筛选卡高度实时测量，驱动筛选卡/表格容器吸顶偏移
+  const { headerRef, filterRef, headerHeight, filterHeight } = useStickyHeader()
+  const stickyTop = headerHeight + filterHeight
   // 公司多选：空数组语义为「全部公司」；查询条件与展开状态持久化到 pageStateStore（路由切换/刷新后恢复）
   const setDataBrowse = usePageStore((s) => s.setDataBrowse)
   const browseCompanies = usePageStore((s) => s.dataBrowse.companies)
@@ -180,10 +184,10 @@ export default function DataBrowsePage() {
   }
 
   return (
-    <PageContainer title="数据预览" description="数据预览（指标 × 公司交叉表）">
+    <PageContainer title="数据预览" description="数据预览（指标 × 公司交叉表）" stickyHeader headerRef={headerRef}>
       <div className="space-y-4">
-        {/* 控制层：数据预览筛选工具条（筛选卡） */}
-        <Card className="rounded-card p-4">
+        {/* 控制层：数据预览筛选工具条（筛选卡，吸顶） */}
+        <Card ref={filterRef} className="sticky z-10 rounded-card p-4" style={{ top: headerHeight }}>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex flex-wrap items-center gap-3">
             <Select value={browseSubjectType} onValueChange={(v) => { setBrowseSubjectType(v as 'operating' | 'static'); setExpandedRows(() => new Set()) }}>
@@ -219,8 +223,8 @@ export default function DataBrowsePage() {
         </div>
         </Card>
 
-        {/* 展示层：数据预览交叉表（表格卡） */}
-        <Card className="overflow-hidden rounded-card">
+        {/* 展示层：数据预览交叉表（表格卡，表格容器吸顶） */}
+        <Card className="rounded-card border border-border">
           <div className="border-b px-4 py-2.5">
             <h3 className="text-base font-semibold tracking-tight">数据预览（{browseSubjectType === 'operating' ? '经营指标' : '静态指标'} × 公司{crossTable?.period ? ` · ${crossTable.period}` : ''}）</h3>
           </div>
@@ -229,14 +233,16 @@ export default function DataBrowsePage() {
               <div className="min-h-[320px] py-12 text-center text-sm text-muted-foreground">数据加载中…</div>
             ) : (
               <div className={cn('min-h-[320px] transition-opacity duration-200', crossFetching && 'opacity-60')}>
-                <DataTable
-                  columns={browseColumns}
-                  data={visibleCrossRows}
-                  rowKey={(r) => r.code}
-                  dense
-                  maxHeight="60vh"
-                  emptyText="暂无数据"
-                />
+                <div className="sticky rounded-card bg-background" style={{ top: stickyTop }}>
+                  <DataTable
+                    columns={browseColumns}
+                    data={visibleCrossRows}
+                    rowKey={(r) => r.code}
+                    dense
+                    emptyText="暂无数据"
+                    maxHeight={`calc(100dvh - ${stickyTop}px - 24px)`}
+                  />
+                </div>
               </div>
             )}
           </div>

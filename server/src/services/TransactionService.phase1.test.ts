@@ -61,7 +61,7 @@ afterAll(async () => {
 describe('Req3 关联方过滤（真实 DB）', () => {
   it('getAgingAnalysis 按 partyType 过滤', async () => {
     if (!dbReady) return
-    const rows = await TransactionService.getAgingAnalysis({ companyCodes: [CO], transactionType: TYPE, period: PERIOD, partyType: 'external', groupBy: 'counterparty' }) as Array<{ counterpartyCode: string; closingBalance: number }>
+    const rows = await TransactionService.getAgingAnalysis({ companyCodes: [CO], transactionType: TYPE, period: PERIOD, partyType: ['external'], groupBy: 'counterparty' }) as Array<{ counterpartyCode: string; closingBalance: number }>
     // external 仅剩 C0001(200)；C0002(999) 因科目排除被剔除
     expect(rows).toHaveLength(1)
     expect(rows[0].counterpartyCode).toBe('C0001')

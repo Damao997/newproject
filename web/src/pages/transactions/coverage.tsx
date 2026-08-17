@@ -1,4 +1,5 @@
 import { PageContainer } from '@/components/layout/page-container'
+import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { CoverageTab } from './coverage-tab'
 
 /**
@@ -6,9 +7,10 @@ import { CoverageTab } from './coverage-tab'
  */
 
 export default function TransactionsCoveragePage() {
+  const { headerRef, headerHeight } = useStickyHeader()
   return (
-    <PageContainer title="导入覆盖">
-      <CoverageTab />
+    <PageContainer title="导入覆盖" stickyHeader headerRef={headerRef}>
+      <CoverageTab stickyTop={headerHeight} />
     </PageContainer>
   )
 }

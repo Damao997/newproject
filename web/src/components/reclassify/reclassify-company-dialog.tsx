@@ -37,6 +37,8 @@ interface ReclassifyCompanyDialogProps {
   readonly?: boolean
   /** 只读模式下展示的日志元信息（操作人/时间/状态） */
   meta?: ReclassifyLogMeta
+  /** 只读模式下还原的当时执行结果统计（来自日志 detail，如迁移/转移金额、合并、新建行数） */
+  result?: PreviewStatItem[]
 }
 
 export interface ReclassifyCompanyPreset {
@@ -65,7 +67,7 @@ interface PreviewData {
  * （源行调减保留，目标同口径行调增，无则新建）。提交前预览影响并二次确认。
  * 期间按单月必选（与后端口径一致）；本年累计由查询时按财年实时聚合，自动反映调整结果。
  */
-export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = 'operating', defaultSourceCompany, preset, readonly = false, meta }: ReclassifyCompanyDialogProps) {
+export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = 'operating', defaultSourceCompany, preset, readonly = false, meta, result }: ReclassifyCompanyDialogProps) {
   const [templateType, setTemplateType] = useState<string>(preset?.templateType ?? defaultTemplateType)
   const [sourceCompanyCode, setSourceCompanyCode] = useState<string>(preset?.sourceCompanyCode ?? defaultSourceCompany ?? '')
   const [targetCompanyCode, setTargetCompanyCode] = useState<string>(preset?.targetCompanyCode ?? '')
@@ -264,9 +266,13 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
                 ? (
                     selectedSubjects.size > 0
                       ? <div className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border bg-muted/40 px-3 py-1.5 text-sm">
-                          {subjectOptions.filter((s) => selectedSubjects.has(s.code)).map((s) => (
-                            <span key={s.code} className="max-w-[160px] truncate rounded bg-background px-1.5 py-0.5 text-xs" title={s.code}>{s.name}</span>
-                          ))}
+                          {[...selectedSubjects].map((code) => {
+                            const s = subjectOptions.find((x) => x.code === code)
+                            return s
+                              ? <span key={code} className="max-w-[160px] truncate rounded bg-background px-1.5 py-0.5 text-xs" title={code}>{s.name}</span>
+                              // 科目已删除：回退展示编码，保证只读详情完整还原原始参数
+                              : <span key={code} className="rounded bg-background px-1.5 py-0.5 font-mono text-xs" title={code}>{code}</span>
+                          })}
                         </div>
                       : <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground">全部科目</div>
                   )
@@ -395,6 +401,13 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
               {preview && (preview.affectedRows === 0 ? <PreviewStats items={[]} empty /> : <PreviewStats items={previewItems} />)}
               {done && <FeedbackAlert kind="success">{done}</FeedbackAlert>}
               {error && <FeedbackAlert kind="error">{error}</FeedbackAlert>}
+            </section>
+          )}
+          {/* ===== 执行结果（只读模式：还原当时的执行结果统计） ===== */}
+          {readonly && result && result.length > 0 && (
+            <section className="space-y-2">
+              <SectionTitle>执行结果</SectionTitle>
+              <PreviewStats items={result} />
             </section>
           )}
         </div>

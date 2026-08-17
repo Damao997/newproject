@@ -131,9 +131,9 @@ React 18 + TypeScript 5.5
 **侧边栏三风格预设（Header 风格切换器）**
 
 - 切换器位于 Header（**风格色块圆点**按钮），选择写入 `html[data-sidebar]`（`themeStore`，localStorage `sidebar-style-storage` 持久化），`globals.css` 中 `:root[data-sidebar='gradient'|'dark']` 块覆盖：交互主色（`--primary` / `--ring` / `--chart-1` / 辅助色）与侧边栏色板（`--sidebar-*`）；主页面恒白（`--background` / `--page` / `--card` 三风格均为纯白），中性色与 `--radius*` 不随风格变化。
-- **风格 3 套**（v4.0）：浅色 `light`（默认，橙交互）/ 靛蓝 `gradient`（#352F7E，原紫渐变已取消）/ 深色 `dark`（#1F2937）。
+- **风格 3 套**（v4.0）：浅色 `light`（默认，橙交互）/ 深紫 `gradient`（#472159，原紫渐变已取消）/ 深色 `dark`（#1F2937）。
 - **浅色风格色板**：侧边栏白底 `0 0% 100%` · 未选中文字 `220 9% 46%`（#6B7280）· 图标 `220 9% 64%`（#9CA3AF）· 选中背景 `33 100% 93%`（#FFE8CC）· 选中文字 `33 100% 66%`（#FFB152）· 分界线 `220 13% 91%`（#E5E7EB）· 交互主色橙 `29 100% 53%`（#FF830F）。
-- **靛蓝风格色板**：侧边栏纯色 `245 46% 34%`（#352F7E）· 未选中文字 `231 100% 94%`（#E0E7FF）· 选中背景 `239 55% 51%`（#4338CA 更亮紫块）· 选中文字纯白 · 交互主色同 #352F7E。
+- **深紫风格色板**：侧边栏纯色 `281 46% 24%`（#472159 深紫）· 未选中文字 `231 100% 94%`（#E0E7FF）· 选中背景 `239 55% 51%`（#4338CA 亮紫蓝块）· 选中文字纯白 · 交互主色同 #472159。
 - **深色风格色板**：侧边栏 `222 47% 11%`（#111827）· 未选中文字 `220 9% 65%`（#9CA3AF）· 选中背景 `222 47% 15%`（#1F2937）· 选中文字纯白 · 交互主色 #1F2937。
 - **交互元素跟随规则**（v4.0）：按钮 / 链接 / 图表主色 / 焦点环 / 折叠条 hover 与收起态均使用当前风格的 `--primary`（浅色橙 / 靛蓝 / 深色深灰），与侧边栏主题协调；三种风格下主页面背景恒为纯白。
 - **图表主色提亮**（v4.0 修复）：图表序列首位（`--chart-1` / `getChartSeries()[0]`）使用**图表专用提亮色**，与交互主色解耦——浅色橙 `#FF830F` / 靛蓝淡紫 `#BBA9F7` / 深色亮蓝 `#7A9BF2`（白底对比充足），避免靛蓝/深色风格下白底图表主序列发暗。
@@ -383,22 +383,22 @@ React 18 + TypeScript 5.5
 ```
 ┌──────────┬───────────────────────────────────────┐
 │ Sidebar  │  Header (56px)                        │
-│ 展开240px│  - 风格切换 + 财年选择器 + 头像下拉  │
-│ 收起 64px│  - 底部 1px 分割线                     │
-│          ├───────────────────────────────────────┤
-│ Logo+品牌│  Main Content                          │
-│ ──────── │  - max-width: 1536px (max-w-screen-2xl)│
+│ 展开240px│  - 面包屑 + 风格切换 + 财年选择器     │
+│ 收起 64px│  - 头像下拉 · 底部 1px 分割线         │
+│ 从页面顶 │  ├───────────────────────────────────┤
+│ 部开始   │  Main Content                         │
+│ Logo+品牌│  - max-width: 1536px (max-w-screen-2xl)│
 │ 导航项   │  - padding: 24px 16px → lg:32px 32px   │
 │ (按权限) │  - 独立纵向滚动                        │
-│ ──────── │                                        │
 │ 版本信息 │                                        │
+│右侧圆角 │                                        │
 └──────────┴───────────────────────────────────────┘
 ```
 
 **侧边栏规则**：
 - 展开 `w-60`(240px) / 收起 `w-16`(64px)，宽度过渡 `duration-200 ease-brand`；收起态仅显示图标并以 Tooltip 补名称，收起状态经 `localStorage`(`sidebar-collapsed`) 持久化。
 - **小尺寸自动折叠**（v3.7）：窗口 <1280px（1024-1279px 区间，对齐 §8 响应式策略）时侧边栏自动进入折叠态；小尺寸下折叠条点击仅会话内临时展开/折叠（不写 localStorage），回到 ≥1280px 自动恢复用户持久化偏好。
-- **三风格 + 悬浮卡片**（v4.0）：侧边栏背景由 `--sidebar-bg` 驱动（浅色白 / 靛蓝 #352F7E 纯色 / 深色 #111827，经 `bg-sidebar-bg` 类 `hsl()` 包装使用），品牌区/导航区/版本区统一同色不再分带；**悬浮卡片设计**：`m-2`（8px 均匀间距）+ `rounded-xl`（12px 四角圆角）+ `shadow-lg` 柔和阴影（层级区分由阴影 + 色差承担，无环绕描边），`overflow-hidden` 裁剪背景与折叠条。
+- **三风格 + 全高右圆角**（v4.0）：侧边栏为独立列**从页面顶部开始渲染**（覆盖 Header 高度区域），全高贴边；背景由 `--sidebar-bg` 驱动（浅色白 / 深紫 #472159 / 深色 #111827，经 `bg-sidebar-bg` 类 `hsl()` 包装使用），**右侧上下圆角 `rounded-r-card`（8px，与页面卡片圆角一致）+ 左侧直角贴边**（`overflow-hidden` 裁剪背景与折叠条），右侧 `border-r border-sidebar-border` 分界（浅色浅灰 / 深紫同色相 / 深色同色相）。
 - **折叠条**（v3.7/v4.0）：侧边栏右缘**透明按钮**（仅箭头图标，无背景条）；展开态箭头 `--sidebar-fg` 60% 半透明，hover 转选中色（`--sidebar-selected-fg`：浅色橙 / 靛蓝白 / 深色白）；收起态箭头选中色常驻 + hover 微放大；含 `aria-label` 与收起态 Tooltip。
 - 导航项按 `usePermission()` 过滤，仅展示当前角色具备 view 权限的模块（对齐《安全与权限规范》§2.2），资源码见 `nav-items.ts`。
 - 激活态（v4.0）：`bg-sidebar-selected-bg`（浅色=浅橙 #FFE8CC / 靛蓝=亮紫 #4338CA / 深色=#1F2937）+ `font-semibold text-sidebar-selected-fg`（浅色=橙 / 靛蓝=白 / 深色=白）+ 左侧 3px 圆角竖条（`bg-sidebar-selected-fg`）；非激活 `text-sidebar-fg`，hover `bg-sidebar-fg/10`。
@@ -406,7 +406,7 @@ React 18 + TypeScript 5.5
 
 **顶栏规则**：
 - 顶栏背景 `bg-background`（恒白，与主页面同色，不与侧边栏同步）+ `border-b border-border` 1px 分割线；v4.0 起不再使用顶带深色。
-- 桌面端承载侧边栏风格切换器（**风格色块圆点**按钮，浅色/靛蓝/深色 3 选 1）、全局财年选择器与用户菜单（品牌标识在侧边栏顶部）；移动端额外显示汉堡按钮 + 品牌标识。
+- 桌面端承载侧边栏风格切换器（**三色点横向平铺**：浅色橙 / 深紫 #472159 / 深色深灰，无文字，点击直接切换，选中项深色描边）、全局财年选择器与用户菜单（品牌标识在侧边栏顶部）；移动端额外显示汉堡按钮 + 品牌标识。
 - 全局财年选择影响看板/指标/数据浏览的期间候选，状态存于 `periodStore`；风格状态存于 `themeStore`（localStorage `sidebar-style-storage` 持久化）。
 - 内容区背景为 `bg-page`（`--page`，恒白，三风格一致），卡片平面化（无边框阴影，v3.9）。
 
@@ -722,11 +722,11 @@ export function cn(...inputs: ClassValue[]) {
 
 **侧边栏三风格重构 + 主题系统替换（视觉伴侣渲染评审 + 提问确认）**：
 
-- 彻底替换主题系统：删除 6 套品牌主题色与亮暗模式（`html[data-theme]` / `html.dark` 全部移除），仅保留 3 种侧边栏风格（浅色 / 靛蓝 / 深色），Header 切换器改为 3 色块圆点；`themeStore` 重构为 `{ sidebarStyle }`（localStorage `sidebar-style-storage`，旧 `brand-theme-storage` 残留自动失效）。
+- 彻底替换主题系统：删除 6 套品牌主题色与亮暗模式（`html[data-theme]` / `html.dark` 全部移除），仅保留 3 种侧边栏风格（浅色 / 深紫 / 深色），Header 切换器改为 3 色块圆点；`themeStore` 重构为 `{ sidebarStyle }`（localStorage `sidebar-style-storage`，旧 `brand-theme-storage` 残留自动失效）。
 - 主页面恒白：三种风格下 `--background` / `--page` / `--card` 均为纯白；顶栏 `bg-background` + `border-b`（不再与侧边栏同步）。
-- 交互元素跟随侧边栏主题色：`--primary` / `--ring` / `--chart-1` / 辅助色按风格切换（浅色橙 #FF830F / 靛蓝 #352F7E / 深色 #1F2937），按钮 / 链接 / 图表主色 / 折叠条 hover 与收起态均跟随；ECharts 恒亮色 ink，antd ProTable 恒 lightAlgorithm（`SIDEBAR_PRESETS` hex 镜像）。
-- 侧边栏三风格色板：浅色白底浅橙高亮（#FFE8CC/#FFB152）；靛蓝纯色 #352F7E + 亮紫选中 #4338CA + 白字（原紫渐变已取消）；深色 #111827 + #1F2937 选中 + 白字。
-- 四角圆角悬浮设计：容器 `rounded-xl`（12px）+ `overflow-hidden` + `ring-1 ring-sidebar-border` 分界，选中项圆角 8px；品牌区/导航区/版本区统一背景（`--sidebar-bg` 经 `bg-sidebar-bg` 类 `hsl()` 包装使用）。
+- 交互元素跟随侧边栏主题色：`--primary` / `--ring` / `--chart-1` / 辅助色按风格切换（浅色橙 #FF830F / 深紫 #472159 / 深色 #1F2937），按钮 / 链接 / 图表主色 / 折叠条 hover 与收起态均跟随；ECharts 恒亮色 ink，antd ProTable 恒 lightAlgorithm（`SIDEBAR_PRESETS` hex 镜像）。
+- 侧边栏三风格色板：浅色白底浅橙高亮（#FFE8CC/#FFB152）；深紫纯色 #472159 + 亮紫选中 ≈#3D41C6 + 白字（原紫渐变已取消）；深色 #111827 + #1F2937 选中 + 白字。
+- 四角圆角悬浮设计改为**上下填满直角拼接**（同日迭代）：顶栏通栏置顶，侧边栏 Header 下方左侧上下填满（无间距/圆角/阴影），右侧 `border-r border-sidebar-border` 分界；品牌区/导航区/版本区统一背景（`--sidebar-bg` 经 `bg-sidebar-bg` 类 `hsl()` 包装使用）。
 
 ### v3.9（2026-08-13）
 

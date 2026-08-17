@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import ProTable from '@ant-design/pro-table'
 import type { ProColumns } from '@ant-design/pro-table'
 import { ConfigProvider } from 'antd'
@@ -27,13 +28,18 @@ interface ProTableInnerProps<T> {
   loading?: boolean
 }
 
-/** maxHeight（'320px'/'60vh'）→ 数字高度，供 ProTable scroll.y 使用；无法解析时返回 undefined */
-function resolveScrollY(maxHeight?: string): number | undefined {
-  if (!maxHeight) return undefined
+/** maxHeight（'320px'/'60vh'/'calc(100dvh - 120px - 24px)'）→ 数字高度，供 ProTable scroll.y 使用；无法解析时返回 undefined */
+function resolveScrollY(maxHeight: string, viewportH: number): number | undefined {
   const px = /^(\d+(?:\.\d+)?)px$/.exec(maxHeight.trim())
   if (px) return Math.round(Number(px[1]))
   const vh = /^(\d+(?:\.\d+)?)vh$/.exec(maxHeight.trim())
-  if (vh) return Math.round((window.innerHeight * Number(vh[1])) / 100)
+  if (vh) return Math.round((viewportH * Number(vh[1])) / 100)
+  // calc(100dvh - Npx - Mpx)：吸顶页面传入的限高表达式（视口高 - 吸顶偏移 - 底部留白），支持 1~2 个减项
+  const calc = /^calc\(100dvh(?: - (\d+(?:\.\d+)?)px){1,2}\)$/.exec(maxHeight.trim())
+  if (calc) {
+    const total = calc.slice(1).reduce<number>((sum, n) => sum + (n ? Number(n) : 0), 0)
+    return Math.max(120, Math.round(viewportH - total))
+  }
   return undefined
 }
 
@@ -65,6 +71,14 @@ export default function ProTableInner<T extends Record<string, unknown>>({
   const sidebarStyle = useThemeStore((s) => s.sidebarStyle)
   const brand = SIDEBAR_PRESETS[sidebarStyle] ?? SIDEBAR_PRESETS.light
   const themeHex = THEME_HEX
+
+  // 视口高度：vh/calc 类 maxHeight 依赖视口尺寸，随窗口 resize 重算（px 直传分支不受影响）
+  const [viewportH, setViewportH] = useState(() => window.innerHeight)
+  useEffect(() => {
+    const onResize = () => setViewportH(window.innerHeight)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   // 密度解析：density 优先，兼容旧 dense 布尔；default 用 antd 默认 middle，紧凑两档用 small
   const densityMode = density ?? (dense ? 'dense' : 'default')
@@ -109,6 +123,8 @@ export default function ProTableInner<T extends Record<string, unknown>>({
     )
   }
 
+  const scrollY = maxHeight ? resolveScrollY(maxHeight, viewportH) : undefined
+
   return (
     // 浅灰圆角容器（与 DataTable 一致的视觉分割）：内层白底 + overflow-hidden 裁剪 antd 表格直角为圆角
     <div className="overflow-hidden rounded-card bg-muted/40 p-2">
@@ -150,7 +166,7 @@ export default function ProTableInner<T extends Record<string, unknown>>({
             options={false}
             toolBarRender={false}
             virtual
-            scroll={{ y: resolveScrollY(maxHeight) ?? 480 }}
+            scroll={{ y: scrollY ?? 480 }}
             pagination={false}
             size={tableSize}
             loading={loading}

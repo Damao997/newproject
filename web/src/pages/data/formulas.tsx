@@ -1,4 +1,5 @@
 import { PageContainer } from '@/components/layout/page-container'
+import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { usePermission } from '@/hooks/usePermission'
 import { FormulaMaintenance } from './formula-maintenance'
 
@@ -8,9 +9,10 @@ import { FormulaMaintenance } from './formula-maintenance'
  */
 export default function DataFormulasPage() {
   const { can } = usePermission()
+  const { headerRef } = useStickyHeader()
 
   return (
-    <PageContainer title="公式维护">
+    <PageContainer title="公式维护" stickyHeader headerRef={headerRef}>
       <FormulaMaintenance
         canCreate={can('data:metric', 'create')}
         canUpdate={can('data:metric', 'update')}

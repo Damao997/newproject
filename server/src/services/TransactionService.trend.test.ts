@@ -169,6 +169,23 @@ describe('TransactionService.getOverview 过滤（真实 DB）', () => {
     expect(r[0].totalClosingBalance).toBe(700)
     expect(r[0].recordCount).toBe(1)
   })
+
+  it('账龄返回 8 段归集键（与前端堆叠条口径一致）', async () => {
+    if (!dbReady) return
+    const r = await TransactionService.getOverview({ companyCodes: [CO_A], period: '2097-03' })
+    expect(r).toHaveLength(1)
+    // 10 段 → 8 段归集：4-6月 = aging4m+aging5m+aging6m = 40+0+10；半年以上 = aging6mTo1y
+    expect(r[0].aging).toEqual({
+      '1个月': 100,
+      '2个月': 50,
+      '3个月': 50,
+      '4-6月': 50,
+      '半年以上': 20,
+      '1年至2年': 15,
+      '2年至3年': 10,
+      '3年以上': 5,
+    })
+  })
 })
 
 describe('TransactionService.getAgingAnalysis（真实 DB）', () => {

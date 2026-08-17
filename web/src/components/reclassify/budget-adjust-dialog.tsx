@@ -35,6 +35,8 @@ interface BudgetAdjustDialogProps {
   readonly?: boolean
   /** 只读模式下展示的日志元信息（操作人/时间/状态） */
   meta?: ReclassifyLogMeta
+  /** 只读模式下还原的当时执行结果统计（来自日志 detail，如调减/调增金额、净变动、新建行数） */
+  result?: PreviewStatItem[]
 }
 
 export interface BudgetAdjustPreset {
@@ -79,7 +81,7 @@ function fyLabelOf(period: string, fiscalStartMonth: number): string {
  * 调整方式与科目调整一致（双向/仅调减/仅调增），期间固定为财年选择器（提交 period 传 YYYY，
  * 后端按 fiscalYear 整体匹配）；金额类科目单位为万元，数量类按整数调整。
  */
-export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, readonly = false, meta }: BudgetAdjustDialogProps) {
+export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, readonly = false, meta, result }: BudgetAdjustDialogProps) {
   const [companyCode, setCompanyCode] = useState<string>(preset?.companyCode ?? defaultCompany ?? '')
   const [adjustMode, setAdjustMode] = useState<AdjustMode>(preset?.adjustMode ?? 'both')
   const [sourceAccountCode, setSourceAccountCode] = useState(preset?.sourceAccountCode ?? '')
@@ -493,6 +495,14 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
               )}
             {reasonError && <p className="text-xs text-destructive">{reasonError}</p>}
           </section>
+
+          {/* ===== 执行结果（只读模式：还原当时的执行结果统计） ===== */}
+          {readonly && result && result.length > 0 && (
+            <section className="space-y-2">
+              <SectionTitle>执行结果</SectionTitle>
+              <PreviewStats items={result} />
+            </section>
+          )}
 
           {/* ===== 预览与执行（只读模式隐藏） ===== */}
           {!readonly && (

@@ -3,6 +3,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { PageContainer } from '@/components/layout/page-container'
+import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { ShieldAlert, LogOut } from 'lucide-react'
 
 /**
@@ -12,6 +13,7 @@ import { ShieldAlert, LogOut } from 'lucide-react'
 export default function NoAccessPage() {
   const logout = useAuthStore((s) => s.logout)
   const navigate = useNavigate()
+  const { headerRef } = useStickyHeader()
 
   const handleLogout = () => {
     logout()
@@ -19,8 +21,8 @@ export default function NoAccessPage() {
   }
 
   return (
-    <PageContainer title="权限不足" description="当前账号无可用模块权限">
-      <Card className="animate-fade-in">
+    <PageContainer title="权限不足" description="当前账号无可用模块权限" stickyHeader headerRef={headerRef}>
+      <Card className="animate-fade-in border border-border">
         <CardContent className="flex flex-col items-center justify-center py-16 text-center">
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-warning/15">
             <ShieldAlert className="h-7 w-7 text-warning-strong" />

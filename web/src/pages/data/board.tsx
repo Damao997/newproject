@@ -1,5 +1,6 @@
 import { useParams } from 'react-router-dom'
 import { PageContainer } from '@/components/layout/page-container'
+import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { usePermission } from '@/hooks/usePermission'
 import { ProductCategoryPanel } from '@/components/dimension/product-category-panel'
 import { ExpenseMappingPanel } from '@/components/dimension/expense-mapping-panel'
@@ -16,6 +17,7 @@ type BoardSubTab = (typeof BOARD_SUB_TABS)[number]
  */
 export default function DataBoardPage() {
   const { can } = usePermission()
+  const { headerRef } = useStickyHeader()
   const { sub } = useParams<{ sub: string }>()
   const boardSubTab: BoardSubTab = BOARD_SUB_TABS.includes(sub as BoardSubTab) ? (sub as BoardSubTab) : 'category'
 
@@ -30,7 +32,7 @@ export default function DataBoardPage() {
   }[boardSubTab]
 
   return (
-    <PageContainer title={pageTitle} description={pageDescription}>
+    <PageContainer title={pageTitle} description={pageDescription} stickyHeader headerRef={headerRef}>
       {boardSubTab === 'category' && (
         <ProductCategoryPanel
           canCreate={can('data:subject', 'create')}

@@ -290,12 +290,18 @@ export interface ReclassifyLogMeta {
   invalidation: { reason: string; replacedByBatchId: string; replacedPeriods: string[] | null } | null
 }
 
+/** 失效原因文案（状态徽章 title/只读详情共用）：rows_replaced=数据被替换，否则批次不再生效 */
+export const invalidationText = (log: { invalidatedReason: string | null; invalidation: { replacedByBatchId: string } | null }): string => {
+  const reason = log.invalidatedReason === 'rows_replaced' ? '相关数据已被批次替换' : '相关批次已不再生效'
+  return log.invalidation?.replacedByBatchId ? `${reason}（批次 ${log.invalidation.replacedByBatchId}）` : reason
+}
+
 /** 只读元信息条：操作人/时间/影响行数/状态（已生效/已撤销/已失效） */
 export function ReadonlyLogMeta({ meta }: { meta: ReclassifyLogMeta }) {
   const status = meta.revertedAt
     ? <Badge variant="outline" className="border-transparent bg-muted text-muted-foreground">已撤销</Badge>
     : meta.invalidatedAt
-      ? <Badge variant="outline" title={meta.invalidatedReason === 'rows_replaced' ? '相关数据已被批次替换' : '相关批次已不再生效'} className="border-transparent bg-destructive/10 text-destructive">已失效</Badge>
+      ? <Badge variant="outline" title={invalidationText(meta)} className="border-transparent bg-destructive/10 text-destructive">已失效</Badge>
       : <Badge variant="outline" className="border-transparent bg-success/10 text-success-strong">已生效</Badge>
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">

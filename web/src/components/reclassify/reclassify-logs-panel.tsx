@@ -1,14 +1,15 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { Pagination } from '@/components/data-table/pagination'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useCompanies, useSubjects, useReclassifyLogs, useRevertReclassifyLog } from '@/hooks/api-queries'
 import { formatMoney, formatQuantity, cn } from '@/lib/utils'
-import { ArrowRight, RotateCcw, Undo2 } from 'lucide-react'
-import { TYPE_LABEL, TEMPLATE_LABEL_SHORT } from './shared'
+import { ArrowRight, Eye, RotateCcw, Undo2 } from 'lucide-react'
+import { TYPE_LABEL, TEMPLATE_LABEL_SHORT, invalidationText } from './shared'
 import type { ReclassifyLog } from '@/types'
 
 interface ReclassifyLogsPanelProps {
@@ -97,17 +98,11 @@ function AmountDetail({ log }: { log: ReclassifyLog }) {
   return <span className="text-muted-foreground">-</span>
 }
 
-/** 失效原因文案（Badge title 共用）：rows_replaced=数据被替换，否则批次不再生效 */
-const invalidationText = (log: ReclassifyLog): string => {
-  const reason = log.invalidatedReason === 'rows_replaced' ? '相关数据已被批次替换' : '相关批次已不再生效'
-  return log.invalidation?.replacedByBatchId ? `${reason}（批次 ${log.invalidation.replacedByBatchId}）` : reason
-}
-
 /**
  * 重分类记录面板（内嵌于数据管理页）：分页展示跨公司/科目归类/科目调整历史，
- * 行点击展开查看原因与行数明细；含快照的记录支持一键撤销（逆向恢复事实行）。
+ * 行点击或操作列「查看」打开只读详情；含快照的记录支持一键撤销（逆向恢复事实行）。
  */
-export function ReclassifyLogsPanel({ canRevert, onReapply, onViewDetail, actions }: ReclassifyLogsPanelProps) {
+export function ReclassifyLogsPanel({ canRevert, onReapply, onViewDetail, actions, stickyTop = 0 }: ReclassifyLogsPanelProps & { stickyTop?: number }) {
   const [type, setType] = useState('all')
   const [page, setPage] = useState(1)
   const [message, setMessage] = useState<string | null>(null)
@@ -171,39 +166,53 @@ export function ReclassifyLogsPanel({ canRevert, onReapply, onViewDetail, action
           : <Badge variant="outline" className="border-transparent bg-success/10 text-success-strong">已生效</Badge>,
     },
   ]
-  if (canRevert) {
-    columns.push({
-      key: 'actions', header: '操作', align: 'right',
-      render: (r) => r.revertible ? (
+  // 操作列恒渲染：查看入口对所有用户可见（含无撤销/重新应用权限者）；撤销/重新应用按权限与记录状态显示
+  columns.push({
+    key: 'actions', header: '操作', align: 'right',
+    render: (r) => (
+      <div className="flex items-center justify-end gap-1">
         <Button
           variant="ghost"
           size="sm"
-          title="撤销本次调整（逆向恢复）"
-          disabled={revertMutation.isPending}
-          onClick={(e) => { e.stopPropagation(); handleRevert(r) }}
+          title="查看调整明细（只读）"
+          aria-label="查看调整明细"
+          onClick={(e) => { e.stopPropagation(); onViewDetail?.(r) }}
         >
-          <Undo2 className="mr-1 h-4 w-4" />
-          撤销
+          <Eye className="h-4 w-4" />
         </Button>
-      ) : (r.invalidatedAt || r.revertedAt) && (r.type === 'company' || r.type === 'subject_adjust') && !(r.type === 'company' && r.templateType === 'budget') && onReapply ? (
-        // 历史「跨公司+预算」日志（旧月度口径）已无对应编辑入口，仅保留只读查看
-        <Button
-          variant="ghost"
-          size="sm"
-          title="在最新数据上重新执行本次调整（参数可修改）"
-          onClick={(e) => { e.stopPropagation(); onReapply(r) }}
-        >
-          <RotateCcw className="mr-1 h-4 w-4" />
-          重新应用
-        </Button>
-      ) : (
-        <span className="text-xs text-muted-foreground">{r.revertedAt ? '已撤销' : '不可撤销'}</span>
-      ),
-    })
-  }
+        {canRevert && (r.revertible ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            title="撤销本次调整（逆向恢复）"
+            disabled={revertMutation.isPending}
+            onClick={(e) => { e.stopPropagation(); handleRevert(r) }}
+          >
+            <Undo2 className="mr-1 h-4 w-4" />
+            撤销
+          </Button>
+        ) : (r.invalidatedAt || r.revertedAt) && (r.type === 'company' || r.type === 'subject_adjust') && !(r.type === 'company' && r.templateType === 'budget') && onReapply ? (
+          // 历史「跨公司+预算」日志（旧月度口径）已无对应编辑入口，仅保留只读查看
+          <Button
+            variant="ghost"
+            size="sm"
+            title="在最新数据上重新执行本次调整（参数可修改）"
+            onClick={(e) => { e.stopPropagation(); onReapply(r) }}
+          >
+            <RotateCcw className="mr-1 h-4 w-4" />
+            重新应用
+          </Button>
+        ) : (
+          <span className="text-xs text-muted-foreground">{r.revertedAt ? '已撤销' : '不可撤销'}</span>
+        ))}
+      </div>
+    ),
+  })
 
   return (
     <div className="space-y-3">
+      {/* 筛选工具条（吸顶） */}
+      <Card className="sticky z-10 rounded-card p-4" style={{ top: stickyTop }}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">类型:</span>
@@ -219,6 +228,7 @@ export function ReclassifyLogsPanel({ canRevert, onReapply, onViewDetail, action
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
+      </Card>
 
       {message && <p className="text-xs text-muted-foreground">{message}</p>}
 
@@ -228,6 +238,7 @@ export function ReclassifyLogsPanel({ canRevert, onReapply, onViewDetail, action
         rowKey={(r) => r.id}
         emptyText={isFetching ? '加载中…' : '暂无重分类记录'}
         onRowClick={(r) => onViewDetail?.(r)}
+        maxHeight={`calc(100dvh - ${stickyTop}px - 24px)`}
       />
       <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
       {confirmElement}

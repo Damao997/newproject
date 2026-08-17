@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PageContainer } from '@/components/layout/page-container'
+import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { usePermission } from '@/hooks/usePermission'
 import { useRoles, useDeleteRole, type RoleItem } from '@/hooks/api-queries'
 import { RoleDialog, PermissionDialog, CloneRoleDialog, BatchPermissionDialog } from './dialogs'
@@ -61,6 +62,9 @@ interface RoleTableRow {
 
 /** 角色管理：角色的创建、编辑、删除、克隆与权限配置（预置角色只读）；卡片/表格双视图。 */
 export default function RolesPage() {
+  // 吸顶测量：标题区 + 筛选卡高度实时测量，驱动筛选卡/表格容器吸顶偏移
+  const { headerRef, filterRef, headerHeight, filterHeight } = useStickyHeader()
+  const stickyTop = headerHeight + filterHeight
   const { can } = usePermission()
   const canCreateRole = can('admin:roles', 'create')
   const canUpdateRole = can('admin:roles', 'update')
@@ -332,10 +336,10 @@ export default function RolesPage() {
   )
 
   return (
-    <PageContainer title="角色管理" description="创建、编辑角色并配置功能权限">
+    <PageContainer title="角色管理" description="创建、编辑角色并配置功能权限" stickyHeader headerRef={headerRef}>
       {/* 统计卡片 */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 animate-fade-in">
-        <Card>
+        <Card className="border border-border">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
@@ -346,7 +350,7 @@ export default function RolesPage() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border border-border">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
@@ -357,7 +361,7 @@ export default function RolesPage() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border border-border">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
@@ -368,7 +372,7 @@ export default function RolesPage() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border border-border">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
@@ -388,8 +392,9 @@ export default function RolesPage() {
         </FlashMessage>
       )}
 
-      {/* 工具条：搜索 + 类型筛选 + 视图切换（仅中大屏）+ 新增 */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center animate-fade-in">
+      {/* 工具条：搜索 + 类型筛选 + 视图切换（仅中大屏）+ 新增（筛选卡，吸顶） */}
+      <Card ref={filterRef} className="sticky z-10 rounded-card p-4" style={{ top: headerHeight }}>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
@@ -430,10 +435,11 @@ export default function RolesPage() {
           </Button>
         )}
       </div>
+      </Card>
 
       {effectiveView === 'table' && isLargeScreen ? (
-        /* ===== 表格视图（表格卡：卡头 + 批量操作条 + DataTable） ===== */
-        <Card className="animate-fade-in overflow-hidden rounded-card">
+        /* ===== 表格视图（表格卡：卡头 + 批量操作条 + DataTable，表格容器吸顶） ===== */
+        <Card className="animate-fade-in rounded-card border border-border">
           <div className="flex items-center justify-between border-b px-4 py-2.5">
             <h3 className="flex items-center gap-2 text-base font-semibold tracking-tight">
               <TableIcon className="h-4 w-4" />
@@ -456,17 +462,20 @@ export default function RolesPage() {
             )}
           </div>
           <div className="p-2">
-            <DataTable
-              columns={tableColumns}
-              data={tableRows}
-              rowKey={(r) => r.id}
-              caption="角色列表"
-              emptyText={tableEmpty}
-              loading={isLoading && !rolesData}
-              loadingRows={6}
-              resizable
-              rowSelection={hasRowActions ? { selectedKeys, onSelectionChange: setSelectedKeys, selectAllLabel: '全选当前角色' } : undefined}
-            />
+            <div className="sticky rounded-card bg-background" style={{ top: stickyTop }}>
+              <DataTable
+                columns={tableColumns}
+                data={tableRows}
+                rowKey={(r) => r.id}
+                caption="角色列表"
+                emptyText={tableEmpty}
+                loading={isLoading && !rolesData}
+                loadingRows={6}
+                maxHeight={`calc(100dvh - ${stickyTop}px - 24px)`}
+                resizable
+                rowSelection={hasRowActions ? { selectedKeys, onSelectionChange: setSelectedKeys, selectAllLabel: '全选当前角色' } : undefined}
+              />
+            </div>
           </div>
         </Card>
       ) : (
@@ -474,7 +483,7 @@ export default function RolesPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 animate-fade-in">
           {isLoading && !rolesData
             ? Array.from({ length: 3 }).map((_, i) => (
-                <Card key={i}>
+                <Card key={i} className="border border-border">
                   <CardContent className="space-y-3 pt-5">
                     <Skeleton className="h-5 w-2/3" />
                     <Skeleton className="h-4 w-full" />
@@ -484,7 +493,7 @@ export default function RolesPage() {
                 </Card>
               ))
             : filteredRoles.map((role) => (
-                <Card key={role.id} className="flex flex-col">
+                <Card key={role.id} className="flex flex-col border border-border">
                   <CardContent className="flex flex-1 flex-col pt-5">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">

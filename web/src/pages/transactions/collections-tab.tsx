@@ -383,7 +383,7 @@ function SalesmanDrawer({ target, onClose }: { target: LedgerTarget; onClose: ()
 }
 
 // ===== 催收计划 Tab =====
-export function CollectionsTab() {
+export function CollectionsTab({ stickyTop = 0 }: { stickyTop?: number }) {
   // 筛选与分页持久化到 pageStateStore（切 tab/切路由/刷新后恢复）；对话框开关为瞬时状态
   const setTransactionsTab = usePageStore((s) => s.setTransactionsTab)
   const page = usePageStore((s) => s.transactions.collections.page)
@@ -542,8 +542,8 @@ export function CollectionsTab() {
 
   return (
     <div className="space-y-4">
-      {/* 筛选卡：公司 / 客商状态 / 客商关键词 */}
-      <Card className="rounded-card p-4">
+      {/* 筛选卡：公司 / 客商状态 / 客商关键词（吸顶） */}
+      <Card className="sticky z-10 rounded-card p-4" style={{ top: stickyTop }}>
       <div className="flex flex-wrap items-center gap-3">
         <Select value={periodFilter || 'all'} onValueChange={(v) => { setPeriodFilter(v === 'all' ? '' : v); setPage(1) }}>
           <SelectTrigger className="w-[140px]">
@@ -604,7 +604,7 @@ export function CollectionsTab() {
       </Card>
 
       {/* 应收款客商台账（表格卡） */}
-      <Card className="rounded-card overflow-hidden">
+      <Card className="rounded-card border border-border overflow-hidden">
         <div className="pt-4">
           {isLoading ? (
             <div className="py-8 text-center text-sm text-muted-foreground">加载中…</div>
@@ -618,6 +618,7 @@ export function CollectionsTab() {
                 rowKey={(row) => `${row.companyCode}|${row.counterpartyCode}`}
                 density="compact"
                 caption="应收款客商台账"
+                maxHeight={`calc(100dvh - ${stickyTop}px - 24px)`}
               />
             </div>
           )}

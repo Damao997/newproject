@@ -66,7 +66,8 @@ export function SubjectTreePanel({
   exportFileName = '科目层级',
   exportSheet = '科目层级',
   countSuffix = '',
-}: SubjectTreePanelProps) {
+  stickyTop = 0,
+}: SubjectTreePanelProps & { stickyTop?: number }) {
   const { data, isLoading } = useSubjectTree(type)
   const deleteSubject = useDeleteSubject()
   const updateSubject = useUpdateSubject()
@@ -159,8 +160,8 @@ export function SubjectTreePanel({
 
   return (
     <div className="space-y-4">
-      {/* 筛选与控制卡片：类别下拉 + 搜索框 + 操作按钮组 */}
-      <Card className="rounded-card p-4">
+      {/* 筛选与控制卡片：类别下拉 + 搜索框 + 操作按钮组（吸顶） */}
+      <Card className="sticky z-10 rounded-card p-4" style={{ top: stickyTop }}>
         <div className="flex flex-col space-y-2 sm:flex-row sm:items-center sm:space-x-2 sm:space-y-0">
           <Select value={category} onValueChange={setCategory}>
             <SelectTrigger className="w-full sm:w-[200px]">
@@ -224,7 +225,7 @@ export function SubjectTreePanel({
       {actionError && <p className="text-xs text-destructive">{actionError}</p>}
 
       {/* 数据表格卡片：头部统计信息 + 树形科目表 */}
-      <Card className="rounded-card overflow-hidden">
+      <Card className="rounded-card border border-border overflow-hidden">
         <div className="flex items-center justify-between border-b px-4 py-2.5">
           <p className="text-xs text-muted-foreground">
             {isLoading ? '加载中…' : `共 ${flattenTree(tree).length} 个科目${countSuffix}`}

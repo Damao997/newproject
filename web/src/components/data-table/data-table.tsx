@@ -248,7 +248,15 @@ export function DataTable<T>({
         className={cn('bg-background', maxHeight ? 'overflow-auto' : 'overflow-x-auto', className)}
         style={maxHeight ? { maxHeight } : undefined}
       >
-        <table className={cn('w-full caption-bottom text-[13px]', resizable && 'table-fixed')}>
+        {/* border-separate（仅限高模式）：sticky 表头单元格边框随滚动稳定跟随，collapse 模式下边框渲染异常（对齐 metric-tree） */}
+        <table
+          className={cn(
+            'w-full caption-bottom text-[13px]',
+            resizable && 'table-fixed',
+            // 限高模式行边框下沉到单元格（separate 下 tr 边框不渲染），sticky th 边框跟随滚动
+            maxHeight && 'border-separate border-spacing-0 [&_th]:border-b [&_td]:border-b [&_th]:border-border [&_td]:border-border',
+          )}
+        >
           {resizable && (
             <colgroup>
               {cols.map((col) => (
@@ -257,8 +265,8 @@ export function DataTable<T>({
             </colgroup>
           )}
           {caption && <caption className="sr-only">{caption}</caption>}
-          <thead className={cn('[&_tr]:border-b', maxHeight && TABLE_HEADER_STICKY)}>
-            <tr className="border-b bg-muted/50">
+          <thead className={cn(!maxHeight && '[&_tr]:border-b', maxHeight && TABLE_HEADER_STICKY)}>
+            <tr className={cn('bg-muted/50', !maxHeight && 'border-b')}>
               {cols.map((col) => {
                 const sortState = activeSort?.key === col.key ? activeSort : null
                 const stickyRight = col.sticky === 'right'
@@ -273,8 +281,8 @@ export function DataTable<T>({
                     className={cn(
                       TABLE_HEAD_BASE,
                       pad.head,
-                      // 限高 sticky 表头需不透明背景，避免滚动内容透出
-                      maxHeight && 'bg-muted',
+                      // 限高 sticky 表头需不透明背景 + 单元格级底边框（separate 下 tr 边框不渲染），避免滚动内容透出/边框错位
+                      maxHeight && 'border-b border-border bg-muted',
                       stickyLeft && 'sticky left-0 z-10 bg-muted',
                       stickyRight && 'sticky right-0 z-10 bg-muted',
                       // 冻结列 × 冻结表头交叠处需更高层级

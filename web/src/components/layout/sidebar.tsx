@@ -423,10 +423,10 @@ function SidebarBrand({ collapsed, className }: { collapsed: boolean; className?
 export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onMobileClose }: SidebarProps) {
   return (
     <TooltipProvider delayDuration={0}>
-      {/* 桌面端侧边栏：悬浮卡片设计（m-2 均匀间距 + 柔和阴影 + 四角圆角，圆角为设计语言）；背景 bg-sidebar-bg 经 hsl() 包装，三风格切换 */}
+      {/* 桌面端侧边栏：独立列从页面顶部开始渲染（覆盖 Header 高度区域），全高贴边；右侧上下圆角与页面卡片一致（rounded-r-card 8px），左侧直角 */}
       <aside
         className={cn(
-          'relative m-2 hidden shrink-0 flex-col overflow-hidden rounded-xl bg-sidebar-bg shadow-lg transition-[width] duration-200 ease-brand md:flex',
+          'relative hidden shrink-0 flex-col overflow-hidden rounded-r-card border-r border-sidebar-border bg-sidebar-bg transition-[width] duration-200 ease-brand md:flex',
           collapsed ? 'w-16' : 'w-60'
         )}
       >

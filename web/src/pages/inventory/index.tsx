@@ -9,6 +9,7 @@ import { MonthPicker } from '@/components/ui/month-picker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { CompanyMultiSelect } from '@/components/filters/company-select'
 import { PageContainer } from '@/components/layout/page-container'
+import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { AnalysisDrawer, type AnalysisTarget } from '@/components/indicators/analysis-drawer'
 import {
   useAvailablePeriods,
@@ -200,7 +201,7 @@ function StatCard({ title, icon: Icon, value, sub, index, loading }: {
 }) {
   return (
     <Card
-      className="animate-fade-in"
+      className="animate-fade-in border border-border"
       style={{ animationDelay: `${index * 80}ms` }}
     >
       <CardHeader className="flex flex-row items-center justify-between space-y-0 px-5 pb-1 pt-5">
@@ -282,6 +283,8 @@ function SortableTh({ label, sortKey, sort, onSort }: {
 
 export default function InventoryPage() {
   const { can } = usePermission()
+  // 吸顶测量：标题区 + 筛选卡高度实时测量，驱动筛选卡吸顶偏移
+  const { headerRef, filterRef, headerHeight } = useStickyHeader()
   // 公司多选（空数组 = 全部公司）、期间单选（空串 = 跟随最新期间）、品类钻取与关键词；
   // 查询条件持久化到 pageStateStore（路由切换/刷新后恢复）
   const setInventory = usePageStore((s) => s.setInventory)
@@ -592,10 +595,12 @@ export default function InventoryPage() {
     <PageContainer
       title="存货管理"
       description="库存总览、品类占比、周转指标、趋势分析（数据源：静态数据存货品类）"
+      stickyHeader
+      headerRef={headerRef}
     >
       <div className="space-y-6">
-        {/* 筛选卡：公司多选（单体/汇总互斥）+ 期间单选（财年由顶部导航全局控制，财年月外的月份禁用） */}
-        <Card className="rounded-card p-4">
+        {/* 筛选卡：公司多选（单体/汇总互斥）+ 期间单选（财年由顶部导航全局控制，财年月外的月份禁用）；吸顶 */}
+        <Card ref={filterRef} className="sticky z-10 rounded-card p-4" style={{ top: headerHeight }}>
         <div className="flex flex-wrap items-center gap-3">
           <CompanyMultiSelect value={selectedCompanies} onChange={handleCompaniesChange} selectAllType="entity" />
           <MonthPicker
@@ -730,7 +735,7 @@ export default function InventoryPage() {
         </Card>
 
         {/* 展示层：明细表（表格卡） */}
-        <Card className="animate-fade-in overflow-hidden rounded-card">
+        <Card className="animate-fade-in overflow-hidden rounded-card border border-border">
           <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2.5">
             <h3 className="flex items-center gap-2 text-base font-semibold tracking-tight">
               <Boxes className="h-4 w-4" />

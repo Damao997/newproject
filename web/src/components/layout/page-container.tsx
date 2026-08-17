@@ -3,8 +3,9 @@ import { Info } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
-interface PageContainerProps extends React.HTMLAttributes<HTMLDivElement> {
-  title?: string
+interface PageContainerProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'title'> {
+  /** 支持传含返回按钮等节点的自定义标题 */
+  title?: React.ReactNode
   description?: string
   actions?: React.ReactNode
   /** 启用后页头（标题/描述/筛选器）随滚动固定在可视区顶部（用于筛选器较多的页面，如看板） */
@@ -28,7 +29,8 @@ const PageContainer = React.forwardRef<HTMLDivElement, PageContainerProps>(
           className={cn(
             "animate-slide-in flex flex-wrap items-center justify-between gap-3",
             stickyHeader &&
-              "sticky top-0 z-20 -mx-4 bg-page px-4 py-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8",
+              // -mt-6 使标题区 border box 顶部恒等于 sticky top-0 钉住位置（自加载即吸顶，零临界切换）：背景条贴 Header 底部（bg-page 与页面同色，视觉不可见，仅起遮挡作用）；pt-6 保证吸顶时文字距 Header 恒 24px（未吸顶 = 背景顶部 0 + pt-6 = 24px，吸顶 = 24px）
+              "sticky top-0 z-20 -mx-4 -mt-6 bg-page px-4 pt-6 pb-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8",
           )}
         >
           <div className="space-y-2">

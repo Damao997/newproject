@@ -3,7 +3,9 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import dotenv from 'dotenv'
 
-dotenv.config()
+// 显式指向 server/.env（与 cwd 解耦）：npm --prefix 执行时 cwd 不变，
+// 默认 dotenv.config() 加载 cwd/.env 会漏读生产 server/.env 的 NODE_ENV=production，导致下方防护失效
+dotenv.config({ path: path.resolve(__dirname, '../.env') })
 
 /**
  * 本地开发数据库：以 embedded-postgres 在用户态启动真实 PostgreSQL，

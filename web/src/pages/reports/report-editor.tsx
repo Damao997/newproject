@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { PageContainer } from '@/components/layout/page-container'
+import { useStickyHeader } from '@/hooks/useStickyHeader'
 import {
   ArrowLeft, ArrowUp, ArrowDown, Trash2, Plus, Save, History, FileDown, RefreshCw, Link2,
   Send, Undo2, Eye, Sparkles, Loader2, MoreHorizontal,
@@ -58,6 +59,7 @@ export function ReportEditor() {
   const { can } = usePermission()
   const canUpdate = can('reports', 'update')
   const canExport = can('reports', 'export')
+  const { headerRef } = useStickyHeader()
 
   const { data: report, isLoading, isError } = useReport(reportId)
   const generateSections = useGenerateReportSections()
@@ -109,7 +111,7 @@ export function ReportEditor() {
   // 路由直达 /reports/:id/edit 时报告可能不存在（404/已删除）：显式错误态而非永久加载中
   if (isError || (!report && !isLoading)) {
     return (
-      <PageContainer title="报告编辑">
+      <PageContainer title="报告编辑" stickyHeader headerRef={headerRef}>
         <div className="py-16 text-center">
           <p className="text-sm text-muted-foreground">报告不存在或已删除</p>
           <Button variant="fused" size="sm" className="mt-3" onClick={() => navigate('/reports')}>返回报告列表</Button>
@@ -120,7 +122,7 @@ export function ReportEditor() {
 
   if (isLoading || !report) {
     return (
-      <PageContainer title="报告编辑">
+      <PageContainer title="报告编辑" stickyHeader headerRef={headerRef}>
         <div className="py-16 text-center text-sm text-muted-foreground">加载中…</div>
       </PageContainer>
     )
@@ -258,10 +260,10 @@ export function ReportEditor() {
   const busy = setSections.isPending || generateSections.isPending || saveVersion.isPending || updateReport.isPending || rollbackVersion.isPending
 
   return (
-    <PageContainer title="报告编辑">
+    <PageContainer title="报告编辑" stickyHeader headerRef={headerRef}>
       <div className="space-y-3">
       {/* 工具栏：主动作常驻（AI 概述/保存章节/发布），次动作收入「更多」菜单 */}
-      <Card className="animate-fade-in">
+      <Card className="animate-fade-in border border-border">
         <CardContent className="flex flex-wrap items-center justify-between gap-2 p-4">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -341,7 +343,7 @@ export function ReportEditor() {
 
       {/* 版本历史 */}
       {showVersions && (
-        <Card className="animate-fade-in">
+        <Card className="animate-fade-in border border-border">
           <CardContent className="p-4">
             <h4 className="mb-2 text-sm font-medium text-foreground">版本历史</h4>
             {versions && versions.items.length > 0 ? (
@@ -372,10 +374,10 @@ export function ReportEditor() {
       {/* 章节列表 */}
       <div className="space-y-3">
         {sections.length === 0 && (
-          <Card><CardContent className="py-12 text-center text-sm text-muted-foreground">暂无章节{canEdit ? '，点击「拉取单项分析」按主体范围生成，或添加自由章节。' : '。'}</CardContent></Card>
+          <Card className="border border-border"><CardContent className="py-12 text-center text-sm text-muted-foreground">暂无章节{canEdit ? '，点击「拉取单项分析」按主体范围生成，或添加自由章节。' : '。'}</CardContent></Card>
         )}
         {sections.map((s, idx) => (
-          <Card key={s.key} className="animate-fade-in">
+          <Card key={s.key} className="animate-fade-in border border-border">
             <CardContent className="p-4">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2">
