@@ -62,6 +62,9 @@ review-diff*.txt
 # Superpowers 插件工作区缓存（brainstorm 设计稿/运行状态，不入库）
 .superpowers/
 
+# Git worktree 隔离工作区（不入库）
+.worktrees/
+
 # 诊断脚本与请求体（可能含测试口令，不入库）
 server/scripts/diag-*
 
