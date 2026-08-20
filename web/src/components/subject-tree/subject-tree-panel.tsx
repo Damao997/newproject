@@ -47,8 +47,6 @@ interface SubjectTreePanelProps {
   exportFileName?: string
   /** 导出工作表名 */
   exportSheet?: string
-  /** 科目计数文案后缀 */
-  countSuffix?: string
 }
 
 /**
@@ -65,7 +63,6 @@ export function SubjectTreePanel({
   canExport = false,
   exportFileName = '科目层级',
   exportSheet = '科目层级',
-  countSuffix = '',
   stickyTop = 0,
 }: SubjectTreePanelProps & { stickyTop?: number }) {
   const { data, isLoading } = useSubjectTree(type)
@@ -226,11 +223,6 @@ export function SubjectTreePanel({
 
       {/* 数据表格卡片：头部统计信息 + 树形科目表 */}
       <Card className="rounded-card border border-border overflow-hidden">
-        <div className="flex items-center justify-between border-b px-4 py-2.5">
-          <p className="text-xs text-muted-foreground">
-            {isLoading ? '加载中…' : `共 ${flattenTree(tree).length} 个科目${countSuffix}`}
-          </p>
-        </div>
         <SubjectTree
           nodes={displayTree}
           expandedCodes={effectiveExpanded}

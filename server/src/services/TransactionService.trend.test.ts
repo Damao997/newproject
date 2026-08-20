@@ -13,6 +13,8 @@ import { TransactionService } from './TransactionService'
 
 const CO_A = 'EN999902'
 const CO_B = 'EN999903'
+// 内部往来种子公司：验证 getOverview 的 partyType 过滤（默认口径 external+related 应排除 internal）
+const CO_C = 'EN999904'
 // 用预付账款类型隔离：避免与 coverage 测试（2099 期间的应收/应付种子）并行时干扰“全库最新期间”推导
 const TYPE = '预付账款'
 const ACC_ACTIVE = '__TREND_1122__'
@@ -22,7 +24,7 @@ const ACC_INACTIVE = '__TREND_OFF__'
 let dbReady = false
 const createdIds: string[] = []
 
-async function seedDetail(companyCode: string, companyName: string, period: string, closing: number, aging: Record<string, number> = {}, accountCode: string = ACC_ACTIVE) {
+async function seedDetail(companyCode: string, companyName: string, period: string, closing: number, aging: Record<string, number> = {}, accountCode: string = ACC_ACTIVE, partyType: string = 'external') {
   const row = await basePrisma.transactionDetail.create({
     data: {
       companyCode,
@@ -31,6 +33,7 @@ async function seedDetail(companyCode: string, companyName: string, period: stri
       direction: 'AP',
       counterpartyCode: '__TREND_CP__',
       accountCode,
+      partyType,
       closingBalance: closing,
       period,
       ...aging,
@@ -53,6 +56,8 @@ beforeAll(async () => {
     })
     // B 公司：仅 2097-03
     await seedDetail(CO_B, '趋势测试B', '2097-03', 700)
+    // C 公司（内部往来）：仅 2097-03，用于 partyType 过滤断言
+    await seedDetail(CO_C, '趋势测试C', '2097-03', 250, {}, ACC_ACTIVE, 'internal')
     // inactive 科目数据：总览/趋势应强制剔除（金额远大于其他种子，一旦未剔除断言必失败）
     await seedDetail(CO_B, '趋势测试B', '2097-03', 99999, {}, ACC_INACTIVE)
     // 科目过滤规则种子：确保状态正确（若旧数据已存在）
@@ -98,12 +103,15 @@ describe('TransactionService.getTrend（真实 DB）', () => {
     const r = await TransactionService.getTrend({ transactionType: TYPE, months: 3 })
     // 终点为该类型全库最新期间；测试数据 2097 远超真实数据，必为终点
     expect(r.periods[r.periods.length - 1]).toBe('2097-03')
-    expect(r.series).toHaveLength(2)
+    // A/B/C 三家公司各一条曲线（内部往来同样计入趋势，不过滤 partyType）
+    expect(r.series).toHaveLength(3)
     // 按公司编码升序：CO_A 在前
     expect(r.series[0].companyCode).toBe(CO_A)
     expect(r.series[1].companyCode).toBe(CO_B)
+    expect(r.series[2].companyCode).toBe(CO_C)
     expect(r.series[0].points).toEqual([150, null, 300])
     expect(r.series[1].points).toEqual([null, null, 700])
+    expect(r.series[2].points).toEqual([null, null, 250])
   })
 
   it('财年轴：完整 12 个月，数据落在对应月份，其余补 null', async () => {
@@ -186,16 +194,33 @@ describe('TransactionService.getOverview 过滤（真实 DB）', () => {
       '3年以上': 5,
     })
   })
+
+  it('partyType 过滤（默认口径 external+related 排除 internal）', async () => {
+    if (!dbReady) return
+    // 不传 = 全部对象：internal 计入
+    const all = await TransactionService.getOverview({ companyCodes: [CO_C], period: '2097-03' })
+    expect(all).toHaveLength(1)
+    expect(all[0].totalClosingBalance).toBe(250)
+    // 默认口径 external+related：internal 行被排除，返回空
+    const filtered = await TransactionService.getOverview({ companyCodes: [CO_C], period: '2097-03', partyType: ['external', 'related'] })
+    expect(filtered).toHaveLength(0)
+    // 仅 internal：恢复可见
+    const internalOnly = await TransactionService.getOverview({ companyCodes: [CO_C], period: '2097-03', partyType: ['internal'] })
+    expect(internalOnly).toHaveLength(1)
+    expect(internalOnly[0].totalClosingBalance).toBe(250)
+  })
 })
 
 describe('TransactionService.getAgingAnalysis（真实 DB）', () => {
   it('账龄 10 段归集为 8 段，支持 period + 科目多选过滤，按期末余额倒序', async () => {
     if (!dbReady) return
     const rows = await TransactionService.getAgingAnalysis({ groupBy: 'type', period: '2097-03', accountCodes: ['__TREND_1122__'] }) as Array<{ companyCode: string; closingBalance: number; aging: Record<string, number> }>
-    expect(rows).toHaveLength(2)
-    // 倒序：B(700) 在前，A(300) 在后
+    // A(300)/B(700)/C(250 内部) 三行
+    expect(rows).toHaveLength(3)
+    // 倒序：B(700) 在前，A(300) 居中，C(250) 在后
     expect(rows[0].companyCode).toBe(CO_B)
     expect(rows[1].companyCode).toBe(CO_A)
+    expect(rows[2].companyCode).toBe(CO_C)
     // 8 段归集断言（CO_A 种子）
     expect(rows[1].aging).toEqual({ '1个月': 100, '2个月': 50, '3个月': 50, '4-6月': 50, '半年以上': 20, '1年至2年': 15, '2年至3年': 10, '3年以上': 5 })
     // 科目过滤：不存在的科目返回空
@@ -216,7 +241,8 @@ describe('TransactionService.getAgingAnalysis（真实 DB）', () => {
     })
     try {
       const rows = await TransactionService.getAgingAnalysis({ groupBy: 'type', period: '2097-03', accountCodes: [ACC_ACTIVE] }) as Array<{ companyCode: string; aging: Record<string, number> }>
-      expect(rows).toHaveLength(2)
+      // A/B/C 三行（C 为内部往来种子），零余额临时行被过滤
+      expect(rows).toHaveLength(3)
       const a = rows.find((r) => r.companyCode === CO_A)!
       expect(a.aging['1个月']).toBe(100)
     } finally {

@@ -11,6 +11,8 @@ import {
 } from '@/components/ui/select'
 import { CompanySelect } from '@/components/filters/company-select'
 import { PageContainer } from '@/components/layout/page-container'
+import { SubPageTabs } from '@/components/layout/sub-page-tabs'
+import { INDICATOR_TABS } from '@/components/layout/module-tabs'
 import { MetricTree, OPERATING_COLUMNS, STATIC_COLUMNS } from '@/components/subject-tree/metric-tree'
 import { AnalysisDrawer, type AnalysisTarget } from '@/components/indicators/analysis-drawer'
 import { AiOverviewDialog } from '@/components/indicators/ai-overview-panel'
@@ -31,7 +33,7 @@ import { filterByCategories } from '@/lib/metric-filter'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { MetricValue } from '@/lib/metric-values'
-import { Download, ChevronsDownUp, ChevronsUpDown, History, Eye, Sparkles, Loader2, Search, X, MoreHorizontal, Rows3, Columns3, CheckCircle2, TriangleAlert } from 'lucide-react'
+import { Download, ChevronsDownUp, ChevronsUpDown, History, Eye, Sparkles, Loader2, Search, X, MoreHorizontal, Rows3, Columns3, CheckCircle2, TriangleAlert, ArrowLeft } from 'lucide-react'
 import type { SubjectNode } from '@/types'
 
 /** 收集含子节点的科目编码（用于全部展开） */
@@ -94,6 +96,12 @@ function flattenForExport(rows: Row[], depth = 0): { row: Row; depth: number }[]
 export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'static' }) {
   const { can } = usePermission()
   const navigate = useNavigate()
+  // 从看板 KPI 钻取进入时显示「返回首页」按钮（sessionStorage 标记，点击返回时清除；刷新后仍保留）
+  const [fromDashboardKpi] = useState(() => sessionStorage.getItem('dashboard.fromDashboard') === '1')
+  const handleBackToDashboard = useCallback(() => {
+    sessionStorage.removeItem('dashboard.fromDashboard')
+    navigate('/')
+  }, [navigate])
   // 子标签类型由路由入口决定（/indicators/operating | /indicators/static）
   const activeTab = subjectType
   // 查询条件与展开状态持久化到 pageStateStore（路由切换/刷新后恢复）；analysisTarget 为瞬时抽屉状态
@@ -428,95 +436,109 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
 
   return (
     <PageContainer
-      title="财务指标"
-      className="space-y-3"
+      title={(
+        <span className="flex items-center gap-1">
+          {fromDashboardKpi && (
+            <Button variant="ghost" size="icon" className="-ml-2 h-8 w-8" onClick={handleBackToDashboard} aria-label="返回首页">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          )}
+          财务指标
+        </span>
+      )}
+      className="flex h-[calc(100dvh-104px)] flex-col space-y-3 lg:h-[calc(100dvh-112px)]"
+      // 视口撑满布局：main 可视高 = 100dvh - Header(h-14=56px)；减去 main 的 pt-6(24px) 与 pb-6(24px) 即页面可用高
+      // （lg 断点 pb-8=32px → 112px）。页面内容恒一屏、main 不出现全局滚动条，表格高度由 flex 链撑满。
+      // 104/112 必须与 main-layout.tsx 的 Header 高与 pt/pb 同步（改布局时需同步更新）
       stickyHeader
       headerRef={headerRef}
       actionsFullWidth
       actions={
-        // 筛选条响应式：全尺寸单行不横滚，超宽自然换行；控件宽度随断点缩小，极小屏搜索缩为图标浮层
+        // 筛选条流体自适应：主体/搜索按剩余空间弹性伸缩（min-w-0 可收缩 + max-w 限幅 + 内部截断），
+        // 固定项（期间/开关/按钮组）恒完整；中等分辨率单行不换行，仅极端窄屏 wrap 兜底；
+        // 极小屏搜索缩为图标浮层
         <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
-          {/* 左侧：主体维度选择（加宽，保证公司名称完整显示；选项前缀+简称跟随全局开关，触发器仅显名称） */}
+          {/* 左侧：主体维度选择（弹性伸缩，保证公司名称完整显示；选项前缀+简称跟随全局开关，触发器仅显名称） */}
           <CompanySelect
             value={dimFilter}
             onChange={setDimFilter}
             valueFormat="prefixed"
             allLabel="全部主体"
             ariaLabel="主体维度"
-            className="h-8 w-[120px] shrink-0 border-input/60 bg-page hover:bg-muted/60 min-[800px]:w-[140px] lg:w-[200px] min-[1300px]:w-[250px]"
+            className="h-8 w-auto shrink min-w-0 flex-1 max-w-[260px] border-input/60 bg-page hover:bg-muted/60"
           />
 
-          {/* 右侧：科目搜索 + 期间 + 重分类 + 操作按钮组（lg 以上靠右对齐） */}
-          <div className="flex shrink-0 items-center gap-2 lg:ml-auto">
-            {/* 科目列关键字筛选：实时过滤科目树（命中节点保留整棵子树与祖先链） */}
-            <div className="relative shrink-0">
-              {/* >=600px：完整输入框 */}
-              <div className="hidden min-[600px]:block">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={subjectKeyword}
-                  onChange={(e) => setSubjectKeyword(e.target.value)}
-                  placeholder="搜索科目"
-                  aria-label="搜索科目"
-                  className="h-8 w-[120px] border-input/60 bg-page pl-8 pr-7 text-[13px]"
-                />
-                {subjectKeyword && (
-                  <button
-                    type="button"
-                    onClick={() => setSubjectKeyword('')}
-                    aria-label="清空科目搜索"
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-              {/* <600px：仅图标按钮，点击展开 Popover 浮层输入框（Portal 渲染，不受侧边栏/吸顶层级遮挡） */}
-              <div className="min-[600px]:hidden">
-                <Popover open={searchOpen} onOpenChange={setSearchOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="fused"
-                      size="sm"
-                      className="h-8 w-8 p-0"
-                      aria-label={searchOpen ? '收起科目搜索' : '搜索科目'}
-                      title="搜索科目"
-                    >
-                      <Search className="h-3.5 w-3.5" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent align="end" sideOffset={6} className="w-64 p-1.5">
-                    <div className="relative">
-                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        autoFocus
-                        value={subjectKeyword}
-                        onChange={(e) => setSubjectKeyword(e.target.value)}
-                        placeholder="搜索科目"
-                        aria-label="搜索科目"
-                        className="h-8 w-full border-input/60 bg-page pl-8 pr-7 text-[13px]"
-                      />
-                      {subjectKeyword && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSubjectKeyword('')
-                            setSearchOpen(false)
-                          }}
-                          aria-label="清空科目搜索"
-                          className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              </div>
+          {/* 科目列关键字筛选：实时过滤科目树（命中节点保留整棵子树与祖先链）；>=600px 弹性伸缩，<600px 缩为图标浮层 */}
+          <div className="relative shrink-0 min-[600px]:min-w-0 min-[600px]:flex-1 min-[600px]:max-w-[220px]">
+            {/* >=600px：完整输入框（flex-1 弹性填充，min-w-0 可收缩截断） */}
+            <div className="hidden min-[600px]:flex min-[600px]:min-w-0">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={subjectKeyword}
+                onChange={(e) => setSubjectKeyword(e.target.value)}
+                placeholder="搜索科目"
+                aria-label="搜索科目"
+                className="h-8 w-auto min-w-0 flex-1 max-w-[220px] border-input/60 bg-page pl-8 pr-7 text-[13px]"
+              />
+              {subjectKeyword && (
+                <button
+                  type="button"
+                  onClick={() => setSubjectKeyword('')}
+                  aria-label="清空科目搜索"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
+            {/* <600px：仅图标按钮，点击展开 Popover 浮层输入框（Portal 渲染，不受侧边栏/吸顶层级遮挡） */}
+            <div className="min-[600px]:hidden">
+              <Popover open={searchOpen} onOpenChange={setSearchOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="fused"
+                    size="sm"
+                    className="h-8 w-8 p-0"
+                    aria-label={searchOpen ? '收起科目搜索' : '搜索科目'}
+                    title="搜索科目"
+                  >
+                    <Search className="h-3.5 w-3.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" sideOffset={6} className="w-64 p-1.5">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      autoFocus
+                      value={subjectKeyword}
+                      onChange={(e) => setSubjectKeyword(e.target.value)}
+                      placeholder="搜索科目"
+                      aria-label="搜索科目"
+                      className="h-8 w-full border-input/60 bg-page pl-8 pr-7 text-[13px]"
+                    />
+                    {subjectKeyword && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSubjectKeyword('')
+                          setSearchOpen(false)
+                        }}
+                        aria-label="清空科目搜索"
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
 
+          {/* 右侧：期间 + 重分类 + 操作按钮组（lg 以上靠右对齐） */}
+          <div className="flex shrink-0 items-center gap-2 lg:ml-auto">
             <Select value={periodFilter} onValueChange={setPeriodFilter}>
-              <SelectTrigger className="h-8 w-[100px] shrink-0 border-input/60 bg-page hover:bg-muted/60 min-[800px]:w-[120px] lg:w-[140px] min-[1300px]:w-[160px]" aria-label="期间">
+              <SelectTrigger className="h-8 w-[100px] shrink-0 border-input/60 bg-page hover:bg-muted/60" aria-label="期间">
                 <SelectValue placeholder="选择期间" />
               </SelectTrigger>
               <SelectContent>
@@ -686,6 +708,9 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
         }
       >
 
+      {/* 页内 Tab：经营指标 / 静态指标（路由驱动，切换即导航到子页） */}
+      <SubPageTabs items={INDICATOR_TABS} />
+
       {/* AI 全局预分析弹窗（权限控制显示；key 重建保证筛选变化时旧流中止、数据随新筛选；关闭不中断后台生成） */}
       {can('reports', 'create') ? (
         <AiOverviewDialog
@@ -729,9 +754,10 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
         </div>
       )}
 
-      {/* 科目树表格卡片：筛选条在页头 actions 吸顶，树区承载于卡片内 */}
-      <Card className="animate-fade-in overflow-hidden rounded-card">
-        <div className="min-h-[420px] px-4 py-3">
+      {/* 科目树表格卡片：flex-1 min-h-0 撑满剩余高度，MetricTree 滚动容器内部滚动、页面不滚动
+         勿加 overflow-hidden：会截断 MetricTree 内部容器的 sticky 吸顶链 */}
+      <Card className="flex min-h-0 flex-1 flex-col animate-fade-in rounded-card">
+        <div className="flex min-h-0 flex-1 flex-col px-4 py-3">
           {isLoading ? (
             /* 加载骨架：保持表格占位高度，避免内容区塌陷再撑回导致跳动 */
             <div className="py-3">
@@ -758,7 +784,7 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
               </Button>
             </div>
           ) : (
-            <div className={cn('transition-opacity duration-200', isFetching && 'opacity-60')}>
+            <div className={cn('flex min-h-0 flex-1 flex-col transition-opacity duration-200', isFetching && 'opacity-60')}>
               <MetricTree
                 nodes={sortedTree}
                 categoryCandidates={visibleTree}

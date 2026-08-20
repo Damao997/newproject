@@ -1142,14 +1142,15 @@ class ApiClient {
   }
 
   // ============ 往来分析 ============
-  // 总览：公司多选（逗号分隔，空=全部）+ 单期间过滤（期末余额为时点数）；inactive 科目由后端强制剔除
-  async getTransactionOverview(params: { companyCodes?: string[]; period?: string } = {}) {
+  // 总览：公司多选（逗号分隔，空=全部）+ 单期间过滤（期末余额为时点数）+ 对象类型多选（默认 external+related）；inactive 科目由后端强制剔除
+  async getTransactionOverview(params: { companyCodes?: string[]; period?: string; partyType?: string[] } = {}) {
     return this.request({
       method: 'GET',
       url: '/transactions/overview',
       params: {
         companyCodes: params.companyCodes?.length ? params.companyCodes.join(',') : undefined,
         period: params.period,
+        partyType: params.partyType?.length ? params.partyType.join(',') : undefined,
       },
     })
   }

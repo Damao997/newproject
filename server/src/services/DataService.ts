@@ -98,6 +98,16 @@ async function nextRootSubjectCode(prefix: 'OP' | 'ST', name: string): Promise<s
   return `${prefix}_${String(next).padStart(2, '0')}`
 }
 
+/** 父级子树（含父级自身；编码前缀匹配即级联后代）内最大 orderNo；无记录返回 0。
+ * 科目树按 orderNo 全局前序渲染，新增/换父子科目必须插入到目标父级子树末尾。 */
+async function subtreeMaxOrderNo(tx: Prisma.TransactionClient, parentCode: string): Promise<number> {
+  const agg = await tx.accountSubject.aggregate({
+    where: { code: { startsWith: parentCode } },
+    _max: { orderNo: true },
+  })
+  return agg._max.orderNo ?? 0
+}
+
 // ---------------- 指标 ----------------
 export interface MetricDto { id: string; code: string; name: string; dataType: string; formula: string | null; sourceAccountCodes: string[] | null; dependsOn: string[] | null; category: string; status: string }
 
@@ -346,17 +356,25 @@ export const DataService = {
       if (attempt > 0 && code === lastCode) throw errors.conflict('科目编码已存在')
       lastCode = code
       try {
-        const created = await prisma.accountSubject.create({
-          data: {
-            code, name: input.name,
-            subjectType,
-            level,
-            parentCode,
-            category: input.category ?? input.name,
-            direction: (input.direction === 'credit' ? 'credit' : 'debit'),
-            valueType: normalizeValueType(input.valueType) ?? 'amount',
-            isLeaf: input.isLeaf ?? true,
-          },
+        // orderNo：根科目追加到全局末尾；子科目插入父级子树末尾（orderNo 为全局前序，插入后顺延后续科目保持树序）
+        const created = await prisma.$transaction(async (tx) => {
+          const insertPos = parentCode
+            ? (await subtreeMaxOrderNo(tx, parentCode)) + 1
+            : ((await tx.accountSubject.aggregate({ _max: { orderNo: true } }))._max.orderNo ?? 0) + 1
+          await tx.accountSubject.updateMany({ where: { orderNo: { gte: insertPos } }, data: { orderNo: { increment: 1 } } })
+          return tx.accountSubject.create({
+            data: {
+              code, name: input.name,
+              subjectType,
+              level,
+              parentCode,
+              category: input.category ?? input.name,
+              direction: (input.direction === 'credit' ? 'credit' : 'debit'),
+              valueType: normalizeValueType(input.valueType) ?? 'amount',
+              isLeaf: input.isLeaf ?? true,
+              orderNo: insertPos,
+            },
+          })
         })
         await recordAudit({ userId: ctx.userId, module: 'data', action: 'create', targetId: created.code, detail: { entity: 'subject' } }, ctx.traceId)
         return subjectDto(created)
@@ -440,6 +458,24 @@ export const DataService = {
       for (const code of subtree) {
         if (code === found.code) continue
         await tx.accountSubject.update({ where: { code }, data: { category: newCategory, level: (levelMap.get(code) ?? 0) + levelDelta } })
+      }
+      // orderNo 重排：子树按前序（编码序）插入新父子树末尾，后续科目顺延（orderNo 全局前序，避免换父后渲染错序）
+      const orderedSubtree = [...subtree].sort((a, b) => a.localeCompare(b))
+      const insertPos = newParentCode
+        ? ((await tx.accountSubject.aggregate({
+            where: { AND: [{ code: { startsWith: newParentCode } }, { code: { notIn: orderedSubtree } }] },
+            _max: { orderNo: true },
+          }))._max.orderNo ?? 0) + 1
+        : ((await tx.accountSubject.aggregate({
+            where: { code: { notIn: orderedSubtree } },
+            _max: { orderNo: true },
+          }))._max.orderNo ?? 0) + 1
+      await tx.accountSubject.updateMany({
+        where: { AND: [{ orderNo: { gte: insertPos } }, { code: { notIn: orderedSubtree } }] },
+        data: { orderNo: { increment: orderedSubtree.length } },
+      })
+      for (let i = 0; i < orderedSubtree.length; i++) {
+        await tx.accountSubject.update({ where: { code: orderedSubtree[i] }, data: { orderNo: insertPos + i } })
       }
       // 自身：换父 + category + level
       return tx.accountSubject.update({ where: { id }, data: { parentCode: newParentCode, category: newCategory, level: newLevel } })

@@ -1,4 +1,6 @@
 import { PageContainer } from '@/components/layout/page-container'
+import { SubPageTabs } from '@/components/layout/sub-page-tabs'
+import { TRANSACTION_DETAIL_TABS } from '@/components/layout/module-tabs'
 import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { CollectionsTab } from '../collections-tab'
 
@@ -12,6 +14,8 @@ export default function CollectionsPlansPage() {
   const { headerRef, headerHeight } = useStickyHeader()
   return (
     <PageContainer title="催收计划" stickyHeader headerRef={headerRef}>
+      {/* 页内 Tab：账龄分析 / 科目过滤 / 催收计划 */}
+      <SubPageTabs items={TRANSACTION_DETAIL_TABS} />
       <CollectionsTab stickyTop={headerHeight} />
     </PageContainer>
   )

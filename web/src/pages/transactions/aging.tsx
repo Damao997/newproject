@@ -19,17 +19,19 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { PageContainer } from '@/components/layout/page-container'
+import { SubPageTabs } from '@/components/layout/sub-page-tabs'
+import { TRANSACTION_DETAIL_TABS } from '@/components/layout/module-tabs'
 import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { TABLE_HEADER_STICKY } from '@/components/data-table/styles'
 import { useTransactionAging, useTransactionPeriods, useCompanies, useAvailablePeriods } from '@/hooks/api-queries'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { usePageStore } from '@/stores/pageStateStore'
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
-import { CompanySelect } from '@/components/filters/company-select'
+import { CompanyMultiSelect } from '@/components/filters/company-select'
 import { usePermission } from '@/hooks/usePermission'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { Download, FileText, Eye, ChevronDown, MoreHorizontal } from 'lucide-react'
+import { Download, FileText, Eye, ChevronDown, ChevronUp, MoreHorizontal, ArrowLeft } from 'lucide-react'
 import { TransactionAnalysisDrawer, type TransactionAnalysisTarget } from './analysis-drawer'
 import { AccountMultiSelect, PartyTypeSelect, PartyTypeTag, AGING_GROUPS, TRANSACTION_TYPES, buildDetailSummary, useDefaultCompanyCode } from './shared'
 import type { AgingAnalysisRow } from '@/types'
@@ -59,6 +61,12 @@ const AGING_CELL_BG: Record<string, string> = {
 export default function TransactionsAgingPage() {
   const { can } = usePermission()
   const navigate = useNavigate()
+  // 从往来总览卡片钻取进入时显示「返回总览」按钮（sessionStorage 标记，点击返回或重新跳转时更新；刷新后仍保留）
+  const [fromOverview] = useState(() => sessionStorage.getItem('transactions.aging.fromOverview') === '1')
+  const handleBackToOverview = useCallback(() => {
+    sessionStorage.removeItem('transactions.aging.fromOverview')
+    navigate('/transactions/overview')
+  }, [navigate])
   // 吸顶测量：标题区 + 筛选卡高度实时测量，驱动筛选卡/表格容器吸顶偏移
   const { headerRef, filterRef, headerHeight, filterHeight } = useStickyHeader()
   const stickyTop = headerHeight + filterHeight
@@ -66,10 +74,10 @@ export default function TransactionsAgingPage() {
   const [analysisTarget, setAnalysisTarget] = useState<TransactionAnalysisTarget | null>(null)
   // 筛选与分组持久化到 pageStateStore（切路由/刷新后恢复）
   const setTransactionsTab = usePageStore((s) => s.setTransactionsTab)
-  // 默认浙江省公司汇总（ET0001，后端按汇总映射展开为成员合并口径）
-  const companyFilter = usePageStore((s) => s.transactions.aging.company)
+  // 公司多选（空数组 = 全部公司），默认浙江省公司汇总（ET0001，后端按汇总映射展开为成员合并口径）
+  const selectedCompanies = usePageStore((s) => s.transactions.aging.companies)
   const defaultCode = useDefaultCompanyCode()
-  const setCompanyFilter = useCallback((v: string) => setTransactionsTab('aging', { company: v }), [setTransactionsTab])
+  const setCompanyFilter = useCallback((v: string[]) => setTransactionsTab('aging', { companies: v }), [setTransactionsTab])
   const setPeriodFilter = useCallback((v: string) => setTransactionsTab('aging', { period: v }), [setTransactionsTab])
   const setTypeFilter = useCallback((v: string) => setTransactionsTab('aging', { type: v }), [setTransactionsTab])
   const setAccountFilter = useCallback((v: string[]) => setTransactionsTab('aging', { accounts: v }), [setTransactionsTab])
@@ -82,29 +90,52 @@ export default function TransactionsAgingPage() {
   // 导出状态：exporting 期间显示生成/下载进度（响应头未达时 total 为 undefined，仅显示"生成中…"）
   const [exporting, setExporting] = useState(false)
   const [exportProgress, setExportProgress] = useState(0)
-  // 明细筛选折叠：≥1024px（Tailwind lg）恒展开直排（trigger 隐藏）；<1024px 默认收起、可手动切换；断点变化时跟随默认值
+  // 明细筛选折叠：本地 state 默认折叠（全尺寸），行 1「展开/收起筛选条件」按钮控制；不写 pageStateStore
   const DETAIL_QUERY = '(min-width: 1024px)'
   const [isDesktop, setIsDesktop] = useState(
     () => typeof window.matchMedia === 'function' && window.matchMedia(DETAIL_QUERY).matches,
   )
-  const [detailOpen, setDetailOpen] = useState(isDesktop)
+  const [detailOpen, setDetailOpen] = useState(false)
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return
     const mq = window.matchMedia(DETAIL_QUERY)
-    const onChange = (e: MediaQueryListEvent) => {
-      setIsDesktop(e.matches)
-      setDetailOpen(e.matches)
-    }
+    const onChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches)
     mq.addEventListener('change', onChange)
     return () => mq.removeEventListener('change', onChange)
   }, [])
-  // 持久化公司校验：编码已删除/越权时回退默认主体（候选加载后生效，用户手动切换后不再覆盖）
+  // 持久化公司多选校验：编码已删除/越权时过滤，全部失效则回退默认主体（候选加载后生效，用户手动切换后不再覆盖）
   const { data: companies } = useCompanies()
+  // 主体互斥业务规则：单体公司与汇总主体不能同时筛选；新增勾选某一类时自动取消另一类并提示（与总览页同规则）
+  const handleCompaniesChange = useCallback((next: string[]) => {
+    const prev = usePageStore.getState().transactions.aging.companies
+    const typeOf = (code: string) => companies?.find((c) => c.code === code)?.type
+    const added = next.filter((c) => !prev.includes(c))
+    if (added.length > 0) {
+      const addedType = typeOf(added[added.length - 1])
+      if (addedType === 'entity' && next.some((c) => typeOf(c) === 'summary')) {
+        window.alert('单体公司与汇总主体不能同时筛选，已自动取消已选汇总主体。')
+        setCompanyFilter(next.filter((c) => typeOf(c) !== 'summary'))
+        return
+      }
+      if (addedType === 'summary' && next.some((c) => typeOf(c) === 'entity')) {
+        window.alert('单体公司与汇总主体不能同时筛选，已自动取消已选单体公司。')
+        setCompanyFilter(next.filter((c) => typeOf(c) !== 'entity'))
+        return
+      }
+    }
+    setCompanyFilter(next)
+  }, [companies, setCompanyFilter])
   useEffect(() => {
     if (!companies || companies.length === 0) return
     const valid = new Set(companies.map((c) => c.code))
-    const cur = usePageStore.getState().transactions.aging.company
-    if (cur !== 'all' && !valid.has(cur)) setCompanyFilter(defaultCode ?? 'all')
+    const cur = usePageStore.getState().transactions.aging.companies
+    if (cur.length === 0) return
+    const filtered = cur.filter((c) => valid.has(c))
+    if (filtered.length > 0) {
+      if (filtered.length !== cur.length) setCompanyFilter(filtered)
+    } else if (defaultCode) {
+      setCompanyFilter([defaultCode])
+    }
   }, [companies, defaultCode, setCompanyFilter])
   // 空串表示跟随最新期间（默认选中最近一期有数据的期间）；期末余额为时点数，不提供跨期累加
   const periodFilter = usePageStore((s) => s.transactions.aging.period)
@@ -133,7 +164,7 @@ export default function TransactionsAgingPage() {
   const effectiveGroupBy = accountFilter.length > 0 ? 'account' : groupBy
 
   const { data: agingData, isLoading } = useTransactionAging({
-    companyCode: companyFilter === 'all' ? undefined : companyFilter,
+    companyCode: selectedCompanies.length ? selectedCompanies.join(',') : undefined,
     transactionType: typeFilter || undefined,
     groupBy: effectiveGroupBy,
     period,
@@ -184,9 +215,9 @@ export default function TransactionsAgingPage() {
     setAnalysisTarget({
       transactionType: typeFilter || '',
       period: period as string,
-      defaultCompanyCode: companyFilter !== 'all' ? companyFilter : undefined,
+      defaultCompanyCode: selectedCompanies.length === 1 ? selectedCompanies[0] : undefined,
     })
-  }, [setAnalysisTarget, typeFilter, period, companyFilter])
+  }, [setAnalysisTarget, typeFilter, period, selectedCompanies])
 
   // Excel 导出：参数与当前表格查询一致（含小计开关），服务端生成（transactions:export 权限 + 审计）
   const handleExport = async () => {
@@ -195,7 +226,7 @@ export default function TransactionsAgingPage() {
     setExportProgress(0)
     try {
       const blob = await api.exportTransactionAging({
-        companyCode: companyFilter === 'all' ? undefined : companyFilter,
+        companyCode: selectedCompanies.length ? selectedCompanies.join(',') : undefined,
         transactionType: typeFilter || undefined,
         groupBy: effectiveGroupBy,
         period,
@@ -218,13 +249,30 @@ export default function TransactionsAgingPage() {
   const labelColSpan = 2 + (effectiveGroupBy === 'counterparty' || effectiveGroupBy === 'account' ? 1 : 0)
 
   return (
-    <PageContainer title="账龄分析" stickyHeader headerRef={headerRef}>
-      <div className="space-y-4">
+    <PageContainer
+      title={(
+        <span className="flex items-center gap-1">
+          {fromOverview && (
+            <Button variant="ghost" size="icon" className="-ml-2 h-8 w-8" onClick={handleBackToOverview} aria-label="返回总览">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          )}
+          账龄分析
+        </span>
+      )}
+      className="flex h-[calc(100dvh-104px)] flex-col lg:h-[calc(100dvh-112px)]"
+      // 视口撑满布局（对齐财务指标页）：main 可视高 = 100dvh - Header(56px) - main pt-6(24px) - pb-6(24px)；
+      // lg 断点 pb-8=32px → 112px。页面恒一屏、无全局滚动条，表格高度由 flex 链撑满；
+      // 104/112 需与 main-layout.tsx 的 Header 高与 pt/pb 同步
+      stickyHeader headerRef={headerRef}>
+      {/* 页内 Tab：账龄分析（默认）/ 科目过滤 / 催收计划 */}
+      <SubPageTabs items={TRANSACTION_DETAIL_TABS} />
+      <div className="flex min-h-0 flex-1 flex-col space-y-4">
         {/* 筛选卡：公司 / 期间 / 类型 / 科目 / 客商 / 分组 / 导出（吸顶） */}
-        <Card ref={filterRef} className="sticky z-10 rounded-card p-4" style={{ top: headerHeight }}>
+        <Card ref={filterRef} className="sticky z-10 shrink-0 rounded-card p-4" style={{ top: headerHeight }}>
         {/* 行 1：核心筛选 + 高频操作（flex-nowrap 强制单行：小屏时下拉收缩省略号，按钮组恒完整） */}
         <div className="flex flex-nowrap items-center gap-2">
-          <CompanySelect value={companyFilter} onChange={setCompanyFilter} className="w-[150px]" />
+          <CompanyMultiSelect value={selectedCompanies} onChange={handleCompaniesChange} selectAllType="entity" className="w-[150px]" />
           <Select value={period ?? ''} onValueChange={setPeriodFilter}>
             {/* 期间 YYYY-MM 共 7 字符（约 54px 文本 + 24px 内边距 + 16px 箭头） */}
             <SelectTrigger className="w-[94px] min-w-0">
@@ -255,6 +303,17 @@ export default function TransactionsAgingPage() {
             </SelectContent>
           </Select>
           <div className="ml-auto flex shrink-0 items-center gap-2">
+            {/* 明细筛选折叠开关：全尺寸默认折叠，点击切换；<640px 纵向两行（图标在上文字在下）保持触达性 */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setDetailOpen((o) => !o)}
+              aria-expanded={detailOpen}
+              className="h-auto flex-col gap-0.5 px-2 text-muted-foreground hover:text-foreground sm:flex-row sm:gap-1"
+            >
+              {detailOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              <span>{detailOpen ? '收起筛选条件' : '展开筛选条件'}</span>
+            </Button>
             {/* ≥lg 三按钮平铺；<lg 收缩为「操作」下拉，节省筛选条宽度 */}
             {isDesktop ? (
               <>
@@ -309,28 +368,9 @@ export default function TransactionsAgingPage() {
             )}
           </div>
         </div>
-        {/* 行 2：明细筛选（≥lg 恒展开直排与现状一致；<lg 收进折叠面板，trigger 展示生效条件摘要） */}
-        <Collapsible
-          open={detailOpen}
-          onOpenChange={setDetailOpen}
-          trigger={(open) => (
-            <div className={cn('flex w-full items-center gap-3 pt-1', isDesktop && 'hidden')}>
-              <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">明细筛选</span>
-              {detailSummary.length > 0 && (
-                <span className="min-w-0 truncate text-xs text-muted-foreground">{detailSummary.join(' · ')}</span>
-              )}
-              {detailSummary.length > 0 && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />}
-              <ChevronDown
-                className={cn('ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')}
-              />
-            </div>
-          )}
-        >
+        {/* 行 2：明细筛选（科目/客商/关键词/仅小计），默认折叠，由行 1 按钮控制显隐 */}
+        <Collapsible open={detailOpen} onOpenChange={setDetailOpen}>
           <div className="mt-1 flex flex-wrap items-center gap-3 border-t border-dashed border-border pt-1">
-            {/* 桌面直排时展示区段徽标；移动端徽标在 trigger 行，避免展开后重复 */}
-            {isDesktop && (
-              <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">明细筛选</span>
-            )}
             <AccountMultiSelect value={accountFilter} onChange={(v) => { setAccountFilter(v); if (v.length > 0) setKeyword('') }} transactionType={typeFilter || undefined} />
             <PartyTypeSelect value={partyFilter} onChange={setPartyFilter} />
             {/* 搜索框仅在按往来对象分组时展示（按科目展开时无往来对象列，避免隐藏筛选残留） */}
@@ -348,23 +388,27 @@ export default function TransactionsAgingPage() {
             </div>
           </div>
         </Collapsible>
+        {/* 折叠态摘要：生效条件一瞥（科目/客商/关键词/仅小计），无前缀文字 */}
+        {!detailOpen && detailSummary.length > 0 && (
+          <p className="mt-2 truncate text-xs text-muted-foreground">{detailSummary.join(' · ')}</p>
+        )}
         </Card>
 
         {/* 仅显示小计提示：明细行数仍参与小计/合计聚合，仅隐藏展示 */}
         {subtotalOnly && hiddenDetailCount > 0 && (
-          <p className="text-xs text-muted-foreground">已隐藏 {hiddenDetailCount} 条明细，仅显示小计/合计</p>
+          <p className="shrink-0 text-xs text-muted-foreground">已隐藏 {hiddenDetailCount} 条明细，仅显示小计/合计</p>
         )}
 
         {/* 表格卡：账龄明细（含小计/合计行，表格容器吸顶） */}
-        <Card className="rounded-card border border-border">
-          <div className="pt-4">
+        <Card className="flex min-h-0 flex-1 flex-col rounded-card border border-border">
+          <div className="flex min-h-0 flex-1 flex-col pt-4">
             {isLoading ? (
               <div className="py-8 text-center text-sm text-muted-foreground">加载中…</div>
             ) : rows.length === 0 ? (
               <div className="py-8 text-center text-sm text-muted-foreground">暂无数据</div>
             ) : (
               <div
-                className="sticky overflow-auto rounded-card bg-background"
+                className="sticky min-h-0 flex-1 overflow-auto rounded-card bg-background"
                 style={{ top: stickyTop, maxHeight: `calc(100dvh - ${stickyTop}px - 24px)` }}
               >
                 <table className="w-full text-sm" style={{ minWidth: 1240 }}>

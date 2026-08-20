@@ -28,7 +28,6 @@ const DataReclassifyPage = lazy(() => import('@/pages/data/reclassify'))
 const DataReclassifyConsolidationPage = lazy(() => import('@/pages/data/reclassify/consolidation'))
 const DataDimensionsPage = lazy(() => import('@/pages/data/dimensions'))
 const DataBoardPage = lazy(() => import('@/pages/data/board'))
-const DataFormulasPage = lazy(() => import('@/pages/data/formulas'))
 const AdminUsersPage = lazy(() => import('@/pages/admin/users'))
 const AdminRolesPage = lazy(() => import('@/pages/admin/roles'))
 const AdminAuditLogsPage = lazy(() => import('@/pages/admin/audit-logs'))
@@ -46,7 +45,7 @@ const queryClient = new QueryClient({
 // 旧 ?tab= / &sub= URL 兼容重定向：模块根路径带 query 时映射到新的三级路径，
 // 无 query 时落到默认子页（保持收藏夹/分享链接可用性）
 const LEGACY_TRANSACTION_TABS = ['overview', 'aging', 'coverage', 'account-filter', 'collections']
-const DIM_SUB_TABS = ['operating', 'static', 'company', 'summary']
+const DIM_SUB_TABS = ['operating', 'static', 'company', 'summary', 'formulas']
 const BOARD_SUB_TABS = ['category', 'expense', 'subject', 'budget-ratio']
 
 function LegacyQueryRedirect() {
@@ -76,7 +75,7 @@ function LegacyQueryRedirect() {
       return <Navigate to={`/data/board/${subTarget}`} replace />
     }
     if (tab === 'reclassify') return <Navigate to="/data/reclassify" replace />
-    if (tab === 'formulas') return <Navigate to="/data/formulas" replace />
+    if (tab === 'formulas') return <Navigate to="/data/dimensions/formulas" replace />
     return <Navigate to="/data/browse" replace />
   }
   if (location.pathname === '/tools') {
@@ -127,7 +126,8 @@ function App() {
                 <Route path="data/reclassify/consolidation" element={<RequirePermission resource="data:browse" action="view"><DataReclassifyConsolidationPage /></RequirePermission>} />
                 <Route path="data/dimensions/:sub" element={<RequirePermission resource="data:browse" action="view"><DataDimensionsPage /></RequirePermission>} />
                 <Route path="data/board/:sub" element={<RequirePermission resource="data:browse" action="view"><DataBoardPage /></RequirePermission>} />
-                <Route path="data/formulas" element={<RequirePermission resource="data:browse" action="view"><DataFormulasPage /></RequirePermission>} />
+                {/* 公式维护已并入维度/科目体系子 tab；旧路径重定向保持收藏/分享链接可用 */}
+                <Route path="data/formulas" element={<Navigate to="/data/dimensions/formulas" replace />} />
                 <Route path="admin" element={<Navigate to="/admin/users" replace />} />
                 <Route path="admin/users" element={<RequirePermission resource="admin:users" action="view"><AdminUsersPage /></RequirePermission>} />
                 <Route path="admin/roles" element={<RequirePermission resource="admin:roles" action="view"><AdminRolesPage /></RequirePermission>} />

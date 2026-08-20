@@ -3,6 +3,14 @@ import { useState } from 'react'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { Collapsible } from '@/components/ui/collapsible'
 
+/** 内容区外层 grid 面板（jsdom 不应用 Tailwind CSS，可见性以类名断言） */
+function panelOf(text: string): HTMLElement {
+  const content = screen.getByText(text)
+  const panel = content.closest('.grid')
+  if (!panel) throw new Error('panel not found')
+  return panel as HTMLElement
+}
+
 describe('Collapsible', () => {
   it('默认展开并渲染内容', () => {
     render(
@@ -10,7 +18,8 @@ describe('Collapsible', () => {
         <p>正文内容</p>
       </Collapsible>,
     )
-    expect(screen.getByText('正文内容')).toBeVisible()
+    expect(panelOf('正文内容')).toHaveClass('grid-rows-[1fr]')
+    expect(panelOf('正文内容')).not.toHaveClass('invisible')
     expect(screen.getByRole('button')).toHaveAttribute('aria-expanded', 'true')
   })
 
@@ -20,7 +29,8 @@ describe('Collapsible', () => {
         <p>正文内容</p>
       </Collapsible>,
     )
-    expect(screen.getByText('正文内容')).not.toBeVisible()
+    expect(panelOf('正文内容')).toHaveClass('grid-rows-[0fr]')
+    expect(panelOf('正文内容')).toHaveClass('invisible')
     expect(screen.getByRole('button')).toHaveAttribute('aria-expanded', 'false')
   })
 
@@ -31,10 +41,10 @@ describe('Collapsible', () => {
       </Collapsible>,
     )
     fireEvent.click(screen.getByRole('button'))
-    expect(screen.getByText('正文内容')).not.toBeVisible()
+    expect(panelOf('正文内容')).toHaveClass('invisible')
     expect(screen.getByText('展开')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button'))
-    expect(screen.getByText('正文内容')).toBeVisible()
+    expect(panelOf('正文内容')).not.toHaveClass('invisible')
     expect(screen.getByText('收起')).toBeInTheDocument()
   })
 
@@ -58,7 +68,7 @@ describe('Collapsible', () => {
     render(<Controlled />)
     fireEvent.click(screen.getByRole('button'))
     expect(onOpenChange).toHaveBeenCalledWith(false)
-    expect(screen.getByText('正文内容')).not.toBeVisible()
+    expect(panelOf('正文内容')).toHaveClass('invisible')
   })
 
   it('aria-controls 指向内容区 id', () => {
@@ -71,5 +81,15 @@ describe('Collapsible', () => {
     const panelId = btn.getAttribute('aria-controls')
     expect(panelId).toBeTruthy()
     expect(document.getElementById(panelId as string)).toContainElement(screen.getByText('正文内容'))
+  })
+
+  it('不传 trigger 时不渲染触发按钮，仅渲染内容区（外部受控）', () => {
+    render(
+      <Collapsible open onOpenChange={() => {}}>
+        <p>正文内容</p>
+      </Collapsible>,
+    )
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.getByText('正文内容')).toBeInTheDocument()
   })
 })

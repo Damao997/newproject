@@ -35,7 +35,8 @@ import {
   useDependencies,
   useAvailablePeriods,
 } from '@/hooks/api-queries'
-import { Pencil, Sparkles, History, Trash2, MoreHorizontal, Plus, Calculator, Download, ShieldAlert, RotateCcw, ArrowRightLeft } from 'lucide-react'
+import { Pencil, Sparkles, History, Trash2, MoreHorizontal, Plus, Calculator, Download, ShieldAlert, RotateCcw, ArrowRightLeft, ChevronDown, ChevronRight, Filter } from 'lucide-react'
+import { Collapsible } from '@/components/ui/collapsible'
 import { usePageStore } from '@/stores/pageStateStore'
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
@@ -94,13 +95,15 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
   const categoryFilter = usePageStore((s) => s.formulas.category)
   const statusFilter = usePageStore((s) => s.formulas.status)
   const page = usePageStore((s) => s.formulas.page)
+  const searchCollapsed = usePageStore((s) => s.formulas.searchCollapsed)
   const setSubjectType = useCallback((v: 'operating' | 'static') => setFormulas({ subjectType: v }), [setFormulas])
   const setKeyword = useCallback((v: string) => setFormulas({ keyword: v }), [setFormulas])
   const setCategoryFilter = useCallback((v: string) => setFormulas({ category: v }), [setFormulas])
   const setStatusFilter = useCallback((v: string) => setFormulas({ status: v }), [setFormulas])
   const setPage = useCallback((v: number) => setFormulas({ page: v }), [setFormulas])
+  const setSearchCollapsed = useCallback((v: boolean) => setFormulas({ searchCollapsed: v }), [setFormulas])
   // includeInactive：列表需包含已停用指标（状态筛选/恢复启用/彻底删除入口依赖），后端默认被软删除过滤
-  const { data, isLoading } = useMetrics({ page: 1, pageSize: 1000, includeInactive: 'true' })
+  const { data } = useMetrics({ page: 1, pageSize: 1000, includeInactive: 'true' })
   const { data: subjectsData } = useSubjects({ page: 1, pageSize: 1000, type: subjectType } as never)
   // 全量科目（经营+静态）：公式支持跨类型引用（如静态 ROA 引用经营科目），校验与预览须覆盖全部编码，与后端全局校验一致
   const { data: allSubjectsData } = useSubjects({ page: 1, pageSize: 2000 } as never)
@@ -498,6 +501,35 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
 
   return (
     <div className="space-y-4">
+      {/* 筛选工具条（可折叠，折叠态摘要展示当前筛选值；操作按钮随内容区折叠，与数据预览筛选卡交互一致） */}
+      <Collapsible
+        open={!searchCollapsed}
+        onOpenChange={(o) => setSearchCollapsed(!o)}
+        trigger={(open) => (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-card border border-border bg-card px-4 py-2.5">
+            <span className="flex items-center text-sm font-semibold text-foreground">
+              <Filter className="mr-2 h-4 w-4 text-muted-foreground" />
+              筛选条件
+            </span>
+            <span className="flex flex-wrap items-center gap-3 text-muted-foreground">
+              {/* 收起态摘要：当前筛选值一瞥（信息增量，符合设计规范） */}
+              {!open && (
+                <span className="text-xs">
+                  {subjectType === 'operating' ? '经营指标' : '静态指标'}
+                  {categoryFilter !== 'all' ? ` · ${categoryFilter}` : ' · 全部类别'}
+                  {keyword.trim() ? ` · “${keyword.trim()}”` : ''}
+                  {statusFilter !== 'all' ? ` · ${statusFilter === 'active' ? '启用中' : '已停用'}` : ''}
+                </span>
+              )}
+              <span className="flex items-center gap-1 text-xs">
+                {open ? '收起' : '展开'}
+                {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              </span>
+            </span>
+          </div>
+        )}
+      >
+      <div className="rounded-card border border-border bg-card p-4">
       <div className="flex flex-wrap items-center gap-2">
         <Select value={subjectType} onValueChange={(v) => { setSubjectType(v as 'operating' | 'static'); resetPage(); setCategoryFilter('all') }}>
           <SelectTrigger className="w-full sm:w-[140px]">
@@ -571,10 +603,9 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
           )}
         </div>
       </div>
+      </div>
+      </Collapsible>
 
-      <p className="text-xs text-muted-foreground">
-        {isLoading ? '加载中…' : `共 ${filtered.length} 个计算类指标（${subjectType === 'operating' ? '经营' : '静态'}）`}
-      </p>
       {listError && <p className="text-xs text-destructive">{listError}</p>}
 
       <DataTable columns={columns} data={paged} rowKey={(r) => r.code} dense emptyText="暂无计算类指标" />

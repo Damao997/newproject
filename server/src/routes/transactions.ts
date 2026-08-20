@@ -76,7 +76,7 @@ router.use(authenticate, attachScope())
 router.get('/overview', requirePermission('transactions:view', 'view'), asyncHandler(async (req, res) => {
   const companyCodes = await normalizeCompanies(req.authUser as AuthUserContext, req.query.companyCodes)
   const period = req.query.period as string | undefined
-  const data = await TransactionService.getOverview({ companyCodes, period })
+  const data = await TransactionService.getOverview({ companyCodes, period, partyType: parsePartyType(req.query.partyType) })
   sendOk(res, data)
 }))
 

@@ -59,6 +59,7 @@ export default {
           icon: "hsl(var(--sidebar-icon))",
           "selected-bg": "hsl(var(--sidebar-selected-bg))",
           "selected-fg": "hsl(var(--sidebar-selected-fg))",
+          "active-bar": "hsl(var(--sidebar-active-bar))",
           border: "hsl(var(--sidebar-border))",
           "brand-fg": "hsl(var(--sidebar-brand-fg))",
         },

@@ -205,3 +205,68 @@ describe('DataService 批次差异对比（真实 DB）', () => {
     expect(diff.changed.some((r) => r.companyCode === COMP_B)).toBe(false)
   })
 })
+
+describe('DataService 科目 orderNo 排序（真实 DB）', () => {
+  // 独立科目前缀（根科目编码由系统自动分配，名称唯一即可），避免与并行测试及真实数据干扰
+  const ROOT_NAME = `__TEST_ORD_${Date.now()}`
+  const createdCodes: string[] = []
+
+  const orderNoOf = async (code: string): Promise<number | undefined> =>
+    (await basePrisma.accountSubject.findUnique({ where: { code }, select: { orderNo: true } }))?.orderNo
+
+  afterAll(async () => {
+    if (!dbReady || createdCodes.length === 0) return
+    await basePrisma.accountSubject.deleteMany({ where: { code: { in: createdCodes } } }).catch(() => undefined)
+  })
+
+  it('新增根科目 orderNo 追加到全局末尾', async () => {
+    if (!dbReady) return
+    const root = await DataService.createSubject({ name: ROOT_NAME, type: 'operating', category: '自定义', isLeaf: false }, ctx)
+    createdCodes.push(root.code)
+    const max = await basePrisma.accountSubject.aggregate({ _max: { orderNo: true } })
+    expect(await orderNoOf(root.code)).toBe(max._max.orderNo)
+  })
+
+  it('连续新增子科目依次排在父级末尾，orderNo 渲染序与编码序一致', async () => {
+    if (!dbReady) return
+    const rootCode = createdCodes[0]
+    const c1 = await DataService.createSubject({ name: `${ROOT_NAME}_1`, parentCode: rootCode, isLeaf: true }, ctx)
+    const c2 = await DataService.createSubject({ name: `${ROOT_NAME}_2`, parentCode: rootCode, isLeaf: true }, ctx)
+    createdCodes.push(c1.code, c2.code)
+    // 编码级联：同级序号 01、02 递增
+    expect(c1.code.endsWith('01')).toBe(true)
+    expect(c2.code.endsWith('02')).toBe(true)
+    // orderNo 依次递增（c2 = c1 + 1）
+    expect((await orderNoOf(c2.code))!).toBe((await orderNoOf(c1.code))! + 1)
+    // 渲染序（orderNo 升序）与编码序一致
+    const seq = await basePrisma.accountSubject.findMany({ where: { parentCode: rootCode }, orderBy: { orderNo: 'asc' }, select: { code: true } })
+    expect(seq.map((r) => r.code)).toEqual([c1.code, c2.code])
+  })
+
+  it('再次新增子科目插入同级末尾，不扰动既有兄弟', async () => {
+    if (!dbReady) return
+    const rootCode = createdCodes[0]
+    const c2 = createdCodes[createdCodes.length - 1]
+    const before2 = (await orderNoOf(c2))!
+    const c3 = await DataService.createSubject({ name: `${ROOT_NAME}_3`, parentCode: rootCode, isLeaf: true }, ctx)
+    createdCodes.push(c3.code)
+    expect(await orderNoOf(c2)).toBe(before2) // 既有兄弟位置不动
+    expect(await orderNoOf(c3.code)).toBe(before2 + 1) // 新科目插在其后
+  })
+
+  it('reclassify 换父后子树重排到新父子树末尾', async () => {
+    if (!dbReady) return
+    const rootB = await DataService.createSubject({ name: `${ROOT_NAME}_B`, type: 'operating', category: '自定义', isLeaf: false }, ctx)
+    createdCodes.push(rootB.code)
+    const x1 = await DataService.createSubject({ name: `${ROOT_NAME}_B1`, parentCode: rootB.code, isLeaf: true }, ctx)
+    createdCodes.push(x1.code)
+    // 把根科目 A 的第三子科目移到 rootB 下
+    const c3 = createdCodes.find((c) => c.endsWith('03'))!
+    const c3Row = await basePrisma.accountSubject.findUnique({ where: { code: c3 }, select: { id: true } })
+    await DataService.reclassifySubject(c3Row!.id, { parentCode: rootB.code }, ctx)
+    // rootB 子树渲染序：x1 → c3（c3 排到末尾，x1 位置不变）
+    const seq = await basePrisma.accountSubject.findMany({ where: { parentCode: rootB.code }, orderBy: { orderNo: 'asc' }, select: { code: true } })
+    expect(seq.map((r) => r.code)).toEqual([x1.code, c3])
+    expect((await orderNoOf(c3))!).toBe((await orderNoOf(x1.code))! + 1)
+  })
+})

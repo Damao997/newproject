@@ -13,7 +13,7 @@ import { RoleDialog, PermissionDialog, CloneRoleDialog, BatchPermissionDialog } 
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { FlashMessage } from '@/components/ui/flash-message'
 import { Skeleton } from '@/components/ui/skeleton'
-import { HIGH_RISK_PERMISSIONS } from '@/lib/permissions'
+import { isHighRiskPermission } from '@/lib/permissions'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import {
   DropdownMenu,
@@ -130,11 +130,11 @@ export default function RolesPage() {
       total: roles.length,
       system,
       custom: roles.length - system,
-      highRisk: roles.filter((r) => (r.permissions ?? []).some((p) => HIGH_RISK_PERMISSIONS.includes(p.resource))).length,
+      highRisk: roles.filter((r) => (r.permissions ?? []).some((p) => isHighRiskPermission(p.resource))).length,
     }
   }, [roles])
 
-  const highRiskCount = (role: RoleItem) => (role.permissions ?? []).filter((p) => HIGH_RISK_PERMISSIONS.includes(p.resource)).length
+  const highRiskCount = (role: RoleItem) => (role.permissions ?? []).filter((p) => isHighRiskPermission(p.resource)).length
 
   const filteredRoles = useMemo(() => {
     const kw = searchQuery.trim().toLowerCase()
@@ -336,7 +336,7 @@ export default function RolesPage() {
   )
 
   return (
-    <PageContainer title="角色管理" description="创建、编辑角色并配置功能权限" stickyHeader headerRef={headerRef}>
+    <PageContainer title="角色管理" stickyHeader headerRef={headerRef}>
       {/* 统计卡片 */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 animate-fade-in">
         <Card className="border border-border">

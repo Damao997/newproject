@@ -53,7 +53,7 @@ export default function AuditLogsPage() {
   ]
 
   return (
-    <PageContainer title="审计日志" description="查看系统操作日志、用户行为记录与安全审计信息" stickyHeader headerRef={headerRef}>
+    <PageContainer title="审计日志" stickyHeader headerRef={headerRef}>
       {/* 控制层：筛选工具条（筛选卡，吸顶） */}
       <Card ref={filterRef} className="sticky z-10 rounded-card p-4" style={{ top: headerHeight }}>
       <div className="flex flex-col space-y-2 lg:flex-row lg:items-center lg:space-x-2 lg:space-y-0">

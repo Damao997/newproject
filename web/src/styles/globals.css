@@ -39,6 +39,10 @@
     --sidebar-icon: 220 9% 64%;
     --sidebar-selected-bg: 33 100% 93%;
     --sidebar-selected-fg: 33 100% 66%;
+    --sidebar-active-bar: 33 100% 66%;
+    /* 侧边栏滚动条（仅 sidebar-scroll 容器）：浅色白底用浅灰，不抢主体 */
+    --sidebar-scrollbar: 220 13% 78%;
+    --sidebar-scrollbar-hover: 220 13% 68%;
     --sidebar-border: 220 13% 91%;
     --sidebar-brand-fg: 220 9% 20%;
     --radius: 0.75rem;
@@ -85,6 +89,9 @@
     --sidebar-icon: 231 100% 90%;
     --sidebar-selected-bg: 239 55% 51%;
     --sidebar-selected-fg: 0 0% 100%;
+    --sidebar-active-bar: 0 0% 100%;
+    --sidebar-scrollbar: 281 25% 42%;
+    --sidebar-scrollbar-hover: 281 25% 52%;
     --sidebar-border: 281 46% 30%;
     --sidebar-brand-fg: 0 0% 100%;
   }
@@ -106,8 +113,14 @@
     --sidebar-bg: 222 47% 11%;
     --sidebar-fg: 220 9% 65%;
     --sidebar-icon: 220 9% 65%;
-    --sidebar-selected-bg: 222 47% 15%;
+    /* 选中背景提亮至 22% 亮度（原 15% 与背景 11% 几乎不可辨）；白字对比度仍 >12:1 */
+    --sidebar-selected-bg: 222 30% 22%;
     --sidebar-selected-fg: 0 0% 100%;
+    /* 激活指示条：深色弃用白/浅灰（避免刺眼），改用 chart-1 同源提亮蓝，与选中背景同色相系 */
+    --sidebar-active-bar: 224 82% 71%;
+    /* 侧边栏滚动条：深色滑块 ≈#454E5C 系，hover 提亮 */
+    --sidebar-scrollbar: 222 20% 32%;
+    --sidebar-scrollbar-hover: 222 20% 44%;
     --sidebar-border: 222 47% 18%;
     --sidebar-brand-fg: 0 0% 100%;
   }
@@ -157,6 +170,26 @@
 
   .finance-green {
     @apply text-finance-green;
+  }
+
+  /* 侧边栏滚动条：仅作用于 sidebar-scroll 滚动容器（桌面侧边栏/移动抽屉共用）;
+   * 轨道透明融入侧边栏背景（避免色差块），滑块三风格经变量自适应；Firefox 走 scrollbar-color 兜底 */
+  .sidebar-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--sidebar-scrollbar)) transparent;
+  }
+  .sidebar-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+  .sidebar-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .sidebar-scroll::-webkit-scrollbar-thumb {
+    background: hsl(var(--sidebar-scrollbar));
+    border-radius: 4px;
+  }
+  .sidebar-scroll::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--sidebar-scrollbar-hover));
   }
 }
 

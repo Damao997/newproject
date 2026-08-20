@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import type { EChartsOption } from 'echarts'
 import ReactECharts, { echarts } from '@/components/charts/echarts-core'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { ArrowRight } from 'lucide-react'
 import { useInventoryOverview } from '@/hooks/api-queries'
 import { formatMoneyWan } from '@/lib/utils'
 import { CHART_FONT, getChartInk, getChartSeries, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
@@ -24,12 +26,13 @@ export function InventoryPieCard({ period, companyCode }: InventoryPieCardProps)
   const navigate = useNavigate()
   // 分类色板跟随当前侧边栏风格：按序轮转，首位为风格主色；主页面恒白，图表框架色恒定
   const sidebarStyle = useThemeStore((s) => s.sidebarStyle)
-  /** 深链库存页：携带当前主体与期间，库存页挂载时写入 store 后清理 URL */
+  /** 深链库存页：携带当前主体与期间，库存页挂载时写入 store 后清理 URL；来源标记供库存页显示「返回首页」 */
   const gotoInventory = () => {
     const params = new URLSearchParams()
     if (companyCode) params.set('companies', companyCode)
     if (period) params.set('period', period)
     const qs = params.toString()
+    sessionStorage.setItem('dashboard.fromDashboard', '1')
     navigate(qs ? `/inventory?${qs}` : '/inventory')
   }
   const companyCodes = companyCode ? [companyCode] : undefined
@@ -100,6 +103,10 @@ export function InventoryPieCard({ period, companyCode }: InventoryPieCardProps)
             {period ? `期间 ${period} · ` : ''}单位：万元 · 金额：品类本期金额占比（万元）
           </p>
         </div>
+        <Button variant="ghost" size="sm" className="gap-1 text-primary" onClick={gotoInventory}>
+          查看库存明细
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Button>
       </CardHeader>
       <CardContent className="px-6 pb-6">
         {isLoading ? (

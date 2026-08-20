@@ -59,7 +59,6 @@ export default function ReportsPage() {
   return (
     <PageContainer
       title="分析报告"
-      description="汇总各公司/汇总主体的单项分析，编制总体分析报告"
       stickyHeader
       headerRef={headerRef}
     >

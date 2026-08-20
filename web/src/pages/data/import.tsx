@@ -1,4 +1,6 @@
 import { PageContainer } from '@/components/layout/page-container'
+import { SubPageTabs } from '@/components/layout/sub-page-tabs'
+import { IMPORT_TABS } from '@/components/layout/module-tabs'
 import { ImportPanel } from './import-panel'
 import { useStickyHeader } from '@/hooks/useStickyHeader'
 
@@ -10,6 +12,8 @@ export default function DataImportPage() {
   const { headerRef } = useStickyHeader()
   return (
     <PageContainer title="导入管理" stickyHeader headerRef={headerRef}>
+      {/* 页内 Tab：导入管理（默认）/ 数据预览 */}
+      <SubPageTabs items={IMPORT_TABS} />
       <ImportPanel />
     </PageContainer>
   )

@@ -209,13 +209,8 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
 
   return (
     <div className="space-y-4">
-      {/* 说明 + 工具栏 */}
+      {/* 工具栏 */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-xl text-xs text-muted-foreground">
-          维护运营费用分析的展示指标与经营科目编码集合的对应关系：每个映射选择一个或多个科目（多科目自动汇总求和），
-          看板「运营费用分析」按映射顺序展示。编码规范：单选科目=科目编码（OP_ 前缀）；归并/自定义=EXP_ 前缀小写英文（如 EXP_rd_expense）。
-          未导入数据/预算的科目不会在看板展示，导入后自动出现。
-        </p>
         <div className="flex shrink-0 items-center gap-2">
           <Button variant="outline" size="sm" onClick={refresh}>
             <RefreshCw className="mr-2 h-4 w-4" />

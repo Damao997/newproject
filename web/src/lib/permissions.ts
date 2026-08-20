@@ -14,7 +14,7 @@ import type { UserRole } from '@/types'
  */
 
 /** 管理员拥有的全部常规权限码（对齐 §2.3，去除公开路由 auth:login 与高危码；权限配置编辑已收紧为 superadmin 专属） */
-const ADMIN_PERMISSIONS: string[] = [
+const ADMIN_PERMISSIONS = [
   'dashboard:view', 'dashboard:export',
   'indicators:view', 'indicators:export',
   'transactions:view', 'transactions:create', 'transactions:update', 'transactions:delete', 'transactions:import', 'transactions:export',
@@ -31,13 +31,13 @@ const ADMIN_PERMISSIONS: string[] = [
   'admin:users:view', 'admin:users:create', 'admin:users:update', 'admin:users:delete', 'admin:users:reset-password', 'admin:users:export',
   'admin:roles:view', 'admin:roles:create', 'admin:roles:update', 'admin:roles:delete',
   'admin:permissions:view',
-]
+] as const satisfies readonly string[]
 
 /**
  * 高危操作权限码：仅超级管理员（superadmin）持有。
  * 含物理删除（purge）、指标审批、公式规则管理、批次归档/清除、权限配置编辑。
  */
-export const HIGH_RISK_PERMISSIONS: string[] = [
+export const HIGH_RISK_PERMISSIONS = [
   'data:metric:approve',
   'data:import:rollback',
   'data:import:archive',
@@ -49,9 +49,9 @@ export const HIGH_RISK_PERMISSIONS: string[] = [
   'admin:users:purge',
   // 权限配置的增删改仅 superadmin 可操作（与 server/prisma/seed.ts 同步）
   'admin:permissions:update',
-]
+] as const satisfies readonly string[]
 
-export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
+export const ROLE_PERMISSIONS: Record<UserRole, readonly string[]> = {
   // 超级管理员：全部常规权限 + 全部高危操作
   superadmin: [...ADMIN_PERMISSIONS, ...HIGH_RISK_PERMISSIONS],
 
@@ -110,6 +110,17 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
 }
 
 /**
+ * 全部权限码联合类型：由常规 + 高危码字面量推导。
+ * navItems.resource 等权限码字段标注后，拼写错误在编译期即可发现。
+ */
+export type PermissionCode = (typeof ADMIN_PERMISSIONS)[number] | (typeof HIGH_RISK_PERMISSIONS)[number]
+
+/** 判断权限码是否属于高危操作（供角色/权限配置界面的高危统计与二次确认使用） */
+export function isHighRiskPermission(code: string): boolean {
+  return (HIGH_RISK_PERMISSIONS as readonly string[]).includes(code)
+}
+
+/**
  * 判断给定角色是否拥有对某资源执行某操作的权限。
  *
  * 权限码由 `resource` 与 `action` 拼接为 `${resource}:${action}`，
@@ -144,7 +155,7 @@ export const HOME_ROUTE_PRIORITY: ReadonlyArray<{ resource: string; path: string
 ]
 
 /** 权限感知首页解析：按优先级返回第一个有权限的模块路径；无匹配返回 null（调用方跳转 /no-access） */
-export function resolveHomePath(permissions: string[] | undefined | null): string | null {
+export function resolveHomePath(permissions: readonly string[] | undefined | null): string | null {
   if (!permissions || permissions.length === 0) return null
   for (const { resource, path } of HOME_ROUTE_PRIORITY) {
     if (permissions.includes(resource)) return path

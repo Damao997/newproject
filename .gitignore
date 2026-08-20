@@ -28,6 +28,8 @@ lerna-debug.log*
 # OS files
 .DS_Store
 Thumbs.db
+# Office 临时锁文件（~$ 前缀，Excel/Word 打开时的残留）
+~$*
 
 # Local environment
 *.local

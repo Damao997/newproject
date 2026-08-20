@@ -31,7 +31,7 @@ import {
   type RoleItem,
 } from '@/hooks/api-queries'
 import { PERMISSION_LABELS, PERMISSION_MODULE_LABELS } from '@/lib/constants'
-import { HIGH_RISK_PERMISSIONS } from '@/lib/permissions'
+import { isHighRiskPermission } from '@/lib/permissions'
 import type { Company, User } from '@/types'
 
 /** 密码规则校验（与后端一致）：至少 8 位且含字母与数字，返回错误文案或 null */
@@ -327,7 +327,7 @@ function PermissionMatrix({ perms, selected, onToggle, onSetAll, locked = false 
   const totalCount = perms.length
   const selectedCount = selected.size
   const highRiskSelected = useMemo(
-    () => perms.filter((p) => HIGH_RISK_PERMISSIONS.includes(p.resource) && selected.has(permKey(p))).length,
+    () => perms.filter((p) => isHighRiskPermission(p.resource) && selected.has(permKey(p))).length,
     [perms, selected],
   )
 
@@ -415,7 +415,7 @@ function PermissionMatrix({ perms, selected, onToggle, onSetAll, locked = false 
                   <span className="flex flex-col">
                     <span className="flex items-center gap-1">
                       {PERMISSION_LABELS[p.resource] ?? p.resource}
-                      {HIGH_RISK_PERMISSIONS.includes(p.resource) && (
+                      {isHighRiskPermission(p.resource) && (
                         <Badge variant="destructive" className="px-1 py-0 text-[10px] leading-4">高危</Badge>
                       )}
                     </span>
@@ -497,7 +497,7 @@ export function PermissionDialog({ open, role, onClose, onSaved }: PermissionDia
     if (!locked) {
       const origin = new Set((role.permissions ?? []).map(permKey))
       const newHighRisk = perms.filter(
-        (p) => HIGH_RISK_PERMISSIONS.includes(p.resource) && selected.has(permKey(p)) && !origin.has(permKey(p)),
+        (p) => isHighRiskPermission(p.resource) && selected.has(permKey(p)) && !origin.has(permKey(p)),
       )
       if (newHighRisk.length > 0) {
         const names = newHighRisk.map((p) => PERMISSION_LABELS[p.resource] ?? p.resource).join('、')
@@ -597,7 +597,7 @@ export function BatchPermissionDialog({ open, roles, onClose, onSaved }: BatchPe
       .filter((p) => selected.has(permKey(p)))
       .map((p) => ({ resource: p.resource, action: p.action }))
     // 高危权限汇总确认：批量从空集开始勾选，勾选的高危项即新增，需二次确认后再提交
-    const highRisk = perms.filter((p) => HIGH_RISK_PERMISSIONS.includes(p.resource) && selected.has(permKey(p)))
+    const highRisk = perms.filter((p) => isHighRiskPermission(p.resource) && selected.has(permKey(p)))
     if (highRisk.length > 0) {
       const names = highRisk.map((p) => PERMISSION_LABELS[p.resource] ?? p.resource).join('、')
       const ok = await confirm({

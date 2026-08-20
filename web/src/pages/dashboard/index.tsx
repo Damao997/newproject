@@ -23,6 +23,7 @@ export default function DashboardPage() {
   const { headerRef } = useStickyHeader()
   // 查询条件与图表指标持久化到 pageStateStore（路由切换/刷新后恢复）
   const setDashboard = usePageStore((s) => s.setDashboard)
+  const setIndicators = usePageStore((s) => s.setIndicators)
   const selectedPeriod = usePageStore((s) => s.dashboard.period)
   // 主体筛选：all / company:CODE / summary:CODE（与指标页一致的三态格式）；
   // 默认自动模式（''）：由后端按权限选择 ET0001 → 授权汇总 → 授权单体，前端在候选加载后对齐回显
@@ -88,7 +89,6 @@ export default function DashboardPage() {
   })
   const kpiData = data?.kpiData ?? []
   const trendData = data?.trendData ?? []
-  const lastUpdatedAt = data?.lastUpdatedAt
   const currentPeriod = selectedPeriod || data?.period || periodOptions[periodOptions.length - 1] || ''
   // keepPreviousData 下期间/主体切换的后台刷新态（非首屏加载）
   const isRefreshing = isFetching && !isLoading
@@ -101,7 +101,23 @@ export default function DashboardPage() {
     }
   }, [data?.degraded, data?.companyCode, data?.companyType])
 
-  // 当前主体显示名（顶部筛选解析，供各模块标题下说明口径；自动模式下用后端返回的实际生效主体）
+  // 点击 KPI 卡片：同步看板当前筛选（主体+期间）到指标页并记录返回标记后跳转，保证指标页初始视图与看板上下文一致
+  const handleKpiClick = useCallback(() => {
+    const patch: { dimFilter?: string; periodFilter?: string } = {}
+    // 主体：显式选择（all/company:/summary:）原样同步；自动模式（''）按后端实际生效主体解析
+    if (dimFilter !== '') {
+      patch.dimFilter = dimFilter
+    } else if (data?.companyCode && data?.companyType) {
+      patch.dimFilter = `${data.companyType === 'summary' ? 'summary' : 'company'}:${data.companyCode}`
+    }
+    // 期间：看板实际生效期间（选定期或后端回显最新期）；无候选时不动指标页期间
+    if (currentPeriod) patch.periodFilter = currentPeriod
+    setIndicators(patch)
+    sessionStorage.setItem('dashboard.fromDashboard', '1')
+    navigate('/indicators/operating')
+  }, [dimFilter, data?.companyCode, data?.companyType, currentPeriod, setIndicators, navigate])
+
+  // 当前主体显示名（顶部筛选解析；自动模式下用后端返回的实际生效主体）
   const currentSubjectName = useMemo(() => {
     if (dimFilter === '') return data?.companyName ?? '全部主体'
     const code = companyCode
@@ -112,8 +128,7 @@ export default function DashboardPage() {
 
   return (
     <PageContainer
-      title="首页"
-      description={`数据更新时间: ${lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleString('zh-CN') : new Date().toLocaleDateString('zh-CN')}${currentPeriod ? ` · 当前期间: ${currentPeriod}` : ''} · 当前主体: ${currentSubjectName}`}
+      title="首页看板"
       stickyHeader
       headerRef={headerRef}
       actionsFullWidth
@@ -197,7 +212,7 @@ export default function DashboardPage() {
           {/* 核心 KPI 卡片区（收入/毛利/净利润/回款）—— 交错淡入，点击钻取指标分析 */}
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
             {kpiData.map((kpi, i) => (
-              <KpiCard key={kpi.title} data={kpi} index={i} onClick={() => navigate('/indicators/operating')} />
+              <KpiCard key={kpi.title} data={kpi} index={i} onClick={handleKpiClick} />
             ))}
           </div>
 

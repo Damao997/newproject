@@ -3,8 +3,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { MonthPicker } from '@/components/ui/month-picker'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Collapsible } from '@/components/ui/collapsible'
 import { CompanyMultiSelect } from '@/components/filters/company-select'
 import { PageContainer } from '@/components/layout/page-container'
+import { SubPageTabs } from '@/components/layout/sub-page-tabs'
+import { IMPORT_TABS } from '@/components/layout/module-tabs'
 import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { usePermission } from '@/hooks/usePermission'
@@ -20,6 +23,7 @@ import {
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
+  Filter,
 } from 'lucide-react'
 
 type CrossRow = { code: string; name: string; valueType?: 'amount' | 'quantity' | 'ratio'; level: number; parentCode: string | null; isLeaf: boolean; values: Record<string, number> }
@@ -40,9 +44,11 @@ export default function DataBrowsePage() {
   const browsePeriod = usePageStore((s) => s.dataBrowse.period)
   const browseSubjectType = usePageStore((s) => s.dataBrowse.subjectType)
   const expandedRows = usePageStore((s) => s.dataBrowse.expandedRows)
+  const browseFilterCollapsed = usePageStore((s) => s.dataBrowse.filterCollapsed)
   const setBrowseCompanies = useCallback((v: string[]) => setDataBrowse({ companies: v }), [setDataBrowse])
   const setBrowsePeriod = useCallback((v: string) => setDataBrowse({ period: v }), [setDataBrowse])
   const setBrowseSubjectType = useCallback((v: 'operating' | 'static') => setDataBrowse({ subjectType: v }), [setDataBrowse])
+  const setBrowseFilterCollapsed = useCallback((v: boolean) => setDataBrowse({ filterCollapsed: v }), [setDataBrowse])
   // 展开集合由持久化数组派生（Set 不可序列化，store 以数组存储）
   const expandedRowSet = useMemo(() => new Set(expandedRows), [expandedRows])
   const setExpandedRows = useCallback((updater: (prev: Set<string>) => Set<string>) => {
@@ -184,9 +190,44 @@ export default function DataBrowsePage() {
   }
 
   return (
-    <PageContainer title="数据预览" description="数据预览（指标 × 公司交叉表）" stickyHeader headerRef={headerRef}>
-      <div className="space-y-4">
-        {/* 控制层：数据预览筛选工具条（筛选卡，吸顶） */}
+    <PageContainer
+      title="数据预览"
+      className="flex h-[calc(100dvh-104px)] flex-col lg:h-[calc(100dvh-112px)]"
+      // 视口撑满布局（对齐财务指标页）：main 可视高 = 100dvh - Header(56px) - main pt-6(24px) - pb-6(24px)；
+      // lg 断点 pb-8=32px → 112px。页面恒一屏、无全局滚动条，表格高度由 flex 链撑满；
+      // 104/112 需与 main-layout.tsx 的 Header 高与 pt/pb 同步
+      stickyHeader headerRef={headerRef}>
+      {/* 页内 Tab：导入管理 / 数据预览 */}
+      <SubPageTabs items={IMPORT_TABS} />
+      <div className="flex min-h-0 flex-1 flex-col space-y-4">
+        {/* 控制层：筛选条件卡（可折叠，折叠态摘要展示当前筛选值；filterRef 测高驱动表格吸顶，折叠后自动归零） */}
+        <Collapsible
+          open={!browseFilterCollapsed}
+          onOpenChange={(o) => setBrowseFilterCollapsed(!o)}
+          className="shrink-0"
+          trigger={(open) => (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-card border border-border bg-card px-4 py-2.5">
+              <span className="flex items-center text-sm font-semibold text-foreground">
+                <Filter className="mr-2 h-4 w-4 text-muted-foreground" />
+                筛选条件
+              </span>
+              <span className="flex items-center gap-3 text-muted-foreground">
+                {/* 收起态摘要：当前筛选值一瞥（信息增量，符合设计规范） */}
+                {!open && (
+                  <span className="text-xs">
+                    {browseSubjectType === 'operating' ? '经营指标' : '静态指标'}
+                    {browseCompanies.length > 0 ? ` · ${browseCompanies.length} 家公司` : ' · 全部公司'}
+                    {browsePeriod ? ` · ${browsePeriod}` : ' · 最新期间'}
+                  </span>
+                )}
+                <span className="flex items-center gap-1 text-xs">
+                  {open ? '收起' : '展开'}
+                  {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                </span>
+              </span>
+            </div>
+          )}
+        >
         <Card ref={filterRef} className="sticky z-10 rounded-card p-4" style={{ top: headerHeight }}>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex flex-wrap items-center gap-3">
@@ -222,18 +263,19 @@ export default function DataBrowsePage() {
           </div>
         </div>
         </Card>
+        </Collapsible>
 
         {/* 展示层：数据预览交叉表（表格卡，表格容器吸顶） */}
-        <Card className="rounded-card border border-border">
+        <Card className="flex min-h-0 flex-1 flex-col rounded-card border border-border">
           <div className="border-b px-4 py-2.5">
-            <h3 className="text-base font-semibold tracking-tight">数据预览（{browseSubjectType === 'operating' ? '经营指标' : '静态指标'} × 公司{crossTable?.period ? ` · ${crossTable.period}` : ''}）</h3>
+            <h3 className="text-base font-semibold tracking-tight">数据预览</h3>
           </div>
-          <div className="p-4">
+          <div className="flex min-h-0 flex-1 flex-col p-4">
             {crossLoading ? (
               <div className="min-h-[320px] py-12 text-center text-sm text-muted-foreground">数据加载中…</div>
             ) : (
-              <div className={cn('min-h-[320px] transition-opacity duration-200', crossFetching && 'opacity-60')}>
-                <div className="sticky rounded-card bg-background" style={{ top: stickyTop }}>
+              <div className={cn('flex min-h-[320px] flex-1 flex-col transition-opacity duration-200', crossFetching && 'opacity-60')}>
+                <div className="sticky min-h-0 flex-1 rounded-card bg-background" style={{ top: stickyTop }}>
                   <DataTable
                     columns={browseColumns}
                     data={visibleCrossRows}

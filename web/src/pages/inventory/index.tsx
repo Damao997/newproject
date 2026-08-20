@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -27,16 +27,14 @@ import { cn, formatMoneyWan, getChangeColor, getChangePrefix } from '@/lib/utils
 import { exportToExcel } from '@/lib/export'
 import {
   ArrowDown,
+  ArrowLeft,
   ArrowUp,
   ArrowUpDown,
-  Boxes,
-  CalendarClock,
   Download,
   FileText,
   Package,
   RefreshCw,
   Search,
-  TrendingUp,
   X,
 } from 'lucide-react'
 import { CategoryPieCard } from './category-pie-card'
@@ -55,14 +53,6 @@ import { EmptyHint } from './empty-hint'
  * 合计行、批量勾选与 Excel 导出；按公司汇总行支持公司级「分析」（存货根科目）；
  * 选中单个汇总主体时趋势卡旁展示成员单体公司占比饼图。
  */
-
-/** KPI 图标底色：与看板四色体系一致（图表序列色），按序轮换 */
-const KPI_ACCENTS = [
-  'bg-chart-1/10 text-chart-1',
-  'bg-chart-2/10 text-chart-2',
-  'bg-chart-3/10 text-chart-3',
-  'bg-chart-5/10 text-chart-5',
-]
 
 // ===== 明细表：维度模型与排序 =====
 
@@ -191,9 +181,8 @@ function useDefaultCompanyCode(): string | null {
   }, [companies])
 }
 
-function StatCard({ title, icon: Icon, value, sub, index, loading }: {
+function StatCard({ title, value, sub, index, loading }: {
   title: string
-  icon: React.ElementType
   value: React.ReactNode
   sub?: React.ReactNode
   index: number
@@ -204,13 +193,10 @@ function StatCard({ title, icon: Icon, value, sub, index, loading }: {
       className="animate-fade-in border border-border"
       style={{ animationDelay: `${index * 80}ms` }}
     >
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 px-5 pb-1 pt-5">
-        <CardTitle className="text-xs font-medium tracking-wide text-muted-foreground">{title}</CardTitle>
-        <div className={cn('flex h-8 w-8 items-center justify-center rounded-lg', KPI_ACCENTS[index % KPI_ACCENTS.length])}>
-          <Icon className="h-4 w-4" />
-        </div>
+      <CardHeader className="px-5 pb-1 pt-5 text-center">
+        <CardTitle className="text-[14px] font-medium tracking-wide text-black">{title}</CardTitle>
       </CardHeader>
-      <CardContent className="px-5 pb-4">
+      <CardContent className="px-5 pb-4 text-center">
         {loading ? (
           <div>
             <div className="skeleton h-8 w-24 rounded" />
@@ -591,10 +577,26 @@ export default function InventoryPage() {
   const turnover = overview?.turnoverDays
   const turnoverDelta = turnover ? turnover.current - turnover.samePeriod : 0
 
+  // 从看板存货品类卡深链进入时显示「返回首页」按钮（sessionStorage 标记，点击返回时清除；刷新后仍保留）
+  const navigate = useNavigate()
+  const [fromDashboard] = useState(() => sessionStorage.getItem('dashboard.fromDashboard') === '1')
+  const handleBackToDashboard = useCallback(() => {
+    sessionStorage.removeItem('dashboard.fromDashboard')
+    navigate('/')
+  }, [navigate])
+
   return (
     <PageContainer
-      title="存货管理"
-      description="库存总览、品类占比、周转指标、趋势分析（数据源：静态数据存货品类）"
+      title={(
+        <span className="flex items-center gap-1">
+          {fromDashboard && (
+            <Button variant="ghost" size="icon" className="-ml-2 h-8 w-8" onClick={handleBackToDashboard} aria-label="返回首页">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          )}
+          存货管理
+        </span>
+      )}
       stickyHeader
       headerRef={headerRef}
     >
@@ -611,7 +613,7 @@ export default function InventoryPage() {
             placeholder="最新期间"
             className="w-full sm:w-[150px]"
           />
-          <span className="text-xs text-muted-foreground">金额单位：万元 · 单体公司与汇总主体不可同时筛选 · 期间仅作用于卡片与明细，趋势图展示财年全月序列</span>
+          <span className="text-xs text-muted-foreground">金额单位：万元</span>
         </div>
         </Card>
 
@@ -628,7 +630,6 @@ export default function InventoryPage() {
               index={0}
               loading={isOverviewLoading}
               title="存货总额（本期）"
-              icon={Package}
               value={total ? formatMoneyWan(total.current) : '-'}
               sub={total ? <>年初 <span className="font-num">{formatMoneyWan(total.yearStart)}</span></> : undefined}
             />
@@ -636,7 +637,6 @@ export default function InventoryPage() {
               index={1}
               loading={isOverviewLoading}
               title="较年初增减"
-              icon={Boxes}
               value={
                 total ? (
                   <span className={getChangeColor(total.current - total.yearStart)}>
@@ -650,7 +650,6 @@ export default function InventoryPage() {
               index={2}
               loading={isOverviewLoading}
               title="同比增减率"
-              icon={TrendingUp}
               value={total ? <ChangeRate current={total.current} base={total.samePeriod} /> : '-'}
               sub={total ? <>同期 <span className="font-num">{formatMoneyWan(total.samePeriod)}</span></> : undefined}
             />
@@ -658,7 +657,6 @@ export default function InventoryPage() {
               index={3}
               loading={isOverviewLoading}
               title="存货周转天数"
-              icon={CalendarClock}
               value={overview ? formatDays(overview.turnoverDays.current) : '-'}
               sub={turnover ? (
                 <>
@@ -738,9 +736,8 @@ export default function InventoryPage() {
         <Card className="animate-fade-in overflow-hidden rounded-card border border-border">
           <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2.5">
             <h3 className="flex items-center gap-2 text-base font-semibold tracking-tight">
-              <Boxes className="h-4 w-4" />
               {DIM_TITLES[detailDim]}
-              <span className="ml-1 text-xs font-normal text-muted-foreground">{period ?? ''} · 共 {visibleRows.length} 行</span>
+              <span className="ml-1 text-xs font-normal text-muted-foreground">{period ?? ''}</span>
             </h3>
             {categoryCode && (
               <span className="flex items-center gap-1">

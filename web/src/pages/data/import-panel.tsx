@@ -7,6 +7,7 @@ import { usePermission } from '@/hooks/usePermission'
 import { useImports, useImport, useUploadImport, useActivateImport, usePreviewImport, useArchiveImport, usePurgeImport, useAvailablePeriods } from '@/hooks/api-queries'
 import { useBatchActivate, buildActivateConflictDescription } from '@/hooks/use-batch-activate'
 import { usePeriodStore } from '@/stores/periodStore'
+import { usePageStore } from '@/stores/pageStateStore'
 import { validateExcelFile } from '@/lib/file-validation'
 import { downloadImportTemplate } from '@/lib/import-template'
 import { type ImportPreviewResult } from '@/lib/api'
@@ -53,10 +54,7 @@ const templateTypeLabel: Record<string, string> = {
   inventory: '存货数据',
 }
 
-/** 导入质量概览折叠偏好的 localStorage key（'1' = 收起） */
-const QUALITY_COLLAPSED_KEY = 'data-quality-overview-collapsed'
-/** 往来导入覆盖折叠偏好的 localStorage key（'1' = 收起） */
-const COVERAGE_COLLAPSED_KEY = 'data-import-coverage-collapsed'
+/** 导入质量概览折叠偏好（迁移自独立 localStorage key，现统一走 pageStateStore.dataImport） */
 
 interface ImportErrorRow {
   row: number
@@ -80,38 +78,17 @@ export function ImportPanel() {
   const canViewTransactions = can('transactions', 'view')
   const { confirm, element: confirmElement } = useConfirm()
 
-  // 导入质量概览折叠偏好：localStorage 持久化（'1' = 收起），读写失败静默降级为展开
-  const [qualityOpen, setQualityOpen] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(QUALITY_COLLAPSED_KEY) !== '1'
-    } catch {
-      return true
-    }
-  })
+  // 导入质量概览折叠偏好：pageStateStore 持久化（切换子页/刷新后恢复）
+  const qualityOpen = !usePageStore((s) => s.dataImport.qualityCollapsed)
+  const setDataImport = usePageStore((s) => s.setDataImport)
   const handleQualityOpenChange = (open: boolean) => {
-    setQualityOpen(open)
-    try {
-      localStorage.setItem(QUALITY_COLLAPSED_KEY, open ? '0' : '1')
-    } catch {
-      /* 隐私模式等场景忽略 */
-    }
+    setDataImport({ qualityCollapsed: !open })
   }
 
-  // 往来导入覆盖折叠偏好：localStorage 持久化（'1' = 收起），读写失败静默降级为展开
-  const [coverageOpen, setCoverageOpen] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(COVERAGE_COLLAPSED_KEY) !== '1'
-    } catch {
-      return true
-    }
-  })
+  // 往来导入覆盖折叠偏好：pageStateStore 持久化
+  const coverageOpen = !usePageStore((s) => s.dataImport.coverageCollapsed)
   const handleCoverageOpenChange = (open: boolean) => {
-    setCoverageOpen(open)
-    try {
-      localStorage.setItem(COVERAGE_COLLAPSED_KEY, open ? '0' : '1')
-    } catch {
-      /* 隐私模式等场景忽略 */
-    }
+    setDataImport({ coverageCollapsed: !open })
   }
 
   // ---- 导入 ----
@@ -248,7 +225,7 @@ export function ImportPanel() {
       setUploadedInfo({ batchId: batch.id, filename: batch.filename, detailCount: batch.detailCount ?? batch.successCount, rowCount: batch.rowCount ?? batch.successCount })
       setSelectedFile(null)
       // 导入→激活闭环：强制展开质量概览并自动选中新批次，完整性校验/异常明细直接就绪
-      handleQualityOpenChange(true)
+      setDataImport({ qualityCollapsed: false })
       setSelectedBatchId(batch.id)
       setActivateMsg(null)
     } catch (err) {

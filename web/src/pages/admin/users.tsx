@@ -245,7 +245,7 @@ export default function UsersPage() {
   }
 
   return (
-    <PageContainer title="用户管理" description="用户增删改查、角色分配与启用状态管理" stickyHeader headerRef={headerRef}>
+    <PageContainer title="用户管理" stickyHeader headerRef={headerRef}>
       {/* 统计卡片 */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 animate-fade-in">
         <Card className="border border-border">

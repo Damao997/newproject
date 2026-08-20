@@ -21,7 +21,7 @@ export default function NoAccessPage() {
   }
 
   return (
-    <PageContainer title="权限不足" description="当前账号无可用模块权限" stickyHeader headerRef={headerRef}>
+    <PageContainer title="权限不足" stickyHeader headerRef={headerRef}>
       <Card className="animate-fade-in border border-border">
         <CardContent className="flex flex-col items-center justify-center py-16 text-center">
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-warning/15">

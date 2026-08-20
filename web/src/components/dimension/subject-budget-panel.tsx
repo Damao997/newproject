@@ -164,12 +164,8 @@ export function SubjectBudgetPanel({ canCreate = false, canUpdate = false, canDe
 
   return (
     <div className="space-y-4">
-      {/* 说明 + 工具栏 */}
+      {/* 工具栏 */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-xl text-xs text-muted-foreground">
-          维护看板「主体预算达成分析」展示的主体：仅配置且启用（active）的主体会在看板中展示。
-          公司表新增主体后，点击「刷新检测」查看未配置主体并加入展示列表。
-        </p>
         <div className="flex shrink-0 items-center gap-2">
           <Button variant="outline" size="sm" onClick={refresh}>
             <RefreshCw className="mr-2 h-4 w-4" />

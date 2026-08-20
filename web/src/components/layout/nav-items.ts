@@ -1,6 +1,5 @@
 import {
   LayoutDashboard,
-  BarChart3,
   Database,
   Shield,
   FileText,
@@ -9,38 +8,42 @@ import {
   Wrench,
   type LucideIcon,
 } from 'lucide-react'
+import type { PermissionCode } from '@/lib/permissions'
 
 export interface NavChild {
-  /** 菜单项完整路径（真实路由路径，支持三级层级）；目录项 path 仅作分组 key（不可点击） */
+  /** 菜单项完整路径（真实路由路径，指向模块默认子页）；仅叶子项 */
   path: string
   label: string
-  /** 三级子标签（目录项含 children，叶子项无） */
-  children?: NavChild[]
+  /** 完整权限码（resource:action）；缺省继承父级（一级项 resource） */
+  permission?: PermissionCode
+  /** 模块内非默认子页的完整路径集合（不含自身 path）：驱动侧边栏高亮与面包屑匹配。缺省仅匹配自身 path */
+  match?: string[]
 }
 
 export interface NavItem {
   path: string
   label: string
   icon: LucideIcon
-  resource: string
+  /** 完整权限码（resource:action），作为模块入口与子项缺省继承的基线 */
+  resource: PermissionCode
   children?: NavChild[]
 }
 
 export const navItems: NavItem[] = [
-  { path: '/dashboard', label: '首页', icon: LayoutDashboard, resource: 'dashboard:view' },
   {
-    path: '/indicators',
-    label: '财务指标',
-    icon: BarChart3,
-    resource: 'indicators:view',
+    path: '/dashboard',
+    label: '首页看板',
+    icon: LayoutDashboard,
+    resource: 'dashboard:view',
     children: [
+      { path: '/dashboard', label: '看板总览' },
       {
-        path: '/indicators/data',
-        label: '指标数据',
-        children: [
-          { path: '/indicators/operating', label: '经营指标' },
-          { path: '/indicators/static', label: '静态指标' },
-        ],
+        // 财务指标作为看板的明细层归并其下；显式权限码防无 indicators 权限角色穿透；
+        // 页面内 Tab：经营指标（默认）/ 静态指标
+        path: '/indicators',
+        label: '财务指标',
+        permission: 'indicators:view',
+        match: ['/indicators/operating', '/indicators/static'],
       },
     ],
   },
@@ -50,10 +53,13 @@ export const navItems: NavItem[] = [
     icon: ArrowLeftRight,
     resource: 'transactions:view',
     children: [
-      { path: '/transactions/overview', label: '总览' },
-      { path: '/transactions/aging', label: '账龄分析' },
-      { path: '/transactions/account-filter', label: '科目过滤' },
-      { path: '/transactions/collections/plans', label: '催收计划' },
+      { path: '/transactions/overview', label: '往来总览' },
+      {
+        // 分析/任务类子页合入页内 Tab：账龄分析（默认）/ 科目过滤 / 催收计划
+        path: '/transactions/aging',
+        label: '分析明细',
+        match: ['/transactions/account-filter', '/transactions/collections/plans'],
+      },
     ],
   },
   { path: '/inventory', label: '存货管理', icon: Package, resource: 'inventory:view' },
@@ -83,42 +89,28 @@ export const navItems: NavItem[] = [
     resource: 'data:browse:view',
     children: [
       {
-        path: '/data/imports',
+        // 页内 Tab：导入管理（默认）/ 数据预览
+        path: '/data/import',
         label: '数据导入',
-        children: [
-          { path: '/data/import', label: '导入管理' },
-          { path: '/data/browse', label: '数据预览' },
-        ],
+        match: ['/data/browse'],
       },
       {
+        // 页内 Tab：单体公司调整（默认）/ 汇总主体调整
         path: '/data/reclassify',
         label: '重分类管理',
-        children: [
-          { path: '/data/reclassify', label: '单体公司调整' },
-          { path: '/data/reclassify/consolidation', label: '汇总主体调整' },
-        ],
       },
       {
-        path: '/data/dimensions',
+        // 页内 Tab：经营分析科目（默认）/ 静态科目 / 主体管理 / 汇总主体映射 / 公式维护
+        path: '/data/dimensions/operating',
         label: '维度/科目体系',
-        children: [
-          { path: '/data/dimensions/operating', label: '经营分析科目' },
-          { path: '/data/dimensions/static', label: '静态科目' },
-          { path: '/data/dimensions/company', label: '公司' },
-          { path: '/data/dimensions/summary', label: '汇总主体' },
-        ],
+        match: ['/data/dimensions/static', '/data/dimensions/company', '/data/dimensions/summary', '/data/dimensions/formulas'],
       },
       {
-        path: '/data/board',
+        // 页内 Tab：品类配置（默认）/ 运营费用映射 / 主体配置 / 月度预算比例
+        path: '/data/board/category',
         label: '看板管理',
-        children: [
-          { path: '/data/board/category', label: '品类配置' },
-          { path: '/data/board/expense', label: '运营费用映射' },
-          { path: '/data/board/subject', label: '主体配置' },
-          { path: '/data/board/budget-ratio', label: '月度预算比例' },
-        ],
+        match: ['/data/board/expense', '/data/board/subject', '/data/board/budget-ratio'],
       },
-      { path: '/data/formulas', label: '公式维护' },
     ],
   },
   {
@@ -127,9 +119,10 @@ export const navItems: NavItem[] = [
     icon: Shield,
     resource: 'admin:users:view',
     children: [
-      { path: '/admin/roles', label: '角色管理' },
+      // 角色管理需独立权限码：finance_analyst_it 等仅持 admin:users 的角色不显示入口（避免菜单穿透）
+      { path: '/admin/roles', label: '角色管理', permission: 'admin:roles:view' },
       { path: '/admin/users', label: '用户管理' },
-      { path: '/admin/audit-logs', label: '审计日志' },
+      { path: '/admin/audit-logs', label: '审计日志', permission: 'admin:users:view' },
     ],
   },
 ]

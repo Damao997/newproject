@@ -427,13 +427,15 @@ export function MetricTree({
     onSortChange?.(next.key, next.direction)
   }
   return (
-    // 浅灰圆角容器（与 DataTable 视觉一致）：overflow-hidden 将白底表格直角裁剪为 8px 圆角（rounded-card）
-    <div className="overflow-hidden rounded-card bg-muted/40 p-2">
+    // 浅灰圆角容器（与 DataTable 视觉一致）；flex 链（flex-1 min-h-0）使滚动容器按父级剩余高度撑满，
+    // 页面内容恒一屏、不产生全局滚动条；外层不可设置 overflow-hidden：overflow: hidden 会创建 scroll container，
+    // 截断内部容器 position: sticky 相对 <main> 的吸顶链（sticky 仅相对最近滚动祖先生效）
+    <div className="flex min-h-0 flex-1 flex-col rounded-card bg-muted/40 p-2">
       <div
-        className={cn('bg-background', 'overflow-x-auto', 'overflow-y-auto')}
+        className={cn('sticky min-h-0 flex-1 rounded-card bg-background', 'overflow-x-auto', 'overflow-y-auto')}
         style={
           stickyHeaderTop > 0
-            ? { position: 'sticky', top: stickyHeaderTop, maxHeight: `calc(100dvh - ${stickyHeaderTop}px - 24px)` }
+            ? { top: stickyHeaderTop, maxHeight: `calc(100dvh - ${stickyHeaderTop}px - 24px)` }
             : { maxHeight: '60vh' }
         }
       >

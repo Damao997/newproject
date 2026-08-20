@@ -126,14 +126,16 @@ export const TransactionService = {
   /**
    * 六大往来总览：按往来类型汇总期末余额、账龄分布、内部/外部笔数。
    * 期末余额为时点数，跨期间求和会重复累加，因此支持 period 单期过滤（前端默认传最新期间）；
-   * companyCodes 多选 IN 过滤；空/未传 = 数据范围内全部公司（由 scopeContext 扩展兜底过滤）。
+   * companyCodes 多选 IN 过滤；空/未传 = 数据范围内全部公司（由 scopeContext 扩展兜底过滤）；
+   * partyType 多选 IN 过滤（external/related/internal，前端默认 external+related，与账龄口径一致）。
    * 科目过滤规则管控：强制剔除科目过滤 Tab 中标记 inactive 的科目（与明细/账龄/趋势口径一致）。
    */
-  async getOverview(params: { companyCodes?: string[]; period?: string } = {}): Promise<TransactionOverviewItem[]> {
+  async getOverview(params: { companyCodes?: string[]; period?: string; partyType?: string[] } = {}): Promise<TransactionOverviewItem[]> {
     const where: Record<string, unknown> = {}
     // undefined = 不加显式过滤（交由 scopeContext 扩展兜底）；空数组 = 归一化后无可见公司，应返回空集
     if (params.companyCodes) where.companyCode = { in: params.companyCodes.filter(Boolean) }
     if (params.period) where.period = params.period
+    if (params.partyType?.length) where.partyType = { in: params.partyType }
     // 科目过滤规则管控：强制剔除科目过滤 Tab 中标记 inactive 的科目
     const overviewInactiveCodes = await getInactiveAccountCodes()
     if (overviewInactiveCodes.length) where.accountCode = { notIn: overviewInactiveCodes }

@@ -1,4 +1,6 @@
 import { PageContainer } from '@/components/layout/page-container'
+import { SubPageTabs } from '@/components/layout/sub-page-tabs'
+import { TRANSACTION_DETAIL_TABS } from '@/components/layout/module-tabs'
 import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { AccountFilterTab } from './account-filter-tab'
 
@@ -11,6 +13,8 @@ export default function TransactionsAccountFilterPage() {
   const { headerRef } = useStickyHeader()
   return (
     <PageContainer title="科目过滤" stickyHeader headerRef={headerRef}>
+      {/* 页内 Tab：账龄分析 / 科目过滤 / 催收计划 */}
+      <SubPageTabs items={TRANSACTION_DETAIL_TABS} />
       <AccountFilterTab />
     </PageContainer>
   )

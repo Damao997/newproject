@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { ArrowLeft } from 'lucide-react'
 import {
   Select,
   SelectContent,
@@ -15,8 +17,8 @@ import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { CompanyMultiSelect } from '@/components/filters/company-select'
 import { cn, getChangeColor } from '@/lib/utils'
 import { TransactionTrendCard } from './trend-card'
-import { useNavigate } from 'react-router-dom'
-import { AgingStackBar, agingRisk, AGING_GROUPS, CREDIT_NATURE_TYPES, useDefaultCompanyCode, formatAmount } from './shared'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { AgingStackBar, agingRisk, AGING_GROUPS, CREDIT_NATURE_TYPES, useDefaultCompanyCode, formatAmount, PartyTypeSelect } from './shared'
 
 /**
  * 往来分析 · 总览：趋势图 + 六大往来分类卡片。
@@ -26,6 +28,12 @@ import { AgingStackBar, agingRisk, AGING_GROUPS, CREDIT_NATURE_TYPES, useDefault
 
 export default function TransactionsOverviewPage() {
   const navigate = useNavigate()
+  // 从看板应收账款卡深链进入时显示「返回首页」按钮（sessionStorage 标记，点击返回时清除；刷新后仍保留）
+  const [fromDashboard] = useState(() => sessionStorage.getItem('dashboard.fromDashboard') === '1')
+  const handleBackToDashboard = useCallback(() => {
+    sessionStorage.removeItem('dashboard.fromDashboard')
+    navigate('/')
+  }, [navigate])
   // 吸顶测量：标题区 + 筛选卡高度实时测量，驱动筛选卡吸顶偏移
   const { headerRef, filterRef, headerHeight } = useStickyHeader()
   // 共享公司多选：同时驱动趋势图与汇总/分类卡片，空数组语义为「全部公司」；
@@ -33,8 +41,33 @@ export default function TransactionsOverviewPage() {
   const setTransactionsTab = usePageStore((s) => s.setTransactionsTab)
   const selectedCompanies = usePageStore((s) => s.transactions.overview.companies)
   const periodFilter = usePageStore((s) => s.transactions.overview.period)
+  // 对象类型多选（默认外部+关联方，排除内部公司；与账龄页默认口径一致）
+  const partyFilter = usePageStore((s) => s.transactions.overview.party)
   const setSelectedCompanies = useCallback((v: string[]) => setTransactionsTab('overview', { companies: v }), [setTransactionsTab])
   const setPeriodFilter = useCallback((v: string) => setTransactionsTab('overview', { period: v }), [setTransactionsTab])
+  const setPartyFilter = useCallback((v: string[]) => setTransactionsTab('overview', { party: v }), [setTransactionsTab])
+
+  // 看板深链：/transactions/overview?companies=A,B&period=YYYY-MM 挂载时写入 store 后清理 URL（与 inventory 深链同模式）；
+  // 越权/失效值由上方候选校验与回退逻辑兜底；仅处理一次，避免刷新重复覆盖手动筛选
+  const [searchParams, setSearchParams] = useSearchParams()
+  const deepLinkApplied = useRef(false)
+  useEffect(() => {
+    if (deepLinkApplied.current) return
+    const companiesParam = searchParams.get('companies')
+    const periodParam = searchParams.get('period')
+    if (!companiesParam && !periodParam) return
+    deepLinkApplied.current = true
+    // companies 可为空串（看板「全部主体」→ 往来「全部公司」语义）
+    if (companiesParam !== null) {
+      setSelectedCompanies(companiesParam.split(',').map((s) => s.trim()).filter(Boolean))
+    }
+    if (periodParam) setPeriodFilter(periodParam)
+    // 仅删除已消费的深链参数，保留 URL 上其他 query（避免 setSearchParams({}) 误清）
+    const next = new URLSearchParams(searchParams)
+    next.delete('companies')
+    next.delete('period')
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSelectedCompanies, setPeriodFilter, setSearchParams])
   const { data: companies } = useCompanies()
   const defaultCode = useDefaultCompanyCode()
   // 主体互斥业务规则：单体公司与汇总主体不能同时筛选；新增勾选某一类时自动取消另一类并提示
@@ -85,7 +118,7 @@ export default function TransactionsOverviewPage() {
   }, [periods, setPeriodFilter])
   // 期末余额为时点数，默认取最新期间（列表倒序首项），不提供跨期累加
   const period = periodFilter || periods[0]
-  const { data: overview, isLoading } = useTransactionOverview({ companyCodes: selectedCompanies, period })
+  const { data: overview, isLoading } = useTransactionOverview({ companyCodes: selectedCompanies, period, partyType: partyFilter })
 
   const list = overview ?? []
   // 账龄分段占比（按 AGING_GROUPS 下标区间求和，返回百分比字符串）
@@ -96,10 +129,19 @@ export default function TransactionsOverviewPage() {
   }
 
   return (
-    <PageContainer title="总览" stickyHeader headerRef={headerRef}>
+    <PageContainer title={(
+        <span className="flex items-center gap-1">
+          {fromDashboard && (
+            <Button variant="ghost" size="icon" className="-ml-2 h-8 w-8" onClick={handleBackToDashboard} aria-label="返回首页">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          )}
+          往来总览
+        </span>
+      )} stickyHeader headerRef={headerRef}>
       <div className="space-y-4">
         <div className="space-y-6">
-          {/* 筛选卡：公司多选（图表与卡片共享，单体/汇总互斥）+ 期间单选（仅作用于卡片）；吸顶 */}
+          {/* 筛选卡：公司多选（图表与卡片共享，单体/汇总互斥）+ 期间单选 + 对象类型多选（后两者仅作用于卡片）；吸顶 */}
           <Card ref={filterRef} className="sticky z-10 rounded-card p-4" style={{ top: headerHeight }}>
           <div className="flex flex-wrap items-center gap-3">
             <CompanyMultiSelect value={selectedCompanies} onChange={handleCompaniesChange} selectAllType="entity" />
@@ -113,6 +155,7 @@ export default function TransactionsOverviewPage() {
                 ))}
               </SelectContent>
             </Select>
+            <PartyTypeSelect value={partyFilter} onChange={setPartyFilter} />
           </div>
           </Card>
 
@@ -143,8 +186,17 @@ export default function TransactionsOverviewPage() {
                       key={item.transactionType}
                       className={cn('border border-border', item.totalClosingBalance !== 0 && 'cursor-pointer transition-shadow duration-200 ease-brand hover:shadow-md')}
                       onClick={item.totalClosingBalance !== 0 ? () => {
-                        // 预选该类型并跳转账龄分析（pageStateStore 持久化，刷新后仍生效）
-                        setTransactionsTab('aging', { type: item.transactionType })
+                        // 同步总览筛选（公司多选 + 期间 + 类型 + 对象类型）到账龄页，清空明细残留筛选，记录返回标记后跳转
+                        setTransactionsTab('aging', {
+                          type: item.transactionType,
+                          companies: selectedCompanies, // 数组直接 1:1 传递（空数组=全部公司，语义一致）
+                          period,                       // 总览实际生效期间（选定期或最新期）
+                          party: partyFilter,           // 同步对象类型口径（默认外部+关联方）
+                          accounts: [],                 // 清空科目：类型切换后旧科目残留会造成视图与卡片不一致（与账龄页手动切类型的清空行为对齐）
+                          keyword: '',                  // 清空对象搜索
+                          groupBy: 'type',              // 重置分组：卡片为类型汇总视图
+                        })
+                        sessionStorage.setItem('transactions.aging.fromOverview', '1')
                         navigate('/transactions/aging')
                       } : undefined}
                     >

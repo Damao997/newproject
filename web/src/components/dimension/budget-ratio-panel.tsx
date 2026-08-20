@@ -168,10 +168,6 @@ export function BudgetRatioPanel({ canUpdate = false }: BudgetRatioPanelProps) {
     <div className="space-y-4">
       {/* 说明 + 工具栏 */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-xl text-xs text-muted-foreground">
-          维护看板月度预算的占比分配：年度预算总额按占比拆分到财年各月（趋势图月度预算线与月度达成率同步采用该口径）。
-          占比之和必须恒为 100%；未配置的财年使用预设占比（4月3%…3月12%）。年度预算总额自动读取该财年生效预算，可手动输入覆盖用于即时预览。
-        </p>
         <div className="flex shrink-0 items-center gap-2">
           {canUpdate && (
             <Button variant="outline" size="sm" onClick={handleReset} title="恢复为预设占比（4月3%…3月12%，保存后生效）">
@@ -218,9 +214,6 @@ export function BudgetRatioPanel({ canUpdate = false }: BudgetRatioPanelProps) {
             disabled={!canUpdate || isLoading}
           />
         </div>
-        <p className="max-w-sm flex-1 text-xs text-muted-foreground">
-          来源：{fiscalYear} 财年生效预算批次合计（全部公司全部科目）；未导入预算时为 0，可手动输入预览拆分效果。
-        </p>
       </div>
 
       {/* 占比总和校验条 */}

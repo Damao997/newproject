@@ -241,11 +241,22 @@ export function DataTable<T>({
     window.addEventListener('pointerup', onUp)
   }
 
-  // 浅灰圆角容器：与页面/卡片形成视觉分割；overflow-hidden 将白底表格直角裁剪为 8px 圆角（rounded-card）
+  // 浅灰圆角容器：与页面/卡片形成视觉分割
+  // maxHeight 限高模式：外层参与 flex 链（flex-1 min-h-0）使表格按父级剩余高度撑满，且不可设置 overflow-hidden——
+  // overflow: hidden 会创建 scroll container，截断外部吸顶（sticky）链；圆角由内部白底容器自身承担（rounded-card）
   return (
-    <div className="overflow-hidden rounded-card bg-muted/40 p-2">
+    <div
+      className={cn(
+        'rounded-card bg-muted/40 p-2',
+        maxHeight ? 'flex min-h-0 flex-1 flex-col' : 'overflow-hidden',
+      )}
+    >
       <div
-        className={cn('bg-background', maxHeight ? 'overflow-auto' : 'overflow-x-auto', className)}
+        className={cn(
+          'bg-background',
+          maxHeight ? 'min-h-0 flex-1 overflow-auto rounded-card' : 'overflow-x-auto',
+          className,
+        )}
         style={maxHeight ? { maxHeight } : undefined}
       >
         {/* border-separate（仅限高模式）：sticky 表头单元格边框随滚动稳定跟随，collapse 模式下边框渲染异常（对齐 metric-tree） */}

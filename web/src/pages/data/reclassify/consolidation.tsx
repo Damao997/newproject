@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { PageContainer } from '@/components/layout/page-container'
+import { SubPageTabs } from '@/components/layout/sub-page-tabs'
+import { RECLASSIFY_TABS } from '@/components/layout/module-tabs'
 import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { usePermission } from '@/hooks/usePermission'
 import { ConsolidationAdjustmentsPanel } from '@/components/reclassify/consolidation-adjustments-panel'
@@ -20,6 +22,8 @@ export default function DataReclassifyConsolidationPage() {
 
   return (
     <PageContainer title="汇总主体调整" stickyHeader headerRef={headerRef}>
+      {/* 页内 Tab：单体公司调整 / 汇总主体调整 */}
+      <SubPageTabs items={RECLASSIFY_TABS} />
       <div className="flex flex-wrap items-center justify-end gap-2">
         {canReclassifyCompany && (
           <Button variant="outline" size="sm" aria-label="汇总抵消" onClick={() => setConsolidationOpen(true)}>

@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { PageContainer } from '@/components/layout/page-container'
+import { SubPageTabs } from '@/components/layout/sub-page-tabs'
+import { RECLASSIFY_TABS } from '@/components/layout/module-tabs'
 import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { usePermission } from '@/hooks/usePermission'
 import { usePageStore } from '@/stores/pageStateStore'
@@ -102,7 +104,15 @@ export default function DataReclassifyPage() {
   }
 
   return (
-    <PageContainer title="单体公司调整" stickyHeader headerRef={headerRef}>
+    <PageContainer
+      title="单体公司调整"
+      className="flex h-[calc(100dvh-104px)] flex-col lg:h-[calc(100dvh-112px)]"
+      // 视口撑满布局（对齐财务指标页）：main 可视高 = 100dvh - Header(56px) - main pt-6(24px) - pb-6(24px)；
+      // lg 断点 pb-8=32px → 112px。页面恒一屏、无全局滚动条，表格高度由 flex 链撑满；
+      // 104/112 需与 main-layout.tsx 的 Header 高与 pt/pb 同步
+      stickyHeader headerRef={headerRef}>
+      {/* 页内 Tab：单体公司调整（默认）/ 汇总主体调整 */}
+      <SubPageTabs items={RECLASSIFY_TABS} />
       <ReclassifyLogsPanel
         canRevert={canReclassifyCompany}
         stickyTop={headerHeight}

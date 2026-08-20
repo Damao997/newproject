@@ -45,6 +45,8 @@ export interface DataBrowseState {
   subjectType: 'operating' | 'static'
   /** 展开行编码（Set 序列化为数组） */
   expandedRows: string[]
+  /** 筛选卡折叠（折叠后表格吸顶偏移自动归零） */
+  filterCollapsed: boolean
 }
 
 export interface TransactionOverviewState {
@@ -52,13 +54,15 @@ export interface TransactionOverviewState {
   companies: string[]
   /** '' = 跟随最新期间（仅作用于卡片） */
   period: string
+  /** 对象类型多选（external/related/internal），空数组 = 全部对象（仅作用于卡片，与账龄页同口径） */
+  party: string[]
   /** 趋势卡筛选（往来变动趋势） */
   trend: { type: string; rangeMode: string; customFrom: string; customTo: string }
 }
 
 export interface TransactionAgingState {
-  /** 'all' | 公司编码 */
-  company: string
+  /** 公司多选，空数组 = 全部公司（单体与汇总主体互斥，与总览页同语义） */
+  companies: string[]
   /** '' = 跟随最新期间 */
   period: string
   /** '' = 全部类型 */
@@ -147,6 +151,14 @@ export interface FormulasState {
   category: string
   status: string
   page: number
+  /** 筛选工具条折叠 */
+  searchCollapsed: boolean
+}
+
+/** 导入页区块折叠状态（导入质量概览 / 往来导入覆盖） */
+export interface DataImportState {
+  qualityCollapsed: boolean
+  coverageCollapsed: boolean
 }
 
 // ===== 默认值 =====
@@ -172,16 +184,19 @@ const defaultDataBrowse: DataBrowseState = {
   period: '',
   subjectType: 'operating',
   expandedRows: [],
+  filterCollapsed: false,
 }
 
 const defaultOverview: TransactionOverviewState = {
   companies: [DEFAULT_SUMMARY_CODE],
   period: '',
+  // 默认口径：外部+关联方（排除内部公司，内部往来通常已抵消；与账龄页默认一致）
+  party: ['external', 'related'],
   trend: { type: '应收账款', rangeMode: 'fiscal', customFrom: '', customTo: '' },
 }
 
 const defaultAging: TransactionAgingState = {
-  company: DEFAULT_SUMMARY_CODE,
+  companies: [DEFAULT_SUMMARY_CODE],
   period: '',
   type: '应收账款',
   accounts: [],
@@ -218,7 +233,9 @@ const defaultDashboard: DashboardState = { period: '', dim: '', trendMetric: 're
 // 默认主体：浙江省公司汇总（与往来总览 overview 默认口径一致；空数组=全部公司仍可显式选择）
 const defaultInventory: InventoryState = { companies: [DEFAULT_SUMMARY_CODE], period: '', categoryCode: '', keyword: '', detailDim: 'company' }
 
-const defaultFormulas: FormulasState = { subjectType: 'operating', keyword: '', category: 'all', status: 'all', page: 1 }
+const defaultFormulas: FormulasState = { subjectType: 'operating', keyword: '', category: 'all', status: 'all', page: 1, searchCollapsed: false }
+
+const defaultDataImport: DataImportState = { qualityCollapsed: false, coverageCollapsed: false }
 
 const defaultTransactions: TransactionsState = {
   overview: defaultOverview,
@@ -238,6 +255,7 @@ interface PageStateStore {
   dashboard: DashboardState
   inventory: InventoryState
   formulas: FormulasState
+  dataImport: DataImportState
 
   setIndicators: (patch: Partial<IndicatorsState>) => void
   setDataBrowse: (patch: Partial<DataBrowseState>) => void
@@ -245,6 +263,7 @@ interface PageStateStore {
   setDashboard: (patch: Partial<DashboardState>) => void
   setInventory: (patch: Partial<InventoryState>) => void
   setFormulas: (patch: Partial<FormulasState>) => void
+  setDataImport: (patch: Partial<DataImportState>) => void
 }
 
 /** 深合并持久化值：缺字段用默认值补全，结构演进（新增字段）时安全 */
@@ -270,6 +289,7 @@ function mergePersisted(persisted: unknown, current: PageStateStore): PageStateS
     dashboard: { ...defaultDashboard, ...(p.dashboard ?? {}) },
     inventory: { ...defaultInventory, ...(p.inventory ?? {}) },
     formulas: { ...defaultFormulas, ...(p.formulas ?? {}) },
+    dataImport: { ...defaultDataImport, ...(p.dataImport ?? {}) },
   }
 }
 
@@ -282,6 +302,7 @@ export const usePageStore = create<PageStateStore>()(
       dashboard: defaultDashboard,
       inventory: defaultInventory,
       formulas: defaultFormulas,
+      dataImport: defaultDataImport,
 
       setIndicators: (patch) => set((s) => ({ indicators: { ...s.indicators, ...patch } })),
       setDataBrowse: (patch) => set((s) => ({ dataBrowse: { ...s.dataBrowse, ...patch } })),
@@ -290,10 +311,11 @@ export const usePageStore = create<PageStateStore>()(
       setDashboard: (patch) => set((s) => ({ dashboard: { ...s.dashboard, ...patch } })),
       setInventory: (patch) => set((s) => ({ inventory: { ...s.inventory, ...patch } })),
       setFormulas: (patch) => set((s) => ({ formulas: { ...s.formulas, ...patch } })),
+      setDataImport: (patch) => set((s) => ({ dataImport: { ...s.dataImport, ...patch } })),
     }),
     {
       name: 'page-state-storage',
-      version: 4,
+      version: 5,
       // v1→v2：旧默认「全部公司」[]（非用户显式多选）迁移为 ET0001，与新默认主体口径一致；
       // 注意：空数组同时是显式「全部公司」的语义，此迁移仅覆盖从未改过默认值的存量会话
       // v3→v4：账龄对象类型由单选字符串改为多选数组（默认外部+关联方），存量值统一转为数组
@@ -316,6 +338,22 @@ export const usePageStore = create<PageStateStore>()(
             next = { ...p, transactions: { ...(p?.transactions ?? {}), aging: { ...aging, party } } }
           }
         }
+        if (version < 5) {
+          // v4→v5：账龄公司筛选由单选（company: string）改为多选（companies: string[]），存量值统一转数组
+          const p = next as { transactions?: { aging?: { company?: unknown; companies?: string[] } } } | null
+          const aging = p?.transactions?.aging
+          if (aging && !Array.isArray(aging.companies)) {
+            const cur = aging.company
+            const companies =
+              typeof cur === 'string' && cur !== '' && cur !== 'all'
+                ? [cur]
+                : typeof cur === 'string' && (cur === '' || cur === 'all')
+                  ? []
+                  : [DEFAULT_SUMMARY_CODE]
+            const { company: _legacy, ...rest } = aging
+            next = { ...p, transactions: { ...(p?.transactions ?? {}), aging: { ...rest, companies } } }
+          }
+        }
         return next ?? persistedState
       },
       partialize: (state) => ({
@@ -325,6 +363,7 @@ export const usePageStore = create<PageStateStore>()(
         dashboard: state.dashboard,
         inventory: state.inventory,
         formulas: state.formulas,
+        dataImport: state.dataImport,
       }),
       merge: mergePersisted,
     },

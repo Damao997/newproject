@@ -210,9 +210,9 @@ export function ReclassifyLogsPanel({ canRevert, onReapply, onViewDetail, action
   })
 
   return (
-    <div className="space-y-3">
+    <div className="flex min-h-0 flex-1 flex-col space-y-3">
       {/* 筛选工具条（吸顶） */}
-      <Card className="sticky z-10 rounded-card p-4" style={{ top: stickyTop }}>
+      <Card className="sticky z-10 shrink-0 rounded-card p-4" style={{ top: stickyTop }}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">类型:</span>
@@ -230,7 +230,7 @@ export function ReclassifyLogsPanel({ canRevert, onReapply, onViewDetail, action
       </div>
       </Card>
 
-      {message && <p className="text-xs text-muted-foreground">{message}</p>}
+      {message && <p className="shrink-0 text-xs text-muted-foreground">{message}</p>}
 
       <DataTable
         columns={columns}
@@ -240,7 +240,7 @@ export function ReclassifyLogsPanel({ canRevert, onReapply, onViewDetail, action
         onRowClick={(r) => onViewDetail?.(r)}
         maxHeight={`calc(100dvh - ${stickyTop}px - 24px)`}
       />
-      <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
+      <Pagination className="shrink-0" page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
       {confirmElement}
     </div>
   )

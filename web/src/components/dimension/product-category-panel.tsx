@@ -202,12 +202,8 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
 
   return (
     <div className="space-y-4">
-      {/* 说明 + 工具栏 */}
+      {/* 工具栏 */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-xl text-xs text-muted-foreground">
-          维护品类预算达成分析的品类与经营科目树收入类别的对应关系：品类通过「匹配关键词」自动匹配收入科目（名称包含关键词，可命中多个并求和），
-          毛利数据按镜像科目（"XX收入"→"XX毛利"）自动配对。经营科目树发生变化后，点击「刷新检测」查看未覆盖科目。
-        </p>
         <div className="flex shrink-0 items-center gap-2">
           <Button variant="outline" size="sm" onClick={refresh}>
             <RefreshCw className="mr-2 h-4 w-4" />
