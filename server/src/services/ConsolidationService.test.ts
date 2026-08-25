@@ -27,7 +27,11 @@ beforeAll(async () => {
       select: { code: true },
     })
     const metrics = await prisma.metric.findMany({ where: { code: { in: dataSubject ? [dataSubject.code] : [] }, dataType: 'data' }, select: { code: true } })
-    const calcMetric = await prisma.metric.findFirst({ where: { dataType: 'calc' }, select: { code: true } })
+    // calc 类科目：以经营科目树为准（metric 表含旧编码残留 OP_*，无科目对应，不能作为抵消校验目标）
+    const calcCodes = (await prisma.metric.findMany({ where: { dataType: 'calc' }, select: { code: true } })).map((m) => m.code)
+    const calcMetric = calcCodes.length
+      ? await prisma.accountSubject.findFirst({ where: { code: { in: calcCodes }, subjectType: 'operating', status: 'active' }, select: { code: true } })
+      : null
     dbReady = !!(admin && summary && dataSubject && metrics.length > 0)
     if (dbReady) {
       adminId = admin.id
