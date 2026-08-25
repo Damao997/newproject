@@ -19,7 +19,7 @@ import type { Metric } from '@/types'
 interface SubjectDialogProps {
   open: boolean
   mode: 'create' | 'edit'
-  type: 'operating' | 'static'
+  type: 'operating' | 'static' | 'cashflow'
   /** 编辑目标（edit 模式） */
   subject?: SubjectTreeItem | null
   /** 同类全部科目（用于选择上级科目） */
@@ -90,7 +90,7 @@ export function SubjectDialog({ open, mode, type, subject, flat, allSubjects, ca
     if (!pc) {
       const trimmed = name.trim()
       if (!trimmed) return ''
-      return nextRootSubjectCode(type === 'operating' ? 'OP' : 'ST', trimmed, previewSubjects).code
+      return nextRootSubjectCode(type === 'operating' ? 'PL' : type === 'static' ? 'BS' : 'CF', trimmed, previewSubjects).code
     }
     return nextChildSubjectCode(pc, previewSubjects)
   }, [mode, parentCode, name, type, previewSubjects])

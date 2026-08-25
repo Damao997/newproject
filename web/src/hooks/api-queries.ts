@@ -12,6 +12,7 @@ export const queryKeys = {
   dashboardOverview: (p?: unknown) => ['dashboard', 'overview', p ?? null] as const,
   indicatorsOperating: (p: unknown) => ['indicators', 'operating', p] as const,
   indicatorsStatic: (p: unknown) => ['indicators', 'static', p] as const,
+  indicatorsCashflow: (p: unknown) => ['indicators', 'cashflow', p] as const,
   companies: ['data', 'companies'] as const,
   imports: (p: unknown) => ['data', 'imports', p] as const,
   metrics: (p: unknown) => ['data', 'metrics', p] as const,
@@ -89,6 +90,20 @@ export function useExpenseAnalysis(params: { period?: string; companyCode?: stri
   })
 }
 
+/** 壹品慧关键指标表：单期间 + 可选指定主体（跟随看板顶部筛选），period 未定时不发请求 */
+export function useKeyMetrics(params: { period?: string; companyCode?: string }) {
+  return useQuery({
+    queryKey: ['dashboard', 'key-metrics', params.period ?? '', params.companyCode ?? ''] as const,
+    queryFn: () => api.getKeyMetrics({
+      ...(params.period ? { period: params.period } : {}),
+      ...(params.companyCode ? { companyCode: params.companyCode } : {}),
+    }),
+    enabled: !!params.period,
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
 // ---------------- 品类配置（品类预算达成分析，数据维护） ----------------
 export function useProductCategories() {
   return useQuery({
@@ -123,6 +138,45 @@ export function useProductCategoryMutations() {
     }),
     remove: useMutation({
       mutationFn: (id: string) => api.deleteProductCategory(id),
+      onSuccess: invalidate,
+    }),
+  }
+}
+
+// ---------------- 关键指标产品配置（壹品慧关键指标表「按产品分」明细，数据维护） ----------------
+export function useKeyMetricsProducts() {
+  return useQuery({
+    queryKey: ['data', 'key-metrics-products'] as const,
+    queryFn: () => api.getKeyMetricsProducts(),
+    staleTime: 30 * 1000,
+  })
+}
+
+export function useKeyMetricsProductCheck() {
+  return useQuery({
+    queryKey: ['data', 'key-metrics-products', 'check'] as const,
+    queryFn: () => api.checkKeyMetricsProducts(),
+    staleTime: 30 * 1000,
+  })
+}
+
+export function useKeyMetricsProductMutations() {
+  const queryClient = useQueryClient()
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['data', 'key-metrics-products'] })
+  }
+  return {
+    create: useMutation({
+      mutationFn: (input: { code: string; name: string; subjectKeyword: string; sortOrder?: number; status?: string }) => api.createKeyMetricsProduct(input),
+      onSuccess: invalidate,
+    }),
+    update: useMutation({
+      mutationFn: (input: { id: string; name?: string; subjectKeyword?: string; sortOrder?: number; status?: string }) =>
+        api.updateKeyMetricsProduct(input.id, input),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => api.deleteKeyMetricsProduct(id),
       onSuccess: invalidate,
     }),
   }
@@ -258,6 +312,16 @@ export interface StaticRow {
   code: string; name: string; level: number; category: string; dataType: string; valueType: 'amount' | 'quantity' | 'ratio'; isLeaf: boolean
   current: number; yearStart: number; samePeriod: number; lastYearStart: number; yoy: number; children?: StaticRow[]
 }
+export interface CashflowResult {
+  items: CashflowRow[]
+  total: number
+  period: string
+  companyCount: number
+}
+export interface CashflowRow {
+  code: string; name: string; level: number; category: string; dataType: string; valueType: 'amount' | 'quantity' | 'ratio'; isLeaf: boolean
+  current: number; samePeriod: number; ytd: number; samePeriodYtd: number; yoy: number; ytdYoy: number; children?: CashflowRow[]
+}
 
 export function useOperatingIndicators(params: { companyCode?: string; period?: string; excludeReclassify?: boolean }, options?: { enabled?: boolean }) {
   return useQuery({
@@ -273,6 +337,15 @@ export function useStaticIndicators(params: { companyCode?: string; period?: str
   return useQuery({
     queryKey: queryKeys.indicatorsStatic(params),
     queryFn: () => api.getStaticIndicators(params as FilterParams) as unknown as Promise<StaticResult>,
+    placeholderData: keepPreviousData,
+    enabled: options?.enabled ?? true,
+  })
+}
+
+export function useCashflowIndicators(params: { companyCode?: string; period?: string }, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: queryKeys.indicatorsCashflow(params),
+    queryFn: () => api.getCashflowIndicators(params as FilterParams) as unknown as Promise<CashflowResult>,
     placeholderData: keepPreviousData,
     enabled: options?.enabled ?? true,
   })
@@ -325,7 +398,7 @@ export interface SubjectTreeItem {
   valueType?: 'amount' | 'quantity' | 'ratio'
 }
 
-export function useSubjectTree(type: 'operating' | 'static') {
+export function useSubjectTree(type: 'operating' | 'static' | 'cashflow') {
   return useQuery({
     queryKey: ['data', 'subjects', 'tree', type] as const,
     queryFn: () => api.getSubjectTree(type),
@@ -361,7 +434,7 @@ export interface CrossTable {
   companies: string[]
   rows: { code: string; name: string; valueType?: 'amount' | 'quantity' | 'ratio'; level: number; parentCode: string | null; isLeaf: boolean; values: Record<string, number> }[]
 }
-export function useCrossTable(params: { period?: string; subjectType?: 'operating' | 'static' } = {}) {
+export function useCrossTable(params: { period?: string; subjectType?: 'operating' | 'static' | 'cashflow' } = {}) {
   return useQuery({
     queryKey: ['data', 'cross-table', params] as const,
     queryFn: () => api.getCrossTable(params) as Promise<CrossTable>,

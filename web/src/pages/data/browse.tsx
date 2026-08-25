@@ -47,7 +47,7 @@ export default function DataBrowsePage() {
   const browseFilterCollapsed = usePageStore((s) => s.dataBrowse.filterCollapsed)
   const setBrowseCompanies = useCallback((v: string[]) => setDataBrowse({ companies: v }), [setDataBrowse])
   const setBrowsePeriod = useCallback((v: string) => setDataBrowse({ period: v }), [setDataBrowse])
-  const setBrowseSubjectType = useCallback((v: 'operating' | 'static') => setDataBrowse({ subjectType: v }), [setDataBrowse])
+  const setBrowseSubjectType = useCallback((v: 'operating' | 'static' | 'cashflow') => setDataBrowse({ subjectType: v }), [setDataBrowse])
   const setBrowseFilterCollapsed = useCallback((v: boolean) => setDataBrowse({ filterCollapsed: v }), [setDataBrowse])
   // 展开集合由持久化数组派生（Set 不可序列化，store 以数组存储）
   const expandedRowSet = useMemo(() => new Set(expandedRows), [expandedRows])
@@ -215,7 +215,7 @@ export default function DataBrowsePage() {
                 {/* 收起态摘要：当前筛选值一瞥（信息增量，符合设计规范） */}
                 {!open && (
                   <span className="text-xs">
-                    {browseSubjectType === 'operating' ? '经营指标' : '静态指标'}
+                    {browseSubjectType === 'operating' ? '经营指标' : browseSubjectType === 'cashflow' ? '现金流量' : '静态指标'}
                     {browseCompanies.length > 0 ? ` · ${browseCompanies.length} 家公司` : ' · 全部公司'}
                     {browsePeriod ? ` · ${browsePeriod}` : ' · 最新期间'}
                   </span>
@@ -231,13 +231,14 @@ export default function DataBrowsePage() {
         <Card ref={filterRef} className="sticky z-10 rounded-card p-4" style={{ top: headerHeight }}>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex flex-wrap items-center gap-3">
-            <Select value={browseSubjectType} onValueChange={(v) => { setBrowseSubjectType(v as 'operating' | 'static'); setExpandedRows(() => new Set()) }}>
+            <Select value={browseSubjectType} onValueChange={(v) => { setBrowseSubjectType(v as 'operating' | 'static' | 'cashflow'); setExpandedRows(() => new Set()) }}>
               <SelectTrigger className="w-[140px] max-w-full shrink-0">
                 <SelectValue placeholder="指标类型" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="operating">经营指标</SelectItem>
                 <SelectItem value="static">静态指标</SelectItem>
+                <SelectItem value="cashflow">现金流量</SelectItem>
               </SelectContent>
             </Select>
             <CompanyMultiSelect value={browseCompanies} onChange={setBrowseCompanies} entitiesOnly className="w-[200px]" />

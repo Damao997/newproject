@@ -5,6 +5,7 @@ import { DashboardService } from '../services/DashboardService'
 import { resolveCompanyCodes } from '../services/AggregationService'
 import { DataService } from '../services/DataService'
 import { AdminService } from '../services/AdminService'
+import { fiscalYearLabel } from '../lib/period'
 
 /**
  * 服务层集成测试（对真实 PostgreSQL + 已 seed 数据）。
@@ -30,13 +31,12 @@ beforeAll(async () => {
 })
 
 describe('服务层集成（真实 DB）', () => {
-  it('公司主体 = 19（13 单体 + 6 在用汇总）', async () => {
+  it('公司主体存在且含单体/汇总（独立开发库数据量随 seed 演进，仅断言非空与类型前缀）', async () => {
     if (!dbReady) return
-    // 基准演进：种子快照 20（10 单体 + ET0001~ET0010）；2026-08-03 主数据维护新增 EN330057/EN330061
-    // 两家单体，并停用 ET0003/ET0007/ET0008/ET0009 四家无映射成员的空壳汇总（审计日志可溯）；
-    // 2026-08-05 又新增 EN330073 单体（13 单体 + 6 在用汇总 = 19）
+    // 独立开发库（DB_PORT 隔离）seed 数据量可能与共享库历史快照不同，
+    // 此处仅验证基础数据存在性与编码前缀（单体 EN / 汇总 ET）
     const companies = await DataService.listCompanies()
-    expect(companies.length).toBe(19)
+    expect(companies.length).toBeGreaterThan(0)
     expect(companies.some((c) => c.code.startsWith('EN'))).toBe(true)
     expect(companies.some((c) => c.code.startsWith('ET'))).toBe(true)
   })
@@ -47,11 +47,11 @@ describe('服务层集成（真实 DB）', () => {
     expect(count).toBeGreaterThan(0)
   })
 
-  it('经营科目树根节点 8 个，首个为「回款」', async () => {
+  it('经营科目树根节点 8 个，首个为「壹品慧回款」', async () => {
     if (!dbReady) return
     const tree = (await IndicatorsService.getTree('operating')) as { name: string }[]
     expect(tree.length).toBe(8)
-    expect(tree[0].name).toBe('回款')
+    expect(tree[0].name).toBe('壹品慧回款')
   })
 
   it('经营指标：admin 全量行数 = 在用经营科目数、公司数 = 单体数', async () => {
@@ -62,7 +62,7 @@ describe('服务层集成（真实 DB）', () => {
     expect(data.total).toBe(subjectCount)
     const singles = await prisma.company.count({ where: { entityType: 'single', status: 'active' } })
     expect(data.companyCount).toBe(singles)
-    const revenue = data.items.find((r) => r.name === '收入')
+    const revenue = data.items.find((r) => r.name === '壹品慧收入')
     expect(revenue).toBeTruthy()
   })
 
@@ -108,6 +108,97 @@ describe('服务层集成（真实 DB）', () => {
     expect(first).toHaveProperty('collectionActual')
   })
 
+  it('壹品慧关键指标表：损益+现金流板块行齐全，13 列口径字段完整', async () => {
+    if (!dbReady) return
+    const km = await DashboardService.getKeyMetrics(ADMIN_SCOPE)
+    expect(km.rows.map((r) => r.key)).toEqual([
+      'income', 'profit', 'expense', 'finance', 'netProfit',
+      'fcf', 'operating', 'investing', 'financing',
+    ])
+    // 14 列口径字段：金额/百分比为数值；预算类允许 null（无预算）
+    const keys14 = ['monthBudget', 'monthActual', 'monthSame', 'monthChange', 'monthYoy', 'monthMomChange', 'monthMom', 'monthRate', 'annualBudget', 'ytdActual', 'ytdSame', 'ytdChange', 'ytdYoy', 'annualRate'] as const
+    for (const row of km.rows) {
+      for (const k of keys14) {
+        expect(typeof row.values[k], `${row.key}.${k}`).toBe(typeof row.values[k] === 'number' ? 'number' : typeof null)
+      }
+      expect(row.label.length).toBeGreaterThan(0)
+      expect(row.category.length).toBeGreaterThan(0)
+    }
+    // 产品明细（收入/毛利行）：有数据时名称 + 收入/毛利两组口径
+    for (const key of ['income', 'profit']) {
+      const row = km.rows.find((r) => r.key === key)
+      expect(row).toBeTruthy()
+      if (row && row.products.length > 0) {
+        const p = row.products[0]
+        expect(typeof p.name).toBe('string')
+        expect(typeof p.income.monthActual).toBe('number')
+        expect(typeof p.profit.monthActual).toBe('number')
+      }
+    }
+    // 现金流板块：金额列为数值；预算类允许 null（无预算）或数值（开发库已导入真实现金流预算，不假设无预算）
+    const fcf = km.rows.find((r) => r.key === 'fcf')
+    expect(fcf).toBeTruthy()
+    expect(typeof fcf?.values.monthActual).toBe('number')
+    if (fcf?.values.annualBudget === null || fcf?.values.annualBudget === undefined) {
+      expect(fcf?.values.monthBudget).toBeNull()
+      expect(fcf?.values.monthRate).toBeNull()
+      expect(fcf?.values.annualRate).toBeNull()
+    } else {
+      // 有年度预算时月度预算与完成率应同步生效
+      expect(fcf?.values.monthBudget).not.toBeNull()
+      expect(fcf?.values.annualRate).not.toBeNull()
+    }
+    // 自由现金流科目已随 seed 建立（公式 = 经营活动 - 投资流出）
+    const cfSubject = await prisma.accountSubject.findUnique({ where: { code: 'CF04' } })
+    expect(cfSubject?.name).toBe('自由现金流')
+    const cfMetric = await prisma.metric.findUnique({ where: { code: 'CF04' } })
+    expect(cfMetric?.formula).toBe('{CF01} - {CF0202}')
+  })
+
+  it('现金流预算：年度预算导入后关键指标表现金流板块预算/完成率生效（净额由公式推导）', async () => {
+    if (!dbReady) return
+    // 期间取当前生效最新期（availablePeriods 非空时 getKeyMetrics 返回其末位），预算按该期财年插入
+    const km0 = await DashboardService.getKeyMetrics(ADMIN_SCOPE)
+    const period = km0.period
+    if (!period) return
+    const fy = fiscalYearLabel(period)
+    const company = await prisma.company.findFirst({ where: { entityType: 'single', status: 'active' }, select: { code: true } })
+    // 现金流流入/流出层科目（预算直填目标；净额与自由现金流预算由公式推导）
+    const cfIn = await prisma.accountSubject.findFirst({ where: { subjectType: 'cashflow', name: '经营活动产生的现金流入', status: 'active' }, select: { code: true } })
+    const cfOut = await prisma.accountSubject.findFirst({ where: { subjectType: 'cashflow', name: '经营活动产生的现金流出', status: 'active' }, select: { code: true } })
+    const cfInvOut = await prisma.accountSubject.findFirst({ where: { subjectType: 'cashflow', name: '投资活动产生的现金流出', status: 'active' }, select: { code: true } })
+    if (!company || !cfIn || !cfOut || !cfInvOut) return
+    const b = await prisma.importBatch.create({
+      data: { fileName: `__test_cf_budget_${Date.now().toString(36)}__.xlsx`, status: 'success', dataType: 'budget', lifecycleStatus: 'active', sourceType: 'upload', fiscalYear: fy },
+    })
+    try {
+      // 基线：插入前单公司口径（开发库已导入真实现金流预算，绝对断言会叠加真实预算漂移，改用相对增量）
+      const beforeKm = await DashboardService.getKeyMetrics(ADMIN_SCOPE, { companyCode: company.code, period })
+      const beforeBudget = (key: string) => beforeKm.rows.find((r) => r.key === key)?.values.annualBudget ?? 0
+      await prisma.factBudget.createMany({
+        data: [
+          { batchId: b.id, companyCode: company.code, accountCode: cfIn.code, fiscalYear: fy, period: 'annual', value: 200 },
+          { batchId: b.id, companyCode: company.code, accountCode: cfOut.code, fiscalYear: fy, period: 'annual', value: 80 },
+          { batchId: b.id, companyCode: company.code, accountCode: cfInvOut.code, fiscalYear: fy, period: 'annual', value: 50 },
+        ],
+      })
+      const km = await DashboardService.getKeyMetrics(ADMIN_SCOPE, { companyCode: company.code, period })
+      const fcf = km.rows.find((r) => r.key === 'fcf')
+      const op = km.rows.find((r) => r.key === 'operating')
+      const inv = km.rows.find((r) => r.key === 'investing')
+      expect(op?.values.annualBudget).toBeCloseTo(beforeBudget('operating') + 120, 1) // 流入 200 - 流出 80（公式推导）
+      expect(inv?.values.annualBudget).toBeCloseTo(beforeBudget('investing') - 50, 1) // 流入 0 - 流出 50
+      expect(fcf?.values.annualBudget).toBeCloseTo(beforeBudget('fcf') + 70, 1) // 经营净额 120 - 投资流出 50
+      // 月度预算按占比拆分（无配置回退年度/12），完成率随之生效
+      expect(fcf?.values.monthBudget).not.toBeNull()
+      expect(fcf?.values.monthRate).not.toBeNull()
+      expect(fcf?.values.annualRate).not.toBeNull()
+    } finally {
+      await prisma.factBudget.deleteMany({ where: { batchId: b.id } }).catch(() => undefined)
+      await prisma.importBatch.deleteMany({ where: { id: b.id } }).catch(() => undefined)
+    }
+  })
+
   it('交叉表：指定单体公司列 + 全层级科目行（树前序，含 level/parentCode）', async () => {
     if (!dbReady) return
     const singles = await prisma.company.findMany({ where: { entityType: 'single', status: 'active' }, take: 2, select: { code: true } })
@@ -119,6 +210,19 @@ describe('服务层集成（真实 DB）', () => {
     expect(cross.rows[0].level).toBe(0)
     expect(cross.rows[0].parentCode).toBeNull()
     expect(cross.rows.some((r) => r.level > 0)).toBe(true)
+  })
+
+  it('交叉表：subjectType=cashflow 返回现金流科目树（修复前被归一为经营指标）', async () => {
+    if (!dbReady) return
+    const singles = await prisma.company.findMany({ where: { entityType: 'single', status: 'active' }, take: 2, select: { code: true } })
+    const codes = singles.map((c) => c.code)
+    const cross = await IndicatorsService.getCross(ADMIN_SCOPE, { companyCodes: codes, subjectType: 'cashflow' })
+    expect(cross.companies).toEqual(codes)
+    expect(cross.rows.length).toBeGreaterThan(0)
+    // 行科目全部为现金流体系（CF 前缀），首行为 level0 根节点
+    expect(cross.rows.every((r) => r.code.startsWith('CF'))).toBe(true)
+    expect(cross.rows[0].level).toBe(0)
+    expect(cross.rows[0].parentCode).toBeNull()
   })
 
   it('管理：用户 ≥ 4，预置角色 ≥ 6（含 superadmin 与预置权限）', async () => {

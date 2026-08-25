@@ -10,7 +10,7 @@ import { AggregationMapPanel } from '@/components/dimension/aggregation-map-pane
 import { FormulaMaintenance } from './formula-maintenance'
 
 // 「维度/科目体系」三级子标签（与路由路径段对应）
-const DIM_SUB_TABS = ['operating', 'static', 'company', 'summary', 'formulas'] as const
+const DIM_SUB_TABS = ['operating', 'static', 'cashflow', 'company', 'summary', 'formulas'] as const
 type DimSubTab = (typeof DIM_SUB_TABS)[number]
 
 /**
@@ -57,6 +57,19 @@ export default function DataDimensionsPage() {
           canExport={canExport}
           exportFileName="静态科目"
           exportSheet="静态科目"
+        />
+      )}
+      {dimSubTab === 'cashflow' && (
+        <SubjectTreePanel
+          type="cashflow"
+          stickyTop={headerHeight}
+          canCreate={can('data:subject', 'create')}
+          canUpdate={can('data:subject', 'update')}
+          canDelete={can('data:subject', 'delete')}
+          canConvert={canConvertMetric}
+          canExport={canExport}
+          exportFileName="现金流量科目"
+          exportSheet="现金流量科目"
         />
       )}
       {dimSubTab === 'company' && (

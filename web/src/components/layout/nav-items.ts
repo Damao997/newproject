@@ -38,6 +38,20 @@ export const navItems: NavItem[] = [
     children: [
       { path: '/dashboard', label: '看板总览' },
       {
+        // 经营分析二级导航：壹品慧关键指标表（默认）等 7 个子页（4 个占位 + 3 个迁移自综合分析卡）
+        path: '/dashboard/analysis/key-metrics',
+        label: '经营分析',
+        match: [
+          '/dashboard/analysis/key-metrics',
+          '/dashboard/analysis/cash-flow',
+          '/dashboard/analysis/receivable-aging',
+          '/dashboard/analysis/inventory-aging',
+          '/dashboard/analysis/category-budget',
+          '/dashboard/analysis/subject-budget',
+          '/dashboard/analysis/expense',
+        ],
+      },
+      {
         // 财务指标作为看板的明细层归并其下；显式权限码防无 indicators 权限角色穿透；
         // 页面内 Tab：经营指标（默认）/ 静态指标
         path: '/indicators',
@@ -106,10 +120,10 @@ export const navItems: NavItem[] = [
         match: ['/data/dimensions/static', '/data/dimensions/company', '/data/dimensions/summary', '/data/dimensions/formulas'],
       },
       {
-        // 页内 Tab：品类配置（默认）/ 运营费用映射 / 主体配置 / 月度预算比例
+        // 页内 Tab：品类配置（默认）/ 运营费用映射 / 主体配置 / 月度预算比例 / 产品配置
         path: '/data/board/category',
         label: '看板管理',
-        match: ['/data/board/expense', '/data/board/subject', '/data/board/budget-ratio'],
+        match: ['/data/board/expense', '/data/board/subject', '/data/board/budget-ratio', '/data/board/product'],
       },
     ],
   },

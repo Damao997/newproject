@@ -5,7 +5,7 @@ import { AggregationService, flattenValueTree } from '../services/AggregationSer
 import { AdminService } from '../services/AdminService'
 import { ImportService } from '../services/ImportService'
 import { ReclassificationService } from '../services/ReclassificationService'
-import { OPERATING_DIMS, STATIC_DIMS } from '../lib/metric-values'
+import { CASHFLOW_DIMS, OPERATING_DIMS, STATIC_DIMS } from '../lib/metric-values'
 import { fiscalYearOpeningSnapshotPeriod, fiscalYtdDays } from '../lib/period'
 
 /**
@@ -62,9 +62,9 @@ async function createTempSubject(code: string): Promise<void> {
 describe('科目 CRUD', () => {
   it('创建→更新→软删除（未引用科目）', async () => {
     if (!dbReady) return
-    // 编码由系统自动生成（父码 OP_02 + 同级下一序号），不再接受客户端 code
-    const created = await DataService.createSubject({ name: '测试科目', type: 'operating', parentCode: 'OP_02', isLeaf: true }, ctx())
-    expect(created.code).toMatch(/^OP_02\d{2}$/)
+    // 编码由系统自动生成（父码 PL02 + 同级下一序号），不再接受客户端 code
+    const created = await DataService.createSubject({ name: '测试科目', type: 'operating', parentCode: 'PL02', isLeaf: true }, ctx())
+    expect(created.code).toMatch(/^PL02\d{2}$/)
     const updated = await DataService.updateSubject(created.id, { name: '测试科目改' }, ctx())
     expect(updated.name).toBe('测试科目改')
     await DataService.deleteSubject(created.id, ctx())
@@ -77,16 +77,16 @@ describe('科目 CRUD', () => {
     if (!dbReady) return
     const suffix = Date.now().toString(36)
     // 1) 新建子科目 A（同级下一序号）
-    const a = await DataService.createSubject({ name: `防撞测试A_${suffix}`, type: 'operating', parentCode: 'OP_02', isLeaf: true }, ctx())
+    const a = await DataService.createSubject({ name: `防撞测试A_${suffix}`, type: 'operating', parentCode: 'PL02', isLeaf: true }, ctx())
     // 2) 软删除 A（status→inactive，仍占用序号）
     await DataService.deleteSubject(a.id, ctx())
     // 3) 同父级再新增 B：必须跳过被停用的 A 的序号，否则 P2002 且重试同码必报冲突
-    const b = await DataService.createSubject({ name: `防撞测试B_${suffix}`, type: 'operating', parentCode: 'OP_02', isLeaf: true }, ctx())
-    const seqOf = (code: string) => Number(code.match(/^OP_02(\d{2})$/)![1])
+    const b = await DataService.createSubject({ name: `防撞测试B_${suffix}`, type: 'operating', parentCode: 'PL02', isLeaf: true }, ctx())
+    const seqOf = (code: string) => Number(code.match(/^PL02(\d{2})$/)![1])
     expect(seqOf(b.code)).toBeGreaterThan(seqOf(a.code))
     expect(b.code).not.toBe(a.code)
     // 4) 临时父科目停用后，其下不可新增（上级科目已停用 → 拒绝）
-    const p = await DataService.createSubject({ name: `防撞测试父_${suffix}`, type: 'operating', parentCode: 'OP_02', isLeaf: false }, ctx())
+    const p = await DataService.createSubject({ name: `防撞测试父_${suffix}`, type: 'operating', parentCode: 'PL02', isLeaf: false }, ctx())
     const c1 = await DataService.createSubject({ name: `防撞测试子1_${suffix}`, type: 'operating', parentCode: p.code, isLeaf: true }, ctx())
     await DataService.deleteSubject(c1.id, ctx())
     await DataService.deleteSubject(p.id, ctx())
@@ -453,8 +453,8 @@ describe('公式试算递归展开 calc 依赖', () => {
     let calcCode = ''
     try {
       // 科目编码由系统自动生成，创建后从返回值取 code 继续流程
-      const dataSubj = await DataService.createSubject({ name: `试算数据叶_${suffix}`, type: 'operating', parentCode: 'OP_02', isLeaf: true }, ctx())
-      const calcSubj = await DataService.createSubject({ name: `试算计算项_${suffix}`, type: 'operating', parentCode: 'OP_02', isLeaf: true }, ctx())
+      const dataSubj = await DataService.createSubject({ name: `试算数据叶_${suffix}`, type: 'operating', parentCode: 'PL02', isLeaf: true }, ctx())
+      const calcSubj = await DataService.createSubject({ name: `试算计算项_${suffix}`, type: 'operating', parentCode: 'PL02', isLeaf: true }, ctx())
       dataCode = dataSubj.code
       calcCode = calcSubj.code
       tempMetricCodes.push(dataCode, calcCode)
@@ -488,11 +488,11 @@ describe('公式试算递归展开 calc 依赖', () => {
     const period = latest.period
     const opening = fiscalYearOpeningSnapshotPeriod(period) // S=4：2026-04 → 2026-03
     const suffix = Date.now().toString(36)
-    const stA = `ST_TCA_${suffix}`
-    const stB = `ST_TCB_${suffix}`
-    const stP = `ST_TCP_${suffix}`
-    const opD = `OP_TCD_${suffix}`
-    const opP = `OP_TCP_${suffix}`
+    const stA = `BS_TCA_${suffix}`
+    const stB = `BS_TCB_${suffix}`
+    const stP = `BS_TCP_${suffix}`
+    const opD = `PL_TCD_${suffix}`
+    const opP = `PL_TCP_${suffix}`
     const allTemp = [stA, stB, stP, opD, opP]
     tempMetricCodes.push(...allTemp)
     tempSubjectCodes.push(...allTemp)
@@ -504,7 +504,7 @@ describe('公式试算递归展开 calc 依赖', () => {
     try {
       await basePrisma.accountSubject.createMany({
         data: allTemp.map((code) => ({
-          code, name: `临时_${code}`, subjectType: code.startsWith('ST_') ? 'static' : 'operating',
+          code, name: `临时_${code}`, subjectType: code.startsWith('BS') ? 'static' : 'operating',
           level: 1, parentCode: null, category: '自定义', direction: 'credit', isLeaf: true,
         })),
       })
@@ -554,9 +554,9 @@ describe('公式试算递归展开 calc 依赖', () => {
     const period = latest.period
     const opening = fiscalYearOpeningSnapshotPeriod(period) // S=4：2026-04 → 2026-03
     const suffix = Date.now().toString(36)
-    const stLeafA = `ST_TGA_${suffix}`
-    const stLeafB = `ST_TGB_${suffix}`
-    const stAgg = `ST_TGP_${suffix}` // 静态聚合父（calc 无公式、非叶子，种子「存货」同款形态）
+    const stLeafA = `BS_TGA_${suffix}`
+    const stLeafB = `BS_TGB_${suffix}`
+    const stAgg = `BS_TGP_${suffix}` // 静态聚合父（calc 无公式、非叶子，种子「存货」同款形态）
     const opLeaf = `OP_TGD_${suffix}`
     const opAgg = `OP_TGP_${suffix}` // 经营聚合父（calc 无公式、非叶子，种子「成本」同款形态）
     const allTemp = [stLeafA, stLeafB, stAgg, opLeaf, opAgg]
@@ -693,12 +693,12 @@ describe('跨公司重分类', () => {
     try {
       await basePrisma.factOperating.createMany({
         data: [
-          { batchId: batch.id, companyCode: src, accountCode: 'OP_02', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 100 },
-          { batchId: batch.id, companyCode: src, accountCode: 'OP_0201', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 200 },
+          { batchId: batch.id, companyCode: src, accountCode: 'PL02', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 100 },
+          { batchId: batch.id, companyCode: src, accountCode: 'PL0201', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 200 },
         ],
       })
-      // 目标公司已有 OP_02@2026-05 (50) → 合并
-      await basePrisma.factOperating.create({ data: { batchId: batch.id, companyCode: tgt, accountCode: 'OP_02', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 50 } })
+      // 目标公司已有 PL02@2026-05 (50) → 合并
+      await basePrisma.factOperating.create({ data: { batchId: batch.id, companyCode: tgt, accountCode: 'PL02', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 50 } })
 
       const pv = await ReclassificationService.previewCompany({ templateType: 'operating', sourceCompanyCode: src, targetCompanyCode: tgt, period: '2026-05' }, scope)
       expect(pv.affectedRows).toBe(2)
@@ -771,12 +771,12 @@ describe('跨公司重分类', () => {
     try {
       await basePrisma.factOperating.createMany({
         data: [
-          { batchId: batch.id, companyCode: src, accountCode: 'OP_02', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 100 },
-          { batchId: batch.id, companyCode: src, accountCode: 'OP_0201', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 200 },
+          { batchId: batch.id, companyCode: src, accountCode: 'PL02', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 100 },
+          { batchId: batch.id, companyCode: src, accountCode: 'PL0201', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 200 },
         ],
       })
-      // 目标公司已有 OP_02@2026-05 (50) → 累加；OP_0201 无行 → 新建
-      await basePrisma.factOperating.create({ data: { batchId: batch.id, companyCode: tgt, accountCode: 'OP_02', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 50 } })
+      // 目标公司已有 PL02@2026-05 (50) → 累加；PL0201 无行 → 新建
+      await basePrisma.factOperating.create({ data: { batchId: batch.id, companyCode: tgt, accountCode: 'PL02', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 50 } })
 
       const pv = await ReclassificationService.previewCompany(
         { templateType: 'operating', sourceCompanyCode: src, targetCompanyCode: tgt, period: '2026-05', transferMode: 'amount', amount: 90 },
@@ -832,7 +832,7 @@ describe('跨公司重分类', () => {
     const scope = { companyCode: null, scopeValue: '*' }
     try {
       await basePrisma.factOperating.create({
-        data: { batchId: batch.id, companyCode: src, accountCode: 'OP_02', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 100 },
+        data: { batchId: batch.id, companyCode: src, accountCode: 'PL02', period: '2026-05', periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2026', value: 100 },
       })
       const res = await ReclassificationService.reclassifyCompany(
         { templateType: 'operating', sourceCompanyCode: src, targetCompanyCode: tgt, period: '2026-05', transferMode: 'ratio', ratio: 0.3 },
@@ -957,7 +957,7 @@ describe('同公司科目间金额调整', () => {
     if (!dbReady) return
     await expect(
       ReclassificationService.previewAdjustSubject(
-        { templateType: 'operating', companyCode: 'EN330058', sourceAccountCode: 'OP_02', decreaseAmount: 100, period: '2026-05', reason: 'x' },
+        { templateType: 'operating', companyCode: 'EN330058', sourceAccountCode: 'PL02', decreaseAmount: 100, period: '2026-05', reason: 'x' },
         { companyCode: 'EN330059', scopeValue: '' },
       ),
     ).rejects.toMatchObject({ code: 403 })
@@ -1009,5 +1009,36 @@ describe('科目归类调整', () => {
     await expect(
       DataService.reclassifySubject(parent.id, { parentCode: child.code }, { userId: adminId, traceId: 'test' }),
     ).rejects.toMatchObject({ code: 400 })
+  })
+})
+
+describe('现金流公式试算（真实 DB）', () => {
+  it('纯现金流公式：数据源取 cashflow 批次，无 operating 生效数据也可试算', async () => {
+    if (!dbReady) return
+    // 取数据类叶子（排除 calc 类如「自由现金流 CF04」：trialCalc 会递归展开其公式，直写事实值不可达）
+    const cfData = await basePrisma.metric.findMany({ where: { dataType: 'data', code: { startsWith: 'CF' } }, select: { code: true } })
+    const cfSubj = await basePrisma.accountSubject.findFirst({ where: { subjectType: 'cashflow', isLeaf: true, status: 'active', code: { in: cfData.map((m) => m.code) } }, select: { code: true } })
+    const company = await basePrisma.company.findFirst({ where: { entityType: 'single', status: 'active' }, select: { code: true } })
+    if (!cfSubj || !company) return
+    const suffix = Date.now().toString(36)
+    const period = '2099-03'
+    const batch = await basePrisma.importBatch.create({
+      data: { fileName: `__trial_cf_${suffix}__.xlsx`, status: 'success', dataType: 'cashflow', lifecycleStatus: 'active', sourceType: 'upload', fiscalYear: 'FY2099' },
+    })
+    await basePrisma.factOperating.create({
+      data: { batchId: batch.id, companyCode: company.code, accountCode: cfSubj.code, period, periodDimCode: CASHFLOW_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2099', value: 123.45 },
+    })
+    try {
+      const res = await DataService.trialCalc({ formula: `{${cfSubj.code}}`, companyCode: company.code, period })
+      expect(res.value).toBe(123.45)
+      // batchInfo 指向现金流批次（修复前固定查 operating 批次）；测试库可能存在其他 cashflow active 批次，仅断言类型
+      expect(res.batchInfo).toBeTruthy()
+      const infoBatch = await basePrisma.importBatch.findUnique({ where: { id: res.batchInfo!.id }, select: { dataType: true } })
+      expect(infoBatch?.dataType).toBe('cashflow')
+      expect(res.operands[0]).toMatchObject({ code: cfSubj.code, value: 123.45, hasData: true })
+    } finally {
+      await basePrisma.factOperating.deleteMany({ where: { batchId: batch.id } }).catch(() => undefined)
+      await basePrisma.importBatch.delete({ where: { id: batch.id } }).catch(() => undefined)
+    }
   })
 })

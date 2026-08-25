@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { TipLabel } from '@/components/ui/tip-label'
 import { useProductBudget } from '@/hooks/api-queries'
 import { totalOf } from './budget-total'
 import { RateBar } from '@/components/ui/rate-bar'
@@ -12,8 +14,6 @@ interface ProductBudgetCardProps {
   period?: string
   /** 主体口径（跟随看板顶部筛选，单体/汇总主体编码） */
   companyCode?: string
-  /** 当前主体显示名（标题下说明口径） */
-  subjectName?: string
 }
 
 /** 金额口径：本月实际 / 本年累计（预算口径随金额口径联动：月度=占比拆分后的当月预算，累计=年度预算总额） */
@@ -45,7 +45,7 @@ const TD_CLS = 'px-3 py-2 text-right font-num text-sm text-foreground'
  * 完成率以橙色进度条展示；预警列按达成率红黄绿三档（月度用月度达成率，累计用累计预算口径达成率）。
  * 主体口径跟随看板顶部筛选；外层 Card 由 AnalysisTabsCard 统一提供。
  */
-export function ProductBudgetCard({ period, companyCode, subjectName }: ProductBudgetCardProps) {
+export function ProductBudgetCard({ period, companyCode }: ProductBudgetCardProps) {
   const [amountMode, setAmountMode] = useState<AmountMode>('month')
   const { data, isLoading } = useProductBudget({ period, companyCode })
   const rows = data?.rows ?? []
@@ -63,14 +63,11 @@ export function ProductBudgetCard({ period, companyCode, subjectName }: ProductB
   })
 
   return (
-    <>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-muted-foreground">
-          期间 {data?.period ?? period ?? '—'} · 单位：万元{subjectName ? ` · 当前主体：${subjectName}` : ''}
-        </p>
+    <TooltipProvider>
+      <div className="mb-2 flex flex-wrap items-center justify-end gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <Tabs value={amountMode} onValueChange={(v) => setAmountMode(v as AmountMode)}>
-            <TabsList variant="line" className="justify-start">
+            <TabsList variant="segmented" className="justify-start">
               <TabsTrigger value="month">月度</TabsTrigger>
               <TabsTrigger value="ytd">累计</TabsTrigger>
             </TabsList>
@@ -87,7 +84,7 @@ export function ProductBudgetCard({ period, companyCode, subjectName }: ProductB
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  <th rowSpan={2} className="px-3 py-2 text-left text-[13px] font-medium text-foreground">品类</th>
+                  <th rowSpan={2} className="px-3 py-2 text-left text-[13px] font-medium text-foreground w-[10em]">品类</th>
                   <th colSpan={6} className="px-3 py-2 text-center text-[13px] font-semibold text-foreground">收入</th>
                   <th colSpan={6} className="px-3 py-2 text-center text-[13px] font-semibold text-foreground">毛利</th>
                 </tr>
@@ -95,15 +92,15 @@ export function ProductBudgetCard({ period, companyCode, subjectName }: ProductB
                   <th className={TH_CLS}>{amountMode === 'month' ? '月度预算' : '年度预算'}</th>
                   <th className={TH_CLS}>{amountMode === 'month' ? '本月金额' : '累计金额'}</th>
                   <th className={TH_CLS}>{amountMode === 'month' ? '同期金额' : '同期累计'}</th>
-                  <th className={TH_CLS}>预算完成率</th>
-                  <th className={TH_CLS}>预警</th>
-                  <th className={TH_CLS}>同比增长</th>
+                  <th className={TH_CLS}><TipLabel label="预算完成率" tip="月度=本月金额÷当月预算；累计=累计金额÷年度预算" /></th>
+                  <th className={TH_CLS}><TipLabel label="预警" tip="按达成率红黄绿三档：<60 红 / 60-75 黄 / ≥75 绿" /></th>
+                  <th className={TH_CLS}><TipLabel label="同比增长" tip="（本期-去年同期）÷去年同期" /></th>
                   <th className={cn(TH_CLS, 'border-l border-border')}>{amountMode === 'month' ? '月度预算' : '年度预算'}</th>
                   <th className={TH_CLS}>{amountMode === 'month' ? '本月金额' : '累计金额'}</th>
                   <th className={TH_CLS}>{amountMode === 'month' ? '同期金额' : '同期累计'}</th>
-                  <th className={TH_CLS}>预算完成率</th>
-                  <th className={TH_CLS}>预警</th>
-                  <th className={TH_CLS}>同比增长</th>
+                  <th className={TH_CLS}><TipLabel label="预算完成率" tip="月度=本月金额÷当月预算；累计=累计金额÷年度预算" /></th>
+                  <th className={TH_CLS}><TipLabel label="预警" tip="按达成率红黄绿三档：<60 红 / 60-75 黄 / ≥75 绿" /></th>
+                  <th className={TH_CLS}><TipLabel label="同比增长" tip="（本期-去年同期）÷去年同期" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -112,7 +109,19 @@ export function ProductBudgetCard({ period, companyCode, subjectName }: ProductB
                   const profit = displayOf(row.profit)
                   return (
                     <tr key={row.category} className={cn('border-b border-border/60', i % 2 === 1 && 'bg-muted/30')}>
-                      <td className="px-3 py-2 text-left text-sm font-medium text-foreground">{row.category}</td>
+                      {/* 品类名单行截断（空格不计入 10 字符判定）：固定 w-[10em] + truncate，Tooltip 悬停显示完整名称 */}
+                      <td className="px-3 py-2 text-left text-sm font-medium text-foreground w-[10em]">
+                        {row.category.replace(/\s/g, '').length > 10 ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="block w-[10em] truncate">{row.category}</span>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">{row.category}</TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          <span className="block w-[10em] truncate">{row.category}</span>
+                        )}
+                      </td>
                       <td className={TD_CLS}>{formatMoneyWan(income.budget)}</td>
                       <td className={TD_CLS}>{formatMoneyWan(income.amount)}</td>
                       <td className={cn(TD_CLS, 'text-muted-foreground')}>{formatMoneyWan(income.same)}</td>
@@ -158,6 +167,6 @@ export function ProductBudgetCard({ period, companyCode, subjectName }: ProductB
             </table>
           </div>
         )}
-    </>
+    </TooltipProvider>
   )
 }

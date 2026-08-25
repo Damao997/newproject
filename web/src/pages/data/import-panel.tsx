@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -10,7 +11,7 @@ import { usePeriodStore } from '@/stores/periodStore'
 import { usePageStore } from '@/stores/pageStateStore'
 import { validateExcelFile } from '@/lib/file-validation'
 import { downloadImportTemplate } from '@/lib/import-template'
-import { type ImportPreviewResult } from '@/lib/api'
+import { api, type ImportPreviewResult, type MergedPreviewResult } from '@/lib/api'
 import { formatMoneyWan, cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -49,9 +50,11 @@ const batchStatusLabel: Record<string, string> = {
 const templateTypeLabel: Record<string, string> = {
   operating: '经营数据',
   static: '静态数据',
+  cashflow: '现金流量数据',
   budget: '年度预算',
   transaction: '往来明细',
   inventory: '存货数据',
+  merged: '多表合并',
 }
 
 /** 导入质量概览折叠偏好（迁移自独立 localStorage key，现统一走 pageStateStore.dataImport） */
@@ -77,6 +80,7 @@ export function ImportPanel() {
   const canPurgeBatch = can('data:import', 'purge')
   const canViewTransactions = can('transactions', 'view')
   const { confirm, element: confirmElement } = useConfirm()
+  const queryClient = useQueryClient()
 
   // 导入质量概览折叠偏好：pageStateStore 持久化（切换子页/刷新后恢复）
   const qualityOpen = !usePageStore((s) => s.dataImport.qualityCollapsed)
@@ -125,6 +129,8 @@ export function ImportPanel() {
   const uploadMutation = useUploadImport()
   const previewMutation = usePreviewImport()
   const [previewResult, setPreviewResult] = useState<ImportPreviewResult | null>(null)
+  // 多表合并预览结果（templateType === 'merged' 时使用，按类型分桶）
+  const [mergedPreview, setMergedPreview] = useState<MergedPreviewResult | null>(null)
 
   /** 期间列表友好化：超过 6 个截断并标注总数 */
   const fmtPeriods = (ps: string[]) => (ps.length <= 6 ? ps.join('、') : `${ps.slice(0, 6).join('、')} 等 ${ps.length} 个期间`)
@@ -221,6 +227,20 @@ export function ImportPanel() {
     if (!selectedFile) return
     setFileError(null)
     try {
+      if (templateType === 'merged') {
+        // 多表合并：按 Sheet 类型各建 draft 批次，自动勾选新批次提示批量激活
+        const res = await api.uploadMergedImport(selectedFile, valueUnit)
+        // 刷新批次列表（merged 分支直接调 api，未走 mutation 的 onSuccess 失效逻辑）
+        queryClient.invalidateQueries({ queryKey: ['data', 'imports'] })
+        setSelectedBatchIds(new Set(res.items.map((b) => b.id)))
+        setActivateMsg(`已创建 ${res.items.length} 个批次（${res.items.map((b) => templateTypeLabel[b.templateType] ?? b.templateType).join('、')}），请在下方「导入质量概览」勾选后批量激活。`)
+        setSelectedFile(null)
+        setMergedPreview(null)
+        setPreviewResult(null)
+        // 导入→激活闭环：强制展开质量概览
+        setDataImport({ qualityCollapsed: false })
+        return
+      }
       const batch = await uploadMutation.mutateAsync({ file: selectedFile, templateType, valueUnit, ...(templateType === 'budget' ? { fiscalYear: budgetFiscalYear } : {}) })
       setUploadedInfo({ batchId: batch.id, filename: batch.filename, detailCount: batch.detailCount ?? batch.successCount, rowCount: batch.rowCount ?? batch.successCount })
       setSelectedFile(null)
@@ -238,13 +258,20 @@ export function ImportPanel() {
     setFileError(null)
     setUploadedInfo(null)
     setPreviewResult(null)
+    setMergedPreview(null)
   }
 
   const handlePreview = async () => {
     if (!selectedFile) return
     setFileError(null)
     setPreviewResult(null)
+    setMergedPreview(null)
     try {
+      if (templateType === 'merged') {
+        const res = await api.previewMergedImport(selectedFile, valueUnit)
+        setMergedPreview(res)
+        return
+      }
       const res = await previewMutation.mutateAsync({ file: selectedFile, templateType, valueUnit, ...(templateType === 'budget' ? { fiscalYear: budgetFiscalYear } : {}) })
       setPreviewResult(res)
     } catch (err) {
@@ -445,7 +472,9 @@ export function ImportPanel() {
                 <SelectContent>
                   <SelectItem value="operating">经营数据</SelectItem>
                   <SelectItem value="static">静态数据</SelectItem>
+                  <SelectItem value="cashflow">现金流量数据</SelectItem>
                   <SelectItem value="budget">年度预算</SelectItem>
+                  <SelectItem value="merged">多表合并（经营/静态/现金流）</SelectItem>
                   <SelectItem value="transaction">往来明细</SelectItem>
                 </SelectContent>
               </Select>
@@ -474,9 +503,9 @@ export function ImportPanel() {
                   </Select>
                 </>
               )}
-              {templateType !== 'transaction' && (
+              {templateType !== 'transaction' && templateType !== 'merged' && (
                 <Button variant="outline" size="sm" className="shrink-0" onClick={() => {
-                  downloadImportTemplate(templateType as 'operating' | 'static' | 'budget').catch((e) => {
+                  downloadImportTemplate(templateType as 'operating' | 'static' | 'cashflow' | 'budget').catch((e) => {
                     setFileError(e instanceof Error ? e.message : '模板下载失败')
                   })
                 }}>
@@ -555,6 +584,41 @@ export function ImportPanel() {
             </div>
           )}
 
+          {templateType === 'merged' && mergedPreview && (
+            <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
+              <p className="text-sm font-medium">多表合并预览校验结果（未写入，按 Sheet 类型分桶）</p>
+              {mergedPreview.ignoredSheets.length > 0 && (
+                <p className="text-xs text-warning-strong">
+                  未识别 Sheet（已忽略）：{mergedPreview.ignoredSheets.join('、')}。识别规则：Sheet 名须为「经营数据/静态数据/现金流量数据」或以「经营/静态/现金流」开头。
+                </p>
+              )}
+              {(['operating', 'static', 'cashflow'] as const).map((t) => {
+                const r = mergedPreview.perType[t]
+                if (!r) return null
+                return (
+                  <div key={t} className="space-y-2 rounded-lg border bg-background p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="secondary">{templateTypeLabel[t] ?? t}</Badge>
+                      <span className="text-xs text-muted-foreground">
+                        数据行 {r.dataRowCount} · 将入库 {r.detailCount} · 异常 {r.errorCount}
+                        {r.summary.periodRange.min ? ` · 期间 ${r.summary.periodRange.min} ~ ${r.summary.periodRange.max}` : ''}
+                      </span>
+                      {r.activationImpact.overlappingPeriods.length > 0 && (
+                        <span className="text-xs text-warning-strong">覆盖期间：{fmtPeriods(r.activationImpact.overlappingPeriods)}</span>
+                      )}
+                    </div>
+                    {r.errors.length > 0 && (
+                      <p className="text-xs text-destructive">前 {Math.min(r.errors.length, 3)} 条错误：{r.errors.slice(0, 3).map((e) => `第${e.row}行 ${e.message}`).join('；')}</p>
+                    )}
+                  </div>
+                )
+              })}
+              {Object.keys(mergedPreview.perType).length === 0 && (
+                <p className="text-sm text-destructive">未识别到 经营数据/静态数据/现金流量数据 任一 Sheet，请检查文件。</p>
+              )}
+            </div>
+          )}
+
           {previewResult && (
             <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
               <p className="text-sm font-medium">预览校验结果（未写入）</p>
@@ -578,7 +642,7 @@ export function ImportPanel() {
                 </div>
                 <div className="rounded-lg border bg-background p-2">
                   <p className="text-xs text-muted-foreground">模板类型</p>
-                  <p className="mt-1 text-sm font-medium">{templateType === 'operating' ? '经营数据' : templateType === 'static' ? '静态数据' : '年度预算'}</p>
+                  <p className="mt-1 text-sm font-medium">{templateTypeLabel[templateType] ?? templateType}</p>
                 </div>
               </div>
               {previewResult.summary && previewResult.summary.companyCount > 0 && (

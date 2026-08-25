@@ -27,14 +27,14 @@ export interface IndicatorsState {
   sortKey: string | null
   /** 列排序方向 */
   sortDirection: 'asc' | 'desc' | null
-  /** 分类列筛选（null = 全部；否则为勾选 level0 code 列表） */
-  categoryFilter: string[] | null
   /** 表格密度三档（对齐 DataTable 命名） */
   density: 'default' | 'dense' | 'compact'
-  /** 经营指标隐藏的值列 key 列表（默认全部显示；与静态分区独立） */
+  /** 经营指标隐藏的值列 key 列表（默认全部显示；与静态/现金流分区独立） */
   hiddenOperatingColumns: string[]
   /** 静态指标隐藏的值列 key 列表（默认全部显示） */
   hiddenStaticColumns: string[]
+  /** 现金流量隐藏的值列 key 列表（默认全部显示） */
+  hiddenCashflowColumns: string[]
 }
 
 export interface DataBrowseState {
@@ -42,7 +42,7 @@ export interface DataBrowseState {
   companies: string[]
   /** '' = 最新期间 */
   period: string
-  subjectType: 'operating' | 'static'
+  subjectType: 'operating' | 'static' | 'cashflow'
   /** 展开行编码（Set 序列化为数组） */
   expandedRows: string[]
   /** 筛选卡折叠（折叠后表格吸顶偏移自动归零） */
@@ -146,7 +146,7 @@ export interface InventoryState {
 }
 
 export interface FormulasState {
-  subjectType: 'operating' | 'static'
+  subjectType: 'operating' | 'static' | 'cashflow'
   keyword: string
   category: string
   status: string
@@ -173,10 +173,10 @@ const defaultIndicators: IndicatorsState = {
   subjectKeyword: '',
   sortKey: null,
   sortDirection: null,
-  categoryFilter: null,
   density: 'default',
   hiddenOperatingColumns: [],
   hiddenStaticColumns: [],
+  hiddenCashflowColumns: [],
 }
 
 const defaultDataBrowse: DataBrowseState = {

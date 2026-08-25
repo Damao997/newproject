@@ -13,7 +13,7 @@ import { CompanySelect } from '@/components/filters/company-select'
 import { PageContainer } from '@/components/layout/page-container'
 import { SubPageTabs } from '@/components/layout/sub-page-tabs'
 import { INDICATOR_TABS } from '@/components/layout/module-tabs'
-import { MetricTree, OPERATING_COLUMNS, STATIC_COLUMNS } from '@/components/subject-tree/metric-tree'
+import { MetricTree, OPERATING_COLUMNS, STATIC_COLUMNS, CASHFLOW_COLUMNS } from '@/components/subject-tree/metric-tree'
 import { AnalysisDrawer, type AnalysisTarget } from '@/components/indicators/analysis-drawer'
 import { AiOverviewDialog } from '@/components/indicators/ai-overview-panel'
 import { Switch } from '@/components/ui/switch'
@@ -23,13 +23,12 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { usePermission } from '@/hooks/usePermission'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
-import { useCompanies, useOperatingIndicators, useStaticIndicators, useAvailablePeriods, type OperatingRow, type StaticRow } from '@/hooks/api-queries'
+import { useCompanies, useOperatingIndicators, useStaticIndicators, useCashflowIndicators, useAvailablePeriods, type OperatingRow, type StaticRow, type CashflowRow } from '@/hooks/api-queries'
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { usePageStore } from '@/stores/pageStateStore'
 import { exportToExcel } from '@/lib/export'
 import { filterTreeKeepSubtree } from '@/lib/subject-tree'
 import { sortTreeByLevel, type MetricSortKey } from '@/lib/metric-sort'
-import { filterByCategories } from '@/lib/metric-filter'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { MetricValue } from '@/lib/metric-values'
@@ -48,20 +47,25 @@ function collectExpandableCodes(nodes: SubjectNode[]): string[] {
   return codes
 }
 
-type Row = OperatingRow | StaticRow
+type Row = OperatingRow | StaticRow | CashflowRow
 
 // 列设置面板元数据（复用 metric-tree 列配置，仅取 key/header）
 const OPERATING_COLUMN_META = OPERATING_COLUMNS.map((c) => ({ key: c.key, header: c.header }))
 const STATIC_COLUMN_META = STATIC_COLUMNS.map((c) => ({ key: c.key, header: c.header }))
+const CASHFLOW_COLUMN_META = CASHFLOW_COLUMNS.map((c) => ({ key: c.key, header: c.header }))
 
 /** 将后端嵌套行转为 MetricTree 需要的结构树 + 数值 Map */
-function adapt(items: Row[], isOperating: boolean): { nodes: SubjectNode[]; map: Map<string, MetricValue> } {
+function adapt(items: Row[], variant: 'operating' | 'static' | 'cashflow'): { nodes: SubjectNode[]; map: Map<string, MetricValue> } {
   const map = new Map<string, MetricValue>()
   const walk = (rows: Row[]): SubjectNode[] =>
     rows.map((r) => {
-      if (isOperating) {
+      if (variant === 'operating') {
         const o = r as OperatingRow
         map.set(o.code, { budget: o.budget, actual: o.actual, samePeriod: o.samePeriod, ytd: o.ytd, samePeriodYtd: o.samePeriodYtd })
+      } else if (variant === 'cashflow') {
+        const f = r as CashflowRow
+        // 现金流映射到统一 MetricValue：本月→actual、同期→samePeriod、本年累计→ytd、同期累计→samePeriodYtd
+        map.set(f.code, { budget: 0, actual: f.current, samePeriod: f.samePeriod, ytd: f.ytd, samePeriodYtd: f.samePeriodYtd })
       } else {
         const s = r as StaticRow
         // 静态科目映射到统一 MetricValue：本期→actual、同期→samePeriod、年初→ytd、上年年初→samePeriodYtd
@@ -78,11 +82,11 @@ function adapt(items: Row[], isOperating: boolean): { nodes: SubjectNode[]; map:
 }
 
 /** 前序展开为 {row, depth} 供导出 */
-function flattenForExport(rows: Row[], depth = 0): { row: Row; depth: number }[] {
-  const out: { row: Row; depth: number }[] = []
+function flattenForExport<T extends { children?: T[] }>(rows: T[], depth = 0): { row: T; depth: number }[] {
+  const out: { row: T; depth: number }[] = []
   for (const r of rows) {
     out.push({ row: r, depth })
-    if (r.children && r.children.length > 0) out.push(...flattenForExport(r.children as Row[], depth + 1))
+    if (r.children && r.children.length > 0) out.push(...flattenForExport(r.children, depth + 1))
   }
   return out
 }
@@ -93,7 +97,7 @@ function flattenForExport(rows: Row[], depth = 0): { row: Row; depth: number }[]
  * 支持主体/期间/去重分类口径筛选、科目搜索、全部展开/折叠、Excel 导出、
  * 单项分析撰写（需单选公司）与 AI 全局预分析。
  */
-export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'static' }) {
+export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'static' | 'cashflow' }) {
   const { can } = usePermission()
   const navigate = useNavigate()
   // 从看板 KPI 钻取进入时显示「返回首页」按钮（sessionStorage 标记，点击返回时清除；刷新后仍保留）
@@ -113,7 +117,6 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
   const subjectKeyword = usePageStore((s) => s.indicators.subjectKeyword)
   const sortKey = usePageStore((s) => s.indicators.sortKey)
   const sortDirection = usePageStore((s) => s.indicators.sortDirection)
-  const categoryFilter = usePageStore((s) => s.indicators.categoryFilter)
   const [analysisTarget, setAnalysisTarget] = useState<AnalysisTarget | null>(null)
   // AI 预分析弹窗开关（数据就绪后令牌递增，由弹窗内自动打开）
   const [overviewOpen, setOverviewOpen] = useState(false)
@@ -137,10 +140,6 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
     (key: string, direction: 'asc' | 'desc' | null) => setIndicators({ sortKey: key, sortDirection: direction }),
     [setIndicators],
   )
-  const setCategoryFilter = useCallback(
-    (codes: string[] | null) => setIndicators({ categoryFilter: codes }),
-    [setIndicators],
-  )
   // 表格密度与隐藏列（持久化到 pageStateStore，刷新保持）
   const density = usePageStore((s) => s.indicators.density)
   const setDensity = useCallback(
@@ -161,13 +160,14 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
   }, [])
 
   const isOperating = activeTab === 'operating'
+  const isCashflow = activeTab === 'cashflow'
 
-  // 隐藏列按 tab 分区（经营/静态独立存储，天然隔离同名列 key）
-  const hiddenColumns = usePageStore((s) => (isOperating ? s.indicators.hiddenOperatingColumns : s.indicators.hiddenStaticColumns))
+  // 隐藏列按 tab 分区（经营/静态/现金流独立存储，天然隔离同名列 key）
+  const hiddenColumns = usePageStore((s) => (isOperating ? s.indicators.hiddenOperatingColumns : isCashflow ? s.indicators.hiddenCashflowColumns : s.indicators.hiddenStaticColumns))
   const setHiddenColumns = useCallback(
     (cols: string[]) => {
       // 隐藏当前排序列时联动清空排序（避免无表头入口的静默排序）
-      const patch: Record<string, unknown> = isOperating ? { hiddenOperatingColumns: cols } : { hiddenStaticColumns: cols }
+      const patch: Record<string, unknown> = isOperating ? { hiddenOperatingColumns: cols } : isCashflow ? { hiddenCashflowColumns: cols } : { hiddenStaticColumns: cols }
       const cur = usePageStore.getState().indicators
       if (cur.sortKey && cols.includes(cur.sortKey)) {
         patch.sortKey = null
@@ -175,7 +175,7 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
       }
       setIndicators(patch as Parameters<typeof setIndicators>[0])
     },
-    [isOperating, setIndicators],
+    [isOperating, isCashflow, setIndicators],
   )
 
   const fiscalYear = usePeriodStore((s) => s.fiscalYear)
@@ -224,29 +224,29 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
     { companyCode, period, excludeReclassify: excludeReclassify || undefined },
     { enabled: !isOperating || aiNeedData },
   )
+  const cashflowQuery = useCashflowIndicators(
+    { companyCode, period },
+    { enabled: isCashflow },
+  )
 
   const entityCompanies = useMemo(() => (companies ?? []).filter((c) => c.type === 'entity'), [companies])
 
-  const activeItems = (isOperating ? operatingQuery.data?.items : staticQuery.data?.items) ?? []
-  const isLoading = isOperating ? operatingQuery.isLoading : staticQuery.isLoading
+  const activeItems = (isOperating ? operatingQuery.data?.items : isCashflow ? cashflowQuery.data?.items : staticQuery.data?.items) ?? []
+  const isLoading = isOperating ? operatingQuery.isLoading : isCashflow ? cashflowQuery.isLoading : staticQuery.isLoading
   // isFetching：筛选刷新中（已保留旧数据），用于轻量视觉反馈而非整块替换
-  const isFetching = isOperating ? operatingQuery.isFetching : staticQuery.isFetching
-  // 去重分类口径下无法回溯的记录数（批次已替换/缺快照）
+  const isFetching = isOperating ? operatingQuery.isFetching : isCashflow ? cashflowQuery.isFetching : staticQuery.isFetching
+  // 去重分类口径下无法回溯的记录数（批次已替换/缺快照；现金流无重分类口径）
   const skippedReclassifyLogs = (isOperating ? operatingQuery.data?.skippedReclassifyLogs : staticQuery.data?.skippedReclassifyLogs) ?? 0
 
   const { nodes: activeTree, map: activeValueMap } = useMemo(
-    () => adapt(activeItems as Row[], isOperating),
-    [activeItems, isOperating],
+    () => adapt(activeItems as Row[], activeTab),
+    [activeItems, activeTab],
   )
   const activeExpandable = useMemo(() => collectExpandableCodes(activeTree), [activeTree])
 
   // 科目关键字过滤：命中节点保留整棵子树 + 祖先链；过滤时强制展开可见路径（清空后恢复用户展开态）
   const visibleTree = useMemo(() => filterTreeKeepSubtree(activeTree, subjectKeyword), [activeTree, subjectKeyword])
-  // 分类列筛选：仅经营指标（有分类列）；null = 全部；[] = 无分类（空态）。静态页不受经营页筛选影响
-  const categoryFilteredTree = useMemo(
-    () => (isOperating ? filterByCategories(visibleTree, categoryFilter) : visibleTree),
-    [visibleTree, categoryFilter, isOperating],
-  )
+  const categoryFilteredTree = visibleTree
   const effectiveExpanded = useMemo(() => {
     if (!subjectKeyword.trim()) return expandedSet
     const next = new Set(expandedSet)
@@ -262,16 +262,16 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
     return next
   }, [visibleTree, subjectKeyword, expandedSet])
 
-  // 列排序：树内同级排序（经营指标分类根不排序 fromLevel=1 保护分类列分组；静态指标全层级）；
+  // 列排序：树内同级排序（全层级，含 level0 根；分类列已移除，无需保护分组列）
   // sortKey 不属于当前 tab 列集合时不排序（跨 tab 共享排序状态的计算层防护）
   const sortedTree = useMemo(() => {
     if (!sortKey || !sortDirection) return categoryFilteredTree
-    const cols = isOperating ? OPERATING_COLUMNS : STATIC_COLUMNS
+    const cols = isOperating ? OPERATING_COLUMNS : isCashflow ? CASHFLOW_COLUMNS : STATIC_COLUMNS
     if (!cols.some((c) => c.key === sortKey)) return categoryFilteredTree
     return sortTreeByLevel(categoryFilteredTree, activeValueMap, sortKey as MetricSortKey, sortDirection, {
-      fromLevel: isOperating ? 1 : 0,
+      fromLevel: 0,
     })
-  }, [categoryFilteredTree, activeValueMap, sortKey, sortDirection, isOperating])
+  }, [categoryFilteredTree, activeValueMap, sortKey, sortDirection])
 
   // 数据到达后默认展开 level0 根节点
   useEffect(() => {
@@ -345,22 +345,21 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
   }, [aiNeedData, bothReady])
   // 预分析数据：经营+静态两体系；未加载的另一体系为空数组（触发预分析时按需拉取后自动生成）
   const overviewOperatingRows = useMemo(
-    () => flattenForExport((operatingQuery.data?.items ?? []) as Row[]).map(({ row }) => row),
+    () => flattenForExport((operatingQuery.data?.items ?? []) as OperatingRow[]).map(({ row }) => row),
     [operatingQuery.data?.items],
   )
   const overviewStaticRows = useMemo(
-    () => flattenForExport((staticQuery.data?.items ?? []) as Row[]).map(({ row }) => row),
+    () => flattenForExport((staticQuery.data?.items ?? []) as StaticRow[]).map(({ row }) => row),
     [staticQuery.data?.items],
   )
   const hasOverviewData = overviewOperatingRows.length + overviewStaticRows.length > 0
 
-  /** 重置筛选：恢复默认主体/期间/重分类口径/科目搜索/分类筛选（空状态引导动作） */
+  /** 重置筛选：恢复默认主体/期间/重分类口径/科目搜索（空状态引导动作） */
   const handleResetFilters = () => {
     setDimFilter('all')
     setPeriodFilter('')
     setExcludeReclassify(false)
     setSubjectKeyword('')
-    setCategoryFilter(null)
   }
 
   const handleExport = async () => {
@@ -400,6 +399,31 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
           columns: [
             { header: '科目', key: 'account', width: 40 },
             ...keys.map((k) => ({ header: headerMap[k], key: k, width: (k === 'yoy' || k === 'ytdYoy' || k === 'achievement') ? 10 : 14 })),
+          ],
+          rows,
+        })
+        setExportMsg(`已导出：${filename}`)
+      } else if (isCashflow) {
+        // 现金流量分支：本月/同期/本年累计/同期累计/同比，跳过隐藏列
+        const keys = (['actual', 'samePeriod', 'ytd', 'samePeriodYtd', 'yoy'] as const).filter((k) => !hiddenColumns.includes(k))
+        const rows = flat.map(({ row, depth }) => {
+          const f = row as CashflowRow
+          const cols: Record<string, string | number> = {
+            actual: fmtVal(f.current, f.valueType), samePeriod: fmtVal(f.samePeriod, f.valueType),
+            ytd: fmtVal(f.ytd, f.valueType), samePeriodYtd: fmtVal(f.samePeriodYtd, f.valueType), yoy: fmtYoy(f.yoy),
+          }
+          return { account: `${'　'.repeat(depth)}${f.name}`, ...Object.fromEntries(keys.map((k) => [k, cols[k]])) }
+        })
+        const filename = `财务指标_现金流量表${scopeSuffix}_${new Date().toISOString().slice(0, 10)}.xlsx`
+        await exportToExcel({
+          filename,
+          sheetName: '现金流量表',
+          columns: [
+            { header: '科目', key: 'account', width: 40 },
+            ...keys.map((k) => ({
+              header: k === 'actual' ? '本月金额(万)' : k === 'samePeriod' ? '同期金额(万)' : k === 'ytd' ? '本年累计(万)' : k === 'samePeriodYtd' ? '同期累计(万)' : '同比',
+              key: k, width: k === 'yoy' ? 10 : 14,
+            })),
           ],
           rows,
         })
@@ -549,13 +573,15 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
               </SelectContent>
             </Select>
 
-            <div
-              className="flex shrink-0 items-center gap-1.5"
-              title="按重分类日志快照回溯展示调整前口径，仅供对比查看，不修改数据"
-            >
-              <Switch id="exclude-reclassify" aria-label="去除重分类影响" checked={excludeReclassify} onCheckedChange={setExcludeReclassify} />
-              <Label htmlFor="exclude-reclassify" className="hidden cursor-pointer whitespace-nowrap text-[13px] min-[1300px]:inline">去除重分类影响</Label>
-            </div>
+            {!isCashflow && (
+              <div
+                className="flex shrink-0 items-center gap-1.5"
+                title="按重分类日志快照回溯展示调整前口径，仅供对比查看，不修改数据"
+              >
+                <Switch id="exclude-reclassify" aria-label="去除重分类影响" checked={excludeReclassify} onCheckedChange={setExcludeReclassify} />
+                <Label htmlFor="exclude-reclassify" className="hidden cursor-pointer whitespace-nowrap text-[13px] min-[1300px]:inline">去除重分类影响</Label>
+              </div>
+            )}
 
             <div className="mx-1 h-5 w-px shrink-0 bg-border/60" aria-hidden="true" />
 
@@ -614,7 +640,7 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
                     </DropdownMenuRadioGroup>
                     <DropdownMenuSeparator />
                     <DropdownMenuLabel className="text-xs text-muted-foreground">列设置</DropdownMenuLabel>
-                    {(isOperating ? OPERATING_COLUMN_META : STATIC_COLUMN_META).map((col) => (
+                    {(isOperating ? OPERATING_COLUMN_META : isCashflow ? CASHFLOW_COLUMN_META : STATIC_COLUMN_META).map((col) => (
                       <DropdownMenuCheckboxItem
                         key={col.key}
                         checked={!hiddenColumns.includes(col.key)}
@@ -686,7 +712,7 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44">
-                  {(isOperating ? OPERATING_COLUMN_META : STATIC_COLUMN_META).map((col) => (
+                  {(isOperating ? OPERATING_COLUMN_META : isCashflow ? CASHFLOW_COLUMN_META : STATIC_COLUMN_META).map((col) => (
                     <DropdownMenuCheckboxItem
                       key={col.key}
                       checked={!hiddenColumns.includes(col.key)}
@@ -762,13 +788,13 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
             /* 加载骨架：保持表格占位高度，避免内容区塌陷再撑回导致跳动 */
             <div className="py-3">
               <div className="flex gap-3">
-                {Array.from({ length: isOperating ? 10 : 5 }).map((_, c) => (
+                {Array.from({ length: isOperating ? 10 : isCashflow ? 7 : 5 }).map((_, c) => (
                   <Skeleton key={c} className="h-11 flex-1" />
                 ))}
               </div>
               {Array.from({ length: 6 }).map((_, r) => (
                 <div key={r} className="mt-2 flex gap-3">
-                  {Array.from({ length: isOperating ? 10 : 5 }).map((_, c) => (
+                  {Array.from({ length: isOperating ? 10 : isCashflow ? 7 : 5 }).map((_, c) => (
                     <Skeleton key={c} className="h-10 flex-1" />
                   ))}
                 </div>
@@ -787,10 +813,8 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
             <div className={cn('flex min-h-0 flex-1 flex-col transition-opacity duration-200', isFetching && 'opacity-60')}>
               <MetricTree
                 nodes={sortedTree}
-                categoryCandidates={visibleTree}
                 valueMap={activeValueMap}
                 variant={activeTab}
-                categoryColumn={isOperating}
                 expandedCodes={effectiveExpanded}
                 onToggle={handleToggle}
                 onAnalyze={can('reports', 'create') ? handleAnalyze : undefined}
@@ -801,8 +825,6 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
                 sortKey={sortKey}
                 sortDirection={sortDirection}
                 onSortChange={setSort}
-                categoryFilter={categoryFilter}
-                onCategoryFilterChange={setCategoryFilter}
                 density={density}
                 hiddenColumns={hiddenColumns}
               />

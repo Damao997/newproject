@@ -31,7 +31,15 @@ const WEB_DIR = path.join(ROOT, 'web')
 const ENV_FILE = path.join(SERVER_DIR, '.env')
 const PGDATA_DIR = path.join(SERVER_DIR, '.pgdata')
 
-const PORTS = { db: 5432, api: 3001, web: 5173 }
+// 输入端口：进程环境变量 > server/.env 的 DB_PORT > 默认 5432。
+// 多 worktree 隔离开发库时会在各自 server/.env 中通过 DB_PORT 指定独立端口，
+// 因此必须从 .env 读取，避免错误等待默认端口。
+const envDbPort = (existsSync(ENV_FILE) && parseEnv(ENV_FILE).DB_PORT) || undefined
+const PORTS = {
+  db: Number(process.env.DB_PORT ?? envDbPort ?? 5432),
+  api: 3001,
+  web: 5173,
+}
 
 // ── 日志：带颜色前缀 ──────────────────────────────────────
 const COLORS = {
@@ -280,7 +288,7 @@ async function main() {
       throw new Error(`端口 ${port}（${name}）已被占用，可能已有实例在运行，请先停止占用进程`)
     }
   }
-  log('dev', `端口预检通过（5432 / 3001 / 5173 均空闲）`)
+  log('dev', `端口预检通过（${PORTS.db} / ${PORTS.api} / ${PORTS.web} 均空闲）`)
 
   // 3. 启动数据库
   log('dev', '启动数据库：npm run db:local ...')

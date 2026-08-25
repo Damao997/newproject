@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import * as XLSX from 'xlsx'
 import { basePrisma } from '../lib/prisma'
-import { OPERATING_DIMS } from '../lib/metric-values'
+import { CASHFLOW_DIMS, OPERATING_DIMS } from '../lib/metric-values'
 import { ImportService } from './ImportService'
 import { TransactionService } from './TransactionService'
 
@@ -100,7 +100,7 @@ describe('ImportService（真实 DB）', () => {
     expect(res.summary).not.toHaveProperty('accountCodes')
     expect(res.activationImpact === null || typeof res.activationImpact === 'object').toBe(true)
     expect(res.kpiCoverage).toBeTruthy()
-    expect([...res.kpiCoverage!.covered, ...res.kpiCoverage!.missing].sort()).toEqual(['成本', '收入', '毛利', '费用'].sort())
+    expect([...res.kpiCoverage!.covered, ...res.kpiCoverage!.missing].sort()).toEqual(['壹品慧成本', '壹品慧收入', '壹品慧毛利', '壹品慧费用'].sort())
   })
 })
 
@@ -165,14 +165,14 @@ describe('preview 激活影响预告与 KPI 覆盖（真实 DB）', () => {
     const res = await ImportService.preview({ buffer: buf }, 'operating')
     const kc = res.kpiCoverage!
     expect(kc).toBeTruthy()
-    expect([...kc.covered, ...kc.missing].sort()).toEqual(['成本', '收入', '毛利', '费用'].sort())
+    expect([...kc.covered, ...kc.missing].sort()).toEqual(['壹品慧成本', '壹品慧收入', '壹品慧毛利', '壹品慧费用'].sort())
     // 在测试内同样沿 parentCode 上溯，计算该科目的根类别作为期望
     const all = await basePrisma.accountSubject.findMany({ where: { subjectType: 'operating' }, select: { code: true, parentCode: true, category: true } })
     const byCode = new Map(all.map((s) => [s.code, s]))
     let cur = byCode.get(subject.code)
     while (cur?.parentCode && byCode.has(cur.parentCode)) cur = byCode.get(cur.parentCode)
     const rootCategory = cur?.category
-    if (rootCategory && ['收入', '成本', '毛利', '费用'].includes(rootCategory)) {
+    if (rootCategory && ['壹品慧收入', '壹品慧成本', '壹品慧毛利', '壹品慧费用'].includes(rootCategory)) {
       expect(kc.covered).toContain(rootCategory)
     }
   })
@@ -594,5 +594,163 @@ describe('批次快照备份与回滚（真实 DB）', () => {
     })
     createdBatchIds.push(x.id)
     await expect(ImportService.rollbackBatch(x.id, 'test-user', 'trace')).rejects.toMatchObject({ message: expect.stringContaining('不可恢复') })
+  })
+})
+
+describe('cashflow 激活按期间合并与回滚（真实 DB）', () => {
+  // 独立测试公司与远期期间，避免与并行测试及真实数据干扰
+  const COMP = '__TEST_CF_COMP__'
+  const ACC = '__TEST_CF_ACC__'
+  const P1 = '2096-01'
+  const P2 = '2096-02'
+  const P3 = '2096-03'
+  const createdBatchIds: string[] = []
+
+  const makeCfBatch = async (fileName: string, lifecycleStatus: 'draft' | 'active', periods: { period: string; value: number }[]) => {
+    const b = await basePrisma.importBatch.create({
+      data: { fileName, status: 'success', dataType: 'cashflow', lifecycleStatus, sourceType: 'upload', fiscalYear: 'FY2095' },
+    })
+    createdBatchIds.push(b.id)
+    if (periods.length > 0) {
+      await basePrisma.factOperating.createMany({
+        data: periods.map((p) => ({
+          batchId: b.id, companyCode: COMP, accountCode: ACC,
+          period: p.period, periodDimCode: CASHFLOW_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2095', value: p.value,
+        })),
+      })
+    }
+    return b
+  }
+
+  afterAll(async () => {
+    if (createdBatchIds.length === 0) return
+    await basePrisma.factSnapshot.deleteMany({ where: { batchId: { in: createdBatchIds } } }).catch(() => undefined)
+    await basePrisma.factOperating.deleteMany({ where: { batchId: { in: createdBatchIds } } }).catch(() => undefined)
+    await basePrisma.importBatch.deleteMany({ where: { id: { in: createdBatchIds } } }).catch(() => undefined)
+  })
+
+  it('激活仅含部分期间的 cashflow 批次：重叠期间替换备份、非重叠保留、多批次共存（事故场景修复）', async () => {
+    if (!dbReady) return
+    // 场景复现：旧 active 批次 A 含 1、2 月，新批次 B 仅含 2、3 月 —— 修复前 B 激活会把 A 整体归档
+    const a = await makeCfBatch('__test_cf_A__.xlsx', 'active', [
+      { period: P1, value: 100 },
+      { period: P2, value: 200 },
+    ])
+    const b = await makeCfBatch('__test_cf_B__.xlsx', 'draft', [
+      { period: P2, value: 999 },
+      { period: P3, value: 300 },
+    ])
+
+    // 批量激活预检按期间重叠报告冲突（不再落入"整体替换"提示）
+    const [chk] = await ImportService.checkBatchActivateConflicts([b.id])
+    expect(chk.status).toBe('draft')
+    expect(chk.conflictCount).toBe(1)
+    expect(chk.conflicts[0]).toMatchObject({ period: P2 })
+
+    await ImportService.activate(b.id, 'test-user', 'trace')
+
+    // A 的重叠期间 P2 行被删除并备份（template=cashflow），P1 保留；A 仍 active；B active
+    const aRows = await basePrisma.factOperating.findMany({ where: { batchId: a.id }, select: { period: true, value: true } })
+    expect(aRows.map((r) => [r.period, Number(r.value)])).toEqual([[P1, 100]])
+    expect((await basePrisma.importBatch.findUnique({ where: { id: a.id } }))?.lifecycleStatus).toBe('active')
+    expect((await basePrisma.importBatch.findUnique({ where: { id: b.id } }))?.lifecycleStatus).toBe('active')
+    const snaps = await basePrisma.factSnapshot.findMany({ where: { batchId: a.id } })
+    expect(snaps).toHaveLength(1)
+    expect(snaps[0]).toMatchObject({
+      template: 'cashflow',
+      period: P2,
+      periodDimCode: CASHFLOW_DIMS.ACTUAL_MONTH,
+      archivedByBatchId: b.id,
+    })
+    expect(Number(snaps[0].value)).toBe(200)
+
+    // 多 active 批次按期间共存：可用期间 = P1/P2/P3
+    const activeBatches = await basePrisma.importBatch.findMany({ where: { dataType: 'cashflow', lifecycleStatus: 'active', id: { in: createdBatchIds } }, select: { id: true } })
+    const periods = await basePrisma.factOperating.findMany({ where: { batchId: { in: activeBatches.map((x) => x.id) } }, distinct: ['period'], select: { period: true } })
+    expect(periods.map((r) => r.period).sort()).toEqual([P1, P2, P3])
+  })
+
+  it('旧批次被完全覆盖后清空自动归档，其余批次保持 active', async () => {
+    if (!dbReady) return
+    const a = await makeCfBatch('__test_cf_A2__.xlsx', 'active', [
+      { period: P1, value: 100 },
+      { period: P2, value: 200 },
+    ])
+    const b = await makeCfBatch('__test_cf_B2__.xlsx', 'draft', [
+      { period: P2, value: 999 },
+      { period: P3, value: 300 },
+    ])
+    await ImportService.activate(b.id, 'test-user', 'trace')
+    // 再激活仅含 P1 的 C：A 清空后自动归档，B 仍 active
+    const c = await makeCfBatch('__test_cf_C2__.xlsx', 'draft', [{ period: P1, value: 111 }])
+    await ImportService.activate(c.id, 'test-user', 'trace')
+    expect((await basePrisma.importBatch.findUnique({ where: { id: a.id } }))?.lifecycleStatus).toBe('archived')
+    expect(await basePrisma.factOperating.count({ where: { batchId: a.id } })).toBe(0)
+    expect((await basePrisma.importBatch.findUnique({ where: { id: b.id } }))?.lifecycleStatus).toBe('active')
+    expect((await basePrisma.importBatch.findUnique({ where: { id: c.id } }))?.lifecycleStatus).toBe('active')
+  })
+
+  it('rollbackBatch 恢复被替换的 cashflow 期间，重叠期间被当前 active 覆盖且自动备份', async () => {
+    if (!dbReady) return
+    const a = await makeCfBatch('__test_cf_A3__.xlsx', 'active', [
+      { period: P1, value: 100 },
+      { period: P2, value: 200 },
+    ])
+    const b = await makeCfBatch('__test_cf_B3__.xlsx', 'draft', [
+      { period: P2, value: 999 },
+      { period: P3, value: 300 },
+    ])
+    await ImportService.activate(b.id, 'test-user', 'trace')
+    const c = await makeCfBatch('__test_cf_C3__.xlsx', 'draft', [{ period: P1, value: 111 }])
+    await ImportService.activate(c.id, 'test-user', 'trace')
+
+    // 回滚 A：快照（P1/P2）写回，重新激活后 C 的 P1 被覆盖归档，B 的 P3 保留
+    const dto = await ImportService.rollbackBatch(a.id, 'test-user', 'trace')
+    expect(dto.status).toBe('active')
+    const aRows = await basePrisma.factOperating.findMany({ where: { batchId: a.id }, select: { period: true, value: true } })
+    expect(aRows.map((r) => [r.period, Number(r.value)]).sort()).toEqual([[P1, 100], [P2, 200]].sort())
+    const bRows = await basePrisma.factOperating.findMany({ where: { batchId: b.id }, select: { period: true, value: true } })
+    expect(bRows.map((r) => [r.period, Number(r.value)])).toEqual([[P3, 300]])
+    expect((await basePrisma.importBatch.findUnique({ where: { id: c.id } }))?.lifecycleStatus).toBe('archived')
+    // C 被覆盖时快照重新生成（batchId=C），A 的快照已清理
+    expect(await basePrisma.factSnapshot.findMany({ where: { batchId: a.id } })).toHaveLength(0)
+    const cSnaps = await basePrisma.factSnapshot.findMany({ where: { batchId: c.id } })
+    expect(cSnaps).toHaveLength(1)
+    expect(cSnaps[0]).toMatchObject({ template: 'cashflow', period: P1, archivedByBatchId: a.id })
+  })
+})
+
+describe('cashflow 导入预览科目覆盖检查（真实 DB）', () => {
+  let company: { code: string; name: string } | null = null
+  let cfSubject: { code: string; name: string } | null = null
+  let rootCategories: string[] = []
+
+  beforeAll(async () => {
+    if (!dbReady) return
+    company = await basePrisma.company.findFirst({ where: { entityType: 'single', status: 'active' }, select: { code: true, name: true } })
+    cfSubject = await basePrisma.accountSubject.findFirst({ where: { subjectType: 'cashflow', isLeaf: true, status: 'active' }, select: { code: true, name: true } })
+    const roots = await basePrisma.accountSubject.findMany({ where: { subjectType: 'cashflow', status: 'active', level: 0 }, distinct: ['category'], select: { category: true } })
+    rootCategories = roots.map((r) => r.category)
+  })
+
+  it('kpiCoverage 按现金流科目树根类别（经营/投资/筹资活动）检查', async () => {
+    if (!dbReady || !company || !cfSubject || rootCategories.length === 0) return
+    const buf = makeXlsx([
+      ['单体维度', company.name],
+      ['月份', new Date(2098, 1, 15)],
+      [cfSubject.name, 10],
+    ])
+    const res = await ImportService.preview({ buffer: buf }, 'cashflow')
+    const kc = res.kpiCoverage!
+    expect(kc).toBeTruthy()
+    // covered/missing 覆盖现金流科目树全部根类别
+    expect([...kc.covered, ...kc.missing].sort()).toEqual([...rootCategories].sort())
+    // 文件科目上溯到的根类别应计入 covered
+    const all = await basePrisma.accountSubject.findMany({ where: { subjectType: 'cashflow' }, select: { code: true, parentCode: true, category: true } })
+    const byCode = new Map(all.map((s) => [s.code, s]))
+    let cur = byCode.get(cfSubject.code)
+    while (cur?.parentCode && byCode.has(cur.parentCode)) cur = byCode.get(cur.parentCode)
+    const rootCategory = cur?.category
+    if (rootCategory) expect(kc.covered).toContain(rootCategory)
   })
 })

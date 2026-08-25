@@ -44,9 +44,9 @@ function boolQuery(v: unknown): boolean {
 
 router.use(authenticate, attachScope())
 
-// GET /indicators/tree?type=operating|static（科目树元数据，库存页/指标页共用）
+// GET /indicators/tree?type=operating|static|cashflow（科目树元数据，库存页/指标页共用）
 router.get('/tree', requireAnyPermission(SHARED_VIEW_GRANTS), asyncHandler(async (req, res) => {
-  const type = req.query.type === 'static' ? 'static' : 'operating'
+  const type = req.query.type === 'static' ? 'static' : req.query.type === 'cashflow' ? 'cashflow' : 'operating'
   const tree = await IndicatorsService.getTree(type)
   sendOk(res, tree)
 }))
@@ -73,6 +73,16 @@ router.get('/static', requirePermission('indicators:view', 'view'), asyncHandler
   sendOk(res, data)
 }))
 
+// GET /indicators/cashflow
+router.get('/cashflow', requirePermission('indicators:view', 'view'), asyncHandler(async (req, res) => {
+  const authUser = req.authUser as AuthUserContext
+  const data = await IndicatorsService.getCashflow(scopeOf(authUser), {
+    companyCode: req.query.companyCode as string | undefined,
+    period: req.query.period as string | undefined,
+  })
+  sendOk(res, data)
+}))
+
 // GET /indicators/periods（可用期间/财年元数据，header 财年选择器与各页期间筛选共用）
 router.get('/periods', requireAnyPermission(SHARED_VIEW_GRANTS), asyncHandler(async (_req, res) => {
   const periods = await IndicatorsService.getAvailablePeriods()
@@ -91,10 +101,10 @@ router.post('/cross', requirePermission('indicators:view', 'view'), asyncHandler
   sendOk(res, data)
 }))
 
-// GET /indicators/export?type=operating|static&format=excel
+// GET /indicators/export?type=operating|static|cashflow&format=excel
 router.get('/export', requirePermission('indicators:export', 'export'), asyncHandler(async (req, res) => {
   const authUser = req.authUser as AuthUserContext
-  const type = req.query.type === 'static' ? 'static' : 'operating'
+  const type = req.query.type === 'static' ? 'static' : req.query.type === 'cashflow' ? 'cashflow' : 'operating'
   const buffer = await IndicatorsService.exportIndicators(scopeOf(authUser), type, {
     companyCode: req.query.companyCode as string | undefined,
     period: req.query.period as string | undefined,

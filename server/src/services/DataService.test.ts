@@ -221,10 +221,11 @@ describe('DataService 科目 orderNo 排序（真实 DB）', () => {
 
   it('新增根科目 orderNo 追加到全局末尾', async () => {
     if (!dbReady) return
+    const beforeMax = await basePrisma.accountSubject.aggregate({ _max: { orderNo: true } })
     const root = await DataService.createSubject({ name: ROOT_NAME, type: 'operating', category: '自定义', isLeaf: false }, ctx)
     createdCodes.push(root.code)
-    const max = await basePrisma.accountSubject.aggregate({ _max: { orderNo: true } })
-    expect(await orderNoOf(root.code)).toBe(max._max.orderNo)
+    // 并行测试文件共享 DB，全局 max 可能被其他文件新增的科目推进，故断言追加语义（> 创建前 max）
+    expect(await orderNoOf(root.code)).toBeGreaterThan(beforeMax._max.orderNo ?? 0)
   })
 
   it('连续新增子科目依次排在父级末尾，orderNo 渲染序与编码序一致', async () => {

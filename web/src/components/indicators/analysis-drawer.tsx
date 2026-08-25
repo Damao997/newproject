@@ -29,7 +29,7 @@ export interface AnalysisTarget {
   companyName: string
   subjectCode: string
   subjectName: string
-  subjectType: 'operating' | 'static'
+  subjectType: 'operating' | 'static' | 'cashflow'
   /** 值类型：决定指标上下文的格式化与单位标注（缺省金额） */
   valueType?: MetricValueType
   /** 是否展示预算类指标上下文（缺省 true；库存等无预算场景传 false，隐藏全年预算/达成率并排除保存字段） */

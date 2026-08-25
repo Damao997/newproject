@@ -111,18 +111,20 @@ export const OVERVIEW_SUBJECT_NAME = '全局预分析'
 export const ALL_COMPANY_CODE = 'ALL'
 export const ALL_COMPANY_NAME = '全部主体'
 
-/** 推断科目类型（operating/static/transaction/overview），优先取入参，缺省查科目表 */
-async function resolveSubjectType(subjectCode: string, given?: string): Promise<'operating' | 'static' | 'transaction' | 'overview'> {
+/** 推断科目类型（operating/static/cashflow/transaction/overview），优先取入参，缺省查科目表 */
+async function resolveSubjectType(subjectCode: string, given?: string): Promise<'operating' | 'static' | 'cashflow' | 'transaction' | 'overview'> {
   if (given === 'overview') return 'overview'
   if (given === 'transaction') {
     if (!TRANSACTION_SUBJECTS[subjectCode]) throw errors.badRequest(`往来分析对象不存在：${subjectCode}`)
     return 'transaction'
   }
-  if (given === 'operating' || given === 'static') return given
+  if (given === 'operating' || given === 'static' || given === 'cashflow') return given
   // 未显式给类型时，TXN_* 编码按往来类型解析，其余查科目表
   if (TRANSACTION_SUBJECTS[subjectCode]) return 'transaction'
   const subject = await prisma.accountSubject.findUnique({ where: { code: subjectCode }, select: { subjectType: true } })
   if (!subject) throw errors.badRequest(`科目不存在：${subjectCode}`)
+  if (subject.subjectType === 'transaction') return 'transaction'
+  if (subject.subjectType === 'cashflow') return 'cashflow'
   return subject.subjectType
 }
 
@@ -145,7 +147,7 @@ function toDTO(row: {
   id: string
   companyCode: string
   subjectCode: string
-  subjectType: 'operating' | 'static' | 'transaction' | 'overview'
+  subjectType: 'operating' | 'static' | 'cashflow' | 'transaction' | 'overview'
   fiscalYear: string
   period: string
   title: string

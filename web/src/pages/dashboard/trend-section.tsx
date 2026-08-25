@@ -24,13 +24,13 @@ const MODES: TrendMode[] = ['month', 'ytd']
 export function TrendSection({ data, metric, onMetricChange, mode, onModeChange, period, subjectName }: TrendSectionProps) {
   return (
     <>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
           期间 {period ?? '—'} · 单位：万元{subjectName ? ` · 当前主体：${subjectName}` : ''}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <Tabs value={mode} onValueChange={(v) => onModeChange(v as TrendMode)}>
-            <TabsList variant="line" className="justify-start">
+            <TabsList variant="outlined" className="justify-start">
               {MODES.map((m) => (
                 <TabsTrigger key={m} value={m}>
                   {TREND_MODE_LABELS[m]}
@@ -39,7 +39,7 @@ export function TrendSection({ data, metric, onMetricChange, mode, onModeChange,
             </TabsList>
           </Tabs>
           <Tabs value={metric} onValueChange={(v) => onMetricChange(v as TrendMetric)}>
-            <TabsList variant="line" className="justify-start">
+            <TabsList variant="outlined" className="justify-start">
               {METRICS.map((m) => (
                 <TabsTrigger key={m} value={m}>
                   {TREND_METRIC_LABELS[m]}

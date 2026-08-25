@@ -5,7 +5,7 @@ import { guardInput, filterOutput } from '../lib/prompt-guard'
 import { chatComplete, chatStream } from '../lib/deepseek'
 import { buildCompanyMap, applyCompanyMap, restoreCompanyMap } from '../lib/desensitize'
 import { AI_TEMPLATES, type AiSectionTemplate } from '../config/ai-templates'
-import { IndicatorsService, type OperatingRow, type StaticRow } from './IndicatorsService'
+import { IndicatorsService, type OperatingRow, type StaticRow, type CashflowRow } from './IndicatorsService'
 import { SubjectAnalysisService, ALL_COMPANY_CODE } from './SubjectAnalysisService'
 import { resolveCompanyCodes } from './AggregationService'
 import { extractCodes, validateFormula } from './FormulaRuleService'
@@ -328,11 +328,14 @@ function trendOf(v: number): string {
 }
 
 /** 组装 analyze 事实约束块（金额/百分比/趋势不脱敏，不发绝对金额；导出供单测） */
-export function buildAnalyzeFactBlock(row: OperatingRow | StaticRow, companyAlias: string): string {
+export function buildAnalyzeFactBlock(row: OperatingRow | StaticRow | CashflowRow, companyAlias: string): string {
   const lines: string[] = ['以下是系统计算确认的数据变化率（事实数据，不得质疑或修改）：']
   if ('achievement' in row) {
     const o = row as OperatingRow
     lines.push(`- ${companyAlias} ${o.name}：同比 ${pct(o.yoy)}（趋势${trendOf(o.yoy)}），达成率 ${pct(o.achievement)}，累计同比 ${pct(o.ytdYoy)}`)
+  } else if ('ytdYoy' in row) {
+    const c = row as CashflowRow
+    lines.push(`- ${companyAlias} ${c.name}：同比 ${pct(c.yoy)}（趋势${trendOf(c.yoy)}），累计同比 ${pct(c.ytdYoy)}`)
   } else {
     const s = row as StaticRow
     lines.push(`- ${companyAlias} ${s.name}：变动率 ${pct(s.yoy)}（趋势${trendOf(s.yoy)}）`)

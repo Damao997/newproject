@@ -23,6 +23,15 @@ export const STATIC_DIMS = {
   LAST_YEAR_START: 'LAST_YEAR_START', // 上年年初金额
 } as const
 
+/** 现金流期间维度编码（独立 cashflow 类型，流入流出共用） */
+export const CASHFLOW_DIMS = {
+  ACTUAL_MONTH: 'CF_ACTUAL_MONTH', // 本月金额
+  YTD_ACTUAL: 'CF_YTD_ACTUAL', // 本年累计
+  SAME_PERIOD_ACTUAL: 'CF_SAME_PERIOD_ACTUAL', // 同期金额
+  SAME_PERIOD_YTD: 'CF_SAME_PERIOD_YTD', // 同期累计
+  BUDGET_AMOUNT: 'CF_BUDGET_AMOUNT', // 预算金额（年度预算，仅流入/流出层直填，净额类由公式推导）
+} as const
+
 /** 稳定字符串哈希 → [0,1)，保证同一 (code, dim, period, salt) 恒定（FNV-1a） */
 export function seeded(code: string, dim: string, period: string, salt: string): number {
   const str = `${code}|${dim}|${period}|${salt}`

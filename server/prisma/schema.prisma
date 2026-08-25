@@ -34,6 +34,7 @@ enum EntityType {
 enum SubjectType {
   operating
   static
+  cashflow
   transaction
   overview
 }
@@ -70,6 +71,7 @@ enum RecordStatus {
 enum PeriodApplicableType {
   operating
   static
+  cashflow
 }
 
 enum DimType {
@@ -133,6 +135,7 @@ enum LifecycleStatus {
 enum ImportDataType {
   operating
   static
+  cashflow
   budget
   transaction
   inventory
@@ -224,6 +227,22 @@ model ProductCategory {
 
   @@index([status])
   @@map("product_category")
+}
+
+// 3.4-2 关键指标产品配置表（壹品慧关键指标表「按产品分」明细：产品 ↔ 收入科目名关键词，
+// 独立于品类配置，支持科目树变化后由管理员维护）
+model KeyMetricsProduct {
+  id             String       @id @default(uuid())
+  code           String       @unique
+  name           String
+  subjectKeyword String       @map("subject_keyword")
+  sortOrder      Int          @default(0) @map("sort_order")
+  status         RecordStatus @default(active)
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@map("key_metrics_product")
 }
 
 // 3.4-1 运营费用映射表（运营费用分析：展示指标 ↔ 经营科目编码集合，支持科目树变化后由管理员维护）
@@ -399,12 +418,13 @@ model FactBudget {
 }
 
 // 4.4 导入数据快照表（批次激活覆盖时的被删行备份，支撑批次回滚）
-// 仅 operating/static/budget 三类；不设同键唯一约束，允许同一批次被多次覆盖产生多份快照
+// 仅 operating/static/cashflow/budget 四类（cashflow 与 operating 同存 fact_operating 按 period 备份）；
+// 不设同键唯一约束，允许同一批次被多次覆盖产生多份快照
 model FactSnapshot {
   id                String         @id @default(uuid())
   batchId           String         @map("batch_id") // 行原属批次（回滚恢复目标）
   archivedByBatchId String?        @map("archived_by_batch_id") // 因哪次激活被覆盖（追溯）
-  template          ImportDataType @map("template") // operating/static/budget（v1 不覆盖 transaction）
+  template          ImportDataType @map("template") // operating/static/cashflow/budget（v1 不覆盖 transaction）
   companyCode       String         @map("company_code")
   accountCode       String         @map("account_code")
   period            String? // operating: period；budget: 财务期间
@@ -452,7 +472,7 @@ model ReclassificationLog {
 // 软删除（deletedAt）即撤销抵消，聚合查询只取未删除记录。
 model ConsolidationAdjustment {
   id                 String    @id @default(uuid())
-  templateType       String    @map("template_type") // 本版仅 'operating'（现金流属经营科目树），字段保留扩展
+  templateType       String    @map("template_type") // operating / cashflow（四维叠加口径同构）
   summaryCompanyCode String    @map("summary_company_code")
   accountCode        String    @map("account_code")
   period             String // 单月 YYYY-MM

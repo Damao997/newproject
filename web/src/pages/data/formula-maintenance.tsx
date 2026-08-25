@@ -96,7 +96,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
   const statusFilter = usePageStore((s) => s.formulas.status)
   const page = usePageStore((s) => s.formulas.page)
   const searchCollapsed = usePageStore((s) => s.formulas.searchCollapsed)
-  const setSubjectType = useCallback((v: 'operating' | 'static') => setFormulas({ subjectType: v }), [setFormulas])
+  const setSubjectType = useCallback((v: 'operating' | 'static' | 'cashflow') => setFormulas({ subjectType: v }), [setFormulas])
   const setKeyword = useCallback((v: string) => setFormulas({ keyword: v }), [setFormulas])
   const setCategoryFilter = useCallback((v: string) => setFormulas({ category: v }), [setFormulas])
   const setStatusFilter = useCallback((v: string) => setFormulas({ status: v }), [setFormulas])
@@ -177,7 +177,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
 
   const calcMetrics: CalcMetricRow[] = useMemo(() => {
     const items = (data?.items ?? []) as unknown as Array<Record<string, unknown>>
-    const prefix = subjectType === 'static' ? 'ST_' : 'OP_'
+    const prefix = subjectType === 'static' ? 'BS' : subjectType === 'cashflow' ? 'CF' : 'PL'
     return items
       .filter((m) => m.dataType === 'calc' && String(m.code).startsWith(prefix))
       .map((m) => ({
@@ -195,7 +195,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
   // 可转换为计算类的数据类指标（当前类型下、启用中）
   const dataMetrics = useMemo(() => {
     const items = (data?.items ?? []) as unknown as Array<Record<string, unknown>>
-    const prefix = subjectType === 'static' ? 'ST_' : 'OP_'
+    const prefix = subjectType === 'static' ? 'BS' : subjectType === 'cashflow' ? 'CF' : 'PL'
     return items
       .filter((m) => m.dataType === 'data' && String(m.code).startsWith(prefix) && String(m.status ?? 'active') === 'active')
       .map((m) => ({ id: String(m.id), code: String(m.code), name: String(m.name) }))
@@ -515,7 +515,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
               {/* 收起态摘要：当前筛选值一瞥（信息增量，符合设计规范） */}
               {!open && (
                 <span className="text-xs">
-                  {subjectType === 'operating' ? '经营指标' : '静态指标'}
+                  {subjectType === 'operating' ? '经营指标' : subjectType === 'cashflow' ? '现金流量' : '静态指标'}
                   {categoryFilter !== 'all' ? ` · ${categoryFilter}` : ' · 全部类别'}
                   {keyword.trim() ? ` · “${keyword.trim()}”` : ''}
                   {statusFilter !== 'all' ? ` · ${statusFilter === 'active' ? '启用中' : '已停用'}` : ''}
@@ -531,13 +531,14 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
       >
       <div className="rounded-card border border-border bg-card p-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Select value={subjectType} onValueChange={(v) => { setSubjectType(v as 'operating' | 'static'); resetPage(); setCategoryFilter('all') }}>
+        <Select value={subjectType} onValueChange={(v) => { setSubjectType(v as 'operating' | 'static' | 'cashflow'); resetPage(); setCategoryFilter('all') }}>
           <SelectTrigger className="w-full sm:w-[140px]">
             <SelectValue placeholder="科目类型" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="operating">经营指标</SelectItem>
             <SelectItem value="static">静态指标</SelectItem>
+            <SelectItem value="cashflow">现金流量</SelectItem>
           </SelectContent>
         </Select>
         <Select value={categoryFilter} onValueChange={(v) => { setCategoryFilter(v); resetPage() }}>
@@ -620,7 +621,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
           </DialogHeader>
           <div className="space-y-2">
             <label className="text-sm font-medium">公式表达式</label>
-            <Input value={draftFormula} onChange={(e) => setDraftFormula(e.target.value)} placeholder="如：{OP_0201} - {OP_020101}" maxLength={500} />
+            <Input value={draftFormula} onChange={(e) => setDraftFormula(e.target.value)} placeholder="如：{PL0201} - {PL020101}" maxLength={500} />
             {draftFormula.trim() && (
               <p className="text-xs text-muted-foreground">中文预览：{renderColoredFormula(draftFormula)}</p>
             )}
@@ -797,7 +798,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium">公式（可选）</label>
-              <Input value={createForm.formula} onChange={(e) => setCreateForm({ ...createForm, formula: e.target.value })} placeholder="如：{OP_020101} / {OP_02}" maxLength={500} />
+              <Input value={createForm.formula} onChange={(e) => setCreateForm({ ...createForm, formula: e.target.value })} placeholder="如：{PL020101} / {PL02}" maxLength={500} />
               {createForm.formula.trim() && (
                 <p className="text-xs text-muted-foreground">中文预览：{formatFormula(createForm.formula)}</p>
               )}
@@ -861,7 +862,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium">初始公式（可选）</label>
-              <Input value={convertForm.formula} onChange={(e) => setConvertForm({ ...convertForm, formula: e.target.value })} placeholder="如：{OP_020101} / {OP_02}" maxLength={500} />
+              <Input value={convertForm.formula} onChange={(e) => setConvertForm({ ...convertForm, formula: e.target.value })} placeholder="如：{PL020101} / {PL02}" maxLength={500} />
               {convertForm.formula.trim() && (
                 <p className="text-xs text-muted-foreground">中文预览：{formatFormula(convertForm.formula)}</p>
               )}

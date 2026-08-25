@@ -41,12 +41,12 @@ export interface ExpenseMappingCheckResult {
   brokenCodes: string[]
 }
 
-/** 科目编码（经营指标级联数字编码，如 OP_0501010101）：一对一映射 code=科目编码 */
-const SUBJECT_CODE_RE = /^OP_[0-9]+$/
+/** 科目编码（经营指标级联数字编码，如 PL05010101）：一对一映射 code=科目编码 */
+const SUBJECT_CODE_RE = /^PL[0-9]+$/
 /** 归并/自定义映射编码：EXP_ 前缀 + 小写英文/数字/下划线 */
 const CUSTOM_CODE_RE = /^EXP_[a-z][a-z0-9_]*$/
 
-/** 映射编码合法格式：一对一映射=科目编码（OP_ 前缀数字）；归并/自定义=EXP_ 前缀小写英文（如 EXP_rd_expense） */
+/** 映射编码合法格式：一对一映射=科目编码（PL 前缀数字）；归并/自定义=EXP_ 前缀小写英文（如 EXP_rd_expense） */
 export function isValidMappingCode(code: string): boolean {
   return SUBJECT_CODE_RE.test(code) || CUSTOM_CODE_RE.test(code)
 }
@@ -100,14 +100,14 @@ function collectLeaves(node: SubjectNode): SubjectNode[] {
 }
 
 /**
- * 运营费用候选科目定位：费用 > 壹品慧费用 > 运营费用 子树（叶子按直接子节点分组，
- * 如 付现运营费用/非付现运营费用）+ 壹品慧费用 下的 财务费用 叶子。
+ * 运营费用候选科目定位：壹品慧费用（PL05）> 运营费用（PL0501）子树（叶子按直接子节点分组，
+ * 如 付现运营费用/非付现运营费用）+ 财务费用（PL0502）叶子。
  * 科目树缺失对应节点时返回空数组（前端显示无候选提示）。
  */
 export function expenseCandidates(subjects: SubjectRow[]): { group: string; items: ExpenseCandidateItem[] }[] {
-  const feeRoots = buildTree(subjects.filter((s) => s.category === '费用'))
+  const feeRoots = buildTree(subjects.filter((s) => s.category === '壹品慧费用'))
   const yph = feeRoots[0]
-  const expenseNode = yph ? findByNamePath(yph.children, ['壹品慧费用', '运营费用']) : undefined
+  const expenseNode = yph ? findByNamePath(yph.children, ['运营费用']) : undefined
 
   const candidates: { group: string; items: ExpenseCandidateItem[] }[] = []
   if (expenseNode) {
@@ -117,9 +117,8 @@ export function expenseCandidates(subjects: SubjectRow[]): { group: string; item
       candidates.push({ group: child.name, items })
     }
   }
-  // 财务费用（壹品慧费用 下的兄弟叶子，与运营费用平级）
-  const yphNode = yph?.children.find((n) => n.name === '壹品慧费用')
-  const financeNode = yphNode?.children.find((n) => n.name === '财务费用')
+  // 财务费用（PL0502，与运营费用 PL0501 平级的叶子）
+  const financeNode = yph?.children.find((n) => n.name === '财务费用')
   if (financeNode) {
     candidates.push({ group: '财务费用', items: [{ code: financeNode.code, name: financeNode.name }] })
   }
@@ -186,7 +185,7 @@ export const ExpenseAnalysisService = {
     const name = String(input.name ?? '').trim()
     const subjectCodes = Array.isArray(input.subjectCodes) ? input.subjectCodes.map((c) => String(c).trim()).filter(Boolean) : []
     if (!code || !name) throw errors.badRequest('展示名称与映射编码必填')
-    if (!isValidMappingCode(code)) throw errors.badRequest('映射编码需为科目编码（OP_ 前缀）或 EXP_ 前缀小写英文（如 EXP_rd_expense）')
+    if (!isValidMappingCode(code)) throw errors.badRequest('映射编码需为科目编码（PL_ 前缀）或 EXP_ 前缀小写英文（如 EXP_rd_expense）')
     if (subjectCodes.length === 0) throw errors.badRequest('至少选择 1 个运营费用科目')
     const exists = await prisma.expenseSubjectMapping.findUnique({ where: { code } })
     if (exists) {

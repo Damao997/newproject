@@ -14,7 +14,7 @@ import { useAnalyses, useCreateAnalysis, useUpdateAnalysis, useDeleteAnalysis } 
 export interface AnalysisPayload {
   companyCode: string
   subjectCode: string
-  subjectType: 'operating' | 'static' | 'transaction'
+  subjectType: 'operating' | 'static' | 'cashflow' | 'transaction'
   fiscalYear: string
   period: string
   title: string

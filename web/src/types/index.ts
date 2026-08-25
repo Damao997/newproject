@@ -371,6 +371,83 @@ export interface ProductCategoryCheckResult {
   missingProfitMirror: string[]
 }
 
+/** 关键指标产品配置（壹品慧关键指标表「按产品分」明细：产品 ↔ 收入科目名关键词，独立于品类配置） */
+export interface KeyMetricsProduct {
+  id: string
+  code: string
+  name: string
+  subjectKeyword: string
+  sortOrder: number
+  status: 'active' | 'inactive'
+  createdAt: string
+  updatedAt: string
+}
+
+/** 产品配置检测行：匹配到的收入科目与毛利镜像是否齐全 */
+export type KeyMetricsProductCheckItem = KeyMetricsProduct & {
+  matchedSubjects: string[]
+  profitOk: boolean
+}
+
+/** 产品配置科目树变化检测结果 */
+export interface KeyMetricsProductCheckResult {
+  products: KeyMetricsProductCheckItem[]
+  uncoveredSubjects: string[]
+  brokenKeywords: string[]
+  missingProfitMirror: string[]
+}
+
+/** 壹品慧关键指标表单组口径：月度 8 列 + 年度 6 列（金额万元；百分比为百分数值；null=无预算/无数据源显示「—」） */
+export interface KeyMetricsGroup {
+  /** 月度预算（占比拆分后的当月值；现金流等无预算行为 null） */
+  monthBudget: number | null
+  /** 本期实际 */
+  monthActual: number
+  /** 去年同期 */
+  monthSame: number
+  /** 同比变动 = 本期实际 - 去年同期 */
+  monthChange: number
+  /** 同比 % */
+  monthYoy: number
+  /** 环比变动 = 本期实际 - 上月实际 */
+  monthMomChange: number
+  /** 环比 % */
+  monthMom: number
+  /** 月度完成率 % = 本期实际 / 月度预算（无预算 null） */
+  monthRate: number | null
+  /** 年度预算（现金流等无预算行为 null） */
+  annualBudget: number | null
+  /** 本年累计（年初至本期） */
+  ytdActual: number
+  /** 同期累计（上年年初至上年同期） */
+  ytdSame: number
+  /** 累计同比变动 = 本年累计 - 同期累计 */
+  ytdChange: number
+  /** 累计同比 % */
+  ytdYoy: number
+  /** 年度完成率 % = 本年累计 / 年度预算（无预算 null） */
+  annualRate: number | null
+}
+
+/** 关键指标表行：key=行标识；label=展示名；category=分类列；products=产品明细（仅收入/毛利行） */
+export interface KeyMetricsRow {
+  key: string
+  label: string
+  category: string
+  products: { name: string; income: KeyMetricsGroup; profit: KeyMetricsGroup }[]
+  values: KeyMetricsGroup
+}
+
+/** 壹品慧关键指标表接口响应（companyCode/companyName/companyType/degraded 为看板实际生效主体，越权时自动降级） */
+export interface KeyMetricsResponse {
+  period: string
+  rows: KeyMetricsRow[]
+  companyCode: string | null
+  companyName: string | null
+  companyType: 'single' | 'summary' | null
+  degraded: boolean
+}
+
 /** 运营费用映射（运营费用分析：展示指标 ↔ 经营科目编码集合） */
 export interface ExpenseMapping {
   id: string
@@ -475,7 +552,7 @@ export interface AuditLog {
 
 /** 科目树节点（经营分析 level0-level4 / 静态指标 level0-level1 通用） */
 export interface SubjectNode {
-  /** 科目编码（级联数字编码，前缀+每级 2 位：如 OP_02 / OP_0201 / ST_1201） */
+  /** 科目编码（级联数字编码，前缀+每级 2 位：如 PL02 / PL0201 / BS0101 / CF01） */
   code: string
   /** 科目名称 */
   name: string
@@ -825,7 +902,7 @@ export interface AnalysisRef {
 export interface AnalysisInput {
   companyCode: string
   subjectCode: string
-  subjectType?: 'operating' | 'static' | 'transaction'
+  subjectType?: 'operating' | 'static' | 'cashflow' | 'transaction'
   fiscalYear: string
   period: string
   title: string

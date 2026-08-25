@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -10,10 +10,10 @@ import { PageContainer } from '@/components/layout/page-container'
 import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { StatusIndicator } from '@/components/ui/status-indicator'
 import { KpiGridSkeleton, ChartSkeleton, ListSkeleton } from '@/components/ui/skeleton-blocks'
-import { useCompanies, useDashboardOverview, useAvailablePeriods } from '@/hooks/api-queries'
-import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
+import { useDashboardOverview } from '@/hooks/api-queries'
 import { usePageStore } from '@/stores/pageStateStore'
-import { AnalysisTabsCard, type AnalysisTab } from './analysis-tabs-card'
+import { useDashboardFilters } from '@/hooks/useDashboardFilters'
+import { TrendSection } from './trend-section'
 import { ReceivablesCard } from './receivables-card'
 import { InventoryPieCard } from './inventory-pie-card'
 import { AlertTriangle, Inbox, Loader2, RefreshCw } from 'lucide-react'
@@ -21,70 +21,21 @@ import { AlertTriangle, Inbox, Loader2, RefreshCw } from 'lucide-react'
 export default function DashboardPage() {
   // 吸顶测量：标题区高度实时测量（标题区含 actions 筛选控件，吸顶时筛选随标题区固定）
   const { headerRef } = useStickyHeader()
-  // 查询条件与图表指标持久化到 pageStateStore（路由切换/刷新后恢复）
+  // 查询条件与图表指标持久化到 pageStateStore（路由切换/刷新后恢复）；期间+主体维度与经营分析子页共享
   const setDashboard = usePageStore((s) => s.setDashboard)
   const setIndicators = usePageStore((s) => s.setIndicators)
-  const selectedPeriod = usePageStore((s) => s.dashboard.period)
-  // 主体筛选：all / company:CODE / summary:CODE（与指标页一致的三态格式）；
-  // 默认自动模式（''）：由后端按权限选择 ET0001 → 授权汇总 → 授权单体，前端在候选加载后对齐回显
-  const dimFilter = usePageStore((s) => s.dashboard.dim)
   const trendMetric = usePageStore((s) => s.dashboard.trendMetric) as TrendMetric
   const trendMode = usePageStore((s) => s.dashboard.trendMode) as TrendMode
-  const analysisTab = usePageStore((s) => s.dashboard.analysisTab) as AnalysisTab
-  const setSelectedPeriod = useCallback((v: string) => setDashboard({ period: v }), [setDashboard])
-  const setDimFilter = useCallback((v: string) => setDashboard({ dim: v }), [setDashboard])
   const setTrendMetric = useCallback((v: TrendMetric) => setDashboard({ trendMetric: v }), [setDashboard])
   const setTrendMode = useCallback((v: TrendMode) => setDashboard({ trendMode: v }), [setDashboard])
-  const setAnalysisTab = useCallback((v: AnalysisTab) => setDashboard({ analysisTab: v }), [setDashboard])
   const navigate = useNavigate()
-
-  // 期间候选：可用期间按全局选中财年过滤；未选时后端默认取最新期
-  const fiscalYear = usePeriodStore((s) => s.fiscalYear)
-  const { data: periodsData } = useAvailablePeriods()
-  const periodOptions = useMemo(
-    () => filterPeriodsByFiscalYear(periodsData?.periods ?? [], fiscalYear, periodsData?.fiscalStartMonth ?? 1),
-    [periodsData, fiscalYear],
-  )
-  // 财年切换后已选期间不在候选内时回退默认（最新期）
-  useEffect(() => {
-    if (selectedPeriod && !periodOptions.includes(selectedPeriod)) setSelectedPeriod('')
-  }, [periodOptions, selectedPeriod])
-
-  // 主体维度候选：公司 / 汇总主体分组
-  const { data: companies } = useCompanies()
-  const entityCompanies = useMemo(() => (companies ?? []).filter((c) => c.type === 'entity'), [companies])
-  const summaryEntities = useMemo(() => (companies ?? []).filter((c) => c.type === 'summary'), [companies])
-  const companyCode = dimFilter.startsWith('company:')
-    ? dimFilter.slice('company:'.length)
-    : dimFilter.startsWith('summary:')
-      ? dimFilter.slice('summary:'.length)
-      : undefined
-
-  // 自动模式主体对齐 + 持久化主体校验：无选或编码已删除/越权时回退默认主体；
-  // useCompanies 已按数据权限过滤（与后端同源：ET0001 → 首个汇总 → 首个单体），避免以越权主体发起请求
-  useEffect(() => {
-    if (!companies || companies.length === 0) return
-    const valid = new Set(companies.map((c) => c.code))
-    const fallback = () => {
-      const et0001 = summaryEntities.find((c) => c.code === 'ET0001')
-      if (et0001) return `summary:${et0001.code}`
-      if (summaryEntities[0]) return `summary:${summaryEntities[0].code}`
-      if (entityCompanies[0]) return `company:${entityCompanies[0].code}`
-      return 'all'
-    }
-    const cur = usePageStore.getState().dashboard.dim
-    if (cur === '') {
-      setDimFilter(fallback())
-      return
-    }
-    if (cur === 'all') return
-    const code = cur.includes(':') ? cur.split(':')[1] : undefined
-    if (!code || !valid.has(code)) setDimFilter(fallback())
-  }, [dimFilter, companies, summaryEntities, entityCompanies, setDimFilter])
+  // 共享看板筛选（主体 all/company:/summary: 三态 + 期间）：自动对齐与口径解析均内置于 hook
+  const { dimFilter, setDimFilter, selectedPeriod, setSelectedPeriod, periodOptions, companyCode, currentSubjectName } =
+    useDashboardFilters()
 
   // 真实后端数据（React Query），加载期展示骨架屏
   const { data, isLoading, isError, isFetching, refetch } = useDashboardOverview({
-    period: selectedPeriod || (fiscalYear ? periodOptions[periodOptions.length - 1] : undefined),
+    period: selectedPeriod || periodOptions[periodOptions.length - 1],
     companyCode,
   })
   const kpiData = data?.kpiData ?? []
@@ -99,7 +50,7 @@ export default function DashboardPage() {
     if (data?.degraded && data.companyCode) {
       setDimFilter(`${data.companyType === 'summary' ? 'summary' : 'company'}:${data.companyCode}`)
     }
-  }, [data?.degraded, data?.companyCode, data?.companyType])
+  }, [data?.degraded, data?.companyCode, data?.companyType, setDimFilter])
 
   // 点击 KPI 卡片：同步看板当前筛选（主体+期间）到指标页并记录返回标记后跳转，保证指标页初始视图与看板上下文一致
   const handleKpiClick = useCallback(() => {
@@ -117,14 +68,8 @@ export default function DashboardPage() {
     navigate('/indicators/operating')
   }, [dimFilter, data?.companyCode, data?.companyType, currentPeriod, setIndicators, navigate])
 
-  // 当前主体显示名（顶部筛选解析；自动模式下用后端返回的实际生效主体）
-  const currentSubjectName = useMemo(() => {
-    if (dimFilter === '') return data?.companyName ?? '全部主体'
-    const code = companyCode
-    if (!code) return '全部主体'
-    const match = (companies ?? []).find((c) => c.code === code)
-    return match?.name ?? code
-  }, [dimFilter, companyCode, companies, data?.companyName])
+  // 当前主体显示名（顶部筛选解析；自动模式下支持用后端返回的实际生效主体覆盖，下行传入趋势口径说明）
+  const subjectName = dimFilter === '' && data?.companyName ? data.companyName : currentSubjectName
 
   return (
     <PageContainer
@@ -216,19 +161,20 @@ export default function DashboardPage() {
             ))}
           </div>
 
-          {/* 综合分析：趋势分析 / 品类预算达成 / 公司预算达成 / 运营费用（TAB 切换，主体口径跟随顶部筛选） */}
-          <AnalysisTabsCard
-            period={currentPeriod || undefined}
-            companyCode={companyCode}
-            subjectName={currentSubjectName}
-            trendData={trendData}
-            trendMetric={trendMetric}
-            onTrendMetricChange={setTrendMetric}
-            trendMode={trendMode}
-            onTrendModeChange={setTrendMode}
-            tab={analysisTab}
-            onTabChange={setAnalysisTab}
-          />
+          {/* 综合分析：趋势分析（品类预算达成 / 公司预算达成 / 运营费用已迁至「经营分析」子页） */}
+          <Card className="animate-fade-in border border-border shadow-sm">
+            <CardContent className="px-6 py-6">
+              <TrendSection
+                data={trendData}
+                metric={trendMetric}
+                onMetricChange={setTrendMetric}
+                mode={trendMode}
+                onModeChange={setTrendMode}
+                period={currentPeriod || undefined}
+                subjectName={subjectName}
+              />
+            </CardContent>
+          </Card>
 
           {/* 应收账款分析 + 存货品类分析（均跟随顶部主体筛选，期间跟随看板） */}
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">

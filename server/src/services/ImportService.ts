@@ -6,10 +6,11 @@ import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
 import { parseImportWorkbook, emptySummary, type ImportTemplate, type Resolvers, type SampleRows, type PreviewSummary, type ValueUnit } from '../lib/excel-import'
+import { parseMergedWorkbook, type MergedSheetType } from '../lib/excel-import-merged'
 import { parseTransactionWorkbook, type TransactionParseResult, type TransactionResolvers, type TransactionSheetInfo, type TransactionImportIssue, type TransactionParseSummary } from '../lib/transaction-import'
 import { fyLabelOfDate, parsePeriod, formatPeriod } from '../lib/period'
 import { assertCompaniesInScope, effectiveScope } from '../lib/scope-guard'
-import { latestOperatingPeriod, latestStaticPeriod } from './IndicatorsService'
+import { latestOperatingPeriod, latestStaticPeriod, latestCashflowPeriod } from './IndicatorsService'
 import { markInvalidatedReclassifications } from './ReclassificationService'
 
 /**
@@ -24,9 +25,9 @@ const XLSX_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04]) // PK.. (zip/xlsx)
 const XLS_MAGIC = Buffer.from([0xd0, 0xcf, 0x11, 0xe0]) // 老式 xls 复合文档
 const XML_MAGIC = Buffer.from('<?xml') // SpreadsheetML XML（ERP 导出的伪 .xls）
 
-type TemplateType = 'operating' | 'static' | 'budget' | 'transaction' | 'inventory'
+type TemplateType = 'operating' | 'static' | 'cashflow' | 'budget' | 'transaction' | 'inventory'
 
-const UNPIVOT_TEMPLATES = new Set<TemplateType>(['operating', 'static', 'budget'])
+const UNPIVOT_TEMPLATES = new Set<TemplateType>(['operating', 'static', 'cashflow', 'budget'])
 
 /** 从批次 coverageJson 提取申报覆盖的公司编码（无申报信息返回空数组） */
 function declaredCoverageCompanies(coverageJson: unknown): string[] {
@@ -58,8 +59,10 @@ function parseDeclaredCoverage(coverageJson: unknown): DeclaredCoverageItem[] {
 
 async function buildResolvers(template: ImportTemplate, fiscalYear: string): Promise<Resolvers> {
   const companies = await prisma.company.findMany({ select: { code: true, name: true, shortName: true } })
-  const subjectType = template === 'static' ? 'static' : 'operating'
-  const subjects = await prisma.accountSubject.findMany({ where: { subjectType }, select: { code: true, name: true } })
+  // 预算模板同时接受经营科目与现金流流入/流出层科目（现金流预算仅直填这 6 个 calc 科目）
+  const subjectTypes: ('operating' | 'static' | 'cashflow')[] =
+    template === 'budget' ? ['operating', 'cashflow'] : [template === 'static' ? 'static' : template === 'cashflow' ? 'cashflow' : 'operating']
+  const subjects = await prisma.accountSubject.findMany({ where: { subjectType: { in: subjectTypes }, status: 'active' }, select: { code: true, name: true } })
   const companyByName = new Map<string, string>()
   for (const c of companies) {
     companyByName.set(c.name.trim(), c.code)
@@ -123,8 +126,26 @@ export interface KpiCoverage {
   missing: string[]
 }
 
-/** 与 DashboardService KPI 卡匹配逻辑对齐的四类根科目 */
-const KPI_CATEGORIES = ['收入', '成本', '毛利', '费用']
+/** 与 DashboardService KPI 卡匹配逻辑对齐的四类根科目（新体系 level0 名称） */
+const KPI_CATEGORIES = ['壹品慧收入', '壹品慧成本', '壹品慧毛利', '壹品慧费用']
+
+/** 多表合并预览：单个类型的解析统计（行数/错误/摘要/激活影响） */
+export interface MergedPreviewType {
+  dataRowCount: number
+  errorCount: number
+  detailCount: number
+  errors: { row: number; column: string; message: string }[]
+  sampleRows: SampleRows
+  summary: PreviewSummaryDto
+  activationImpact: ActivationImpact
+  kpiCoverage: KpiCoverage | null
+}
+
+/** 多表合并预览结果：按类型分桶 + 未识别 Sheet 清单 */
+export interface MergedPreviewResult {
+  perType: Partial<Record<MergedSheetType, MergedPreviewType>>
+  ignoredSheets: string[]
+}
 
 /**
  * 预算导入口径告警：聚合层对预算行的消费规则是「仅无子节点的数据类科目生效」，
@@ -146,12 +167,12 @@ export interface BudgetWarnings {
 export async function computeBudgetWarnings(accountCodes: string[]): Promise<BudgetWarnings | null> {
   if (accountCodes.length === 0) return null
   const subjects = await prisma.accountSubject.findMany({
-    where: { subjectType: 'operating' },
+    where: { subjectType: 'operating', status: 'active' },
     select: { code: true, name: true, category: true, isLeaf: true },
   })
   const fileCodes = new Set(accountCodes)
   // 毛利数据类叶子的 dataType 也需可查（它们通常不在文件内），故并集后一次查询
-  const profitLeafCodes = subjects.filter((s) => s.category === '毛利' && s.isLeaf).map((s) => s.code)
+  const profitLeafCodes = subjects.filter((s) => s.category === '壹品慧毛利' && s.isLeaf).map((s) => s.code)
   const metrics = await prisma.metric.findMany({
     where: { code: { in: [...fileCodes, ...profitLeafCodes] } },
     select: { code: true, dataType: true, formula: true },
@@ -169,10 +190,10 @@ export async function computeBudgetWarnings(accountCodes: string[]): Promise<Bud
   }
   // 矛盾状态（data 类却残留公式）单独归口提示，不误导为直导缺行；缺行仅指真正无公式的数据类叶子
   const typeFormulaMismatch = subjects
-    .filter((s) => s.category === '毛利' && s.isLeaf && dtByCode.get(s.code) === 'data' && !!formulaByCode.get(s.code))
+    .filter((s) => s.category === '壹品慧毛利' && s.isLeaf && dtByCode.get(s.code) === 'data' && !!formulaByCode.get(s.code))
     .map((s) => s.name)
   const missingProfitLeaves = subjects
-    .filter((s) => s.category === '毛利' && s.isLeaf && dtByCode.get(s.code) !== 'calc' && !formulaByCode.get(s.code) && !fileCodes.has(s.code))
+    .filter((s) => s.category === '壹品慧毛利' && s.isLeaf && dtByCode.get(s.code) !== 'calc' && !formulaByCode.get(s.code) && !fileCodes.has(s.code))
     .map((s) => s.name)
   if (recalcSubjects.length === 0 && parentSubjects.length === 0 && missingProfitLeaves.length === 0 && typeFormulaMismatch.length === 0) return null
   return { recalcSubjects, parentSubjects, missingProfitLeaves, typeFormulaMismatch }
@@ -187,11 +208,13 @@ function ymOfDate(d: Date): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
 }
 
-/** 激活覆盖前备份将被物理删除的经营事实行到 fact_snapshot（支撑批次回滚）；返回备份行数与被删行 id（供重分类失效标记） */
+/** 激活覆盖前备份将被物理删除的经营事实行到 fact_snapshot（支撑批次回滚）；返回备份行数与被删行 id（供重分类失效标记）。
+ * template 区分 operating/cashflow（两者同存 fact_operating，回滚写回时按 template 还原批次类型语义） */
 async function backupOperatingRows(
   tx: Prisma.TransactionClient,
   archivedByBatchId: string,
   where: Prisma.FactOperatingWhereInput,
+  template: 'operating' | 'cashflow',
 ): Promise<{ count: number; ids: string[] }> {
   const rows = await tx.factOperating.findMany({
     where,
@@ -202,7 +225,7 @@ async function backupOperatingRows(
     data: rows.map((r) => ({
       batchId: r.batchId,
       archivedByBatchId,
-      template: 'operating' as const,
+      template,
       companyCode: r.companyCode,
       accountCode: r.accountCode,
       period: r.period,
@@ -245,8 +268,8 @@ async function backupStaticRows(
 
 /**
  * 事务内激活核心逻辑（rollbackBatch 复用）：删除旧 active 批次中与本批次重叠的数据
- * （operating 按 period、static 按快照月，删除前先备份到 fact_snapshot）、
- * 空批次自动归档、置目标批次 active；删除/归档联动重分类失效标记。
+ * （operating/cashflow 按 period、static 按快照月，删除前先备份到 fact_snapshot）、
+ * 空批次自动归档、置目标批次 active；删除/归档联动重分类失效标记（cashflow 无重分类体系，不联动）。
  * transaction/budget/inventory 分支与旧逻辑一致。
  */
 async function activateInTx(
@@ -257,7 +280,7 @@ async function activateInTx(
   let replaced: string[] = []
   let deleted = 0
   let marked = 0
-  if (b.dataType === 'operating' || b.dataType === 'static') {
+  if (b.dataType === 'operating' || b.dataType === 'static' || b.dataType === 'cashflow') {
     const oldActive = await tx.importBatch.findMany({
       where: { dataType: b.dataType, lifecycleStatus: 'active' },
       select: { id: true },
@@ -265,15 +288,16 @@ async function activateInTx(
     // 排除目标批次自身：active 目标回滚（期间合并共存场景）时避免删除自己刚恢复的行
     const oldIds = oldActive.map((x) => x.id).filter((x) => x !== b.id)
     if (oldIds.length > 0) {
-      if (b.dataType === 'operating') {
+      if (b.dataType === 'operating' || b.dataType === 'cashflow') {
         const rows = await tx.factOperating.findMany({ where: { batchId: b.id }, distinct: ['period'], select: { period: true } })
         const newPeriods = rows.map((r) => r.period)
         if (newPeriods.length > 0) {
-          const backed = await backupOperatingRows(tx, b.id, { batchId: { in: oldIds }, period: { in: newPeriods } })
+          const backed = await backupOperatingRows(tx, b.id, { batchId: { in: oldIds }, period: { in: newPeriods } }, b.dataType === 'cashflow' ? 'cashflow' : 'operating')
           deleted += backed.count
           await tx.factOperating.deleteMany({ where: { batchId: { in: oldIds }, period: { in: newPeriods } } })
           replaced = newPeriods.sort()
-          if (backed.ids.length > 0) {
+          // 重分类体系仅覆盖 operating/static/budget，cashflow 无失效标记联动
+          if (backed.ids.length > 0 && b.dataType === 'operating') {
             marked += await markInvalidatedReclassifications(tx, 'operating', {
               templateType: 'operating', replacedByBatchId: b.id, replacedPeriods: newPeriods, operatorId: userId,
             })
@@ -381,7 +405,7 @@ async function activateInTx(
   return { replacedPeriods: replaced, deletedRows: deleted, markedInvalidations: marked }
 }
 
-/** 查当前生效批次并对比期间集合（operating=period、static=快照月、budget=财年）；
+/** 查当前生效批次并对比期间集合（operating/cashflow=period、static=快照月、budget=财年）；
  * 与 AggregationService 消费口径一致，汇总全部 active 批次的期间（正常不变量下同类型仅一个 active） */
 async function computeActivationImpact(template: ImportTemplate, filePeriods: string[], fiscalYear: string): Promise<ActivationImpact> {
   const where =
@@ -394,7 +418,7 @@ async function computeActivationImpact(template: ImportTemplate, filePeriods: st
   }
   const batchIds = batches.map((b) => b.id)
   let activePeriods: string[]
-  if (template === 'operating') {
+  if (template === 'operating' || template === 'cashflow') {
     const rows = await prisma.factOperating.findMany({ where: { batchId: { in: batchIds } }, distinct: ['period'], select: { period: true } })
     activePeriods = rows.map((r) => r.period)
   } else if (template === 'static') {
@@ -414,13 +438,19 @@ async function computeActivationImpact(template: ImportTemplate, filePeriods: st
   }
 }
 
-/** 文件科目沿 parentCode 上溯到根，检查四类看板 KPI 根科目是否均有数据落入 */
-async function computeKpiCoverage(accountCodes: string[]): Promise<KpiCoverage> {
-  if (accountCodes.length === 0) return { covered: [], missing: [...KPI_CATEGORIES] }
+/** 文件科目沿 parentCode 上溯到根，检查根类别是否均有数据落入。
+ * operating 对齐四类看板 KPI 根科目（与 DashboardService KPI 卡匹配逻辑一致，硬编码 KPI_CATEGORIES）；
+ * cashflow 根类别动态取科目树 level0（经营活动/投资活动/筹资活动产生的现金流量，随科目体系变更自适应） */
+async function computeKpiCoverage(template: 'operating' | 'cashflow', accountCodes: string[]): Promise<KpiCoverage> {
   const subjects = await prisma.accountSubject.findMany({
-    where: { subjectType: 'operating' },
-    select: { code: true, parentCode: true, category: true },
+    where: { subjectType: template, status: 'active' },
+    select: { code: true, parentCode: true, category: true, level: true },
   })
+  const categories =
+    template === 'cashflow'
+      ? [...new Set(subjects.filter((s) => s.level === 0).map((s) => s.category))]
+      : KPI_CATEGORIES
+  if (accountCodes.length === 0) return { covered: [], missing: [...categories] }
   const byCode = new Map(subjects.map((s) => [s.code, s]))
   const rootCategories = new Set<string>()
   for (const code of accountCodes) {
@@ -435,8 +465,8 @@ async function computeKpiCoverage(accountCodes: string[]): Promise<KpiCoverage> 
     if (cur) rootCategories.add(cur.category)
   }
   return {
-    covered: KPI_CATEGORIES.filter((c) => rootCategories.has(c)),
-    missing: KPI_CATEGORIES.filter((c) => !rootCategories.has(c)),
+    covered: categories.filter((c) => rootCategories.has(c)),
+    missing: categories.filter((c) => !rootCategories.has(c)),
   }
 }
 
@@ -569,7 +599,7 @@ export const ImportService = {
    */
   async getTemplate(type: ImportTemplate): Promise<Buffer> {
     // 1) 数据类指标：account_subject 无 dataType 字段，经 metric（code 与科目一一对应）关联筛选
-    const subjectType = type === 'static' ? 'static' : 'operating'
+    const subjectType = type === 'static' ? 'static' : type === 'cashflow' ? 'cashflow' : 'operating'
     const subjects = await prisma.accountSubject.findMany({
       where: { subjectType, status: 'active' },
       orderBy: { orderNo: 'asc' },
@@ -610,7 +640,7 @@ export const ImportService = {
     })
 
     // 4) 期间列：最新生效期间及其前一月（budget 无月份行）
-    const latest = type === 'static' ? await latestStaticPeriod() : await latestOperatingPeriod()
+    const latest = type === 'static' ? await latestStaticPeriod() : type === 'cashflow' ? await latestCashflowPeriod() : await latestOperatingPeriod()
     const { year, month } = parsePeriod(latest)
     const prev = formatPeriod(year, month - 1)
 
@@ -625,8 +655,17 @@ export const ImportService = {
     for (let i = 2; i <= colCount; i++) ws.getColumn(i).width = 16
 
     const subjectRows = ordered.map((s) => [`${'  '.repeat(s.level)}${s.name}`])
+    // 现金流预算行：仅流入/流出层 6 个 calc 科目（净额类与自由现金流预算由公式推导，无需填报）
     if (type === 'budget') {
-      ws.addRow(['科目名称（金额单位导入时可选：元/万元；年度预算归属财年在导入页面选择）', ...companyNames])
+      const cfSubjects = await prisma.accountSubject.findMany({
+        where: { subjectType: 'cashflow', status: 'active', level: 1 },
+        orderBy: { orderNo: 'asc' },
+        select: { name: true, level: true },
+      })
+      for (const s of cfSubjects) subjectRows.push([`${'  '.repeat(s.level)}${s.name}`])
+    }
+    if (type === 'budget') {
+      ws.addRow(['科目名称（金额单位导入时可选：元/万元；含经营科目与现金流流入/流出科目；年度预算归属财年在导入页面选择）', ...companyNames])
       ws.getRow(1).font = { bold: true }
       subjectRows.forEach((r) => ws.addRow(r))
     } else {
@@ -705,7 +744,7 @@ export const ImportService = {
       '预览导入',
     )
     const activationImpact = await computeActivationImpact(template, parsed.summary.periods, fiscalYear)
-    const kpiCoverage = template === 'operating' ? await computeKpiCoverage(parsed.summary.accountCodes) : null
+    const kpiCoverage = template === 'operating' || template === 'cashflow' ? await computeKpiCoverage(template, parsed.summary.accountCodes) : null
     // 预算模板附加口径告警：计算类/父级科目行将被重算或忽略、毛利直导叶子缺行将为 0
     const budgetWarnings = template === 'budget' ? await computeBudgetWarnings(parsed.summary.accountCodes) : null
     return {
@@ -721,6 +760,53 @@ export const ImportService = {
       kpiCoverage,
       budgetWarnings,
     }
+  },
+
+  /**
+   * 多表合并导入预览（dry-run）：一个 xlsx 文件同时包含 经营数据/静态数据/现金流量数据 Sheet，
+   * 按 Sheet 名自动识别类型（精确名优先、前缀兼容），逐类型返回行数/错误/覆盖摘要/激活影响预告；
+   * 无法识别的 Sheet 记入 ignoredSheets。
+   */
+  async previewMerged(file: { buffer: Buffer }, fiscalYear = fyLabelOfDate(new Date()), valueUnit: ValueUnit = 'wan'): Promise<MergedPreviewResult> {
+    assertExcelMagic(file.buffer)
+    const resolversByType: Record<MergedSheetType, Resolvers> = {
+      operating: await buildResolvers('operating', fiscalYear),
+      static: await buildResolvers('static', fiscalYear),
+      cashflow: await buildResolvers('cashflow', fiscalYear),
+    }
+    let parsed
+    try {
+      parsed = parseMergedWorkbook(file.buffer, resolversByType, valueUnit)
+    } catch {
+      throw errors.badRequest('Excel 解析失败，请检查文件内容（需包含 经营数据/静态数据/现金流量数据 Sheet）')
+    }
+    const companyCodes: string[] = []
+    for (const t of ['operating', 'static', 'cashflow'] as const) {
+      const r = parsed[t]
+      if (!r) continue
+      companyCodes.push(...r.operating.map((x) => x.companyCode), ...r.static.map((x) => x.companyCode), ...r.budget.map((x) => x.companyCode))
+    }
+    // 数据范围守卫：预览会回显解析结果，越权文件不得回显
+    await assertCompaniesInScope(companyCodes, undefined, '预览导入')
+
+    const perType: Partial<Record<MergedSheetType, MergedPreviewType>> = {}
+    for (const t of ['operating', 'static', 'cashflow'] as const) {
+      const r = parsed[t]
+      if (!r) continue
+      const activationImpact = await computeActivationImpact(t, r.summary.periods, fiscalYear)
+      const kpiCoverage = t === 'operating' || t === 'cashflow' ? await computeKpiCoverage(t, r.summary.accountCodes) : null
+      perType[t] = {
+        dataRowCount: r.dataRowCount,
+        errorCount: r.errors.length,
+        detailCount: r.operating.length + r.static.length + r.budget.length,
+        errors: r.errors.slice(0, 200),
+        sampleRows: r.sampleRows,
+        summary: toSummaryDto(r.summary),
+        activationImpact,
+        kpiCoverage,
+      }
+    }
+    return { perType, ignoredSheets: parsed.ignoredSheets }
   },
 
   /**
@@ -1026,6 +1112,97 @@ export const ImportService = {
     return toDto(updated)
   },
 
+  /**
+   * 多表合并导入：一个 xlsx 文件同时包含 经营数据/静态数据/现金流量数据 Sheet，按类型各建一个 draft 批次并写库；
+   * 激活沿用现有 /imports/:id/activate（前端逐批次确认激活）。
+   */
+  async uploadMerged(file: { originalname: string; buffer: Buffer; size: number }, userId: string, traceId?: string, fiscalYear = fyLabelOfDate(new Date()), valueUnit: ValueUnit = 'wan'): Promise<{ items: ImportBatchDto[] }> {
+    assertExcelMagic(file.buffer)
+
+    // 文件去重：同 hash 且 active 的批次
+    const fileHash = createHash('sha256').update(file.buffer).digest('hex')
+    const dup = await prisma.importBatch.findFirst({ where: { fileHash, lifecycleStatus: 'active' }, select: { id: true } })
+    if (dup) {
+      throw errors.conflict('该文件已导入并处于生效状态，请勿重复导入')
+    }
+
+    const resolversByType: Record<MergedSheetType, Resolvers> = {
+      operating: await buildResolvers('operating', fiscalYear),
+      static: await buildResolvers('static', fiscalYear),
+      cashflow: await buildResolvers('cashflow', fiscalYear),
+    }
+    let parsed
+    try {
+      parsed = parseMergedWorkbook(file.buffer, resolversByType, valueUnit)
+    } catch {
+      throw errors.badRequest('Excel 解析失败，请检查文件内容（需包含 经营数据/静态数据/现金流量数据 Sheet）')
+    }
+
+    // 数据范围守卫：createMany 无 where 可注入，须在写入前校验目标公司均在操作者范围内
+    const companyCodes: string[] = []
+    for (const t of ['operating', 'static', 'cashflow'] as const) {
+      const r = parsed[t]
+      if (!r) continue
+      companyCodes.push(...r.operating.map((x) => x.companyCode), ...r.static.map((x) => x.companyCode), ...r.budget.map((x) => x.companyCode))
+    }
+    await assertCompaniesInScope(companyCodes, undefined, '导入')
+
+    const items: ImportBatchDto[] = []
+    for (const t of ['operating', 'static', 'cashflow'] as const) {
+      const r = parsed[t]
+      if (!r || (r.operating.length === 0 && r.static.length === 0 && r.budget.length === 0)) continue
+      const batch = await prisma.importBatch.create({
+        data: {
+          fileName: file.originalname,
+          uploadedById: userId,
+          status: 'processing',
+          dataType: t,
+          lifecycleStatus: 'draft',
+          fileHash,
+          sourceType: 'upload',
+          fiscalYear,
+        },
+      })
+      const rowCount = r.dataRowCount
+      const detailCount = r.operating.length + r.static.length + r.budget.length
+      const errorCount = r.errors.length
+      // 写入阶段：事务保证数据插入与批次状态更新的原子性
+      const updated = await prisma.$transaction(async (tx) => {
+        let insertedCount = 0
+        if (r.operating.length > 0) {
+          const res = await tx.factOperating.createMany({ data: r.operating.map((x) => ({ ...x, batchId: batch.id })), skipDuplicates: true })
+          insertedCount += res.count
+        }
+        if (r.static.length > 0) {
+          const res = await tx.factStatic.createMany({ data: r.static.map((x) => ({ ...x, batchId: batch.id })), skipDuplicates: true })
+          insertedCount += res.count
+        }
+        if (r.budget.length > 0) {
+          const res = await tx.factBudget.createMany({ data: r.budget.map((x) => ({ ...x, batchId: batch.id })), skipDuplicates: true })
+          insertedCount += res.count
+        }
+        // 结算批次状态：有错且无有效数据→failed；有错但部分入库→partial；无错→success
+        const finalStatus = errorCount > 0 ? (insertedCount > 0 ? 'partial' : 'failed') : 'success'
+        return tx.importBatch.update({
+          where: { id: batch.id },
+          data: {
+            status: finalStatus,
+            rowCount,
+            detailCount,
+            errorCount,
+            errorsJson: (r.errors.slice(0, 200) as never) ?? undefined,
+          },
+        })
+      })
+      await recordAudit({ userId, module: 'data', action: 'import', targetId: batch.id, detail: { templateType: t, rowCount, errorCount, valueUnit } }, traceId)
+      items.push(toDto(updated))
+    }
+    if (items.length === 0) {
+      throw errors.badRequest('文件中未识别到 经营数据/静态数据/现金流量数据 任一 Sheet')
+    }
+    return { items }
+  },
+
   async list(params: { page: number; pageSize: number; templateType?: string; userId?: string }): Promise<{ items: ImportBatchDto[]; total: number; page: number; pageSize: number; totalPages: number }> {
     const where: Record<string, unknown> = params.templateType ? { dataType: params.templateType as TemplateType } : {}
     // 元数据（文件名/行数）按数据范围收敛：仅保留申报覆盖与范围有交集的批次；
@@ -1067,8 +1244,8 @@ export const ImportService = {
 
   /**
    * 激活批次：置 active。期间策略：
-   * - operating/static 按期间合并：删除旧 active 批次中与本批次重叠期间的事实行
-   *   （operating 按 period、static 按快照月，删除前先备份到 fact_snapshot 支撑回滚），
+   * - operating/cashflow/static 按期间合并：删除旧 active 批次中与本批次重叠期间的事实行
+   *   （operating/cashflow 按 period、static 按快照月，删除前先备份到 fact_snapshot 支撑回滚），
    *   旧批次清空后自动归档，否则保持 active（多批次按期间共存）；
    * - transaction 按 (公司, 期间, 往来类型) 合并：删除旧 active 批次中与本批次三元组重叠的明细，旧批次清空后自动归档；
    * - budget 按财年整体替换：归档同 dataType 且同 fiscalYear 的旧 active；
@@ -1093,7 +1270,7 @@ export const ImportService = {
 
   /**
    * 回滚批次（US-03）：恢复该批次被覆盖时备份到 fact_snapshot 的事实行，再重新激活。
-   * - operating/static：快照行写回对应事实表（skipDuplicates 幂等），随后激活删除当前 active 重叠行（自动备份，天然对称）；
+   * - operating/static/cashflow：快照行写回对应事实表（skipDuplicates 幂等），随后激活删除当前 active 重叠行（自动备份，天然对称）；
    * - budget：从不物理删行（仅归档旧批次），无快照也可直接激活回滚；
    * - transaction/inventory：v1 不支持回滚。
    */
@@ -1103,16 +1280,16 @@ export const ImportService = {
     // active 批次同样允许回滚：期间合并共存场景下被覆盖的数据需要恢复（恢复快照 + 重新激活）
     if (b.lifecycleStatus === 'purged') throw errors.conflict('已清除的批次不可回滚')
     if (b.dataType === 'transaction' || b.dataType === 'inventory') {
-      throw errors.badRequest('该数据类型暂不支持回滚（v1 仅支持经营/静态/预算数据）')
+      throw errors.badRequest('该数据类型暂不支持回滚（v1 仅支持经营/静态/现金流量/预算数据）')
     }
 
     const { updated, restoredRows, replacedPeriods, deletedRows, markedInvalidations } = await prisma.$transaction(async (tx) => {
       let restored = 0
-      // 1) 恢复快照行（operating/static 被覆盖时备份；budget 从不删行无需恢复）
-      if (b.dataType === 'operating' || b.dataType === 'static') {
+      // 1) 恢复快照行（operating/static/cashflow 被覆盖时备份；budget 从不删行无需恢复）
+      if (b.dataType === 'operating' || b.dataType === 'static' || b.dataType === 'cashflow') {
         const snaps = await tx.factSnapshot.findMany({ where: { batchId: id } })
         if (snaps.length > 0) {
-          if (b.dataType === 'operating') {
+          if (b.dataType === 'operating' || b.dataType === 'cashflow') {
             const res = await tx.factOperating.createMany({
               data: snaps.map((s) => ({
                 batchId: s.batchId,
@@ -1145,9 +1322,9 @@ export const ImportService = {
           }
         }
       }
-      // 2) 数据可恢复性兜底：恢复后仍无任何事实行则拒绝（可能已被清除）
+      // 2) 数据可恢复性兜底：恢复后仍无任何事实行则拒绝（可能已被清除）；cashflow 与 operating 同存 fact_operating
       const hasData =
-        b.dataType === 'operating'
+        b.dataType === 'operating' || b.dataType === 'cashflow'
           ? await tx.factOperating.count({ where: { batchId: id } })
           : b.dataType === 'static'
             ? await tx.factStatic.count({ where: { batchId: id } })
@@ -1170,7 +1347,7 @@ export const ImportService = {
   /**
    * 批量激活预检（只读，不写库不记审计）：计算各批次激活后将替换的已生效组合，供前端批量激活前确认覆盖风险。
    * - transaction：申报三元组（明细 distinct ∪ coverageJson）与 active 批次明细重叠（含现有笔数）；
-   * - operating/static：本批次期间/快照月与 active 批次重叠；
+   * - operating/cashflow：本批次期间与 active 批次重叠；static：本批次快照月与 active 批次重叠；
    * - budget：同财年 active 批次整体替换；inventory：同类型 active 整体替换。
    * 另统计所选批次之间的三元组重叠（激活顺序靠后的覆盖靠前的）。批次不存在时返回 status=''。
    */
@@ -1238,11 +1415,11 @@ export const ImportService = {
           const existing = existingCount.get(k)
           if (existing) conflicts.push({ companyCode, period, transactionType, existingCount: existing })
         }
-      } else if (b.dataType === 'operating') {
+      } else if (b.dataType === 'operating' || b.dataType === 'cashflow') {
         const periods = await prisma.factOperating.findMany({ where: { batchId: id }, distinct: ['period'], select: { period: true } })
         const fileSet = new Set(periods.map((p) => p.period))
         if (fileSet.size > 0) {
-          const oldIds = (await prisma.importBatch.findMany({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true } })).map((x) => x.id)
+          const oldIds = (await prisma.importBatch.findMany({ where: { dataType: b.dataType, lifecycleStatus: 'active' }, select: { id: true } })).map((x) => x.id)
           if (oldIds.length > 0) {
             const overlap = await prisma.factOperating.findMany({
               where: { batchId: { in: oldIds }, period: { in: [...fileSet] } },

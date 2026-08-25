@@ -1,10 +1,11 @@
 import { api } from '@/lib/api'
 
-type TemplateType = 'operating' | 'static' | 'budget'
+type TemplateType = 'operating' | 'static' | 'cashflow' | 'budget'
 
 const TEMPLATE_NAME_MAP: Record<TemplateType, string> = {
   operating: '经营数据',
   static: '静态数据',
+  cashflow: '现金流量数据',
   budget: '年度预算',
 }
 

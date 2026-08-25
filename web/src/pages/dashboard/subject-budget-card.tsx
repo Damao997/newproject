@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { TipLabel } from '@/components/ui/tip-label'
 import { useSubjectBudget } from '@/hooks/api-queries'
 import { totalOf } from './budget-total'
 import { RateBar } from '@/components/ui/rate-bar'
@@ -12,8 +14,6 @@ interface SubjectBudgetCardProps {
   period?: string
   /** 指定主体（跟随看板顶部筛选 company:CODE / summary:CODE）；汇总主体返回成员明细行 */
   companyCode?: string
-  /** 当前主体显示名（标题下说明口径） */
-  subjectName?: string
 }
 
 /** 金额口径：本月实际 / 本年累计（预算口径随金额口径联动：月度=占比拆分后的当月预算，累计=年度预算总额） */
@@ -47,7 +47,7 @@ const TD_CLS = 'px-3 py-2 text-right font-num text-sm text-foreground'
  * 完成率以橙色进度条展示；预警列按达成率红黄绿三档（月度用月度达成率，累计用累计预算口径达成率）。
  * 外层 Card 由 AnalysisTabsCard 统一提供。
  */
-export function SubjectBudgetCard({ period, companyCode, subjectName }: SubjectBudgetCardProps) {
+export function SubjectBudgetCard({ period, companyCode }: SubjectBudgetCardProps) {
   const [amountMode, setAmountMode] = useState<AmountMode>('month')
   const { data, isLoading } = useSubjectBudget({ period, mode: 'single', companyCode })
   const rows = data?.rows ?? []
@@ -64,13 +64,10 @@ export function SubjectBudgetCard({ period, companyCode, subjectName }: SubjectB
   })
 
   return (
-    <>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-muted-foreground">
-          期间 {data?.period ?? period ?? '—'} · 单位：万元{subjectName ? ` · 当前主体：${subjectName}` : ''}
-        </p>
+    <TooltipProvider>
+      <div className="mb-2 flex flex-wrap items-center justify-end gap-3">
         <Tabs value={amountMode} onValueChange={(v) => setAmountMode(v as AmountMode)}>
-          <TabsList variant="line" className="justify-start">
+          <TabsList variant="segmented" className="justify-start">
             <TabsTrigger value="month">月度</TabsTrigger>
             <TabsTrigger value="ytd">累计</TabsTrigger>
           </TabsList>
@@ -86,7 +83,7 @@ export function SubjectBudgetCard({ period, companyCode, subjectName }: SubjectB
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  <th rowSpan={2} className="px-3 py-2 text-left text-[13px] font-medium text-foreground">主体</th>
+                  <th rowSpan={2} className="px-3 py-2 text-left text-[13px] font-medium text-foreground w-[10em]">主体</th>
                   <th colSpan={5} className="px-3 py-2 text-center text-[13px] font-semibold text-foreground">收入</th>
                   <th colSpan={5} className="px-3 py-2 text-center text-[13px] font-semibold text-foreground">毛利</th>
                   <th colSpan={5} className="px-3 py-2 text-center text-[13px] font-semibold text-foreground">净利润</th>
@@ -94,19 +91,19 @@ export function SubjectBudgetCard({ period, companyCode, subjectName }: SubjectB
                 <tr className="border-b border-border">
                   <th className={TH_CLS}>{amountMode === 'month' ? '月度预算' : '年度预算'}</th>
                   <th className={TH_CLS}>{amountMode === 'month' ? '本月金额' : '累计金额'}</th>
-                  <th className={TH_CLS}>预算完成率</th>
-                  <th className={TH_CLS}>预警</th>
-                  <th className={TH_CLS}>同比增长</th>
+                  <th className={TH_CLS}><TipLabel label="预算完成率" tip="月度=本月金额÷当月预算；累计=累计金额÷年度预算" /></th>
+                  <th className={TH_CLS}><TipLabel label="预警" tip="按达成率红黄绿三档：<60 红 / 60-75 黄 / ≥75 绿" /></th>
+                  <th className={TH_CLS}><TipLabel label="同比增长" tip="（本期-去年同期）÷去年同期" /></th>
                   <th className={cn(TH_CLS, 'border-l border-border')}>{amountMode === 'month' ? '月度预算' : '年度预算'}</th>
                   <th className={TH_CLS}>{amountMode === 'month' ? '本月金额' : '累计金额'}</th>
-                  <th className={TH_CLS}>预算完成率</th>
-                  <th className={TH_CLS}>预警</th>
-                  <th className={TH_CLS}>同比增长</th>
+                  <th className={TH_CLS}><TipLabel label="预算完成率" tip="月度=本月金额÷当月预算；累计=累计金额÷年度预算" /></th>
+                  <th className={TH_CLS}><TipLabel label="预警" tip="按达成率红黄绿三档：<60 红 / 60-75 黄 / ≥75 绿" /></th>
+                  <th className={TH_CLS}><TipLabel label="同比增长" tip="（本期-去年同期）÷去年同期" /></th>
                   <th className={cn(TH_CLS, 'border-l border-border')}>{amountMode === 'month' ? '月度预算' : '年度预算'}</th>
                   <th className={TH_CLS}>{amountMode === 'month' ? '本月金额' : '累计金额'}</th>
-                  <th className={TH_CLS}>预算完成率</th>
-                  <th className={TH_CLS}>预警</th>
-                  <th className={TH_CLS}>同比增长</th>
+                  <th className={TH_CLS}><TipLabel label="预算完成率" tip="月度=本月金额÷当月预算；累计=累计金额÷年度预算" /></th>
+                  <th className={TH_CLS}><TipLabel label="预警" tip="按达成率红黄绿三档：<60 红 / 60-75 黄 / ≥75 绿" /></th>
+                  <th className={TH_CLS}><TipLabel label="同比增长" tip="（本期-去年同期）÷去年同期" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -116,7 +113,19 @@ export function SubjectBudgetCard({ period, companyCode, subjectName }: SubjectB
                   const netProfit = displayOf(row.netProfit)
                   return (
                     <tr key={row.code} className={cn('border-b border-border/60', i % 2 === 1 && 'bg-muted/30')}>
-                      <td className="px-3 py-2 text-left text-sm font-medium text-foreground">{row.name}</td>
+                      {/* 主体名单行截断（空格不计入 10 字符判定）：固定 w-[10em] + truncate，Tooltip 悬停显示完整名称 */}
+                      <td className="px-3 py-2 text-left text-sm font-medium text-foreground w-[10em]">
+                        {row.name.replace(/\s/g, '').length > 10 ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="block w-[10em] truncate">{row.name}</span>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">{row.name}</TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          <span className="block w-[10em] truncate">{row.name}</span>
+                        )}
+                      </td>
                       <td className={TD_CLS}>{formatMoneyWan(income.budget)}</td>
                       <td className={TD_CLS}>{formatMoneyWan(income.amount)}</td>
                       <td className={TD_CLS}><RateBar rate={income.rate} /></td>
@@ -173,6 +182,6 @@ export function SubjectBudgetCard({ period, companyCode, subjectName }: SubjectB
             </table>
           </div>
         )}
-    </>
+    </TooltipProvider>
   )
 }

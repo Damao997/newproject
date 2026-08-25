@@ -4,12 +4,12 @@ import { recordAudit } from '../middleware/audit'
 import { validateFormulaChange, extractCodes, extractOperandRefs, PSEUDO_OPERANDS } from './FormulaRuleService'
 import { AggregationService, resolveCompanyCodes, flattenValueTree } from './AggregationService'
 import { evaluateFormula } from '../lib/formula'
-import { OPERATING_DIMS, STATIC_DIMS } from '../lib/metric-values'
+import { OPERATING_DIMS, STATIC_DIMS, CASHFLOW_DIMS } from '../lib/metric-values'
 import { periodMinusYears, fiscalYtdDays } from '../lib/period'
 import { buildExcel } from '../lib/excel'
 import { effectiveScope, type ScopeInput } from '../lib/scope-guard'
 import { withoutScope } from '../middleware/scope-context'
-import { SUBJECT_SEGMENT_MAP, childSubjectCodeOf } from '../../prisma/seed-data/subject-trees'
+import { SUBJECT_SEGMENT_MAP, SUBJECT_PREFIX_MAP, childSubjectCodeOf } from '../../prisma/seed-data/subject-trees'
 import type { AuthUserContext } from '../types/express'
 import type { Prisma } from '@prisma/client'
 
@@ -60,11 +60,11 @@ function subjectSeqOf(code: string, parentCode: string): number {
   return m ? Number(m[1]) : 0
 }
 
-/** 该类型段位表登记值（经营 01-08 / 静态 10+，与 SUBJECT_SEGMENT_MAP 注释口径一致） */
-function registeredSegmentsOf(prefix: 'OP' | 'ST'): number[] {
-  return Object.values(SUBJECT_SEGMENT_MAP)
-    .map((s) => Number(s))
-    .filter((s) => (prefix === 'OP' ? s <= 8 : s >= 10))
+/** 该类型段位表登记值（三套体系段位独立编号，按 SUBJECT_PREFIX_MAP 归属过滤） */
+function registeredSegmentsOf(prefix: 'PL' | 'BS' | 'CF'): number[] {
+  return Object.entries(SUBJECT_SEGMENT_MAP)
+    .filter(([name]) => SUBJECT_PREFIX_MAP[name] === prefix)
+    .map(([, s]) => Number(s))
 }
 
 /** 子科目编码：父码 + 同级最大序号 + 1（含 inactive，避免与停用科目撞码；>99 抛错） */
@@ -80,22 +80,23 @@ async function nextChildSubjectCode(parentCode: string): Promise<string> {
   return childSubjectCodeOf(parentCode, seq)
 }
 
-/** 根科目编码：名称命中段位表（且段位属于该类型区间）用登记段位；未命中自动分配该类型下一未用段位；>99 抛错 */
-async function nextRootSubjectCode(prefix: 'OP' | 'ST', name: string): Promise<string> {
+/** 根科目编码：名称命中段位表（且段位归属该前缀）用登记段位；未命中自动分配该类型下一未用段位；>99 抛错 */
+async function nextRootSubjectCode(prefix: 'PL' | 'BS' | 'CF', name: string): Promise<string> {
   const registered = SUBJECT_SEGMENT_MAP[name]
-  if (registered && registeredSegmentsOf(prefix).includes(Number(registered))) return `${prefix}_${registered}`
+  if (registered && SUBJECT_PREFIX_MAP[name] === prefix) return `${prefix}${registered}`
   // 显式声明 status 绕过软删除中间件自动注入（复用停用根科目的段位会撞码）
+  const subjectType = prefix === 'PL' ? 'operating' : prefix === 'BS' ? 'static' : 'cashflow'
   const used = await prisma.accountSubject.findMany({
-    where: { subjectType: prefix === 'OP' ? 'operating' : 'static', level: 0, status: { in: ['active', 'inactive'] } },
+    where: { subjectType, level: 0, status: { in: ['active', 'inactive'] } },
     select: { code: true },
   })
-  const usedSegs = used.map((u) => Number(u.code.split('_')[1])).filter((n) => Number.isFinite(n))
+  const usedSegs = used.map((u) => Number(u.code.slice(prefix.length))).filter((n) => Number.isFinite(n))
   const regs = registeredSegmentsOf(prefix)
   const base = regs.length > 0 || usedSegs.length > 0 ? Math.max(...regs, ...usedSegs) : 0
   let next = base + 1
   while (usedSegs.includes(next)) next++
   if (next > 99) throw errors.badRequest('该类型根科目段位已达上限（99），无法继续新增')
-  return `${prefix}_${String(next).padStart(2, '0')}`
+  return `${prefix}${String(next).padStart(2, '0')}`
 }
 
 /** 父级子树（含父级自身；编码前缀匹配即级联后代）内最大 orderNo；无记录返回 0。
@@ -338,15 +339,15 @@ export const DataService = {
    * level 由上级层级推导；并发下唯一冲突时重新计算重试（段位表路径编码不变则直接报冲突）。
    */
   async createSubject(input: { name: string; type?: string; parentCode?: string | null; category?: string; direction?: string; valueType?: string; isLeaf?: boolean }, ctx: AuditCtx): Promise<SubjectDto> {
-    const subjectType = input.type === 'static' ? 'static' : 'operating'
-    const prefix = subjectType === 'static' ? 'ST' : 'OP'
+    const subjectType = input.type === 'static' ? 'static' : input.type === 'cashflow' ? 'cashflow' : 'operating'
+    const prefix = subjectType === 'static' ? 'BS' : subjectType === 'cashflow' ? 'CF' : 'PL'
     const parentCode = input.parentCode ?? null
     let level = 0
     if (parentCode) {
       // findFirst 显式过滤 status（软删除中间件不注入 findUnique，避免挂到已停用父级下）
       const parent = await prisma.accountSubject.findFirst({ where: { code: parentCode, status: 'active' } })
       if (!parent) throw errors.badRequest('上级科目不存在或已停用')
-      if (parent.subjectType !== subjectType) throw errors.badRequest('不能跨科目类型（经营/静态）新增')
+      if (parent.subjectType !== subjectType) throw errors.badRequest('不能跨科目类型（经营/静态/现金流）新增')
       level = parent.level + 1
     }
     let lastCode: string | null = null
@@ -360,7 +361,8 @@ export const DataService = {
         const created = await prisma.$transaction(async (tx) => {
           const insertPos = parentCode
             ? (await subtreeMaxOrderNo(tx, parentCode)) + 1
-            : ((await tx.accountSubject.aggregate({ _max: { orderNo: true } }))._max.orderNo ?? 0) + 1
+            // 显式 status 绕过软删除中间件自动注入：全局末尾含停用科目占位（防止与停用科目 orderNo 重叠）
+            : ((await tx.accountSubject.aggregate({ where: { status: { in: ['active', 'inactive'] } }, _max: { orderNo: true } }))._max.orderNo ?? 0) + 1
           await tx.accountSubject.updateMany({ where: { orderNo: { gte: insertPos } }, data: { orderNo: { increment: 1 } } })
           return tx.accountSubject.create({
             data: {
@@ -557,7 +559,7 @@ export const DataService = {
   },
 
   /** 科目树（扁平列表，含 dataType/valueType）：取该 type 全部 active 科目 + 左联 metric 取 dataType */
-  async getSubjectTree(type: 'operating' | 'static'): Promise<{ id: string; code: string; name: string; level: number; parentCode: string | null; category: string; direction: string; valueType: string; isLeaf: boolean; dataType: string }[]> {
+  async getSubjectTree(type: 'operating' | 'static' | 'cashflow'): Promise<{ id: string; code: string; name: string; level: number; parentCode: string | null; category: string; direction: string; valueType: string; isLeaf: boolean; dataType: string }[]> {
     const subjects = await prisma.accountSubject.findMany({ where: { subjectType: type, status: 'active' }, orderBy: { code: 'asc' } })
     const codes = subjects.map((s) => s.code)
     const metrics = await prisma.metric.findMany({ where: { code: { in: codes } }, select: { code: true, dataType: true } })
@@ -871,10 +873,12 @@ export const DataService = {
 
   /**
    * 公式试算：用指定公司/期间的聚合树值代入公式求值。
-   * 数据源与指标页/存货页完全同口径：buildOperatingTree/buildStaticTree 输出
+   * 数据源与指标页/存货页完全同口径：buildOperatingTree/buildStaticTree/buildCashflowTree 输出
    * （父=子求和 + DAG 计算层 + scope 过滤），覆盖跨树引用（静态比率引用经营科目）、
    * 跨维度引用（{CODE@维度} 复合键）与无公式 calc 聚合节点（如「存货」「成本」子树根）。
    * 公司缺省 = 当前用户数据权限范围全部单体；汇总主体按「全有或全无」展开为成员。
+   * batchInfo/默认期间的数据源按公式引用前缀选择：含 CF_ 前缀代码取 cashflow 批次（纯现金流场景
+   * 无 operating 生效批次也可试算），否则取 operating 批次。
    */
   async trialCalc(
     input: { formula: string; companyCode?: string; period?: string },
@@ -882,7 +886,8 @@ export const DataService = {
   ): Promise<{ value: number | null; period: string | null; operands: { code: string; name: string; value: number; hasData: boolean }[]; batchInfo: { id: string; filename: string; activatedAt: string } | null }> {
     const codes = extractCodes(input.formula)
     if (codes.length === 0) return { value: null, period: null, operands: [], batchInfo: null }
-    const batch = await prisma.importBatch.findFirst({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true, fileName: true, updatedAt: true } })
+    const usesCashflow = codes.some((c) => c.startsWith('CF'))
+    const batch = await prisma.importBatch.findFirst({ where: { dataType: usesCashflow ? 'cashflow' : 'operating', lifecycleStatus: 'active' }, select: { id: true, fileName: true, updatedAt: true } })
     if (!batch) return { value: null, period: null, operands: [], batchInfo: null }
     let period: string | undefined = input.period
     if (!period) {
@@ -910,20 +915,22 @@ export const DataService = {
       if (SAME_DIM_CODES.has(r.dim)) samePeriodCtx = true
     }
 
-    // 数据源：聚合树（两树内部跨树引用由 skipExternal 打破，无递归）
-    const [opTree, stTree] = await Promise.all([
+    // 数据源：聚合树（树间跨树引用由 skipExternal 打破，无递归；现金流树独立维度）
+    const [opTree, stTree, cfTree] = await Promise.all([
       AggregationService.buildOperatingTree(companyCodes, period),
       AggregationService.buildStaticTree(companyCodes, period),
+      AggregationService.buildCashflowTree(companyCodes, period),
     ])
     const opByCode = new Map(flattenValueTree(opTree).map((n) => [n.code, n]))
     const stByCode = new Map(flattenValueTree(stTree).map((n) => [n.code, n]))
-    const nodeOf = (code: string) => (code.startsWith('ST_') ? stByCode : opByCode).get(code)
+    const cfByCode = new Map(flattenValueTree(cfTree).map((n) => [n.code, n]))
+    const nodeOf = (code: string) => (code.startsWith('BS') ? stByCode : code.startsWith('CF') ? cfByCode : opByCode).get(code)
 
-    // 裸键 {CODE}：经营=本月实际、静态=本期金额（树聚合值，含无公式 calc 聚合节点的子求和）
+    // 裸键 {CODE}：经营=本月实际、静态=本期金额、现金流=本月金额（树聚合值，含无公式 calc 聚合节点的子求和）
     const evalValues: Record<string, number> = {}
     const hasDataMap = new Map<string, boolean>()
     for (const c of codes) {
-      const dim = c.startsWith('ST_') ? STATIC_DIMS.CURRENT_AMOUNT : OPERATING_DIMS.ACTUAL_MONTH
+      const dim = c.startsWith('BS') ? STATIC_DIMS.CURRENT_AMOUNT : c.startsWith('CF') ? CASHFLOW_DIMS.ACTUAL_MONTH : OPERATING_DIMS.ACTUAL_MONTH
       const v = nodeOf(c)?.values[dim] ?? 0
       evalValues[c] = v
       hasDataMap.set(c, v !== 0)

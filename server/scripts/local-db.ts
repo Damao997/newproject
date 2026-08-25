@@ -13,7 +13,8 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') })
  *
  * 用法：
  *   npm run db:local        # 前台启动，Ctrl+C 停止
- * 连接串（与 .env 对齐）：
+ *   DB_PORT=5434 npm run db:local   # 指定独立端口（多 worktree 隔离开发库时使用）
+ * 连接串（与 .env 对齐，端口受 DB_PORT 控制，默认 5432）：
  *   postgresql://postgres:postgres@localhost:5432/yipinhui_finance
  *
  * 警告：仅限本地开发使用。严禁在生产目录（如 D:\ZJYPH-prod\server）执行本命令。
@@ -31,12 +32,14 @@ if (process.env.NODE_ENV === 'production') {
 
 const dataDir = path.resolve(__dirname, '../.pgdata')
 const DB_NAME = 'yipinhui_finance'
+// 端口可由环境变量覆盖：多 worktree 共用同一台机器时，用 DB_PORT 指定独立端口（如 5434）避免与主工作树开发库冲突
+const dbPort = Number(process.env.DB_PORT ?? 5432)
 
 const pg = new EmbeddedPostgres({
   databaseDir: dataDir,
   user: 'postgres',
   password: 'postgres',
-  port: 5432,
+  port: dbPort,
   persistent: true,
 })
 
@@ -47,7 +50,7 @@ async function main(): Promise<void> {
     await pg.initialise()
   }
   await pg.start()
-  console.log('[db] PostgreSQL 已启动：localhost:5432')
+  console.log(`[db] PostgreSQL 已启动：localhost:${dbPort}`)
 
   try {
     await pg.createDatabase(DB_NAME)

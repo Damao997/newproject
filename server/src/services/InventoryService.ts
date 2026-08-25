@@ -71,20 +71,20 @@ interface InventorySubjects {
   turnoverDaysCode: string | null
 }
 
-/** 解析静态科目树中的存货父节点、品类子科目与「存货周转天数」编码（不硬编码 ST_ 编码） */
+/** 解析静态科目树中的存货父节点、品类子科目与「存货周转天数」编码（不硬编码科目编码） */
 async function resolveInventorySubjects(): Promise<InventorySubjects> {
   const root = await prisma.accountSubject.findFirst({
-    where: { subjectType: 'static', name: INVENTORY_ROOT_NAME },
+    where: { subjectType: 'static', name: INVENTORY_ROOT_NAME, status: 'active' },
     select: { code: true },
   })
   if (!root) throw errors.notFound('静态科目树中不存在「存货」科目')
   const categories = await prisma.accountSubject.findMany({
-    where: { subjectType: 'static', parentCode: root.code },
+    where: { subjectType: 'static', parentCode: root.code, status: 'active' },
     orderBy: { orderNo: 'asc' },
     select: { code: true, name: true, orderNo: true },
   })
   const turnover = await prisma.accountSubject.findFirst({
-    where: { subjectType: 'static', name: TURNOVER_DAYS_NAME },
+    where: { subjectType: 'static', name: TURNOVER_DAYS_NAME, status: 'active' },
     select: { code: true },
   })
   return { rootCode: root.code, categories, turnoverDaysCode: turnover?.code ?? null }

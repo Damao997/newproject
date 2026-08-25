@@ -129,8 +129,8 @@ export const ProductCategoryService = {
       where: { subjectType: 'operating', status: 'active' },
       select: { code: true, name: true, category: true, level: true, parentCode: true },
     })
-    const incomeRoots = buildCategoryTree(subjects.filter((s) => s.category === '收入'))
-    const profitByName = new Map(subjects.filter((s) => s.category === '毛利').map((s) => [s.name, nodeOf(s.name, s.category, s.level)]))
+    const incomeRoots = buildCategoryTree(subjects.filter((s) => s.category === '壹品慧收入'))
+    const profitByName = new Map(subjects.filter((s) => s.category === '壹品慧毛利').map((s) => [s.name, nodeOf(s.name, s.category, s.level)]))
     const categories = await prisma.productCategory.findMany({ orderBy: { sortOrder: 'asc' } })
     const { covered, uncovered } = matchProductCategories(categories, incomeRoots, profitByName)
     const coveredMap = new Map(covered.map((c) => [c.name, c]))

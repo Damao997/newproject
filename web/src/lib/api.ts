@@ -1,6 +1,6 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios'
 import { useAuthStore } from '@/stores/authStore'
-import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse, FilterParams, BatchActivateCheckResult, KpiData, TrendData, DashboardAlert, ReceivableRow, ProductBudgetResponse, SubjectBudgetResponse, ExpenseAnalysisResponse, ProductCategory, ProductCategoryCheckResult, ExpenseMapping, ExpenseMappingCheckResult, SubjectBudgetConfig, SubjectBudgetConfigCheckResult, BudgetRatio, ImportBatch, ImportDiff, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, ConsolidationAdjustment, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData } from '@/types'
+import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse, FilterParams, BatchActivateCheckResult, KpiData, TrendData, DashboardAlert, ReceivableRow, ProductBudgetResponse, SubjectBudgetResponse, ExpenseAnalysisResponse, KeyMetricsResponse, ProductCategory, ProductCategoryCheckResult, KeyMetricsProduct, KeyMetricsProductCheckResult, ExpenseMapping, ExpenseMappingCheckResult, SubjectBudgetConfig, SubjectBudgetConfigCheckResult, BudgetRatio, ImportBatch, ImportDiff, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, ConsolidationAdjustment, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData } from '@/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
@@ -153,6 +153,37 @@ export interface ImportPreviewResult {
     /** 毛利叶子类型与公式不一致（data 类残留公式，多为历史种子回写）：须先恢复计算类 */
     typeFormulaMismatch: string[]
   } | null
+}
+
+/** 多表合并预览：单个类型的解析统计（行数/错误/摘要/激活影响） */
+export interface MergedPreviewType {
+  dataRowCount: number
+  errorCount: number
+  detailCount: number
+  errors: { row: number; column: string; message: string }[]
+  sampleRows: { headers: string[]; rows: (string | number)[][] }
+  summary: {
+    companyCount: number
+    subjectCount: number
+    periodRange: { min: string | null; max: string | null }
+    totalValue: number
+    zeroValueCount: number
+    duplicateCount: number
+    duplicateSamples: string[]
+  }
+  activationImpact: {
+    activeBatch: { id: string; filename: string } | null
+    newPeriods: string[]
+    overlappingPeriods: string[]
+    retainedPeriods: string[]
+  }
+  kpiCoverage: { covered: string[]; missing: string[] } | null
+}
+
+/** 多表合并预览结果：按类型分桶 + 未识别 Sheet 清单 */
+export interface MergedPreviewResult {
+  perType: Partial<Record<'operating' | 'static' | 'cashflow', MergedPreviewType>>
+  ignoredSheets: string[]
 }
 
 /** 可用期间与财年列表（财年降序，由 active 批次期间派生） */
@@ -364,6 +395,15 @@ class ApiClient {
     })
   }
 
+  /** 壹品慧关键指标表（单期间）：损益板块（收入/毛利+产品明细、运营费用、财务费用、净利润）+ 现金流板块（自由现金流/经营/投资/筹资）13 列口径 */
+  async getKeyMetrics(params?: { period?: string; companyCode?: string }): Promise<KeyMetricsResponse> {
+    return this.request({
+      method: 'GET',
+      url: '/dashboard/analysis/key-metrics',
+      params,
+    })
+  }
+
   // ---- 品类配置（品类预算达成分析，数据维护）----
   async getProductCategories(): Promise<ProductCategory[]> {
     return this.request({
@@ -400,6 +440,45 @@ class ApiClient {
     return this.request({
       method: 'DELETE',
       url: `/data/product-categories/${id}`,
+    })
+  }
+
+  // ---- 关键指标产品配置（壹品慧关键指标表「按产品分」明细，数据维护）----
+  async getKeyMetricsProducts(): Promise<KeyMetricsProduct[]> {
+    return this.request({
+      method: 'GET',
+      url: '/data/key-metrics-products',
+    })
+  }
+
+  /** 科目树变化检测：产品覆盖状态 / 未覆盖科目 / 失效关键词 / 毛利镜像缺失 */
+  async checkKeyMetricsProducts(): Promise<KeyMetricsProductCheckResult> {
+    return this.request({
+      method: 'GET',
+      url: '/data/key-metrics-products/check',
+    })
+  }
+
+  async createKeyMetricsProduct(input: { code: string; name: string; subjectKeyword: string; sortOrder?: number; status?: string }): Promise<KeyMetricsProduct> {
+    return this.request({
+      method: 'POST',
+      url: '/data/key-metrics-products',
+      data: input,
+    })
+  }
+
+  async updateKeyMetricsProduct(id: string, input: { name?: string; subjectKeyword?: string; sortOrder?: number; status?: string }): Promise<KeyMetricsProduct> {
+    return this.request({
+      method: 'PUT',
+      url: `/data/key-metrics-products/${id}`,
+      data: input,
+    })
+  }
+
+  async deleteKeyMetricsProduct(id: string): Promise<void> {
+    return this.request({
+      method: 'DELETE',
+      url: `/data/key-metrics-products/${id}`,
     })
   }
 
@@ -522,6 +601,14 @@ class ApiClient {
     })
   }
 
+  async getCashflowIndicators(params: FilterParams): Promise<PaginatedResponse<any>> {
+    return this.request({
+      method: 'GET',
+      url: '/indicators/cashflow',
+      params,
+    })
+  }
+
   async getIndicatorTree(): Promise<any> {
     return this.request({
       method: 'GET',
@@ -581,7 +668,7 @@ class ApiClient {
   }
 
   /** 下载导入模板（后端按科目体系数据类指标生成） */
-  async downloadImportTemplate(type: 'operating' | 'static' | 'budget'): Promise<Blob> {
+  async downloadImportTemplate(type: 'operating' | 'static' | 'cashflow' | 'budget'): Promise<Blob> {
     const response = await this.client.get('/data/imports/template', {
       params: { type },
       responseType: 'blob',
@@ -838,6 +925,36 @@ class ApiClient {
     })
   }
 
+  /** 多表合并导入预览（一个 xlsx 含 经营/静态/现金流 多 Sheet，按名识别逐类型解析） */
+  async previewMergedImport(file: File, valueUnit: string, fiscalYear?: string): Promise<MergedPreviewResult> {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('valueUnit', valueUnit)
+    if (fiscalYear) formData.append('fiscalYear', fiscalYear)
+    return this.request({
+      method: 'POST',
+      url: '/data/imports/preview-merged',
+      data: formData,
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120000,
+    })
+  }
+
+  /** 多表合并导入（按 Sheet 类型各建 draft 批次，激活沿用 /imports/:id/activate） */
+  async uploadMergedImport(file: File, valueUnit: string, fiscalYear?: string): Promise<{ items: ImportBatch[] }> {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('valueUnit', valueUnit)
+    if (fiscalYear) formData.append('fiscalYear', fiscalYear)
+    return this.request({
+      method: 'POST',
+      url: '/data/imports/merged',
+      data: formData,
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120000,
+    })
+  }
+
   async getSubjects(params?: FilterParams): Promise<PaginatedResponse<AccountSubject>> {
     return this.request({
       method: 'GET',
@@ -846,7 +963,7 @@ class ApiClient {
     })
   }
 
-  async getSubjectTree(type: 'operating' | 'static'): Promise<{
+  async getSubjectTree(type: 'operating' | 'static' | 'cashflow'): Promise<{
     id: string
     code: string
     name: string

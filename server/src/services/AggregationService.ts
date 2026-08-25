@@ -3,7 +3,7 @@ import { errors, AppError } from '../lib/errors'
 import { resolveScope, type DataScope } from '../middleware/scope'
 import { currentScope } from '../middleware/scope-context'
 import type { AuthUserContext } from '../types/express'
-import { OPERATING_DIMS, STATIC_DIMS } from '../lib/metric-values'
+import { OPERATING_DIMS, STATIC_DIMS, CASHFLOW_DIMS } from '../lib/metric-values'
 import { evaluateFormula, topoSortMetrics } from '../lib/formula'
 import { extractCodes, extractOperandRefs, PSEUDO_OPERANDS } from './FormulaRuleService'
 import { periodMinusYears, fiscalYearStartPeriod, fiscalYearOpeningSnapshotPeriod, fiscalYearLabel, fiscalYtdDays } from '../lib/period'
@@ -211,7 +211,7 @@ export async function resolveDashboardCompany(
   }
 }
 
-async function activeBatchIds(dataType: 'operating' | 'static' | 'budget'): Promise<string[]> {
+async function activeBatchIds(dataType: 'operating' | 'static' | 'cashflow' | 'budget'): Promise<string[]> {
   const batches = await prisma.importBatch.findMany({
     where: { dataType, lifecycleStatus: 'active' },
     select: { id: true },
@@ -219,9 +219,9 @@ async function activeBatchIds(dataType: 'operating' | 'static' | 'budget'): Prom
   return batches.map((b) => b.id)
 }
 
-async function loadSubjects(subjectType: 'operating' | 'static'): Promise<SubjectRow[]> {
+async function loadSubjects(subjectType: 'operating' | 'static' | 'cashflow'): Promise<SubjectRow[]> {
   const rows = await prisma.accountSubject.findMany({
-    where: { subjectType },
+    where: { subjectType, status: 'active' },
     orderBy: { orderNo: 'asc' },
     select: {
       code: true, name: true, level: true, parentCode: true, category: true,
@@ -241,8 +241,8 @@ export interface CalcFormula {
 }
 
 /** 加载指定科目类型下、含公式的 active 计算类指标（用于展示层公式计算） */
-async function loadCalcFormulas(subjectType: 'operating' | 'static'): Promise<CalcFormula[]> {
-  const prefix = subjectType === 'operating' ? 'OP_' : 'ST_'
+async function loadCalcFormulas(subjectType: 'operating' | 'static' | 'cashflow'): Promise<CalcFormula[]> {
+  const prefix = subjectType === 'operating' ? 'PL' : subjectType === 'static' ? 'BS' : 'CF'
   const metrics = await prisma.metric.findMany({
     where: { dataType: 'calc', status: 'active', formula: { not: null }, code: { startsWith: prefix } },
     select: { code: true, formula: true, dependsOn: true },
@@ -359,6 +359,13 @@ const EMPTY_STATIC: Record<string, number> = {
   [STATIC_DIMS.YEAR_START]: 0,
   [STATIC_DIMS.SAME_PERIOD_AMOUNT]: 0,
   [STATIC_DIMS.LAST_YEAR_START]: 0,
+}
+const EMPTY_CASHFLOW: Record<string, number> = {
+  [CASHFLOW_DIMS.ACTUAL_MONTH]: 0,
+  [CASHFLOW_DIMS.YTD_ACTUAL]: 0,
+  [CASHFLOW_DIMS.SAME_PERIOD_ACTUAL]: 0,
+  [CASHFLOW_DIMS.SAME_PERIOD_YTD]: 0,
+  [CASHFLOW_DIMS.BUDGET_AMOUNT]: 0,
 }
 
 function buildTree(subjects: SubjectRow[], leafValues: Map<string, Record<string, number>>, emptyDims: Record<string, number>): ValueNode[] {
@@ -513,11 +520,11 @@ export const AggregationService = {
     }
     const tree = buildTree(subjects, leafValues, EMPTY_OPERATING)
     const calc = await loadCalcFormulas('operating')
-    // 跨树依赖（对称方向）：经营计算类科目引用静态科目（ST_ 前缀）时，
+    // 跨树依赖（对称方向）：经营计算类科目引用静态科目（BS_ 前缀）时，
     // 构建同选定期静态树，CURRENT_AMOUNT → ACTUAL_MONTH，SAME_PERIOD_AMOUNT → SAME_PERIOD_ACTUAL；
     // 外部树以 skipExternal 构建，避免两树互引时无限递归。
     let externalByDim: Map<string, Record<string, number>> | undefined
-    const needsExternal = !opts?.skipExternal && calc.some((m) => m.dependsOn.some((d) => d.startsWith('ST_')))
+    const needsExternal = !opts?.skipExternal && calc.some((m) => m.dependsOn.some((d) => d.startsWith('BS')))
     if (needsExternal && companyCodes.length > 0) {
       // 外部树透传同一去重分类口径（meta 不透传，避免重复计数）
       const stFlat = flattenValueTree(await AggregationService.buildStaticTree(companyCodes, period, { skipExternal: true, excludeReclassify: opts?.excludeReclassify, consolidationSummaryCode: opts?.consolidationSummaryCode }))
@@ -606,7 +613,7 @@ export const AggregationService = {
     const tree = buildTree(subjects, leafValues, EMPTY_STATIC)
     const calc = await loadCalcFormulas('static')
     /**
-     * 跨树依赖契约：当静态计算类科目引用经营科目（OP_ 前缀）时，需调用 buildOperatingTree
+     * 跨树依赖契约：当静态计算类科目引用经营科目（PL_ 前缀）时，需调用 buildOperatingTree
      * 获取同选定期经营树，并读取其 ValueNode.values 中的维度键：
      *   - OPERATING_DIMS.ACTUAL_MONTH  → 映射至 STATIC_DIMS.CURRENT_AMOUNT
      *   - OPERATING_DIMS.SAME_PERIOD_ACTUAL → 映射至 STATIC_DIMS.SAME_PERIOD_AMOUNT
@@ -614,7 +621,7 @@ export const AggregationService = {
      */
     let externalByDim: Map<string, Record<string, number>> | undefined
     let externalAllDims: Record<string, Record<string, number>> | undefined
-    const needsExternal = !opts?.skipExternal && calc.some((m) => m.dependsOn.some((d) => d.startsWith('OP_')))
+    const needsExternal = !opts?.skipExternal && calc.some((m) => m.dependsOn.some((d) => d.startsWith('PL')))
     if (needsExternal && companyCodes.length > 0) {
       // 外部树透传同一去重分类口径（meta 不透传，避免重复计数）
       const opFlat = flattenValueTree(await AggregationService.buildOperatingTree(companyCodes, period, { skipExternal: true, excludeReclassify: opts?.excludeReclassify, consolidationSummaryCode: opts?.consolidationSummaryCode }))
@@ -658,6 +665,113 @@ export const AggregationService = {
       }
     }
     applyCalcLayer(tree, calc, Object.keys(EMPTY_STATIC), externalByDim, crossDim)
+    return tree
+  },
+
+  /**
+   * 现金流量聚合树：以原始 CF_ACTUAL_MONTH 为基础，按选定期派生本月/同期/本年累计/同期累计。
+   * 数据源为 dataType=cashflow 的 active 导入批次（复用 fact_operating 表）；无重分类口径。
+   * 预算维度（CF_BUDGET_AMOUNT）按财年取 active 年度预算批次，仅流入/流出层直填导入值，
+   * 净额类科目（CF01/CF02/CF03）与自由现金流（CF04）预算由计算层公式（流入-流出）求值。
+   * 汇总抵消：与经营树同构，汇总主体查询链路按 templateType='cashflow' 的调整单叠加四维金额。
+   */
+  async buildCashflowTree(companyCodes: string[], period: string, opts?: BuildTreeOpts): Promise<ValueNode[]> {
+    const subjects = await loadSubjects('cashflow')
+    const leafValues = new Map<string, Record<string, number>>()
+    const setDim = (acc: string, dim: string, v: number): void => {
+      const rec = leafValues.get(acc) ?? { ...EMPTY_CASHFLOW }
+      rec[dim] = v
+      leafValues.set(acc, rec)
+    }
+    const addDim = (acc: string, dim: string, dv: number): void => {
+      const rec = leafValues.get(acc) ?? { ...EMPTY_CASHFLOW }
+      rec[dim] = round2((rec[dim] ?? 0) + dv)
+      leafValues.set(acc, rec)
+    }
+    if (companyCodes.length > 0) {
+      const batchIds = await activeBatchIds('cashflow')
+      if (batchIds.length > 0) {
+        const prevPeriod = periodMinusYears(period, 1)
+        const fyStart = fiscalYearStartPeriod(period)
+        const prevFyStart = fiscalYearStartPeriod(prevPeriod)
+        const baseWhere = { companyCode: { in: companyCodes }, batchId: { in: batchIds }, periodDimCode: CASHFLOW_DIMS.ACTUAL_MONTH }
+
+        // 本月 & 同期：单期精确取 CF_ACTUAL_MONTH（当期 / 当期减 1 年）
+        const single = await prisma.factOperating.groupBy({
+          by: ['accountCode', 'period'],
+          where: { ...baseWhere, period: { in: [period, prevPeriod] } },
+          _sum: { value: true },
+        })
+        for (const g of single) {
+          const v = Number(g._sum.value ?? 0)
+          if (g.period === period) setDim(g.accountCode, CASHFLOW_DIMS.ACTUAL_MONTH, v)
+          else if (g.period === prevPeriod) setDim(g.accountCode, CASHFLOW_DIMS.SAME_PERIOD_ACTUAL, v)
+        }
+        // 本年累计：[财年起..当期] 区间求和
+        const ytd = await prisma.factOperating.groupBy({
+          by: ['accountCode'],
+          where: { ...baseWhere, period: { gte: fyStart, lte: period } },
+          _sum: { value: true },
+        })
+        for (const g of ytd) setDim(g.accountCode, CASHFLOW_DIMS.YTD_ACTUAL, Number(g._sum.value ?? 0))
+        // 同期累计：[上一财年起..当期减 1 年] 区间求和
+        const ytdPrev = await prisma.factOperating.groupBy({
+          by: ['accountCode'],
+          where: { ...baseWhere, period: { gte: prevFyStart, lte: prevPeriod } },
+          _sum: { value: true },
+        })
+        for (const g of ytdPrev) setDim(g.accountCode, CASHFLOW_DIMS.SAME_PERIOD_YTD, Number(g._sum.value ?? 0))
+      }
+    }
+    // 汇总抵消：仅汇总主体查询链路叠加（集团内现金流在汇总口径的抵消，单体报表不受影响）。
+    // 四维度统一叠加：本月/本年累计按抵消期匹配（当期或 [财年初..当期]），
+    // 同期/同期累计按抵消期减 1 年匹配（[上年财年初..上年同期]），与经营树口径一致。
+    if (opts?.consolidationSummaryCode) {
+      const fyStart = fiscalYearStartPeriod(period)
+      const prevPeriod = periodMinusYears(period, 1)
+      const prevFyStart = fiscalYearStartPeriod(prevPeriod)
+      const adjustments = await prisma.consolidationAdjustment.findMany({
+        where: {
+          summaryCompanyCode: opts.consolidationSummaryCode,
+          templateType: 'cashflow',
+          deletedAt: null,
+          period: { lte: period },
+        },
+        select: { accountCode: true, period: true, amount: true },
+      })
+      for (const a of adjustments) {
+        if (a.period === period) addDim(a.accountCode, CASHFLOW_DIMS.ACTUAL_MONTH, a.amount)
+        if (a.period >= fyStart && a.period <= period) addDim(a.accountCode, CASHFLOW_DIMS.YTD_ACTUAL, a.amount)
+        if (a.period === prevPeriod) addDim(a.accountCode, CASHFLOW_DIMS.SAME_PERIOD_ACTUAL, a.amount)
+        if (a.period >= prevFyStart && a.period <= prevPeriod) addDim(a.accountCode, CASHFLOW_DIMS.SAME_PERIOD_YTD, a.amount)
+      }
+    }
+    const tree = buildTree(subjects, leafValues, EMPTY_CASHFLOW)
+    const calc = await loadCalcFormulas('cashflow')
+    // 计算层先行：派生实际值维度并执行 calc 科目的子级求和公式（预算维度此时无回填值，子级求和恒 0 无影响）
+    applyCalcLayer(tree, calc, Object.keys(EMPTY_CASHFLOW))
+    // 预算回填：年度预算模板仅直填流入/流出层（calc 类且带子级求和公式），
+    // 必须放在公式层之后回填，否则回填值会被子级求和公式覆盖为 0
+    if (companyCodes.length > 0) {
+      const budgetBatchIds = await activeBatchIds('budget')
+      if (budgetBatchIds.length > 0) {
+        const budgetGrouped = await prisma.factBudget.groupBy({
+          by: ['accountCode'],
+          where: { companyCode: { in: companyCodes }, batchId: { in: budgetBatchIds }, fiscalYear: fiscalYearLabel(period) },
+          _sum: { value: true },
+        })
+        const byCode = new Map(flattenValueTree(tree).map((n) => [n.code, n]))
+        for (const g of budgetGrouped) {
+          const node = byCode.get(g.accountCode)
+          if (node) node.values[CASHFLOW_DIMS.BUDGET_AMOUNT] = round2(Number(g._sum.value ?? 0))
+        }
+      }
+    }
+    // 净额类公式重算：仅对依赖链含 calc 科目的公式（净额=流入-流出、自由现金流）基于回填后的预算重新求值；
+    // 子级求和公式（依赖全为 data 叶子）不参与，避免再次覆盖直填层预算
+    const calcCodes = new Set(calc.map((m) => m.code))
+    const netOnly = calc.filter((m) => (m.dependsOn ?? []).some((d) => calcCodes.has(d)))
+    if (netOnly.length > 0) applyCalcLayer(tree, netOnly, Object.keys(EMPTY_CASHFLOW))
     return tree
   },
 }

@@ -24,14 +24,14 @@ const LEAF_MISMATCH = `OP_TP_GP_MM_${suffix}`
 async function createTempLeaf(code: string, name: string): Promise<void> {
   tempSubjectCodes.push(code)
   await basePrisma.accountSubject.create({
-    data: { code, name, subjectType: 'operating', level: 3, parentCode: null, category: '毛利', direction: 'credit', isLeaf: true },
+    data: { code, name, subjectType: 'operating', level: 3, parentCode: null, category: '壹品慧毛利', direction: 'credit', isLeaf: true },
   })
 }
 
 async function createTempMetric(code: string, dataType: 'data' | 'calc', formula?: string): Promise<void> {
   tempMetricCodes.push(code)
   await basePrisma.metric.create({
-    data: { code, name: code, category: '毛利', dataType, formula: formula ?? null, dependsOn: formula ? ['OP_02', 'OP_03'] : [] },
+    data: { code, name: code, category: '壹品慧毛利', dataType, formula: formula ?? null, dependsOn: formula ? ['PL02', 'PL03'] : [] },
   })
 }
 
@@ -49,10 +49,10 @@ beforeAll(async () => {
     await createTempLeaf(LEAF_DATA, names.data)
     await createTempLeaf(LEAF_DATA_IN_FILE, names.dataInFile)
     await createTempLeaf(LEAF_MISMATCH, names.mismatch)
-    await createTempMetric(LEAF_CALC, 'calc', '{OP_02} - {OP_03}')
+    await createTempMetric(LEAF_CALC, 'calc', '{PL02} - {PL03}')
     await createTempMetric(LEAF_DATA, 'data')
     await createTempMetric(LEAF_DATA_IN_FILE, 'data')
-    await createTempMetric(LEAF_MISMATCH, 'data', '{OP_02} - {OP_03}')
+    await createTempMetric(LEAF_MISMATCH, 'data', '{PL02} - {PL03}')
     dbReady = true
   } catch {
     dbReady = false
@@ -98,7 +98,7 @@ describe('种子幂等性：不覆盖运行期类型转换', () => {
   it('seed 运行前后毛利叶子 metric.dataType 保持一致', async () => {
     if (!dbReady) return
     // 与科目树毛利子树的 9 个叶子（修复后为计算类）对应；断言不被种子回写
-    const codes = ['OP_04010103', 'OP_04010104', 'OP_04010105', 'OP_04010106', 'OP_04010107', 'OP_04010108', 'OP_04010301', 'OP_04010302', 'OP_040104']
+    const codes = ['PL040103', 'PL040104', 'PL040105', 'PL040106', 'PL040107', 'PL040108', 'PL040301', 'PL040302', 'PL0404']
     const before = await basePrisma.metric.findMany({ where: { code: { in: codes } }, select: { code: true, dataType: true } })
     if (before.length === 0) return // 环境无该科目体系则跳过
     await seedDomain(basePrisma)

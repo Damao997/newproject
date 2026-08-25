@@ -24,12 +24,14 @@ export const ROLE_NAMES: Record<string, string> = {
 export const TEMPLATE_TYPES = {
   OPERATING: 'operating',
   STATIC: 'static',
+  CASHFLOW: 'cashflow',
   BUDGET: 'budget',
 } as const
 
 export const TEMPLATE_TYPE_NAMES: Record<string, string> = {
   operating: '经营数据',
   static: '静态数据',
+  cashflow: '现金流量数据',
   budget: '年度预算',
 }
 

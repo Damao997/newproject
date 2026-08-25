@@ -1,4 +1,6 @@
 import { useExpenseAnalysis } from '@/hooks/api-queries'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { TipLabel } from '@/components/ui/tip-label'
 import { totalMetrics } from './budget-total'
 import { RateBar } from '@/components/ui/rate-bar'
 import { formatMoneyWan, formatPercent, cn } from '@/lib/utils'
@@ -9,8 +11,6 @@ interface ExpenseAnalysisCardProps {
   period?: string
   /** 主体口径（跟随看板顶部筛选，单体/汇总主体编码） */
   companyCode?: string
-  /** 当前主体显示名（标题下说明口径） */
-  subjectName?: string
 }
 
 /** 预警红绿灯圆点：使用率 <75 绿 / 75-100 黄 / >100 红；无预算（null）灰灯 */
@@ -53,7 +53,7 @@ type MetricOf = Omit<ExpenseAnalysisRow, 'code' | 'name'>
  * 月度用月度使用率、累计用累计预算口径使用率（ytdCumRate）判断。主体口径跟随看板顶部筛选；
  * 外层 Card 由 AnalysisTabsCard 统一提供。
  */
-export function ExpenseAnalysisCard({ period, companyCode, subjectName }: ExpenseAnalysisCardProps) {
+export function ExpenseAnalysisCard({ period, companyCode }: ExpenseAnalysisCardProps) {
   const { data, isLoading } = useExpenseAnalysis({ period, companyCode })
   const rows = data?.rows ?? []
   const isEmpty = !isLoading && rows.length === 0
@@ -84,12 +84,7 @@ export function ExpenseAnalysisCard({ period, companyCode, subjectName }: Expens
   )
 
   return (
-    <>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-muted-foreground">
-          期间 {data?.period ?? period ?? '—'} · 单位：万元{subjectName ? ` · 当前主体：${subjectName}` : ''}
-        </p>
-      </div>
+    <TooltipProvider>
       {isEmpty ? (
           <div className="flex flex-col items-center gap-3 py-12 text-center">
             <p className="text-sm font-medium text-foreground">暂无运营费用数据</p>
@@ -100,23 +95,23 @@ export function ExpenseAnalysisCard({ period, companyCode, subjectName }: Expens
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  <th rowSpan={2} className="px-3 py-2 text-left text-[13px] font-medium text-foreground">指标名称</th>
+                  <th rowSpan={2} className="px-3 py-2 text-left text-[13px] font-medium text-foreground w-[10em]">指标名称</th>
                   <th colSpan={6} className="px-3 py-2 text-center text-[13px] font-semibold text-foreground">月度完成情况</th>
                   <th colSpan={6} className="px-3 py-2 text-center text-[13px] font-semibold text-foreground">财年累计完成情况</th>
                 </tr>
                 <tr className="border-b border-border">
                   <th className={TH_CLS}>月度预算</th>
                   <th className={TH_CLS}>本月金额</th>
-                  <th className={TH_CLS}>使用率</th>
-                  <th className={TH_CLS}>预警</th>
+                  <th className={TH_CLS}><TipLabel label="使用率" tip="本月金额÷当月预算（月度）" /></th>
+                  <th className={TH_CLS}><TipLabel label="预警" tip="按使用率红黄绿三档：<75 绿 / 75-100 黄 / >100 红" /></th>
                   <th className={TH_CLS}>同期金额</th>
-                  <th className={TH_CLS}>同比</th>
+                  <th className={TH_CLS}><TipLabel label="同比" tip="（本期-去年同期）÷去年同期" /></th>
                   <th className={cn(TH_CLS, 'border-l border-border')}>年度预算</th>
                   <th className={TH_CLS}>累计金额</th>
-                  <th className={TH_CLS}>使用率</th>
-                  <th className={TH_CLS}>预警</th>
+                  <th className={TH_CLS}><TipLabel label="使用率" tip="累计金额÷年度预算（累计）" /></th>
+                  <th className={TH_CLS}><TipLabel label="预警" tip="按使用率红黄绿三档：<75 绿 / 75-100 黄 / >100 红" /></th>
                   <th className={TH_CLS}>同期累计金额</th>
-                  <th className={TH_CLS}>财年同比</th>
+                  <th className={TH_CLS}><TipLabel label="财年同比" tip="（累计金额-同期累计）÷同期累计" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -124,7 +119,19 @@ export function ExpenseAnalysisCard({ period, companyCode, subjectName }: Expens
                   const { code, name, ...metric } = row
                   return (
                     <tr key={code} className={cn('border-b border-border/60', i % 2 === 1 && 'bg-muted/30')}>
-                      <td className="px-3 py-2 text-left text-sm font-medium text-foreground">{name}</td>
+                      {/* 指标名单行截断（空格不计入 10 字符判定）：固定 w-[10em] + truncate，Tooltip 悬停显示完整名称 */}
+                      <td className="px-3 py-2 text-left text-sm font-medium text-foreground w-[10em]">
+                        {name.replace(/\s/g, '').length > 10 ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="block w-[10em] truncate">{name}</span>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">{name}</TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          <span className="block w-[10em] truncate">{name}</span>
+                        )}
+                      </td>
                       {renderMonthCells(metric)}
                       {renderYtdCells(metric)}
                     </tr>
@@ -148,6 +155,6 @@ export function ExpenseAnalysisCard({ period, companyCode, subjectName }: Expens
             </table>
           </div>
         )}
-    </>
+    </TooltipProvider>
   )
 }

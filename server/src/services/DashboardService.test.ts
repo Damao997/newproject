@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { changeRate, rateOf, findInCategory, monthlyBudgetSeries, budgetAnnualTotal, fallbackBudgetSeries, ytdBudgetSeries, ytdBudgetOf, mapAlertRow, alertScopeWhere, productMetric, matchProductCategories, matchExpenseMappings } from './DashboardService'
+import { changeRate, rateOf, findInCategory, monthlyBudgetSeries, budgetAnnualTotal, fallbackBudgetSeries, ytdBudgetSeries, ytdBudgetOf, mapAlertRow, alertScopeWhere, productMetric, matchProductCategories, matchExpenseMappings, keyMetricsGroup } from './DashboardService'
 import { OPERATING_DIMS } from '../lib/metric-values'
 import { splitMonthlyBudget } from './BudgetRatioService'
 import type { ValueNode } from './AggregationService'
@@ -541,6 +541,55 @@ describe('DashboardService 纯函数', () => {
       const [row] = matchExpenseMappings(mappings, tree)
       expect(row.monthBudget).toBe(150) // 1800/12
       expect(row.monthRate).toBe(66.67) // 100 / (1800/12) × 100
+    })
+  })
+
+  describe('keyMetricsGroup 关键指标口径组（壹品慧关键指标表 14 列）', () => {
+    const base = {
+      annualBudget: 1200,
+      monthBudget: 100,
+      actual: 110,
+      prevActual: 100,
+      same: 100,
+      ytd: 500,
+      ytdSame: 400,
+    }
+    it('月度：同比变动=本期-去年同期、环比变动=本期-上月、完成率=本期/月度预算；百分比按基数计算', () => {
+      const g = keyMetricsGroup(base)
+      expect(g.monthChange).toBe(10) // 110 - 100
+      expect(g.monthYoy).toBe(0.1) // 10/100
+      expect(g.monthMomChange).toBe(10) // 110 - 100
+      expect(g.monthMom).toBe(0.1)
+      expect(g.monthRate).toBe(110) // 110/100 × 100
+      expect(g.monthActual).toBe(110)
+      expect(g.monthSame).toBe(100)
+      expect(g.monthBudget).toBe(100)
+    })
+    it('年度：累计同比变动=累计-同期累计、完成率=累计/年度预算', () => {
+      const g = keyMetricsGroup(base)
+      expect(g.ytdChange).toBe(100) // 500 - 400
+      expect(g.ytdYoy).toBe(0.25) // 100/400
+      expect(g.annualRate).toBe(41.67) // 500/1200 × 100
+      expect(g.annualBudget).toBe(1200)
+    })
+    it('无预算（现金流板块）：monthBudget/monthRate/annualBudget/annualRate 为 null，金额列不受影响', () => {
+      const g = keyMetricsGroup({ ...base, annualBudget: null, monthBudget: null })
+      expect(g.monthBudget).toBeNull()
+      expect(g.monthRate).toBeNull()
+      expect(g.annualBudget).toBeNull()
+      expect(g.annualRate).toBeNull()
+      expect(g.monthActual).toBe(110)
+      expect(g.ytdYoy).toBe(0.25)
+    })
+    it('基数 0：同比/环比/累计同比返回 0（与 changeRate 口径一致，避免除零）', () => {
+      const g = keyMetricsGroup({ ...base, same: 0, prevActual: 0, ytdSame: 0 })
+      expect(g.monthYoy).toBe(0)
+      expect(g.monthMom).toBe(0)
+      expect(g.ytdYoy).toBe(0)
+    })
+    it('年度预算 0：完成率为 null（前端显示「—」）', () => {
+      const g = keyMetricsGroup({ ...base, annualBudget: 0 })
+      expect(g.annualRate).toBeNull()
     })
   })
 })

@@ -10,6 +10,7 @@ import { recordAudit, clientIp } from '../middleware/audit'
 import { ImportService } from '../services/ImportService'
 import { DataService } from '../services/DataService'
 import { ProductCategoryService } from '../services/ProductCategoryService'
+import { ProductConfigService } from '../services/ProductConfigService'
 import { ExpenseAnalysisService } from '../services/ExpenseAnalysisService'
 import { SubjectBudgetConfigService } from '../services/SubjectBudgetConfigService'
 import { BudgetRatioService } from '../services/BudgetRatioService'
@@ -30,7 +31,7 @@ const router = Router()
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } })
 
-const VALID_TEMPLATES = new Set(['operating', 'static', 'budget', 'transaction', 'inventory'])
+const VALID_TEMPLATES = new Set(['operating', 'static', 'cashflow', 'budget', 'transaction', 'inventory'])
 
 function ctxOf(req: { authUser?: AuthUserContext; traceId: string }) {
   return { userId: (req.authUser as AuthUserContext).userId, traceId: req.traceId }
@@ -64,7 +65,7 @@ router.post('/imports', requirePermission('data:import:upload', 'import'), uploa
   if (valueUnit !== undefined && valueUnit !== 'yuan' && valueUnit !== 'wan') throw errors.badRequest('非法的数值单位')
   const dto = await ImportService.upload(
     { originalname, buffer: req.file.buffer, size: req.file.size },
-    templateType as 'operating',
+    templateType as 'operating' | 'static' | 'cashflow' | 'budget' | 'transaction' | 'inventory',
     (req.authUser as AuthUserContext).userId,
     req.traceId,
     fiscalYear,
@@ -82,8 +83,37 @@ router.post('/imports/preview', requirePermission('data:import:upload', 'import'
   const fiscalYear = req.body?.fiscalYear ? String(req.body.fiscalYear) : fyLabelOfDate(new Date())
   const valueUnit = req.body?.valueUnit ? String(req.body.valueUnit) : undefined
   if (valueUnit !== undefined && valueUnit !== 'yuan' && valueUnit !== 'wan') throw errors.badRequest('非法的数值单位')
-  const data = await ImportService.preview({ buffer: req.file.buffer }, templateType as 'operating', fiscalYear, valueUnit as 'yuan' | 'wan' | undefined)
+  const data = await ImportService.preview({ buffer: req.file.buffer }, templateType as 'operating' | 'static' | 'cashflow' | 'budget' | 'transaction' | 'inventory', fiscalYear, valueUnit as 'yuan' | 'wan' | undefined)
   sendOk(res, data)
+}))
+
+// 多表合并导入预览（dry-run）：一个 xlsx 含 经营数据/静态数据/现金流量数据 多 Sheet，按名识别逐类型解析
+router.post('/imports/preview-merged', requirePermission('data:import:upload', 'import'), upload.single('file'), asyncHandler(async (req, res) => {
+  if (!req.file) throw errors.badRequest('缺少上传文件')
+  if (!/\.(xlsx|xls)$/i.test(fixUploadFilename(req.file.originalname))) throw errors.badRequest('仅支持 .xlsx/.xls 文件')
+  const fiscalYear = req.body?.fiscalYear ? String(req.body.fiscalYear) : fyLabelOfDate(new Date())
+  const valueUnit = req.body?.valueUnit ? String(req.body.valueUnit) : undefined
+  if (valueUnit !== undefined && valueUnit !== 'yuan' && valueUnit !== 'wan') throw errors.badRequest('非法的数值单位')
+  const data = await ImportService.previewMerged({ buffer: req.file.buffer }, fiscalYear, valueUnit as 'yuan' | 'wan' | undefined)
+  sendOk(res, data)
+}))
+
+// 多表合并导入：按 Sheet 类型各建 draft 批次（激活沿用 /imports/:id/activate）
+router.post('/imports/merged', requirePermission('data:import:upload', 'import'), upload.single('file'), asyncHandler(async (req, res) => {
+  if (!req.file) throw errors.badRequest('缺少上传文件')
+  const originalname = fixUploadFilename(req.file.originalname)
+  if (!/\.(xlsx|xls)$/i.test(originalname)) throw errors.badRequest('仅支持 .xlsx/.xls 文件')
+  const fiscalYear = req.body?.fiscalYear ? String(req.body.fiscalYear) : fyLabelOfDate(new Date())
+  const valueUnit = req.body?.valueUnit ? String(req.body.valueUnit) : undefined
+  if (valueUnit !== undefined && valueUnit !== 'yuan' && valueUnit !== 'wan') throw errors.badRequest('非法的数值单位')
+  const dto = await ImportService.uploadMerged(
+    { originalname, buffer: req.file.buffer, size: req.file.size },
+    (req.authUser as AuthUserContext).userId,
+    req.traceId,
+    fiscalYear,
+    valueUnit as 'yuan' | 'wan' | undefined,
+  )
+  sendOk(res, dto)
 }))
 
 router.get('/imports', requirePermission('data:browse:view', 'view'), asyncHandler(async (req, res) => {
@@ -94,7 +124,7 @@ router.get('/imports', requirePermission('data:browse:view', 'view'), asyncHandl
 
 // 下载导入模板（自动读取科目体系数据类指标生成，见 ImportService.getTemplate）；须在 /imports/:id 之前注册
 router.get('/imports/template', requirePermission('data:import:upload', 'import'), asyncHandler(async (req, res) => {
-  const type = req.query.type === 'static' ? 'static' : req.query.type === 'budget' ? 'budget' : 'operating'
+  const type = req.query.type === 'static' ? 'static' : req.query.type === 'budget' ? 'budget' : req.query.type === 'cashflow' ? 'cashflow' : 'operating'
   const buffer = await ImportService.getTemplate(type)
   sendXlsx(res, buffer, `import-template-${type}.xlsx`)
 }))
@@ -143,7 +173,7 @@ router.post('/imports/:id/purge', requirePermission('data:import:purge', 'delete
 router.get('/cross-table', requirePermission('data:browse:view', 'view'), asyncHandler(async (req, res) => {
   const data = await IndicatorsService.getCross(scopeOf(req.authUser as AuthUserContext), {
     period: req.query.period as string | undefined,
-    subjectType: req.query.subjectType === 'static' ? 'static' : 'operating',
+    subjectType: req.query.subjectType === 'static' ? 'static' : req.query.subjectType === 'cashflow' ? 'cashflow' : 'operating',
   })
   sendOk(res, data)
 }))
@@ -203,7 +233,7 @@ router.get('/subjects', requirePermission('data:browse:view', 'view'), asyncHand
 }))
 
 router.get('/subjects/tree', requirePermission('data:browse:view', 'view'), asyncHandler(async (req, res) => {
-  const type = req.query.type === 'static' ? 'static' : 'operating'
+  const type = req.query.type === 'static' ? 'static' : req.query.type === 'cashflow' ? 'cashflow' : 'operating'
   sendOk(res, await DataService.getSubjectTree(type))
 }))
 
@@ -247,6 +277,28 @@ router.put('/product-categories/:id', requirePermission('data:subject:update', '
 
 router.delete('/product-categories/:id', requirePermission('data:subject:delete', 'delete'), asyncHandler(async (req, res) => {
   await ProductCategoryService.remove(req.params.id as string, ctxOf(req))
+  sendOk(res, null)
+}))
+
+// ===== 关键指标产品配置（壹品慧关键指标表「按产品分」明细）=====
+router.get('/key-metrics-products', requirePermission('data:browse:view', 'view'), asyncHandler(async (_req, res) => {
+  sendOk(res, await ProductConfigService.list())
+}))
+
+router.get('/key-metrics-products/check', requirePermission('data:browse:view', 'view'), asyncHandler(async (_req, res) => {
+  sendOk(res, await ProductConfigService.check())
+}))
+
+router.post('/key-metrics-products', requirePermission('data:subject:create', 'create'), asyncHandler(async (req, res) => {
+  sendOk(res, await ProductConfigService.create(req.body ?? {}, ctxOf(req)))
+}))
+
+router.put('/key-metrics-products/:id', requirePermission('data:subject:update', 'update'), asyncHandler(async (req, res) => {
+  sendOk(res, await ProductConfigService.update(req.params.id as string, req.body ?? {}, ctxOf(req)))
+}))
+
+router.delete('/key-metrics-products/:id', requirePermission('data:subject:delete', 'delete'), asyncHandler(async (req, res) => {
+  await ProductConfigService.remove(req.params.id as string, ctxOf(req))
   sendOk(res, null)
 }))
 

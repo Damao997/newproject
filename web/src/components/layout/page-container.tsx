@@ -33,7 +33,7 @@ const PageContainer = React.forwardRef<HTMLDivElement, PageContainerProps>(
         >
           <div className="space-y-2">
             {title && (
-              <h1 className="text-2xl font-bold tracking-tight">
+              <h1 className="text-3xl font-bold tracking-tight">
                 {title}
               </h1>
             )}

@@ -35,7 +35,7 @@ function collectExpandableCodes(nodes: SubjectNode[]): string[] {
 
 interface SubjectTreePanelProps {
   /** 科目类型 */
-  type: 'operating' | 'static'
+  type: 'operating' | 'static' | 'cashflow'
   canCreate?: boolean
   canUpdate?: boolean
   canDelete?: boolean

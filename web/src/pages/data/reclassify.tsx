@@ -176,7 +176,7 @@ export default function DataReclassifyPage() {
               key={`adjust-${browseSubjectType}-${singleBrowseCompany ?? 'all'}-${log?.id ?? 'none'}`}
               open={adjustSubjectOpen}
               onClose={() => { setAdjustSubjectOpen(false); closeLog() }}
-              defaultTemplateType={browseSubjectType}
+              defaultTemplateType={(browseSubjectType === 'cashflow' ? 'operating' : browseSubjectType)}
               defaultCompany={singleBrowseCompany}
               preset={log?.type === 'subject_adjust' && log.templateType !== 'budget' ? {
                 templateType: templateTypeOf(log),
@@ -199,7 +199,7 @@ export default function DataReclassifyPage() {
               key={`reclassify-${browseSubjectType}-${singleBrowseCompany ?? 'all'}-${log?.id ?? 'none'}`}
               open={reclassifyCompanyOpen}
               onClose={() => { setReclassifyCompanyOpen(false); closeLog() }}
-              defaultTemplateType={browseSubjectType}
+              defaultTemplateType={(browseSubjectType === 'cashflow' ? 'operating' : browseSubjectType)}
               defaultSourceCompany={singleBrowseCompany}
               preset={log?.type === 'company' ? {
                 templateType: templateTypeOf(log),

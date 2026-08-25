@@ -29,12 +29,12 @@ beforeAll(async () => {
   try {
     await basePrisma.$queryRaw`SELECT 1`
     const root = await basePrisma.accountSubject.findFirst({
-      where: { subjectType: 'static', name: '存货' },
+      where: { subjectType: 'static', name: '存货', status: 'active' },
       select: { code: true },
     })
     if (!root) return
     const cats = await basePrisma.accountSubject.findMany({
-      where: { subjectType: 'static', parentCode: root.code },
+      where: { subjectType: 'static', parentCode: root.code, status: 'active' },
       orderBy: { orderNo: 'asc' },
       select: { code: true },
       take: 2,

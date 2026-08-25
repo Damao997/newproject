@@ -1,6 +1,7 @@
 import type { SubjectNode } from '@/types'
 import { rawOperatingAnalysis } from '@/mock/operating-analysis'
 import { rawStaticAnalysis } from '@/mock/static-analysis'
+import { rawCashflowAnalysis } from '@/mock/cashflow-analysis'
 
 /** 原始科目节点（仅名称 + 数据类型 + 子节点），编码/层级/类别由 decorateTree 生成 */
 export interface RawSubjectNode {
@@ -16,54 +17,52 @@ export interface FlatSubjectRow {
 }
 
 /**
- * 前序遍历装饰原始树：为每个节点赋级联编码（level0 用段位表如 OP_02，子级 = 父码 + 2 位序号如 OP_0201）、
+ * 前序遍历装饰原始树：为每个节点赋级联编码（level0 用段位表如 PL02 / BS01 / CF01，子级 = 父码 + 2 位序号如 PL0201）、
  * level（= 深度）、category（= level0 根名）。
  */
 
 /**
- * level0 科目段位表（名称 → 2 位段位，会计大类分段）。
+ * level0 科目段位表（名称 → 2 位段位）。
  * 与 server/prisma/seed-data/subject-trees.ts 的 SUBJECT_SEGMENT_MAP 保持一致（同一编码体系）。
- * 经营科目 01-08；静态科目按 资产 10-15 / 负债 20-24 / 权益 30-31 / 比率 40-44。
+ * 经营科目（PL_）01-08；静态科目（BS_）01-04（总资产/总负债/权益净资产/静态指标）；现金流（CF_）01-03。
  */
 export const SUBJECT_SEGMENT_MAP: Record<string, string> = {
   // 经营科目
-  '回款': '01',
-  '收入': '02',
-  '成本': '03',
-  '毛利': '04',
-  '费用': '05',
-  '经营指标': '06',
-  '财务指标': '07',
-  '现金流指标': '08',
-  // 静态科目（资产）
-  '总资产': '10',
-  '银行存款': '11',
-  '应收账款': '12',
-  '存货': '13',
-  '固定资产净值': '14',
-  '在建工程': '15',
-  // 静态科目（负债）
-  '总负债': '20',
-  '预收账款': '21',
-  '应付账款': '22',
-  '内部往来': '23',
-  '应付股利': '24',
-  // 静态科目（权益）
-  '权益净资产': '30',
-  '累计未分配利润(万元)': '31',
-  // 静态科目（比率）
-  '总资产报酬率（ROA,%）': '40',
-  '资产负债率(%)': '41',
-  '净资产回报率（ROE,%）': '42',
-  '存货周转天数': '43',
-  '应收账款周转天数': '44',
+  '壹品慧回款': '01',
+  '壹品慧收入': '02',
+  '壹品慧成本': '03',
+  '壹品慧毛利': '04',
+  '壹品慧费用': '05',
+  '经营成果': '06',
+  '壹品慧毛利率': '07',
+  '经营指标': '08',
+  // 静态科目
+  '总资产': '01',
+  '总负债': '02',
+  '权益净资产': '03',
+  '静态指标': '04',
+  // 现金流科目
+  '经营活动产生的现金流量': '01',
+  '投资活动产生的现金流量': '02',
+  '筹资活动产生的现金流量': '03',
 }
 
-/** level0 编码：前缀 + 段位表登记段位（未登记抛错，强制维护） */
+/** 段位表名称 → 所属前缀（三套体系段位独立编号，需据此校验段位归属） */
+export const SUBJECT_PREFIX_MAP: Record<string, 'PL' | 'BS' | 'CF'> = {
+  // 经营（PL_）
+  '壹品慧回款': 'PL', '壹品慧收入': 'PL', '壹品慧成本': 'PL', '壹品慧毛利': 'PL',
+  '壹品慧费用': 'PL', '经营成果': 'PL', '壹品慧毛利率': 'PL', '经营指标': 'PL',
+  // 静态（BS_）
+  '总资产': 'BS', '总负债': 'BS', '权益净资产': 'BS', '静态指标': 'BS',
+  // 现金流（CF_）
+  '经营活动产生的现金流量': 'CF', '投资活动产生的现金流量': 'CF', '筹资活动产生的现金流量': 'CF',
+}
+
+/** level0 编码：前缀 + 段位表登记段位（未登记抛错，强制维护）；无下划线（PL01/BS01/CF01 风格） */
 function rootSubjectCodeOf(prefix: string, name: string): string {
   const segment = SUBJECT_SEGMENT_MAP[name]
   if (!segment) throw new Error(`科目未登记 level0 段位：${name}（请向 SUBJECT_SEGMENT_MAP 补充）`)
-  return `${prefix}_${segment}`
+  return `${prefix}${segment}`
 }
 
 /** 子级编码：父码数字段 + 2 位序号 */
@@ -78,11 +77,11 @@ function subjectSeqOf(code: string, parentCode: string): number {
   return m ? Number(m[1]) : 0
 }
 
-/** 该类型段位表登记值（经营 01-08 / 静态 10+，与 SUBJECT_SEGMENT_MAP 注释口径一致） */
-function registeredSegmentsOf(prefix: 'OP' | 'ST'): number[] {
-  return Object.values(SUBJECT_SEGMENT_MAP)
-    .map((s) => Number(s))
-    .filter((s) => (prefix === 'OP' ? s <= 8 : s >= 10))
+/** 该类型段位表登记值（三套体系段位独立编号，按 SUBJECT_PREFIX_MAP 归属过滤） */
+function registeredSegmentsOf(prefix: 'PL' | 'BS' | 'CF'): number[] {
+  return Object.entries(SUBJECT_SEGMENT_MAP)
+    .filter(([name]) => SUBJECT_PREFIX_MAP[name] === prefix)
+    .map(([, s]) => Number(s))
 }
 
 /** 编码预览所需的最小科目结构（兼容 FlatSubjectItem / SubjectTreeItem / AccountSubject） */
@@ -92,28 +91,28 @@ export interface CodePreviewSubject {
   level: number
 }
 
-/** 新增子科目编码预览：父码 + 同级最大序�?+ 1（与后端生成规则一致；>99 返回 null 由调用方提示上限） */
+/** 新增子科目编码预览：父码 + 同级最大序号 + 1（与后端生成规则一致；>99 返回 null 由调用方提示上限） */
 export function nextChildSubjectCode(parentCode: string, flat: CodePreviewSubject[]): string | null {
   const maxSeq = Math.max(0, ...flat.filter((f) => f.parentCode === parentCode).map((f) => subjectSeqOf(f.code, parentCode)))
   const seq = maxSeq + 1
   return seq > 99 ? null : childSubjectCodeOf(parentCode, seq)
 }
 
-/** 新增根科目编码预览：名称命中段位表（且段位属于该类型区间）用登记段位；未命中自动分配该类型下一未用段位；>99 返回 null */
-export function nextRootSubjectCode(prefix: 'OP' | 'ST', name: string, flat: CodePreviewSubject[]): { code: string | null; registered: boolean } {
+/** 新增根科目编码预览：名称命中段位表（且段位归属该前缀）用登记段位；未命中自动分配该类型下一未用段位；>99 返回 null */
+export function nextRootSubjectCode(prefix: 'PL' | 'BS' | 'CF', name: string, flat: CodePreviewSubject[]): { code: string | null; registered: boolean } {
   const registered = SUBJECT_SEGMENT_MAP[name]
-  if (registered && registeredSegmentsOf(prefix).includes(Number(registered))) return { code: `${prefix}_${registered}`, registered: true }
-  const usedSegs = flat.filter((f) => f.level === 0).map((f) => Number(f.code.split('_')[1])).filter((n) => Number.isFinite(n))
+  if (registered && SUBJECT_PREFIX_MAP[name] === prefix) return { code: `${prefix}${registered}`, registered: true }
+  const usedSegs = flat.filter((f) => f.level === 0).map((f) => Number(f.code.slice(prefix.length))).filter((n) => Number.isFinite(n))
   const regs = registeredSegmentsOf(prefix)
   const base = regs.length > 0 || usedSegs.length > 0 ? Math.max(...regs, ...usedSegs) : 0
   let next = base + 1
   while (usedSegs.includes(next)) next++
   if (next > 99) return { code: null, registered: false }
-  return { code: `${prefix}_${String(next).padStart(2, '0')}`, registered: false }
+  return { code: `${prefix}${String(next).padStart(2, '0')}`, registered: false }
 }
 
 /** 前序遍历装饰原始树：级联赋码（level0 段位 + 子级父码拼接）、level=深度、category=level0 根名 */
-export function decorateTree(raw: RawSubjectNode[], prefix = 'OP'): SubjectNode[] {
+export function decorateTree(raw: RawSubjectNode[], prefix: 'PL' | 'BS' | 'CF' = 'PL'): SubjectNode[] {
   const walk = (nodes: RawSubjectNode[], level: number, parentCode: string | null, category: string): SubjectNode[] => {
     // 本级序号：同一父节点下从 1 递增（level0 用段位表，不使用序号）
     let seq = 0
@@ -228,13 +227,19 @@ export function filterTreeKeepSubtree(tree: SubjectNode[], keyword: string): Sub
 }
 
 /** 装饰后的完整经营分析树 */
-export const operatingAnalysisTree = decorateTree(rawOperatingAnalysis, 'OP')
+export const operatingAnalysisTree = decorateTree(rawOperatingAnalysis, 'PL')
 
 /** 装饰后的经营分析扁平列表（供导出、统计） */
 export const operatingAnalysisFlat = flattenTree(operatingAnalysisTree)
 
 /** 装饰后的完整静态指标树 */
-export const staticAnalysisTree = decorateTree(rawStaticAnalysis, 'ST')
+export const staticAnalysisTree = decorateTree(rawStaticAnalysis, 'BS')
 
 /** 装饰后的静态指标扁平列表 */
 export const staticAnalysisFlat = flattenTree(staticAnalysisTree)
+
+/** 装饰后的完整现金流量树 */
+export const cashflowAnalysisTree = decorateTree(rawCashflowAnalysis, 'CF')
+
+/** 装饰后的现金流量扁平列表 */
+export const cashflowAnalysisFlat = flattenTree(cashflowAnalysisTree)

@@ -1,5 +1,5 @@
 import { inflateRawSync } from 'node:zlib'
-import { OPERATING_DIMS, STATIC_DIMS } from './metric-values'
+import { OPERATING_DIMS, STATIC_DIMS, CASHFLOW_DIMS } from './metric-values'
 import { fyLabelOfDate, getFiscalStartMonth } from './period'
 
 /**
@@ -7,6 +7,7 @@ import { fyLabelOfDate, getFiscalStartMonth } from './period'
  *
  * 布局（按 templateType）：
  *  - operating：行0=公司名、行1=月份(日期)，行2+=科目值；每列=(公司×月份)。
+ *  - cashflow ：与 operating 同布局（宽表月度），维度码改用 CF_ 系列，科目树为现金流科目。
  *  - static   ：行0=公司名、行1=快照月份，行2+=科目值。
  *  - budget   ：行0=公司名，行1+=科目年度预算值（无日期）。
  *
@@ -16,7 +17,7 @@ import { fyLabelOfDate, getFiscalStartMonth } from './period'
  * 无法解析或值非数字的单元格记入 errors（{row,column,message}），不中断整体解析。
  */
 
-export type ImportTemplate = 'operating' | 'static' | 'budget'
+export type ImportTemplate = 'operating' | 'static' | 'cashflow' | 'budget'
 
 /** 导入文件数值单位：yuan=元（解析期 ÷10000 归一为万元存储）；wan=万元（原样存储） */
 export type ValueUnit = 'yuan' | 'wan'
@@ -263,7 +264,12 @@ function readGrid(buffer: Buffer): unknown[][] {
   const dateXf = stylesEntry ? parseDateXfSet(stylesEntry.data.toString('utf8')) : new Set<number>()
   const sheetEntry = entries.find((e) => /^xl\/worksheets\/sheet1\.xml$/.test(e.name)) ?? entries.find((e) => /^xl\/worksheets\/.*\.xml$/.test(e.name))
   if (!sheetEntry) return []
-  const rowsMap = parseSheetCells(sheetEntry.data.toString('utf8'), shared, dateXf)
+  return gridFromSheetCells(sheetEntry.data.toString('utf8'), shared, dateXf)
+}
+
+/** 稀疏单元格 → 0 起索引网格（行号/列号转数组下标） */
+function gridFromSheetCells(sheetXml: string, shared: string[], dateXf: Set<number>): unknown[][] {
+  const rowsMap = parseSheetCells(sheetXml, shared, dateXf)
   const grid: unknown[][] = []
   for (const [rowNumber, cells] of rowsMap) {
     const arr: unknown[] = []
@@ -271,6 +277,27 @@ function readGrid(buffer: Buffer): unknown[][] {
     grid[rowNumber - 1] = arr
   }
   return grid
+}
+
+/**
+ * 一次解压读取全部工作表网格（按 sheetN.xml 序号升序，对应工作簿第 N 个 Sheet）。
+ * 稀疏解析（只读含值单元格），与 readGrid 同源；供多 Sheet 合并导入使用——
+ * 避开 xlsx 库 sheet_to_json 对特定文件的死循环（SheetJS make_json_row 已知问题）。
+ */
+export function readAllSheetGrids(buffer: Buffer): unknown[][][] {
+  const entries = readZipEntries(buffer)
+  const sharedEntry = entries.find((e) => e.name === 'xl/sharedStrings.xml')
+  const shared = sharedEntry ? parseSharedStrings(sharedEntry.data.toString('utf8')) : []
+  const stylesEntry = entries.find((e) => e.name === 'xl/styles.xml')
+  const dateXf = stylesEntry ? parseDateXfSet(stylesEntry.data.toString('utf8')) : new Set<number>()
+  const sheetEntries = entries
+    .filter((e) => /^xl\/worksheets\/sheet\d+\.xml$/.test(e.name))
+    .sort((a, b) => {
+      const na = Number(a.name.match(/sheet(\d+)/)?.[1] ?? 0)
+      const nb = Number(b.name.match(/sheet(\d+)/)?.[1] ?? 0)
+      return na - nb
+    })
+  return sheetEntries.map((entry) => gridFromSheetCells(entry.data.toString('utf8'), shared, dateXf))
 }
 
 // ---------------- 布局检测 ----------------
@@ -351,21 +378,29 @@ export function parseImportWorkbook(buffer: Buffer, template: ImportTemplate, re
     return result
   }
 
-  // 布局检测：标准布局（仅 operating）优先于转置布局
-  const useStandard = template === 'operating' && !isTransposedLayout(grid) && detectStandardLayout(grid)
-  if (useStandard) {
-    parseStandardLayout(grid, resolvers, fiscalStartMonth, unitFactor, result)
-  } else {
-    parseTransposedLayout(grid, template, resolvers, fiscalStartMonth, unitFactor, result)
-  }
-
+  parseGridLayout(grid, template, resolvers, fiscalStartMonth, unitFactor, result)
   finalizeResult(result, resolvers)
   mergeDuplicates(result)
   return result
 }
 
+/**
+ * 网格 → 长表 unpivot 解析（标准/转置布局检测与解析）。
+ * 供单 Sheet 导入（parseImportWorkbook）与多 Sheet 合并导入（excel-import-merged）复用；
+ * 调用方需自行完成 finalizeResult/mergeDuplicates（二者依赖 result 全量解析完成）。
+ */
+export function parseGridLayout(grid: unknown[][], template: ImportTemplate, resolvers: Resolvers, fiscalStartMonth: number, unitFactor: number, result: ParseResult): void {
+  // 布局检测：标准布局（operating/cashflow）优先于转置布局
+  const useStandard = (template === 'operating' || template === 'cashflow') && !isTransposedLayout(grid) && detectStandardLayout(grid)
+  if (useStandard) {
+    parseStandardLayout(grid, resolvers, fiscalStartMonth, unitFactor, result, template === 'cashflow' ? CASHFLOW_DIMS.ACTUAL_MONTH : OPERATING_DIMS.ACTUAL_MONTH)
+  } else {
+    parseTransposedLayout(grid, template, resolvers, fiscalStartMonth, unitFactor, result)
+  }
+}
+
 /** 文件内重复行按唯一键（同公司+科目+期间）求和合并，保证入库前无重复 */
-function mergeDuplicates(result: ParseResult): void {
+export function mergeDuplicates(result: ParseResult): void {
   const mergeBy = <T extends { value: number }>(rows: T[], keyOf: (r: T) => string): T[] => {
     if (rows.length === 0) return rows
     const byKey = new Map<string, T>()
@@ -390,7 +425,7 @@ function reverseMap(map: Map<string, string>): Map<string, string> {
 }
 
 /** 解析完成后单遍扫描：覆盖摘要、文件内重复检测、名称化等距分散采样 */
-function finalizeResult(result: ParseResult, resolvers: Resolvers): void {
+export function finalizeResult(result: ParseResult, resolvers: Resolvers): void {
   const companyName = reverseMap(resolvers.companyByName)
   const subjectName = reverseMap(resolvers.subjectByName)
 
@@ -398,7 +433,7 @@ function finalizeResult(result: ParseResult, resolvers: Resolvers): void {
   interface Item { companyCode: string; accountCode: string; periodLabel: string; key: string; value: number }
   let items: Item[]
   let periodHeader: string
-  if (result.template === 'operating') {
+  if (result.template === 'operating' || result.template === 'cashflow') {
     periodHeader = '月份'
     items = result.operating.map((r) => ({ companyCode: r.companyCode, accountCode: r.accountCode, periodLabel: r.period, key: `${r.companyCode}|${r.accountCode}|${r.period}|${r.periodDimCode}`, value: r.value }))
   } else if (result.template === 'static') {
@@ -456,8 +491,8 @@ function finalizeResult(result: ParseResult, resolvers: Resolvers): void {
   result.sampleRows = { headers: ['科目', '公司', periodHeader, '值'], rows }
 }
 
-/** 标准布局解析（operating 专用）：行=公司×月份，列=科目 */
-function parseStandardLayout(grid: unknown[][], resolvers: Resolvers, fiscalStartMonth: number, unitFactor: number, result: ParseResult): void {
+/** 标准布局解析（operating/cashflow 专用）：行=公司×月份，列=科目 */
+function parseStandardLayout(grid: unknown[][], resolvers: Resolvers, fiscalStartMonth: number, unitFactor: number, result: ParseResult, periodDimCode: string): void {
   const headerRow = (grid[0] ?? []) as unknown[]
   const headers = headerRow.map((h) => (h == null ? '' : String(h).trim()))
 
@@ -508,7 +543,7 @@ function parseStandardLayout(grid: unknown[][], resolvers: Resolvers, fiscalStar
         continue
       }
       const value = Number((parsed.value * unitFactor).toFixed(4))
-      result.operating.push({ companyCode, accountCode: vc.accountCode, period, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: effFy, value })
+      result.operating.push({ companyCode, accountCode: vc.accountCode, period, periodDimCode, fiscalYear: effFy, value })
     }
   }
 }
@@ -533,11 +568,11 @@ function parseTransposedLayout(grid: unknown[][], template: ImportTemplate, reso
     colMeta[c] = { companyCode, companyName, date, periodDimCode: null, label: excelColLabel(c), effPeriod: null, effFy: null }
   }
 
-  if (template === 'operating') {
+  if (template === 'operating' || template === 'cashflow') {
     for (let c = 1; c < colMeta.length; c++) {
       const m = colMeta[c]
       if (!m || !m.date) continue
-      m.periodDimCode = OPERATING_DIMS.ACTUAL_MONTH
+      m.periodDimCode = template === 'cashflow' ? CASHFLOW_DIMS.ACTUAL_MONTH : OPERATING_DIMS.ACTUAL_MONTH
       m.effPeriod = ym(m.date)
       m.effFy = fyLabelOfDate(m.date, fiscalStartMonth)
     }
@@ -575,7 +610,7 @@ function parseTransposedLayout(grid: unknown[][], template: ImportTemplate, reso
         continue
       }
       const value = Number((parsed.value * unitFactor).toFixed(4))
-      if (template === 'operating') {
+      if (template === 'operating' || template === 'cashflow') {
         if (!meta.periodDimCode || !meta.effPeriod || !meta.effFy) continue
         result.operating.push({ companyCode: meta.companyCode, accountCode, period: meta.effPeriod, periodDimCode: meta.periodDimCode, fiscalYear: meta.effFy, value })
       } else if (template === 'static') {
