@@ -10,14 +10,6 @@ import { PERMISSION_LABELS, PERMISSION_MODULE_LABELS } from '@/lib/constants'
 import { isHighRiskPermission } from '@/lib/permissions'
 import type { Company } from '@/types'
 
-/** 密码规则校验（与后端一致）：至少 8 位且含字母与数字，返回错误文案或 null */
-export function validatePassword(password: string): string | null {
-  if (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
-    return '密码至少 8 位，且需同时包含字母与数字'
-  }
-  return null
-}
-
 // ==================== 数据范围多选 ====================
 interface DataScopeSelectProps {
   value: string[]

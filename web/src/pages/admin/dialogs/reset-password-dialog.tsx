@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import { useResetPassword } from '@/hooks/api-queries'
 import type { User } from '@/types'
-import { validatePassword } from './shared'
+import { validatePassword } from './password-validation'
 
 // ==================== 重置密码 ====================
 interface ResetPasswordDialogProps {

@@ -14,7 +14,8 @@ import {
 } from '@/components/ui/dialog'
 import { useCreateUser, useUpdateUser } from '@/hooks/api-queries'
 import type { User } from '@/types'
-import { DataScopeSelect, validatePassword } from './shared'
+import { DataScopeSelect } from './shared'
+import { validatePassword } from './password-validation'
 
 // ==================== 用户新增/编辑 ====================
 interface UserDialogProps {
