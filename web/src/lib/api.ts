@@ -107,15 +107,14 @@ async function refreshAccessTokenOnce(): Promise<string> {
 let sessionExpiredNotified = false
 
 /**
- * 会话失效降级处理：本地登出 → 弹窗告知原因 → 跳转登录页（携带 expired 提示参数）。
- * 弹窗在跳转前同步展示，用户明确知晓被踢原因。
+ * 会话失效降级处理：本地登出 → 跳转登录页（携带 expired 提示参数）。
+ * 提示由登录页展示（/login?expired=1 → "登录已过期，请重新登录"提示条），请求层不再弹窗。
+ * _reason 保留参数位：后续如需按失败原因差异化提示可在此扩展。
  */
-function handleSessionExpired(reason: unknown): void {
+export function handleSessionExpired(_reason: unknown): void {
   useAuthStore.getState().logout()
   if (sessionExpiredNotified) return
   sessionExpiredNotified = true
-  const message = reason instanceof Error ? reason.message : '登录状态已失效，请重新登录'
-  window.alert(`${message}，请重新登录`)
   window.location.href = '/login?expired=1'
 }
 
