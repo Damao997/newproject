@@ -223,7 +223,7 @@ function TransactionDrawerBody({ target, onClose }: { target: TransactionAnalysi
               )
             )}
           </div>
-  
+
           {/* 表单 */}
           <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
             <div className="space-y-1.5">

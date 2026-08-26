@@ -306,7 +306,7 @@ export default function InventoryPage() {
   const { data: companies } = useCompanies()
   const defaultCode = useDefaultCompanyCode()
   // 主体互斥业务规则：单体公司与汇总主体不能同时筛选；逻辑与轻提示收敛于共享 hook（防止成员公司双重计数）
-  const { handleCompaniesChange, noticeElement } = useExclusiveCompanyFilter({
+    const { handleCompaniesChange, noticeElement } = useExclusiveCompanyFilter({
     companies,
     getPrev: () => usePageStore.getState().inventory.companies,
     setSelected: setSelectedCompanies,
