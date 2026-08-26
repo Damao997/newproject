@@ -235,8 +235,7 @@ class ApiClient {
             originalRequest.headers.Authorization = `Bearer ${accessToken}`
             return this.client(originalRequest)
           } catch (refreshError) {
-            // 降级处理：先本地登出并弹窗告知原因（仅一次），再跳转登录页携带提示参数；
-            // 不再静默 location.href 跳转，避免用户不明原因被踢
+            // 降级处理：本地登出后跳转登录页（仅一次），过期原因由登录页 ?expired=1 提示条展示
             handleSessionExpired(refreshError)
             // refreshAccessTokenOnce 已统一抛中文 Error；兜底非 Error 值
             return Promise.reject(refreshError instanceof Error ? refreshError : new Error('登录状态已失效，请重新登录'))
