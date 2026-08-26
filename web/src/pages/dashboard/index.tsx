@@ -2,6 +2,7 @@ import { useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { KpiCard } from '@/components/charts/kpi-card'
 import { type TrendMetric, type TrendMode } from '@/components/charts/trend-metrics'
 import { PageContainer } from '@/components/layout/page-container'
@@ -122,12 +123,8 @@ export default function DashboardPage() {
       ) : isEmpty ? (
         // 空态：暂无经营数据
         <Card className="animate-fade-in border border-border shadow-sm">
-          <CardContent className="flex flex-col items-center gap-3 py-16 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted">
-              <Inbox className="h-6 w-6 text-muted-foreground" />
-            </div>
-            <p className="text-sm font-medium text-foreground">暂无可用数据</p>
-            <p className="text-xs text-muted-foreground">当前账户可能无任何数据权限，或尚未导入经营数据批次</p>
+          <CardContent className="px-6 py-0">
+            <EmptyState icon={Inbox} title="暂无可用数据" description="当前账户可能无任何数据权限，或尚未导入经营数据批次" />
           </CardContent>
         </Card>
       ) : (

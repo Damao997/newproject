@@ -1,5 +1,6 @@
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { Link } from 'react-router-dom'
 import { ArrowRight, Inbox } from 'lucide-react'
 
@@ -21,24 +22,20 @@ interface AnalysisPlaceholderProps {
 export function AnalysisPlaceholder({ title, note, actionLabel, actionHref }: AnalysisPlaceholderProps) {
   return (
     <Card className="animate-fade-in border border-border shadow-sm">
-      <CardContent className="flex flex-col items-center gap-3 py-16 text-center">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted">
-          <Inbox className="h-6 w-6 text-muted-foreground" />
-        </div>
-        <p className="text-sm font-medium text-foreground">{title}</p>
-        {note ? (
-          <p className="max-w-md text-xs text-muted-foreground">{note}</p>
-        ) : (
-          <p className="text-xs text-muted-foreground">功能开发中，敬请期待</p>
-        )}
-        {actionLabel && actionHref && (
-          <Button asChild variant="outline" size="sm">
-            <Link to={actionHref}>
-              {actionLabel}
-              <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-            </Link>
-          </Button>
-        )}
+      <CardContent className="px-6 py-0">
+        <EmptyState
+          icon={Inbox}
+          title={title}
+          description={note ?? '功能开发中，敬请期待'}
+          action={actionLabel && actionHref ? (
+            <Button asChild variant="outline" size="sm">
+              <Link to={actionHref}>
+                {actionLabel}
+                <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          ) : undefined}
+        />
       </CardContent>
     </Card>
   )

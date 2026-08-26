@@ -9,7 +9,7 @@ import { formatMoneyWan } from '@/lib/utils'
 import { CHART_FONT, getChartInk, getChartSeries, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
 import { useThemeStore } from '@/stores/themeStore'
 import { LineChart, RefreshCw } from 'lucide-react'
-import { EmptyHint } from './empty-hint'
+import { EmptyState } from '@/components/ui/empty-state'
 
 /**
  * 存货趋势卡：财年内各月公司堆叠柱 + 存货总额折线，图例为公司维度。
@@ -138,10 +138,11 @@ export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes:
             </Button>
           </div>
         ) : !hasData ? (
-          <EmptyHint
+          <EmptyState
             icon={LineChart}
             title="暂无趋势数据"
-            hint={fiscalYear ? '当前财年暂无存货快照数据' : '请先在顶部导航选择财年'}
+            description={fiscalYear ? '当前财年暂无存货快照数据' : '请先在顶部导航选择财年'}
+            compact
             className="h-[260px] lg:h-[320px]"
           />
         ) : (

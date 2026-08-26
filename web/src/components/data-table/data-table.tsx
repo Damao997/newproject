@@ -3,6 +3,7 @@ import { Fragment, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Checkbox } from '@/components/ui/checkbox'
+import { EmptyState } from '@/components/ui/empty-state'
 import {
   TABLE_HEAD_BASE,
   TABLE_HEADER_STICKY,
@@ -354,7 +355,7 @@ export function DataTable<T>({
                   role="status"
                   className="p-8 text-center text-muted-foreground"
                 >
-                  {emptyText}
+                  {typeof emptyText === 'string' ? <EmptyState title={emptyText} compact /> : emptyText}
                 </td>
               </tr>
             ) : (

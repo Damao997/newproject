@@ -8,7 +8,7 @@ import { useThemeStore } from '@/stores/themeStore'
 import { PieChart } from 'lucide-react'
 import type { InventoryDetailRow } from '@/hooks/api-queries'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
-import { EmptyHint } from './empty-hint'
+import { EmptyState } from '@/components/ui/empty-state'
 
 /**
  * 成员单体公司占比饼图：展示所选汇总主体下各成员单体公司本期库存金额占比。
@@ -106,10 +106,11 @@ export function CompanyShareCard({ rows, loading }: { rows: InventoryDetailRow[]
         {loading ? (
           <div className="skeleton h-[260px] w-full rounded-lg lg:h-[320px]" />
         ) : pieData.length === 0 ? (
-          <EmptyHint
+          <EmptyState
             icon={PieChart}
             title="暂无成员公司数据"
-            hint="当前汇总主体/期间无正金额存货公司，请调整筛选条件"
+            description="当前汇总主体/期间无正金额存货公司，请调整筛选条件"
+            compact
             className="h-[260px] lg:h-[320px]"
           />
         ) : (

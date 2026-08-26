@@ -44,7 +44,7 @@ import { CategoryPieCard } from './category-pie-card'
 import { CategoryRankCard } from './category-rank-card'
 import { CompanyShareCard } from './company-share-card'
 import { InventoryTrendCard } from './trend-card'
-import { EmptyHint } from './empty-hint'
+import { EmptyState } from '@/components/ui/empty-state'
 
 /**
  * 存货管理页：数据源为静态数据（fact_static 存货品类叶子科目），
@@ -763,17 +763,19 @@ export default function InventoryPage() {
                 fetching={detailsQuery.isFetching}
               />
             ) : detailRows.length === 0 ? (
-              <EmptyHint
+              <EmptyState
                 icon={Package}
                 title={DIM_EMPTY_TITLES[detailDim]}
-                hint={DIM_EMPTY_HINTS[detailDim]}
+                description={DIM_EMPTY_HINTS[detailDim]}
+                compact
                 className="py-12"
               />
             ) : visibleRows.length === 0 ? (
-              <EmptyHint
+              <EmptyState
                 icon={Search}
                 title="无匹配结果"
-                hint={DIM_SEARCH_EMPTY_HINTS[detailDim]}
+                description={DIM_SEARCH_EMPTY_HINTS[detailDim]}
+                compact
                 className="py-12"
               />
             ) : (

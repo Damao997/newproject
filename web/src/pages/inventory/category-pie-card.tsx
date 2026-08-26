@@ -7,7 +7,7 @@ import { CHART_FONT, getChartInk, getChartSeries, labelSpan, numSpan, titleSpan,
 import { useThemeStore } from '@/stores/themeStore'
 import { PieChart } from 'lucide-react'
 import type { InventoryCategoryRow } from '@/hooks/api-queries'
-import { EmptyHint } from './empty-hint'
+import { EmptyState } from '@/components/ui/empty-state'
 
 /**
  * 存货品类占比饼图：按品类本期金额展示占比结构，环形中心显示正值合计总额。
@@ -90,10 +90,11 @@ export function CategoryPieCard({ categories, loading, onCategoryClick }: {
         {loading ? (
           <div className="skeleton h-[260px] w-full rounded-lg lg:h-[320px]" />
         ) : pieData.length === 0 ? (
-          <EmptyHint
+          <EmptyState
             icon={PieChart}
             title="暂无品类数据"
-            hint="当前公司/期间无正金额存货品类，请调整筛选条件"
+            description="当前公司/期间无正金额存货品类，请调整筛选条件"
+            compact
             className="h-[260px] lg:h-[320px]"
           />
         ) : (
