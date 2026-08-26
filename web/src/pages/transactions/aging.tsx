@@ -215,6 +215,8 @@ export default function TransactionsAgingPage() {
     setExporting(true)
     setExportProgress(0)
     try {
+      // 每次导出开始时清除上一次的结果（成功/失败均不残留；null 时 no-op）
+      setExportFlash(null)
       const blob = await api.exportTransactionAging({
         companyCode: selectedCompanies.length ? selectedCompanies.join(',') : undefined,
         transactionType: typeFilter || undefined,
@@ -384,7 +386,7 @@ export default function TransactionsAgingPage() {
         )}
         {noticeElement}
         {exportFlash && (
-          <FlashMessage type={exportFlash.type} className="mt-2">{exportFlash.text}</FlashMessage>
+          <FlashMessage type={exportFlash.type} className="mt-2 max-w-xl truncate">{exportFlash.text}</FlashMessage>
         )}
         </Card>
 

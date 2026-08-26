@@ -13,7 +13,8 @@ export function useExclusiveCompanyFilter(opts: {
   setSelected: (codes: string[]) => void
 }) {
   const { companies, getPrev, setSelected } = opts
-  const [notice, setNotice] = useState<string | null>(null)
+  // 对象 + key：同文案重复触发时 key 变化强制 FlashMessage 重挂载，4s 计时随之重置
+  const [notice, setNotice] = useState<{ text: string; key: number } | null>(null)
 
   const handleCompaniesChange = useCallback((next: string[]) => {
     const prev = getPrev()
@@ -22,12 +23,12 @@ export function useExclusiveCompanyFilter(opts: {
     if (added.length > 0) {
       const addedType = typeOf(added[added.length - 1])
       if (addedType === 'entity' && next.some((c) => typeOf(c) === 'summary')) {
-        setNotice('单体公司与汇总主体不能同时筛选，已自动取消已选汇总主体。')
+        setNotice({ text: '单体公司与汇总主体不能同时筛选，已自动取消已选汇总主体。', key: Date.now() })
         setSelected(next.filter((c) => typeOf(c) !== 'summary'))
         return
       }
       if (addedType === 'summary' && next.some((c) => typeOf(c) === 'entity')) {
-        setNotice('单体公司与汇总主体不能同时筛选，已自动取消已选单体公司。')
+        setNotice({ text: '单体公司与汇总主体不能同时筛选，已自动取消已选单体公司。', key: Date.now() })
         setSelected(next.filter((c) => typeOf(c) !== 'entity'))
         return
       }
@@ -35,9 +36,12 @@ export function useExclusiveCompanyFilter(opts: {
     setSelected(next)
   }, [companies, getPrev, setSelected])
 
+  // clearNotice 稳定引用：避免无关重渲染导致 FlashMessage 计时顺延的隐式耦合
+  const clearNotice = useCallback(() => setNotice(null), [])
+
   const noticeElement = notice ? (
-    <FlashMessage type="info" autoHideMs={4000} onAutoHide={() => setNotice(null)} className="mt-2">
-      {notice}
+    <FlashMessage key={notice.key} type="info" autoHideMs={4000} onAutoHide={clearNotice} className="mt-2">
+      {notice.text}
     </FlashMessage>
   ) : null
 
