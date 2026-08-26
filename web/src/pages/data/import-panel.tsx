@@ -29,7 +29,7 @@ export function ImportPanel() {
 
   // 批次列表（导入流状态机据此派生批次选择/质量统计/差异对比候选）
   const { data: importsData } = useImports({ page: 1, pageSize: 50 })
-  const flow = useImportFlow({ canImport, importsData })
+  const flow = useImportFlow({ importsData })
 
   return (
     <Card className="border border-border">

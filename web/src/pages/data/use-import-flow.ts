@@ -29,8 +29,6 @@ export const templateTypeLabel: Record<string, string> = {
   merged: '多表合并',
 }
 
-/** 导入质量概览折叠偏好（迁移自独立 localStorage key，现统一走 pageStateStore.dataImport） */
-
 export interface ImportErrorRow {
   row: number
   column: string
@@ -46,9 +44,8 @@ export const errorColumns: DataTableColumn<ImportErrorRow>[] = [
 
 /**
  * 导入流状态机：上传→预览→激活 全链路状态与 handler（从 import-panel.tsx 原样搬迁，零逻辑变更）。
- * canImport 入参保留接口对齐（批次表格列已随 BatchPanel 迁出，其内使用）。
  */
-export function useImportFlow(opts: { canImport: boolean; importsData: PaginatedResponse<ImportBatch> | undefined }) {
+export function useImportFlow(opts: { importsData: PaginatedResponse<ImportBatch> | undefined }) {
   const { importsData } = opts
   const { confirm, element: confirmElement } = useConfirm()
   const queryClient = useQueryClient()
