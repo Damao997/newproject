@@ -114,132 +114,132 @@ function TransactionDrawerBody({ target, onClose }: { target: TransactionAnalysi
 
   return (
     <>
-    <SheetShell
-      onClose={onClose}
-      icon={<FileText className="mt-0.5 h-5 w-5 text-primary" />}
-      title="往来单项分析"
-      description={`${txnType || '请选择往来类型'} · ${target.period}`}
-      footer={(
-        <>
-          <div>
-            {form.existingId && (
-              <Button variant="outline" size="sm" onClick={form.remove} disabled={form.busy} className="text-destructive">
-                <Trash2 className="mr-1 h-4 w-4" /> 删除
+      <SheetShell
+        onClose={onClose}
+        icon={<FileText className="mt-0.5 h-5 w-5 text-primary" />}
+        title="往来单项分析"
+        description={`${txnType || '请选择往来类型'} · ${target.period}`}
+        footer={(
+          <>
+            <div>
+              {form.existingId && (
+                <Button variant="outline" size="sm" onClick={form.remove} disabled={form.busy} className="text-destructive">
+                  <Trash2 className="mr-1 h-4 w-4" /> 删除
+                </Button>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={onClose} disabled={form.busy}>取消</Button>
+              <Button size="sm" onClick={form.save} disabled={form.busy || !companyCode || !txnType || !form.title.trim()}>
+                <Save className="mr-1 h-4 w-4" /> 保存
               </Button>
+            </div>
+          </>
+        )}
+      >
+          {/* 公司 + 往来类型选择 + 快照上下文 */}
+          <div className="space-y-3 border-b px-5 py-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <Label className="shrink-0">分析公司</Label>
+              <Select value={companyCode} onValueChange={setCompanyCode}>
+                <SelectTrigger className="h-8 w-[220px]">
+                  <SelectValue placeholder="选择公司（必选）" />
+                </SelectTrigger>
+                <SelectContent>
+                  {singleCompanies.map((c) => (
+                    <SelectItem key={c.code} value={c.code}>{getDisplayName(c.code, c.name)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Label className="shrink-0">往来类型</Label>
+              <Select value={txnType} onValueChange={setTxnType}>
+                <SelectTrigger className="h-8 w-[140px]">
+                  <SelectValue placeholder="选择类型（必选）" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TXN_TYPE_OPTIONS.map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {companyCode && txnType && (
+              snapshot ? (
+                <div className="rounded-md border bg-muted/30 p-3">
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-[11px] text-muted-foreground">期末余额</span>
+                    <span className="font-num text-lg font-bold text-foreground">
+                      {formatMoneyWan(snapshot.closingBalance / 10000)}<span className="ml-0.5 text-xs font-normal text-muted-foreground">万</span>
+                    </span>
+                  </div>
+                  <div className="mt-2">
+                    <AgingStackBar aging={snapshot.aging} closingBalance={snapshot.closingBalance} />
+                  </div>
+                  {(() => {
+                    const risk = agingRisk(snapshot.aging, snapshot.closingBalance)
+                    const total = snapshot.closingBalance > 0 ? snapshot.closingBalance : 0
+                    // 分段占比：与总览卡片口径一致（1年内 = 前 5 段、1-3年 = 5-7 段、3年+ = 末段）
+                    const pct = (from: number, to: number) =>
+                      total > 0 ? ((AGING_GROUPS.slice(from, to).reduce((s, b) => s + (snapshot.aging[b] ?? 0), 0) / total) * 100).toFixed(1) : '0.0'
+                    return (
+                      <>
+                        <p className="mt-1.5 flex justify-between font-num text-[11px] text-muted-foreground">
+                          <span>1年内 {pct(0, 5)}%</span>
+                          <span>1-3年 {pct(5, 7)}%</span>
+                          <span className={risk?.level === 'danger' ? 'text-destructive' : risk?.level === 'watch' ? 'text-warning-strong' : 'text-muted-foreground'}>
+                            3年+ {pct(7, 8)}%
+                          </span>
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setAgingExpanded((v) => !v)}
+                          className="mt-2 flex w-full items-center justify-center gap-1 rounded py-0.5 text-xs text-primary transition-colors hover:bg-muted"
+                        >
+                          {agingExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                          {agingExpanded ? '收起账龄明细' : '展开账龄明细'}
+                        </button>
+                      </>
+                    )
+                  })()}
+                  {agingExpanded && (
+                    <div className="mt-2 grid grid-cols-4 gap-1.5 border-t border-border pt-2">
+                      {AGING_GROUPS.map((g) => {
+                        const v = snapshot.aging[g] ?? 0
+                        const isDanger = g === '3年以上' && v > 0
+                        return (
+                          <div key={g} className={cn('rounded-md border px-1.5 py-1 text-center', isDanger ? 'border-destructive/30 bg-destructive/[0.06]' : 'border-border bg-background')}>
+                            <p className="text-[10px] text-muted-foreground">{g}</p>
+                            <p className={cn('font-num text-xs', isDanger ? 'font-medium text-destructive' : 'text-foreground')}>
+                              {v !== 0 ? formatMoneyWan(v / 10000) : '-'}
+                            </p>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">该公司在 {target.period} 无{txnType}数据（仍可撰写分析）</p>
+              )
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={onClose} disabled={form.busy}>取消</Button>
-            <Button size="sm" onClick={form.save} disabled={form.busy || !companyCode || !txnType || !form.title.trim()}>
-              <Save className="mr-1 h-4 w-4" /> 保存
-            </Button>
+  
+          {/* 表单 */}
+          <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="txn-analysis-title">分析标题</Label>
+              <Input id="txn-analysis-title" value={form.title} onChange={(e) => form.setTitle(e.target.value)} placeholder="如：华东公司应收账款分析" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>分析内容</Label>
+              <RichTextEditor value={form.content} onChange={form.setContent} placeholder="撰写该往来类型的分析结论（余额构成、账龄结构、风险与催收建议等）…" polishEnabled />
+            </div>
+            {form.feedback && (
+              <FlashMessage type={form.feedback.type === 'ok' ? 'success' : 'error'}>{form.feedback.msg}</FlashMessage>
+            )}
           </div>
-        </>
-      )}
-    >
-        {/* 公司 + 往来类型选择 + 快照上下文 */}
-        <div className="space-y-3 border-b px-5 py-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <Label className="shrink-0">分析公司</Label>
-            <Select value={companyCode} onValueChange={setCompanyCode}>
-              <SelectTrigger className="h-8 w-[220px]">
-                <SelectValue placeholder="选择公司（必选）" />
-              </SelectTrigger>
-              <SelectContent>
-                {singleCompanies.map((c) => (
-                  <SelectItem key={c.code} value={c.code}>{getDisplayName(c.code, c.name)}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Label className="shrink-0">往来类型</Label>
-            <Select value={txnType} onValueChange={setTxnType}>
-              <SelectTrigger className="h-8 w-[140px]">
-                <SelectValue placeholder="选择类型（必选）" />
-              </SelectTrigger>
-              <SelectContent>
-                {TXN_TYPE_OPTIONS.map((t) => (
-                  <SelectItem key={t} value={t}>{t}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {companyCode && txnType && (
-            snapshot ? (
-              <div className="rounded-md border bg-muted/30 p-3">
-                <div className="flex items-baseline justify-between">
-                  <span className="text-[11px] text-muted-foreground">期末余额</span>
-                  <span className="font-num text-lg font-bold text-foreground">
-                    {formatMoneyWan(snapshot.closingBalance / 10000)}<span className="ml-0.5 text-xs font-normal text-muted-foreground">万</span>
-                  </span>
-                </div>
-                <div className="mt-2">
-                  <AgingStackBar aging={snapshot.aging} closingBalance={snapshot.closingBalance} />
-                </div>
-                {(() => {
-                  const risk = agingRisk(snapshot.aging, snapshot.closingBalance)
-                  const total = snapshot.closingBalance > 0 ? snapshot.closingBalance : 0
-                  // 分段占比：与总览卡片口径一致（1年内 = 前 5 段、1-3年 = 5-7 段、3年+ = 末段）
-                  const pct = (from: number, to: number) =>
-                    total > 0 ? ((AGING_GROUPS.slice(from, to).reduce((s, b) => s + (snapshot.aging[b] ?? 0), 0) / total) * 100).toFixed(1) : '0.0'
-                  return (
-                    <>
-                      <p className="mt-1.5 flex justify-between font-num text-[11px] text-muted-foreground">
-                        <span>1年内 {pct(0, 5)}%</span>
-                        <span>1-3年 {pct(5, 7)}%</span>
-                        <span className={risk?.level === 'danger' ? 'text-destructive' : risk?.level === 'watch' ? 'text-warning-strong' : 'text-muted-foreground'}>
-                          3年+ {pct(7, 8)}%
-                        </span>
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setAgingExpanded((v) => !v)}
-                        className="mt-2 flex w-full items-center justify-center gap-1 rounded py-0.5 text-xs text-primary transition-colors hover:bg-muted"
-                      >
-                        {agingExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                        {agingExpanded ? '收起账龄明细' : '展开账龄明细'}
-                      </button>
-                    </>
-                  )
-                })()}
-                {agingExpanded && (
-                  <div className="mt-2 grid grid-cols-4 gap-1.5 border-t border-border pt-2">
-                    {AGING_GROUPS.map((g) => {
-                      const v = snapshot.aging[g] ?? 0
-                      const isDanger = g === '3年以上' && v > 0
-                      return (
-                        <div key={g} className={cn('rounded-md border px-1.5 py-1 text-center', isDanger ? 'border-destructive/30 bg-destructive/[0.06]' : 'border-border bg-background')}>
-                          <p className="text-[10px] text-muted-foreground">{g}</p>
-                          <p className={cn('font-num text-xs', isDanger ? 'font-medium text-destructive' : 'text-foreground')}>
-                            {v !== 0 ? formatMoneyWan(v / 10000) : '-'}
-                          </p>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">该公司在 {target.period} 无{txnType}数据（仍可撰写分析）</p>
-            )
-          )}
-        </div>
-
-        {/* 表单 */}
-        <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="txn-analysis-title">分析标题</Label>
-            <Input id="txn-analysis-title" value={form.title} onChange={(e) => form.setTitle(e.target.value)} placeholder="如：华东公司应收账款分析" />
-          </div>
-          <div className="space-y-1.5">
-            <Label>分析内容</Label>
-            <RichTextEditor value={form.content} onChange={form.setContent} placeholder="撰写该往来类型的分析结论（余额构成、账龄结构、风险与催收建议等）…" polishEnabled />
-          </div>
-          {form.feedback && (
-            <FlashMessage type={form.feedback.type === 'ok' ? 'success' : 'error'}>{form.feedback.msg}</FlashMessage>
-          )}
-        </div>
-      </SheetShell>
-      {form.confirmElement}
+        </SheetShell>
+        {form.confirmElement}
     </>
   )
 }
