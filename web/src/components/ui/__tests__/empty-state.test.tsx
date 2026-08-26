@@ -24,4 +24,23 @@ describe('EmptyState 统一空态', () => {
     render(<EmptyState icon={Inbox} title="暂无数据" action={<button>去导入</button>} />)
     expect(screen.getByRole('button', { name: '去导入' })).toBeInTheDocument()
   })
+
+  it('固定高度容器内垂直居中（inventory 图表卡片场景）', () => {
+    render(
+      <div className="h-[260px]">
+        <EmptyState icon={Inbox} title="暂无数据" compact />
+      </div>,
+    )
+    expect(document.querySelector('.h-\\[260px\\]')!.firstChild).toHaveClass('justify-center')
+  })
+
+  it('缺省 icon 为 Inbox（DataTable 字符串空态路径）', () => {
+    const { container } = render(<EmptyState title="暂无数据" />)
+    expect(container.querySelector('svg')).toBeTruthy()
+  })
+
+  it('className 透传到根元素', () => {
+    const { container } = render(<EmptyState icon={Inbox} title="暂无数据" className="py-12" />)
+    expect(container.firstChild).toHaveClass('py-12')
+  })
 })

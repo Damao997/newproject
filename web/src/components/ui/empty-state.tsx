@@ -21,7 +21,8 @@ interface EmptyStateProps {
  */
 export function EmptyState({ icon: Icon = Inbox, title, description, action, className, compact = false }: EmptyStateProps) {
   return (
-    <div className={cn('flex flex-col items-center text-center', compact ? 'gap-1.5 py-2' : 'gap-3 py-16', className)}>
+    // justify-center：固定高度容器（如 inventory 图表卡片 h-[260px]/h-[320px]）内垂直居中；无固定高度场景无副作用
+    <div className={cn('flex flex-col items-center justify-center text-center', compact ? 'gap-1.5 py-2' : 'gap-3 py-16', className)}>
       <div className={cn('flex items-center justify-center rounded-xl bg-muted', compact ? 'h-8 w-8' : 'h-12 w-12')}>
         <Icon className={cn('text-muted-foreground', compact ? 'h-4 w-4' : 'h-6 w-6')} />
       </div>
