@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
+import { FlashMessage } from '@/components/ui/flash-message'
 import { useAuthStore } from '@/stores/authStore'
 
 /** 密码规则校验（与后端 assertPasswordRule 一致）：至少 8 位且含字母与数字 */
@@ -94,6 +95,9 @@ export function ChangePasswordDialog() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  // 成功轻提示（替代原生 alert）：对话框关闭后于页面展示，3s 自动消失
+  const [successFlash, setSuccessFlash] = useState(false)
+
   // 每次打开时重置表单
   useEffect(() => {
     if (open) {
@@ -128,7 +132,7 @@ export function ChangePasswordDialog() {
       // 静默续期：用新令牌对替换本地令牌，保持当前登录态（其他标签页/会话不受影响）
       setTokens(result.accessToken, result.refreshToken)
       closePasswordDialog()
-      window.alert('密码修改成功')
+      setSuccessFlash(true)
     } catch (e) {
       setError(e instanceof Error ? e.message : '修改失败，请稍后重试')
     } finally {
@@ -137,83 +141,90 @@ export function ChangePasswordDialog() {
   }
 
   return (
-    <Dialog
-      open={open}
-      // force 模式不可关闭（防 Esc/遮罩/X 绕过强制改密），仅提交成功或登出时关闭
-      onOpenChange={(o) => {
-        if (!o && !force) closePasswordDialog()
-      }}
-    >
-      {/* force 模式隐藏右上角 X 关闭按钮（Radix Close 为 DialogContent 直接子 button） */}
-      <DialogContent className={cn(force && '[&>button]:hidden')}>
-        <DialogHeader>
-          <DialogTitle>{force ? '首次登录须修改密码' : '修改密码'}</DialogTitle>
-          <DialogDescription>
-            {force
-              ? '为保障账号安全，首次登录请先修改初始密码后再继续使用'
-              : `用户 ${user?.name ?? ''}，修改后需使用新密码重新登录`}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          <PasswordField
-            id="cp-old-password"
-            label="原密码"
-            value={oldPassword}
-            onChange={setOldPassword}
-            error={fieldErrors.oldPassword}
-            placeholder="请输入当前使用的密码"
-            autoComplete="current-password"
-            disabled={isSubmitting}
-          />
-          <PasswordField
-            id="cp-new-password"
-            label="新密码"
-            value={newPassword}
-            onChange={setNewPassword}
-            error={fieldErrors.newPassword}
-            placeholder="至少 8 位，含字母与数字"
-            autoComplete="new-password"
-            disabled={isSubmitting}
-          />
-          <PasswordField
-            id="cp-confirm-password"
-            label="确认新密码"
-            value={confirmPassword}
-            onChange={setConfirmPassword}
-            error={fieldErrors.confirmPassword}
-            placeholder="再次输入新密码"
-            autoComplete="new-password"
-            disabled={isSubmitting}
-          />
-          {error && (
-            <div
-              role="alert"
-              aria-live="polite"
-              className="flex animate-fade-in items-start gap-2 rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
-            >
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-        </div>
-        <DialogFooter>
-          {!force && (
-            <Button variant="outline" onClick={closePasswordDialog} disabled={isSubmitting}>
-              取消
-            </Button>
-          )}
-          <Button onClick={submit} disabled={isSubmitting}>
-            {isSubmitting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                提交中...
-              </>
-            ) : (
-              '确认修改'
+    <>
+      <Dialog
+        open={open}
+        // force 模式不可关闭（防 Esc/遮罩/X 绕过强制改密），仅提交成功或登出时关闭
+        onOpenChange={(o) => {
+          if (!o && !force) closePasswordDialog()
+        }}
+      >
+        {/* force 模式隐藏右上角 X 关闭按钮（Radix Close 为 DialogContent 直接子 button） */}
+        <DialogContent className={cn(force && '[&>button]:hidden')}>
+          <DialogHeader>
+            <DialogTitle>{force ? '首次登录须修改密码' : '修改密码'}</DialogTitle>
+            <DialogDescription>
+              {force
+                ? '为保障账号安全，首次登录请先修改初始密码后再继续使用'
+                : `用户 ${user?.name ?? ''}，修改后需使用新密码重新登录`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <PasswordField
+              id="cp-old-password"
+              label="原密码"
+              value={oldPassword}
+              onChange={setOldPassword}
+              error={fieldErrors.oldPassword}
+              placeholder="请输入当前使用的密码"
+              autoComplete="current-password"
+              disabled={isSubmitting}
+            />
+            <PasswordField
+              id="cp-new-password"
+              label="新密码"
+              value={newPassword}
+              onChange={setNewPassword}
+              error={fieldErrors.newPassword}
+              placeholder="至少 8 位，含字母与数字"
+              autoComplete="new-password"
+              disabled={isSubmitting}
+            />
+            <PasswordField
+              id="cp-confirm-password"
+              label="确认新密码"
+              value={confirmPassword}
+              onChange={setConfirmPassword}
+              error={fieldErrors.confirmPassword}
+              placeholder="再次输入新密码"
+              autoComplete="new-password"
+              disabled={isSubmitting}
+            />
+            {error && (
+              <div
+                role="alert"
+                aria-live="polite"
+                className="flex animate-fade-in items-start gap-2 rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
+              >
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{error}</span>
+              </div>
             )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </div>
+          <DialogFooter>
+            {!force && (
+              <Button variant="outline" onClick={closePasswordDialog} disabled={isSubmitting}>
+                取消
+              </Button>
+            )}
+            <Button onClick={submit} disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  提交中...
+                </>
+              ) : (
+                '确认修改'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {successFlash && (
+        <FlashMessage type="success" autoHideMs={3000} onAutoHide={() => setSuccessFlash(false)} className="px-4 pt-2">
+          密码修改成功
+        </FlashMessage>
+      )}
+    </>
   )
 }
