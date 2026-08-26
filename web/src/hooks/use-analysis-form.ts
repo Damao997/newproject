@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useAnalyses, useCreateAnalysis, useUpdateAnalysis, useDeleteAnalysis } from '@/hooks/api-queries'
+import { useConfirm } from '@/components/ui/confirm-dialog'
 
 /**
  * 单项分析表单状态机（指标抽屉 / 往来抽屉共用）。
@@ -43,6 +44,8 @@ export function useAnalysisForm(opts: {
   busy: boolean
   save: () => Promise<void>
   remove: () => Promise<void>
+  /** 删除确认对话框元素，由调用方在 JSX 中渲染 */
+  confirmElement: ReactNode
 } {
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
@@ -50,6 +53,8 @@ export function useAnalysisForm(opts: {
   const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null)
   const optsRef = useRef(opts)
   optsRef.current = opts
+  // 删除确认（危险操作红色按钮）；confirmElement 由调用方在 JSX 中渲染
+  const { confirm, element: confirmElement } = useConfirm()
   // 查询参数变化（公司/科目/期间切换）时重置表单
   const paramsKey = `${opts.fetchParams.companyCode}|${opts.fetchParams.subjectCode}|${opts.fetchParams.period}`
 
@@ -96,7 +101,8 @@ export function useAnalysisForm(opts: {
   const remove = async () => {
     if (!existingId) return
     const text = optsRef.current.deleteConfirmText ?? '确认删除该单项分析？删除后引用它的报告章节将标记为"原文已删除"。'
-    if (!window.confirm(text)) return
+    const ok = await confirm({ title: '删除分析', description: text, confirmText: '确认删除', danger: true })
+    if (!ok) return
     setFeedback(null)
     try {
       await deleteMutation.mutateAsync(existingId)
@@ -109,5 +115,5 @@ export function useAnalysisForm(opts: {
     }
   }
 
-  return { title, setTitle, content, setContent, existingId, feedback, busy, save, remove }
+  return { title, setTitle, content, setContent, existingId, feedback, busy, save, remove, confirmElement }
 }

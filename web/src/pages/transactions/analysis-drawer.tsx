@@ -113,6 +113,7 @@ function TransactionDrawerBody({ target, onClose }: { target: TransactionAnalysi
   })
 
   return (
+    <>
     <SheetShell
       onClose={onClose}
       icon={<FileText className="mt-0.5 h-5 w-5 text-primary" />}
@@ -238,5 +239,7 @@ function TransactionDrawerBody({ target, onClose }: { target: TransactionAnalysi
           )}
         </div>
       </SheetShell>
+      {form.confirmElement}
+    </>
   )
 }

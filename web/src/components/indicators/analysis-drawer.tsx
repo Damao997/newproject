@@ -243,6 +243,7 @@ function DrawerBody({ target, onClose }: { target: AnalysisTarget; onClose: () =
         </div>
       </SheetShell>
       {element}
+      {form.confirmElement}
     </>
   )
 }
