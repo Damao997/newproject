@@ -710,7 +710,7 @@ interface ResetPasswordDialogProps {
   open: boolean
   user?: User | null
   onClose: () => void
-  /** 重置成功回调，页面用于展示成功反馈（替代 window.alert） */
+  /** 重置成功回调，页面用于展示成功反馈 */
   onSuccess?: () => void
 }
 
