@@ -32,12 +32,12 @@ export function AnalysisPlaceholder({ title, note, actionLabel, actionHref }: An
           <p className="text-xs text-muted-foreground">功能开发中，敬请期待</p>
         )}
         {actionLabel && actionHref && (
-          <Link to={actionHref}>
-            <Button variant="outline" size="sm">
+          <Button asChild variant="outline" size="sm">
+            <Link to={actionHref}>
               {actionLabel}
               <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         )}
       </CardContent>
     </Card>

@@ -20,7 +20,7 @@ interface PlaceholderConfig {
 }
 
 /** 占位子页配置（与 Tab 标签一致）；receivable-aging 数据已在往来账龄落地，提供跳转通道 */
-const PLACEHOLDER_CONFIG: Record<string, PlaceholderConfig> = {
+const PLACEHOLDER_CONFIG: Partial<Record<'cash-flow' | 'receivable-aging' | 'inventory-aging', PlaceholderConfig>> = {
   'cash-flow': {
     title: '壹品慧业务现金流分析',
     note: '功能规划中，如有需求请联系管理员反馈优先级',
