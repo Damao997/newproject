@@ -5,6 +5,7 @@ import Link from '@tiptap/extension-link'
 import { Bold, Italic, Heading2, Heading3, List, ListOrdered, Quote, Undo, Redo, Link as LinkIcon, RemoveFormatting, Sparkles, X, Check, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAiStream } from '@/hooks/use-ai-stream'
+import { LinkDialog } from './link-dialog'
 
 /**
  * TipTap 富文本编辑器（受控）。
@@ -40,17 +41,7 @@ function ToolButton({ onClick, active, disabled, title, children }: { onClick: (
   )
 }
 
-function Toolbar({ editor, onPolish }: { editor: Editor; onPolish?: () => void }) {
-  const setLink = () => {
-    const previous = editor.getAttributes('link').href as string | undefined
-    const url = window.prompt('链接地址', previous ?? 'https://')
-    if (url === null) return
-    if (url === '') {
-      editor.chain().focus().extendMarkRange('link').unsetLink().run()
-      return
-    }
-    editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
-  }
+function Toolbar({ editor, onPolish, onEditLink }: { editor: Editor; onPolish?: () => void; onEditLink: () => void }) {
   return (
     <div className="flex flex-wrap items-center gap-0.5 border-b bg-muted/30 px-2 py-1">
       <ToolButton title="加粗" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()}><Bold className="h-4 w-4" /></ToolButton>
@@ -60,7 +51,7 @@ function Toolbar({ editor, onPolish }: { editor: Editor; onPolish?: () => void }
       <ToolButton title="无序列表" active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()}><List className="h-4 w-4" /></ToolButton>
       <ToolButton title="有序列表" active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()}><ListOrdered className="h-4 w-4" /></ToolButton>
       <ToolButton title="引用" active={editor.isActive('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()}><Quote className="h-4 w-4" /></ToolButton>
-      <ToolButton title="链接" active={editor.isActive('link')} onClick={setLink}><LinkIcon className="h-4 w-4" /></ToolButton>
+      <ToolButton title="链接" active={editor.isActive('link')} onClick={onEditLink}><LinkIcon className="h-4 w-4" /></ToolButton>
       <ToolButton title="清除格式" onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()}><RemoveFormatting className="h-4 w-4" /></ToolButton>
       <span className="mx-1 h-4 w-px bg-border" />
       <ToolButton title="撤销" disabled={!editor.can().undo()} onClick={() => editor.chain().focus().undo().run()}><Undo className="h-4 w-4" /></ToolButton>
@@ -163,6 +154,10 @@ function PolishPanel({
 
 export function RichTextEditor({ value, onChange, placeholder, className, editable = true, polishEnabled = false }: RichTextEditorProps) {
   const [polish, setPolish] = useState<{ from: number; to: number; text: string } | null>(null)
+  // 链接编辑对话框（替代原生 prompt）：打开时回填当前链接
+  const [linkDialog, setLinkDialog] = useState<{ open: boolean; initialUrl: string }>({ open: false, initialUrl: 'https://' })
+  // 操作引导轻提示（替代原生 alert）：2.5s 自动消失
+  const [hint, setHint] = useState<string | null>(null)
 
   const editor = useEditor({
     extensions: [
@@ -191,20 +186,41 @@ export function RichTextEditor({ value, onChange, placeholder, className, editab
     if (editor) editor.setEditable(editable)
   }, [editable, editor])
 
+  // 轻提示 2.5s 自动消失
+  useEffect(() => {
+    if (!hint) return
+    const t = window.setTimeout(() => setHint(null), 2500)
+    return () => window.clearTimeout(t)
+  }, [hint])
+
   if (!editor) return null
 
   const handlePolish = () => {
     const { from, to } = editor.state.selection
     if (from === to) {
-      window.alert('请先在编辑器中选中需润色的文本。')
+      setHint('请先在编辑器中选中需润色的文本。')
       return
     }
     const text = editor.state.doc.textBetween(from, to, '\n')
     if (!text.trim()) {
-      window.alert('选区为空，无可润色的文本。')
+      setHint('选区为空，无可润色的文本。')
       return
     }
     setPolish({ from, to, text })
+  }
+
+  const openLinkDialog = () => {
+    const previous = editor.getAttributes('link').href as string | undefined
+    setLinkDialog({ open: true, initialUrl: previous ?? 'https://' })
+  }
+
+  const confirmLink = (url: string) => {
+    setLinkDialog((s) => ({ ...s, open: false }))
+    if (url === '') {
+      editor.chain().focus().extendMarkRange('link').unsetLink().run()
+      return
+    }
+    editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
   }
 
   const applyPolish = (polished: string) => {
@@ -215,7 +231,10 @@ export function RichTextEditor({ value, onChange, placeholder, className, editab
 
   return (
     <div className={cn('overflow-hidden rounded-md border bg-background', className)}>
-      {editable && <Toolbar editor={editor} onPolish={polishEnabled ? handlePolish : undefined} />}
+      {editable && <Toolbar editor={editor} onPolish={polishEnabled ? handlePolish : undefined} onEditLink={openLinkDialog} />}
+      {hint && (
+        <p role="status" className="border-t px-3 py-1.5 text-[12px] text-muted-foreground">{hint}</p>
+      )}
       <div className="flex">
         <div className="min-w-0 flex-1">
           <EditorContent editor={editor} />
@@ -224,6 +243,12 @@ export function RichTextEditor({ value, onChange, placeholder, className, editab
           <PolishPanel original={polish.text} onApply={applyPolish} onClose={() => setPolish(null)} />
         )}
       </div>
+      <LinkDialog
+        open={linkDialog.open}
+        initialUrl={linkDialog.initialUrl}
+        onConfirm={confirmLink}
+        onCancel={() => setLinkDialog((s) => ({ ...s, open: false }))}
+      />
     </div>
   )
 }
