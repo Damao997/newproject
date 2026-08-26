@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/select'
 import { PageContainer } from '@/components/layout/page-container'
 import { useStickyHeader } from '@/hooks/useStickyHeader'
+import { useExclusiveCompanyFilter } from '@/hooks/use-exclusive-company-filter'
 import { useTransactionOverview, useTransactionPeriods, useCompanies, useAvailablePeriods } from '@/hooks/api-queries'
 import { usePageStore } from '@/stores/pageStateStore'
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
@@ -70,26 +71,12 @@ export default function TransactionsOverviewPage() {
   }, [searchParams, setSelectedCompanies, setPeriodFilter, setSearchParams])
   const { data: companies } = useCompanies()
   const defaultCode = useDefaultCompanyCode()
-  // 主体互斥业务规则：单体公司与汇总主体不能同时筛选；新增勾选某一类时自动取消另一类并提示
-  const handleCompaniesChange = useCallback((next: string[]) => {
-    const prev = usePageStore.getState().transactions.overview.companies
-    const typeOf = (code: string) => companies?.find((c) => c.code === code)?.type
-    const added = next.filter((c) => !prev.includes(c))
-    if (added.length > 0) {
-      const addedType = typeOf(added[added.length - 1])
-      if (addedType === 'entity' && next.some((c) => typeOf(c) === 'summary')) {
-        window.alert('单体公司与汇总主体不能同时筛选，已自动取消已选汇总主体。')
-        setSelectedCompanies(next.filter((c) => typeOf(c) !== 'summary'))
-        return
-      }
-      if (addedType === 'summary' && next.some((c) => typeOf(c) === 'entity')) {
-        window.alert('单体公司与汇总主体不能同时筛选，已自动取消已选单体公司。')
-        setSelectedCompanies(next.filter((c) => typeOf(c) !== 'entity'))
-        return
-      }
-    }
-    setSelectedCompanies(next)
-  }, [companies, setSelectedCompanies])
+  // 主体互斥业务规则：单体公司与汇总主体不能同时筛选；逻辑与轻提示收敛于共享 hook
+  const { handleCompaniesChange, noticeElement } = useExclusiveCompanyFilter({
+    companies,
+    getPrev: () => usePageStore.getState().transactions.overview.companies,
+    setSelected: setSelectedCompanies,
+  })
   // 持久化公司多选校验：编码已删除/越权时过滤，全部失效则回退默认主体（候选加载后生效，用户手动切换后不再覆盖）
   useEffect(() => {
     if (!companies || companies.length === 0) return
@@ -157,6 +144,7 @@ export default function TransactionsOverviewPage() {
             </Select>
             <PartyTypeSelect value={partyFilter} onChange={setPartyFilter} />
           </div>
+          {noticeElement}
           </Card>
 
           {isLoading || !period ? (

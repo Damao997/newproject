@@ -11,6 +11,7 @@ import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
+import { FlashMessage } from '@/components/ui/flash-message'
 import { Collapsible } from '@/components/ui/collapsible'
 import {
   DropdownMenu,
@@ -22,6 +23,7 @@ import { PageContainer } from '@/components/layout/page-container'
 import { SubPageTabs } from '@/components/layout/sub-page-tabs'
 import { TRANSACTION_DETAIL_TABS } from '@/components/layout/module-tabs'
 import { useStickyHeader } from '@/hooks/useStickyHeader'
+import { useExclusiveCompanyFilter } from '@/hooks/use-exclusive-company-filter'
 import { TABLE_HEADER_STICKY } from '@/components/data-table/styles'
 import { useTransactionAging, useTransactionPeriods, useCompanies, useAvailablePeriods } from '@/hooks/api-queries'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
@@ -90,6 +92,8 @@ export default function TransactionsAgingPage() {
   // 导出状态：exporting 期间显示生成/下载进度（响应头未达时 total 为 undefined，仅显示"生成中…"）
   const [exporting, setExporting] = useState(false)
   const [exportProgress, setExportProgress] = useState(0)
+  // 导出结果轻提示：替代原生 window.alert（失败展示错误信息；成功分支暂无 flash 需求，预留 success 类型）
+  const [exportFlash, setExportFlash] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   // 明细筛选折叠：本地 state 默认折叠（全尺寸），行 1「展开/收起筛选条件」按钮控制；不写 pageStateStore
   const DETAIL_QUERY = '(min-width: 1024px)'
   const [isDesktop, setIsDesktop] = useState(
@@ -105,26 +109,12 @@ export default function TransactionsAgingPage() {
   }, [])
   // 持久化公司多选校验：编码已删除/越权时过滤，全部失效则回退默认主体（候选加载后生效，用户手动切换后不再覆盖）
   const { data: companies } = useCompanies()
-  // 主体互斥业务规则：单体公司与汇总主体不能同时筛选；新增勾选某一类时自动取消另一类并提示（与总览页同规则）
-  const handleCompaniesChange = useCallback((next: string[]) => {
-    const prev = usePageStore.getState().transactions.aging.companies
-    const typeOf = (code: string) => companies?.find((c) => c.code === code)?.type
-    const added = next.filter((c) => !prev.includes(c))
-    if (added.length > 0) {
-      const addedType = typeOf(added[added.length - 1])
-      if (addedType === 'entity' && next.some((c) => typeOf(c) === 'summary')) {
-        window.alert('单体公司与汇总主体不能同时筛选，已自动取消已选汇总主体。')
-        setCompanyFilter(next.filter((c) => typeOf(c) !== 'summary'))
-        return
-      }
-      if (addedType === 'summary' && next.some((c) => typeOf(c) === 'entity')) {
-        window.alert('单体公司与汇总主体不能同时筛选，已自动取消已选单体公司。')
-        setCompanyFilter(next.filter((c) => typeOf(c) !== 'entity'))
-        return
-      }
-    }
-    setCompanyFilter(next)
-  }, [companies, setCompanyFilter])
+  // 主体互斥业务规则：单体公司与汇总主体不能同时筛选；逻辑与轻提示收敛于共享 hook
+  const { handleCompaniesChange, noticeElement } = useExclusiveCompanyFilter({
+    companies,
+    getPrev: () => usePageStore.getState().transactions.aging.companies,
+    setSelected: setCompanyFilter,
+  })
   useEffect(() => {
     if (!companies || companies.length === 0) return
     const valid = new Set(companies.map((c) => c.code))
@@ -239,7 +229,7 @@ export default function TransactionsAgingPage() {
       const { saveAs } = await import('file-saver')
       saveAs(blob, `账龄分析_${period}.xlsx`)
     } catch (e) {
-      window.alert((e as Error).message || '导出失败，请稍后重试')
+      setExportFlash({ type: 'error', text: (e as Error).message || '导出失败，请稍后重试' })
     } finally {
       setExporting(false)
     }
@@ -391,6 +381,10 @@ export default function TransactionsAgingPage() {
         {/* 折叠态摘要：生效条件一瞥（科目/客商/关键词/仅小计），无前缀文字 */}
         {!detailOpen && detailSummary.length > 0 && (
           <p className="mt-2 truncate text-xs text-muted-foreground">{detailSummary.join(' · ')}</p>
+        )}
+        {noticeElement}
+        {exportFlash && (
+          <FlashMessage type={exportFlash.type} className="mt-2">{exportFlash.text}</FlashMessage>
         )}
         </Card>
 

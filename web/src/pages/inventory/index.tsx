@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { CompanyMultiSelect } from '@/components/filters/company-select'
 import { PageContainer } from '@/components/layout/page-container'
 import { useStickyHeader } from '@/hooks/useStickyHeader'
+import { useExclusiveCompanyFilter } from '@/hooks/use-exclusive-company-filter'
 import { AnalysisDrawer, type AnalysisTarget } from '@/components/indicators/analysis-drawer'
 import {
   useAvailablePeriods,
@@ -304,26 +305,12 @@ export default function InventoryPage() {
   // 持久化公司多选校验：编码已删除/越权时过滤，全部失效则回退默认主体（候选加载后生效，用户手动切换后不再覆盖）
   const { data: companies } = useCompanies()
   const defaultCode = useDefaultCompanyCode()
-  // 主体互斥业务规则：单体公司与汇总主体不能同时筛选；新增勾选某一类时自动取消另一类并提示（防止成员公司双重计数）
-  const handleCompaniesChange = useCallback((next: string[]) => {
-    const prev = usePageStore.getState().inventory.companies
-    const typeOf = (code: string) => companies?.find((c) => c.code === code)?.type
-    const added = next.filter((c) => !prev.includes(c))
-    if (added.length > 0) {
-      const addedType = typeOf(added[added.length - 1])
-      if (addedType === 'entity' && next.some((c) => typeOf(c) === 'summary')) {
-        window.alert('单体公司与汇总主体不能同时筛选，已自动取消已选汇总主体。')
-        setSelectedCompanies(next.filter((c) => typeOf(c) !== 'summary'))
-        return
-      }
-      if (addedType === 'summary' && next.some((c) => typeOf(c) === 'entity')) {
-        window.alert('单体公司与汇总主体不能同时筛选，已自动取消已选单体公司。')
-        setSelectedCompanies(next.filter((c) => typeOf(c) !== 'entity'))
-        return
-      }
-    }
-    setSelectedCompanies(next)
-  }, [companies, setSelectedCompanies])
+  // 主体互斥业务规则：单体公司与汇总主体不能同时筛选；逻辑与轻提示收敛于共享 hook（防止成员公司双重计数）
+  const { handleCompaniesChange, noticeElement } = useExclusiveCompanyFilter({
+    companies,
+    getPrev: () => usePageStore.getState().inventory.companies,
+    setSelected: setSelectedCompanies,
+  })
   useEffect(() => {
     if (!companies || companies.length === 0) return
     const valid = new Set(companies.map((c) => c.code))
@@ -615,6 +602,7 @@ export default function InventoryPage() {
           />
           <span className="text-xs text-muted-foreground">金额单位：万元</span>
         </div>
+        {noticeElement}
         </Card>
 
         {/* KPI 卡行：失败时整体降级为错误提示 */}
