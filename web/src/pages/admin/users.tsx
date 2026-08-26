@@ -187,7 +187,7 @@ export default function UsersPage() {
         hasUserActions ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" aria-label={`操作 ${u.name}`}>
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
