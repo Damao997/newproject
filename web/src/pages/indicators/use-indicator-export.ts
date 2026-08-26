@@ -52,8 +52,6 @@ export function useIndicatorExport(opts: {
             yoy: fmtYoy(o.yoy), ytd: fmtVal(o.ytd, o.valueType), samePeriodYtd: fmtVal(o.samePeriodYtd, o.valueType),
             ytdYoy: fmtYoy(o.ytdYoy), achievement: pct(o.achievement),
           }
-          // 展示类（display）只读展示：导出值列统一写「—」
-          if (o.dataType === 'display') for (const k of keys) cols[k] = '—'
           return { account: `${'　'.repeat(depth)}${o.name}`, ...Object.fromEntries(keys.map((k) => [k, cols[k]])) }
         })
         const headerMap: Record<string, string> = {
@@ -80,8 +78,6 @@ export function useIndicatorExport(opts: {
             actual: fmtVal(f.current, f.valueType), samePeriod: fmtVal(f.samePeriod, f.valueType),
             ytd: fmtVal(f.ytd, f.valueType), samePeriodYtd: fmtVal(f.samePeriodYtd, f.valueType), yoy: fmtYoy(f.yoy),
           }
-          // 展示类（display）只读展示：导出值列统一写「—」
-          if (f.dataType === 'display') for (const k of keys) cols[k] = '—'
           return { account: `${'　'.repeat(depth)}${f.name}`, ...Object.fromEntries(keys.map((k) => [k, cols[k]])) }
         })
         const filename = `财务指标_现金流量表${scopeSuffix}_${new Date().toISOString().slice(0, 10)}.xlsx`
@@ -106,8 +102,6 @@ export function useIndicatorExport(opts: {
           const cols: Record<string, string | number> = {
             actual: fmtVal(s.current, s.valueType), samePeriod: fmtVal(s.samePeriod, s.valueType), yoy: fmtYoy(s.yoy),
           }
-          // 展示类（display）只读展示：导出值列统一写「—」
-          if (s.dataType === 'display') for (const k of keys) cols[k] = '—'
           return { account: `${'　'.repeat(depth)}${s.name}`, ...Object.fromEntries(keys.map((k) => [k, cols[k]])) }
         })
         const filename = `财务指标_静态指标${scopeSuffix}_${new Date().toISOString().slice(0, 10)}.xlsx`
