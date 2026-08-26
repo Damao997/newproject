@@ -7,7 +7,6 @@ import { MainLayout } from '@/components/layout/main-layout'
 import { RequirePermission } from '@/components/layout/require-permission'
 import { HomeRedirect } from '@/components/layout/home-redirect'
 import { ErrorBoundary } from '@/components/layout/error-boundary'
-import { RouteFallback } from '@/components/layout/route-fallback'
 
 const LoginPage = lazy(() => import('@/pages/login'))
 const DashboardPage = lazy(() => import('@/pages/dashboard'))
@@ -101,7 +100,14 @@ function App() {
       <TooltipProvider>
         <BrowserRouter>
           <ErrorBoundary>
-            <Suspense fallback={<RouteFallback />}>
+            {/* 外层 Suspense 覆盖非 MainLayout 路由（登录页等懒加载）；MainLayout 内另有内层 Suspense 渲染路由级骨架 */}
+            <Suspense
+              fallback={
+                <div className="flex h-screen items-center justify-center" role="status" aria-label="页面加载中">
+                  <div className="skeleton h-8 w-48 rounded" />
+                </div>
+              }
+            >
               <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/" element={<MainLayout />}>

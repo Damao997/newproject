@@ -7,7 +7,7 @@ import { KpiGridSkeleton, ListSkeleton } from '@/components/ui/skeleton-blocks'
  */
 export function RouteFallback() {
   return (
-    <div className="animate-fade-in space-y-4">
+    <div className="animate-fade-in space-y-4" role="status" aria-label="页面加载中">
       <div className="flex items-center justify-between">
         <div className="skeleton h-7 w-44 rounded" />
         <div className="skeleton h-9 w-72 rounded" />
