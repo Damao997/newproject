@@ -61,9 +61,8 @@ describe('用户管理：停用/彻底删除走确认对话框（替代原生 co
     const row = screen.getByText(name).closest('tr')
     if (!row) throw new Error(`未找到 ${name} 所在行`)
     const trigger = within(row).getByRole('button', { name: `操作 ${name}` })
-    // Radix DropdownMenu 由 pointerdown(左键)/keyDown(Enter) 打开，click 事件不触发。
-    // jsdom 无 PointerEvent 构造器（fireEvent.pointerDown 的 button 属性丢失），用键盘 Enter 打开（等价真实键盘操作）
-    fireEvent.keyDown(trigger, { key: 'Enter' })
+    // antd Dropdown（trigger=click）由 click 事件打开
+    fireEvent.click(trigger)
   }
 
   it('停用：先弹确认框，确认后才调用停用接口', async () => {
