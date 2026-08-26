@@ -1,11 +1,10 @@
 import { useStickyHeader } from '@/hooks/useStickyHeader'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { CompanySelect } from '@/components/filters/company-select'
 import { Card, CardContent } from '@/components/ui/card'
 import { PageContainer } from '@/components/layout/page-container'
 import { SubPageTabs } from '@/components/layout/sub-page-tabs'
 import { DASHBOARD_ANALYSIS_TABS } from '@/components/layout/module-tabs'
 import { useDashboardFilters } from '@/hooks/useDashboardFilters'
+import { DashboardFilterBar } from '@/components/filters/dashboard-filter-bar'
 import { ProductBudgetCard } from './product-budget-card'
 import { SubjectBudgetCard } from './subject-budget-card'
 import { ExpenseAnalysisCard } from './expense-analysis-card'
@@ -80,35 +79,13 @@ export function AnalysisPage({ variant }: AnalysisPageProps) {
           : undefined
       }
       actions={
-        <div className="flex flex-wrap items-center gap-3">
-          <CompanySelect
-            value={dimFilter}
-            onChange={setDimFilter}
-            valueFormat="prefixed"
-            allLabel="全部主体"
-            ariaLabel="选择主体维度（汇总主体自动展开为成员合并口径）"
-            title="选择主体维度（汇总主体自动展开为成员合并口径）"
-            className="h-8 w-[150px] border-input/60 bg-page hover:bg-muted/60 sm:w-[180px]"
-          />
-          {periodOptions.length > 0 && (
-            <div className="flex items-center gap-2">
-              <Select
-                value={selectedPeriod || periodOptions[periodOptions.length - 1] || 'latest'}
-                onValueChange={(v) => setSelectedPeriod(v === 'latest' ? '' : v)}
-              >
-                <SelectTrigger className="h-8 w-[140px] border-input/60 bg-page hover:bg-muted/60" title="选择预览期间">
-                  <SelectValue placeholder="最新期间" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="latest">最新期间</SelectItem>
-                  {[...periodOptions].reverse().map((p) => (
-                    <SelectItem key={p} value={p}>{p}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-        </div>
+        <DashboardFilterBar
+          dimFilter={dimFilter}
+          onDimChange={setDimFilter}
+          selectedPeriod={selectedPeriod}
+          onPeriodChange={setSelectedPeriod}
+          periodOptions={periodOptions}
+        />
       }
     >
       {/* 二级导航：经营分析子页 Tab（路由驱动） */}
