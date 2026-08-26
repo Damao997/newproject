@@ -106,6 +106,8 @@ export function ChangePasswordDialog() {
       setConfirmPassword('')
       setError(null)
       setFieldErrors({})
+      // flash 是"关闭后一次性反馈"：重新打开对话框时清空，避免旧提示与新对话框并存
+      setSuccessFlash(false)
     }
   }, [open])
 
@@ -221,7 +223,12 @@ export function ChangePasswordDialog() {
         </DialogContent>
       </Dialog>
       {successFlash && (
-        <FlashMessage type="success" autoHideMs={3000} onAutoHide={() => setSuccessFlash(false)} className="px-4 pt-2">
+        <FlashMessage
+          type="success"
+          autoHideMs={3000}
+          onAutoHide={() => setSuccessFlash(false)}
+          className="fixed left-1/2 top-16 z-50 -translate-x-1/2 rounded-md border border-border bg-background/95 px-4 py-2 shadow-md"
+        >
           密码修改成功
         </FlashMessage>
       )}
