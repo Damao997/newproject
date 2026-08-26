@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+﻿import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { Pagination } from '@/components/data-table/pagination'
@@ -289,7 +289,7 @@ describe('Pagination', () => {
     const input = screen.getByLabelText('跳转页码')
 
     fireEvent.change(input, { target: { value: '3' } })
-    fireEvent.click(screen.getByText(/跳\s*转/))
+    fireEvent.click(screen.getByText(/^跳\s*转$/))
     expect(onPageChange).toHaveBeenLastCalledWith(3)
 
     // 总页数为 4，输入 999 应 clamp 到 4
@@ -299,7 +299,7 @@ describe('Pagination', () => {
 
     onPageChange.mockClear()
     fireEvent.change(input, { target: { value: 'abc' } })
-    fireEvent.click(screen.getByText(/跳\s*转/))
+    fireEvent.click(screen.getByText(/^跳\s*转$/))
     expect(onPageChange).not.toHaveBeenCalled()
   })
 

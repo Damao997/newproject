@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+﻿import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { useAuthStore } from '@/stores/authStore'
 import type { User } from '@/types'
@@ -72,7 +72,7 @@ describe('用户管理：停用/彻底删除走确认对话框（替代原生 co
     fireEvent.click(await screen.findByRole('menuitem', { name: '停用' }))
     const dialog = await screen.findByRole('dialog')
     expect(dialog).toHaveTextContent('确认停用用户「张三」？停用后其登录会话将失效。')
-    fireEvent.click(screen.getByRole('button', { name: /停\s*用/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^停\s*用$/ }))
     await waitFor(() => expect(disableMutate).toHaveBeenCalledWith('u1', expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) })))
   })
 
@@ -81,7 +81,7 @@ describe('用户管理：停用/彻底删除走确认对话框（替代原生 co
     render(<UsersPage />)
     openRowMenu('张三')
     fireEvent.click(await screen.findByRole('menuitem', { name: '停用' }))
-    fireEvent.click(await screen.findByRole('button', { name: /停\s*用/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /^停\s*用$/ }))
     expect(await screen.findByText('网络错误')).toBeInTheDocument()
   })
 
@@ -90,7 +90,7 @@ describe('用户管理：停用/彻底删除走确认对话框（替代原生 co
     openRowMenu('张三')
     fireEvent.click(await screen.findByRole('menuitem', { name: '停用' }))
     await screen.findByRole('dialog')
-    fireEvent.click(screen.getByRole('button', { name: /取\s*消/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^取\s*消$/ }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(disableMutate).not.toHaveBeenCalled()
   })
