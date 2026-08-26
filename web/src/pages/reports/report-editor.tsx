@@ -269,10 +269,10 @@ export function ReportEditor() {
             <div className="flex items-center gap-2">
               <h3 className="truncate text-base font-semibold text-foreground">{report.title}</h3>
               <Badge variant={REPORT_STATUS_BADGE_VARIANT[report.status] ?? 'secondary'}>{REPORT_STATUS_LABEL[report.status] ?? report.status}</Badge>
-              <span className="text-[12px] text-muted-foreground">v{report.currentVersion}</span>
+              <span className="text-helper text-muted-foreground">v{report.currentVersion}</span>
               {dirty && <Badge variant="destructive">未保存</Badge>}
             </div>
-            <p className="text-[12px] text-muted-foreground">
+            <p className="text-helper text-muted-foreground">
               {report.companyScope.name ?? report.companyScope.code}（{report.companyScope.type === 'summary' ? '汇总主体' : '公司'}）｜财年 {report.fiscalYear}｜期间 {report.period}
             </p>
           </div>
@@ -352,7 +352,7 @@ export function ReportEditor() {
                   <li key={v.id} className="flex items-center gap-2">
                     <Badge variant="outline">v{v.versionNo}</Badge>
                     <span>{v.changeSummary || '（无说明）'}</span>
-                    <span className="text-[12px]">{new Date(v.changedAt).toLocaleString('zh-CN')}</span>
+                    <span className="text-helper">{new Date(v.changedAt).toLocaleString('zh-CN')}</span>
                     <Button variant="ghost" size="sm" className="h-6 px-2" onClick={() => setViewVersionNo(v.versionNo)}>
                       <Eye className="mr-1 h-3.5 w-3.5" /> 查看
                     </Button>
@@ -381,7 +381,7 @@ export function ReportEditor() {
             <CardContent className="p-4">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2">
-                  <span className="text-[12px] text-muted-foreground">{idx + 1}</span>
+                  <span className="text-helper text-muted-foreground">{idx + 1}</span>
                   {s.analysisId ? (
                     <Badge variant="outline" className="shrink-0"><Link2 className="mr-1 h-3 w-3" /> 引用</Badge>
                   ) : (
@@ -424,7 +424,7 @@ export function ReportEditor() {
           </DialogHeader>
           <div className="space-y-1.5">
             <Input value={versionSummary} onChange={(e) => setVersionSummary(e.target.value)} placeholder="版本说明（可选），如：月度定稿" autoFocus />
-            {dirty && <p className="text-[12px] text-destructive">存在未保存的章节修改，快照将基于已保存内容，建议先「保存章节」。</p>}
+            {dirty && <p className="text-helper text-destructive">存在未保存的章节修改，快照将基于已保存内容，建议先「保存章节」。</p>}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setVersionDialogOpen(false)}>取消</Button>

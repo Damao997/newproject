@@ -124,7 +124,7 @@ export function AccountFilterTab() {
                   <div className="mb-2 flex items-center gap-2 text-sm font-medium">
                     {g.type}
                     <span className="text-xs font-normal text-muted-foreground">{g.items.length} 个科目</span>
-                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-micro text-muted-foreground">
                       纳入 {grouped.allStats.get(g.type)?.active ?? 0} · 排除 {grouped.allStats.get(g.type)?.inactive ?? 0}
                     </span>
                   </div>
@@ -163,7 +163,7 @@ export function AccountFilterTab() {
                   </Button>
                 </div>
               )}
-              <div className="flex items-center gap-4 border-t border-border pt-3 text-[10px] text-muted-foreground">
+              <div className="flex items-center gap-4 border-t border-border pt-3 text-micro text-muted-foreground">
                 <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-success" /> 有数据</span>
                 <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-warning" /> 已排除</span>
                 <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full border border-dashed border-muted-foreground/60" /> 暂无数据</span>

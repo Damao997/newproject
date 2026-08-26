@@ -140,7 +140,7 @@ export function ProductConfigPanel({ canCreate = false, canUpdate = false, canDe
       {
         key: 'status', header: '状态',
         render: (row) => (
-          <Badge variant={row.status === 'active' ? 'default' : 'secondary'} className="text-[10px]">
+          <Badge variant={row.status === 'active' ? 'default' : 'secondary'} className="text-micro">
             {row.status === 'active' ? '启用' : '停用'}
           </Badge>
         ),
@@ -152,7 +152,7 @@ export function ProductConfigPanel({ canCreate = false, canUpdate = false, canDe
           return matched.length > 0 ? (
             <div className="flex max-w-xs flex-wrap gap-1">
               {matched.map((s) => (
-                <span key={s} className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{s}</span>
+                <span key={s} className="rounded bg-muted px-1.5 py-0.5 text-caption text-muted-foreground">{s}</span>
               ))}
             </div>
           ) : (

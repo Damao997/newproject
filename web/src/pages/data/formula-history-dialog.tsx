@@ -181,8 +181,8 @@ export function HistoryDialog({ metric, formatFormula, onClose, canApprove = fal
               </div>
               {(added.length > 0 || removed.length > 0) && (
                 <div className="flex flex-wrap gap-1 text-xs">
-                  {added.map(c => <Badge key={c} variant="success" className="text-[10px]">+{formatFormula(`{${c}}`)}</Badge>)}
-                  {removed.map(c => <Badge key={c} variant="destructive" className="text-[10px]">-{formatFormula(`{${c}}`)}</Badge>)}
+                  {added.map(c => <Badge key={c} variant="success" className="text-micro">+{formatFormula(`{${c}}`)}</Badge>)}
+                  {removed.map(c => <Badge key={c} variant="destructive" className="text-micro">-{formatFormula(`{${c}}`)}</Badge>)}
                 </div>
               )}
               <Button variant="ghost" size="sm" onClick={() => setCompareVersions([])}>清除对比</Button>

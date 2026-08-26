@@ -169,7 +169,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
           const name = codeNameMap.get(code) ?? code
           return dim ? `${name}(${DIM_LABELS[dim] ?? dim})` : name
         })()
-        return <Badge key={i} variant="secondary" className="mx-0.5 font-mono text-[11px]">{label}</Badge>
+        return <Badge key={i} variant="secondary" className="mx-0.5 font-mono text-caption">{label}</Badge>
       }
       return <span key={i} className="font-mono">{part}</span>
     })

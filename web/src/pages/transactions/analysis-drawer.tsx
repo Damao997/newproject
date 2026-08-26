@@ -167,7 +167,7 @@ function TransactionDrawerBody({ target, onClose }: { target: TransactionAnalysi
               snapshot ? (
                 <div className="rounded-md border bg-muted/30 p-3">
                   <div className="flex items-baseline justify-between">
-                    <span className="text-[11px] text-muted-foreground">期末余额</span>
+                    <span className="text-caption text-muted-foreground">期末余额</span>
                     <span className="font-num text-lg font-bold text-foreground">
                       {formatMoneyWan(snapshot.closingBalance / 10000)}<span className="ml-0.5 text-xs font-normal text-muted-foreground">万</span>
                     </span>
@@ -183,7 +183,7 @@ function TransactionDrawerBody({ target, onClose }: { target: TransactionAnalysi
                       total > 0 ? ((AGING_GROUPS.slice(from, to).reduce((s, b) => s + (snapshot.aging[b] ?? 0), 0) / total) * 100).toFixed(1) : '0.0'
                     return (
                       <>
-                        <p className="mt-1.5 flex justify-between font-num text-[11px] text-muted-foreground">
+                        <p className="mt-1.5 flex justify-between font-num text-caption text-muted-foreground">
                           <span>1年内 {pct(0, 5)}%</span>
                           <span>1-3年 {pct(5, 7)}%</span>
                           <span className={risk?.level === 'danger' ? 'text-destructive' : risk?.level === 'watch' ? 'text-warning-strong' : 'text-muted-foreground'}>
@@ -208,7 +208,7 @@ function TransactionDrawerBody({ target, onClose }: { target: TransactionAnalysi
                         const isDanger = g === '3年以上' && v > 0
                         return (
                           <div key={g} className={cn('rounded-md border px-1.5 py-1 text-center', isDanger ? 'border-destructive/30 bg-destructive/[0.06]' : 'border-border bg-background')}>
-                            <p className="text-[10px] text-muted-foreground">{g}</p>
+                            <p className="text-micro text-muted-foreground">{g}</p>
                             <p className={cn('font-num text-xs', isDanger ? 'font-medium text-destructive' : 'text-foreground')}>
                               {v !== 0 ? formatMoneyWan(v / 10000) : '-'}
                             </p>

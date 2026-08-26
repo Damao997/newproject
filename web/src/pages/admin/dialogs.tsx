@@ -416,10 +416,10 @@ function PermissionMatrix({ perms, selected, onToggle, onSetAll, locked = false 
                     <span className="flex items-center gap-1">
                       {PERMISSION_LABELS[p.resource] ?? p.resource}
                       {isHighRiskPermission(p.resource) && (
-                        <Badge variant="destructive" className="px-1 py-0 text-[10px] leading-4">高危</Badge>
+                        <Badge variant="destructive" className="px-1 py-0 text-micro leading-4">高危</Badge>
                       )}
                     </span>
-                    <span className="font-mono text-[10px] text-muted-foreground">{p.resource}</span>
+                    <span className="font-mono text-micro text-muted-foreground">{p.resource}</span>
                   </span>
                 </label>
               )

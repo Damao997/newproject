@@ -63,7 +63,7 @@ function Toolbar({ editor, onPolish, onEditLink }: { editor: Editor; onPolish?: 
             type="button"
             title="AI 润色（先选中文本）"
             onClick={onPolish}
-            className="flex h-7 items-center gap-1 rounded px-2 text-[12px] text-primary transition-colors hover:bg-primary/10"
+            className="flex h-7 items-center gap-1 rounded px-2 text-helper text-primary transition-colors hover:bg-primary/10"
           >
             <Sparkles className="h-3.5 w-3.5" /> AI 润色
           </button>
@@ -122,7 +122,7 @@ function PolishPanel({
             type="button"
             disabled={ai.streaming}
             onClick={() => run(s)}
-            className={cn('rounded px-2 py-0.5 text-[12px] transition-colors', style === s ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}
+            className={cn('rounded px-2 py-0.5 text-helper transition-colors', style === s ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}
           >
             {STYLE_LABEL[s]}
           </button>
@@ -138,12 +138,12 @@ function PolishPanel({
         )}
       </div>
       <div className="flex items-center justify-end gap-2 border-t px-3 py-2">
-        <button type="button" onClick={onClose} className="rounded px-2 py-1 text-[12px] text-muted-foreground hover:bg-muted">取消</button>
+        <button type="button" onClick={onClose} className="rounded px-2 py-1 text-helper text-muted-foreground hover:bg-muted">取消</button>
         <button
           type="button"
           disabled={ai.streaming || !finalText}
           onClick={() => onApply(finalText)}
-          className="flex items-center gap-1 rounded bg-primary px-2 py-1 text-[12px] text-primary-foreground disabled:opacity-40"
+          className="flex items-center gap-1 rounded bg-primary px-2 py-1 text-helper text-primary-foreground disabled:opacity-40"
         >
           <Check className="h-3.5 w-3.5" /> 替换选区
         </button>
@@ -233,7 +233,7 @@ export function RichTextEditor({ value, onChange, placeholder, className, editab
     <div className={cn('overflow-hidden rounded-md border bg-background', className)}>
       {editable && <Toolbar editor={editor} onPolish={polishEnabled ? handlePolish : undefined} onEditLink={openLinkDialog} />}
       {hint && (
-        <p role="status" className="border-t px-3 py-1.5 text-[12px] text-muted-foreground">{hint.text}</p>
+        <p role="status" className="border-t px-3 py-1.5 text-helper text-muted-foreground">{hint.text}</p>
       )}
       <div className="flex">
         <div className="min-w-0 flex-1">

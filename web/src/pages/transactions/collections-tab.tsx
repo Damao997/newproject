@@ -498,7 +498,7 @@ export function CollectionsTab({ stickyTop = 0 }: { stickyTop?: number }) {
         return (
           <span className={cn('text-xs whitespace-nowrap', overdue && 'font-medium text-destructive')} title={overdue ? '已逾期' : undefined}>
             {row.plannedDate ?? '-'}
-            {overdue && <span className="ml-1 text-[10px] font-normal text-muted-foreground">已逾期</span>}
+            {overdue && <span className="ml-1 text-micro font-normal text-muted-foreground">已逾期</span>}
           </span>
         )
       },
@@ -597,7 +597,7 @@ export function CollectionsTab({ stickyTop = 0 }: { stickyTop?: number }) {
             </button>
           ))}
           <span className="ml-auto text-muted-foreground">
-            应收金额合计 <span className="font-num font-medium text-destructive">{formatMoneyWan(stats.totalBalance / 10000)}<span className="ml-0.5 text-[10px] font-normal">万</span></span>
+            应收金额合计 <span className="font-num font-medium text-destructive">{formatMoneyWan(stats.totalBalance / 10000)}<span className="ml-0.5 text-micro font-normal">万</span></span>
           </span>
         </div>
       )}

@@ -111,6 +111,12 @@ export default {
           { fontFeatureSettings: '"tnum"' },
         ],
       },
+      fontSize: {
+        // 语义字号：正文最小 12px 红线；micro 仅限装饰性后缀（单位标注/角标），caption 辅助信息，helper 小号正文/小按钮
+        micro: ["10px", { lineHeight: "14px" }],
+        caption: ["11px", { lineHeight: "16px" }],
+        helper: ["12px", { lineHeight: "18px" }],
+      },
       keyframes: {
         "accordion-down": {
           from: { height: 0 },

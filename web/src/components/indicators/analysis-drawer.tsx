@@ -221,7 +221,7 @@ function DrawerBody({ target, onClose }: { target: AnalysisTarget; onClose: () =
                   <span className="text-destructive">{ai.error}</span>
                 ) : (
                   <>
-                    <p className="mb-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+                    <p className="mb-1 flex items-center gap-1 text-caption text-muted-foreground">
                       <Sparkles className="h-3 w-3 text-primary" />
                       {ai.streaming ? 'AI 初稿生成中…（模型推理通常需 10-40 秒）' : 'AI 初稿已生成（预览确认后插入正文）'}
                     </p>

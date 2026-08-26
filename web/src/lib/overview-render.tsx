@@ -22,7 +22,7 @@ export function renderOverviewText(text: string): React.ReactNode {
     if (dataRows.length > 0) {
       nodes.push(
         <div key={key++} className="my-1 overflow-x-auto">
-          <table className="w-full border-collapse text-[12px]">
+          <table className="w-full border-collapse text-helper">
             <tbody>
               {dataRows.map((row, ri) => (
                 <tr key={ri} className={ri === 0 ? 'bg-muted/50' : undefined}>

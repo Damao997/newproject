@@ -92,7 +92,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onMobileClose
         <div className={cn('shrink-0 p-2', collapsed && 'flex justify-center')}>
           {/* 当前部署版本（部署脚本注入 meta app-version；开发环境显示 dev） */}
           {!collapsed && (
-            <p className="mb-1 px-2 text-[11px] text-sidebar-fg">版本 {getCurrentVersion()}</p>
+            <p className="mb-1 px-2 text-caption text-sidebar-fg">版本 {getCurrentVersion()}</p>
           )}
         </div>
         {/* 折叠条：右缘透明按钮（仅箭头图标，三风格自适应）；展开态箭头半透明，hover 转选中色；收起态箭头选中色常驻 */}

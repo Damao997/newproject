@@ -124,7 +124,7 @@ export function SubjectBudgetPanel({ canCreate = false, canUpdate = false, canDe
       {
         key: 'entityType', header: '类型',
         render: (row) => (
-          <Badge variant={row.entityType === 'summary' ? 'secondary' : 'outline'} className="text-[10px]">
+          <Badge variant={row.entityType === 'summary' ? 'secondary' : 'outline'} className="text-micro">
             {row.entityType === 'summary' ? '汇总主体' : '单体公司'}
           </Badge>
         ),
@@ -133,7 +133,7 @@ export function SubjectBudgetPanel({ canCreate = false, canUpdate = false, canDe
       {
         key: 'status', header: '状态',
         render: (row) => (
-          <Badge variant={row.status === 'active' ? 'default' : 'secondary'} className="text-[10px]">
+          <Badge variant={row.status === 'active' ? 'default' : 'secondary'} className="text-micro">
             {row.status === 'active' ? '启用' : '停用'}
           </Badge>
         ),

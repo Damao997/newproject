@@ -114,7 +114,7 @@ function ReportList({ onOpen, canCreate, onCreate, canDelete, filterRef, headerH
       render: (r) => (
         <>
           {r.companyScope.name ?? r.companyScope.code}
-          <span className="ml-1 text-[11px]">({r.companyScope.type === 'summary' ? '汇总' : '公司'})</span>
+          <span className="ml-1 text-caption">({r.companyScope.type === 'summary' ? '汇总' : '公司'})</span>
         </>
       ),
     },

@@ -148,7 +148,7 @@ export function AnalysisManager({ stickyTop = 0 }: { stickyTop?: number }) {
       render: (a) => (
         <>
           <span title={a.companyName ?? a.companyCode}>{getDisplayName(a.companyCode, a.companyName)}</span>
-          <div className="font-mono text-[11px]">{a.companyCode}</div>
+          <div className="font-mono text-caption">{a.companyCode}</div>
         </>
       ),
     },
@@ -159,10 +159,10 @@ export function AnalysisManager({ stickyTop = 0 }: { stickyTop?: number }) {
           <span className="inline-flex items-center gap-1">
             {a.subjectName ?? a.subjectCode}
             {a.subjectCode === 'OVERVIEW' && (
-              <Badge variant="outline" className="border-primary/40 px-1.5 py-0 text-[10px] text-primary">AI 预分析</Badge>
+              <Badge variant="outline" className="border-primary/40 px-1.5 py-0 text-micro text-primary">AI 预分析</Badge>
             )}
           </span>
-          <div className="font-mono text-[11px]">{a.subjectCode}</div>
+          <div className="font-mono text-caption">{a.subjectCode}</div>
         </>
       ),
     },
@@ -367,7 +367,7 @@ function RefsBadge({ refs }: { refs: { reportId: string; reportTitle: string; re
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="h-6 px-2 text-[12px]">
+        <Button variant="outline" size="sm" className="h-6 px-2 text-helper">
           <Link2 className="mr-1 h-3 w-3" /> 引用 {refs.length}
         </Button>
       </PopoverTrigger>

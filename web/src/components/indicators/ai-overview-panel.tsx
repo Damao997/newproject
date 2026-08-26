@@ -102,7 +102,7 @@ export function AiOverviewDialog({ open, onOpenChange, onViewAnalyses, companyCo
               ) : (
                 <div className="rounded-md border bg-muted/20 px-3 py-2 text-[13px] leading-relaxed" aria-live="polite">
                   {slot.status === 'streaming' && (
-                    <p className="mb-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+                    <p className="mb-1 flex items-center gap-1 text-caption text-muted-foreground">
                       <Loader2 className="h-3 w-3 animate-spin" /> AI 预分析生成中…（模型推理通常需 10-40 秒）
                     </p>
                   )}

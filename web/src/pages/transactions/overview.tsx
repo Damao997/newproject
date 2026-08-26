@@ -199,14 +199,14 @@ export default function TransactionsOverviewPage() {
                             <div className="mt-2">
                               <AgingStackBar aging={item.aging} closingBalance={item.totalClosingBalance} />
                             </div>
-                            <p className="mt-1.5 flex justify-between font-num text-[11px] text-muted-foreground">
+                            <p className="mt-1.5 flex justify-between font-num text-caption text-muted-foreground">
                               <span>1年内 {agingPct(item.aging, item.totalClosingBalance, 0, 5)}%</span>
                               <span>1-3年 {agingPct(item.aging, item.totalClosingBalance, 5, 7)}%</span>
                               <span className={risk?.level === 'danger' ? 'text-destructive' : risk?.level === 'watch' ? 'text-warning-strong' : 'text-muted-foreground'}>
                                 3年+ {agingPct(item.aging, item.totalClosingBalance, 7, 8)}%
                               </span>
                             </p>
-                            <div className="mt-2 flex flex-wrap gap-3 border-t border-dashed border-border pt-2 text-[11px] text-muted-foreground">
+                            <div className="mt-2 flex flex-wrap gap-3 border-t border-dashed border-border pt-2 text-caption text-muted-foreground">
                               {changePct !== null && (
                                 <span className={cn('font-medium', getChangeColor(changePct))}>
                                   {changePct > 0 ? '↑' : changePct < 0 ? '↓' : ''} {Math.abs(changePct).toFixed(1)}% 较期初
@@ -214,7 +214,7 @@ export default function TransactionsOverviewPage() {
                               )}
                             </div>
                             {risk && (
-                              <p className={cn('mt-1.5 flex items-center gap-1.5 text-[11px]', risk.level === 'danger' ? 'text-destructive' : risk.level === 'watch' ? 'text-warning-strong' : 'text-success-strong')}>
+                              <p className={cn('mt-1.5 flex items-center gap-1.5 text-caption', risk.level === 'danger' ? 'text-destructive' : risk.level === 'watch' ? 'text-warning-strong' : 'text-success-strong')}>
                                 <span className={cn('inline-block h-1.5 w-1.5 shrink-0 rounded-full', risk.level === 'danger' ? 'bg-destructive' : risk.level === 'watch' ? 'bg-warning' : 'bg-success')} />
                                 {risk.text}
                               </p>

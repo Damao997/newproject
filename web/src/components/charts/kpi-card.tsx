@@ -60,13 +60,13 @@ export function KpiCard({ data, index = 0, onClick }: KpiCardProps) {
             <span className="font-num block truncate text-2xl font-bold leading-tight tracking-tight text-foreground" title="本月合计（万元）">
               {formatMoneyWan(data.monthActual)}
             </span>
-            <span className="text-[10px] text-muted-foreground/70">本月合计（万元）</span>
+            <span className="text-micro text-muted-foreground/70">本月合计（万元）</span>
           </div>
           <div className="shrink-0 text-right">
             <span className={cn('font-num block text-lg font-bold leading-tight tracking-tight', rateColorClass(data.monthRate))} title="月度预算达成率">
               {rateText(data.monthRate)}
             </span>
-            <span className="text-[10px] text-muted-foreground/70">月度达成率</span>
+            <span className="text-micro text-muted-foreground/70">月度达成率</span>
           </div>
         </div>
         {/* 小字体区：累计实际 / 同比 / 累计达成率 */}

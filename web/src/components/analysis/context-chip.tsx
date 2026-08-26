@@ -5,7 +5,7 @@
 export function ContextChip({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col rounded-md border bg-muted/30 px-3 py-1.5">
-      <span className="text-[11px] text-muted-foreground">{label}</span>
+      <span className="text-caption text-muted-foreground">{label}</span>
       <span className="font-num text-[13px] text-foreground">{value}</span>
     </div>
   )

@@ -251,7 +251,7 @@ export function ConsolidationAdjustDialog({ open, onClose }: ConsolidationAdjust
                     />
                     <span className="min-w-0 flex-1 truncate" title={s.code}>{s.name}</span>
                     {!s.isInternalElimination && (
-                      <Badge variant="outline" className="shrink-0 text-[10px] text-muted-foreground">映射未标记内部抵消</Badge>
+                      <Badge variant="outline" className="shrink-0 text-micro text-muted-foreground">映射未标记内部抵消</Badge>
                     )}
                   </label>
                 ))}
