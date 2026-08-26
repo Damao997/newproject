@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { KpiSparkline } from './kpi-sparkline'
+import { ACHIEVEMENT_RATE_THRESHOLDS } from '@/lib/constants'
 import { formatMoneyWan, formatPercent } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import type { KpiData } from '@/types'
@@ -28,11 +29,11 @@ function rateText(rate: number | null): string {
   return rate === null ? '–' : formatPercent(rate / 100)
 }
 
-/** 达成率红绿灯三档：≥75 达标绿（持续关注）/ 60-75 预警黄（需改善计划）/ <60 未达标红（须根因分析+专项整改）；无预算灰 */
+/** 达成率红绿灯三档：≥75 达标绿 / 60-75 预警黄 / <60 未达标红；无预算灰（阈值见 ACHIEVEMENT_RATE_THRESHOLDS） */
 function rateColorClass(rate: number | null): string {
   if (rate === null) return 'text-muted-foreground'
-  if (rate >= 75) return 'text-success-strong'
-  if (rate >= 60) return 'text-warning-strong'
+  if (rate >= ACHIEVEMENT_RATE_THRESHOLDS.PASS) return 'text-success-strong'
+  if (rate >= ACHIEVEMENT_RATE_THRESHOLDS.WARN) return 'text-warning-strong'
   return 'text-destructive'
 }
 

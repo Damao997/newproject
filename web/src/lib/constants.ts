@@ -178,3 +178,11 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   rule_change: '公式规则变更',
   import_rollback: '批次回滚',
 }
+
+/** 达成率红绿灯阈值（与 kpi-card 分级语义联动；后端口径变更时先改此处） */
+export const ACHIEVEMENT_RATE_THRESHOLDS = {
+  /** ≥ 达标线：绿色（持续关注） */
+  PASS: 75,
+  /** ≥ 预警线且 < 达标线：黄色（需改善计划） */
+  WARN: 60,
+} as const
