@@ -71,7 +71,7 @@ function BreadcrumbInner({ singleLine }: { singleLine: boolean }) {
             {isLast ? (
               <span className="font-medium text-foreground">{crumb.label}</span>
             ) : crumb.leaf ? (
-              <Link to={crumb.path} className="transition-colors hover:text-foreground">
+              <Link to={crumb.path} className="transition-colors hover:text-primary">
                 {crumb.label}
               </Link>
             ) : (

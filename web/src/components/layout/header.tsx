@@ -54,7 +54,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   }
 
   return (
-    <header className="z-40 w-full shrink-0 border-b border-border bg-background font-sans">
+    <header className="z-40 w-full shrink-0 border-b border-border/60 bg-background font-sans">
       <div className="flex h-14 items-center px-4">
         {/* 移动端：菜单按钮 + 品牌标识（<640px 仅 Logo 最大化内容空间，640-767px 标题单行截断） */}
         <div className="flex min-w-0 flex-1 items-center gap-2 md:hidden">

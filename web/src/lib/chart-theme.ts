@@ -103,6 +103,10 @@ export const tooltipShell = (ink = CHART_INK) => ({
   borderWidth: 1,
   padding: [12, 16] as [number, number],
   textStyle: { color: ink.text, fontSize: 13 },
+  // 对齐 antd 浮层三层暖褐阴影（boxShadowSecondary），tooltip 与 antd 弹层质感统一
+  shadowBlur: 12,
+  shadowColor: 'rgba(28, 20, 12, 0.08)',
+  shadowOffsetY: 4,
 })
 
 /** tooltip 数值片段：等宽数字，保证多行对齐 */

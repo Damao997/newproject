@@ -254,7 +254,8 @@ export function DataTable<T>({
     >
       <div
         className={cn(
-          'bg-background',
+          // antd Table 观感：白底容器带浅边框，与浅灰外层容器形成双层分割
+          'border border-border/60 bg-background',
           maxHeight ? 'min-h-0 flex-1 overflow-auto rounded-card' : 'overflow-x-auto',
           className,
         )}
@@ -278,7 +279,7 @@ export function DataTable<T>({
           )}
           {caption && <caption className="sr-only">{caption}</caption>}
           <thead className={cn(!maxHeight && '[&_tr]:border-b', maxHeight && TABLE_HEADER_STICKY)}>
-            <tr className={cn('bg-muted/50', !maxHeight && 'border-b')}>
+            <tr className={cn('bg-muted/70', !maxHeight && 'border-b')}>
               {cols.map((col) => {
                 const sortState = activeSort?.key === col.key ? activeSort : null
                 const stickyRight = col.sticky === 'right'
@@ -307,7 +308,7 @@ export function DataTable<T>({
                       <button
                         type="button"
                         onClick={() => handleSort(col.key)}
-                        className="inline-flex items-center gap-1 font-medium hover:text-foreground"
+                        className="inline-flex items-center gap-1 font-medium hover:text-primary"
                         aria-label={`按${typeof col.header === 'string' ? col.header : col.key}排序`}
                       >
                         {col.header}
