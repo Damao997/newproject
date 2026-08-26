@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { PageContainer } from '@/components/layout/page-container'
 import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { FlashMessage } from '@/components/ui/flash-message'
+import { useConfirm } from '@/components/ui/confirm-dialog'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { Pagination } from '@/components/data-table/pagination'
 import { usePermission } from '@/hooks/usePermission'
@@ -65,6 +66,9 @@ export default function UsersPage() {
   // 操作反馈（成功/失败，自动消失）
   const [flash, setFlash] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
+  // 确认对话框：停用 danger 红色；彻底删除 danger + 输入用户名防呆
+  const { confirm, element: confirmElement } = useConfirm()
+
   // 真实数据（用户量小，取较大页在前端做筛选/分页，保留原交互）
   const { data: usersData } = useUsers({ page: 1, pageSize: USER_FETCH_LIMIT })
   const { data: rolesData } = useRoles()
@@ -112,8 +116,14 @@ export default function UsersPage() {
   const alertError = (fallback: string) => (e: unknown) => setFlash({ type: 'error', text: e instanceof Error ? e.message : fallback })
 
   /** 停用：走专用 DELETE 接口（后端会同步吊销刷新令牌），需二次确认 */
-  const handleDisableUser = (u: User) => {
-    if (!window.confirm(`确认停用用户「${u.name}」？停用后其登录会话将失效。`)) return
+  const handleDisableUser = async (u: User) => {
+    const ok = await confirm({
+      title: '停用用户',
+      description: `确认停用用户「${u.name}」？停用后其登录会话将失效。`,
+      confirmText: '停用',
+      danger: true,
+    })
+    if (!ok) return
     disableUser.mutate(u.id, {
       onSuccess: () => setFlash({ type: 'success', text: `已停用用户「${u.name}」` }),
       onError: alertError('停用失败'),
@@ -128,8 +138,15 @@ export default function UsersPage() {
     })
   }
 
-  const handlePurgeUser = (u: User) => {
-    if (!window.confirm(`将物理删除用户「${u.name}」（${u.username}），此操作不可恢复！确认彻底删除？`)) return
+  const handlePurgeUser = async (u: User) => {
+    const ok = await confirm({
+      title: '彻底删除用户',
+      description: `将物理删除用户「${u.name}」（${u.username}），此操作不可恢复！请输入用户名确认。`,
+      confirmText: '彻底删除',
+      danger: true,
+      requireInput: u.username,
+    })
+    if (!ok) return
     purgeUser.mutate(u.id, {
       onSuccess: () => setFlash({ type: 'success', text: `已彻底删除用户「${u.name}」` }),
       onError: alertError('彻底删除失败'),
@@ -380,6 +397,7 @@ export default function UsersPage() {
         onClose={() => setResetUser(null)}
         onSuccess={() => setFlash({ type: 'success', text: '密码已重置，首次登录须修改' })}
       />
+      {confirmElement}
     </PageContainer>
   )
 }
