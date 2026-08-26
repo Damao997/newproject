@@ -6,13 +6,14 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { EmptyState } from '@/components/ui/empty-state'
+import { FlashMessage } from '@/components/ui/flash-message'
 import { usePageStore } from '@/stores/pageStateStore'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import type { InventoryDetailRow } from '@/hooks/api-queries'
 import type { AnalysisTarget } from '@/components/indicators/analysis-drawer'
 import { exportToExcel } from '@/lib/export'
 import { cn, formatMoneyWan, getChangeColor, getChangePrefix } from '@/lib/utils'
-import { ArrowDown, ArrowUp, ArrowUpDown, Download, FileText, Package, RefreshCw, Search, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Download, FileText, Loader2, Package, RefreshCw, Search, X } from 'lucide-react'
 import {
   DIM_EMPTY_HINTS,
   DIM_EMPTY_TITLES,
@@ -235,9 +236,12 @@ export function DetailTable({
   const selectedRows = useMemo(() => visibleRows.filter((r) => selected.has(r.key)), [visibleRows, selected])
 
   const [exporting, setExporting] = useState(false)
+  // 导出结果反馈（成功/失败，自动消失）
+  const [exportFlash, setExportFlash] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const doExport = async (rows: ViewRow[], tag = '') => {
-    if (rows.length === 0) return
+    if (rows.length === 0 || exporting) return
     setExporting(true)
+    setExportFlash(null)
     try {
       const dimLabel = detailDim === 'company' ? '公司汇总' : detailDim === 'category' ? '品类展开' : '明细'
       const sheetName = detailDim === 'company' ? '按公司汇总' : detailDim === 'category' ? '按品类展开' : '公司×品类明细'
@@ -264,6 +268,9 @@ export function DetailTable({
           return { label: r.label, ...base }
         }),
       })
+      setExportFlash({ type: 'success', text: `已导出 ${rows.length} 行（${sheetName}）` })
+    } catch (e) {
+      setExportFlash({ type: 'error', text: e instanceof Error ? e.message : '导出失败，请稍后重试' })
     } finally {
       setExporting(false)
     }
@@ -308,7 +315,7 @@ export function DetailTable({
           <>
             <span className="text-xs text-muted-foreground">已选 <span className="font-num">{selected.size}</span> 行</span>
             <Button variant="outline" size="sm" disabled={exporting || selectedRows.length === 0} onClick={() => doExport(selectedRows, '_选中')}>
-              <Download className="mr-1 h-3.5 w-3.5" />
+              {exporting ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1 h-3.5 w-3.5" />}
               导出选中
             </Button>
             <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>取消选择</Button>
@@ -325,10 +332,15 @@ export function DetailTable({
           />
         </div>
         <Button variant="outline" size="sm" disabled={exporting || loading || visibleRows.length === 0} onClick={() => doExport(visibleRows)}>
-          <Download className="mr-1 h-3.5 w-3.5" />
+          {exporting ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1 h-3.5 w-3.5" />}
           导出 Excel
         </Button>
       </div>
+      {exportFlash && (
+        <FlashMessage type={exportFlash.type} autoHideMs={4000} onAutoHide={() => setExportFlash(null)} className="mt-2">
+          {exportFlash.text}
+        </FlashMessage>
+      )}
       </Card>
 
       {/* 展示层：明细表（表格卡） */}

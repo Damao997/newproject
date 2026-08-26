@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { MonthPicker } from '@/components/ui/month-picker'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Collapsible } from '@/components/ui/collapsible'
+import { FlashMessage } from '@/components/ui/flash-message'
 import { CompanyMultiSelect } from '@/components/filters/company-select'
 import { PageContainer } from '@/components/layout/page-container'
 import { SubPageTabs } from '@/components/layout/sub-page-tabs'
@@ -24,9 +25,10 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   Filter,
+  Loader2,
 } from 'lucide-react'
 
-type CrossRow = { code: string; name: string; valueType?: 'amount' | 'quantity' | 'ratio'; level: number; parentCode: string | null; isLeaf: boolean; values: Record<string, number> }
+type CrossRow = { code: string; name: string; dataType?: 'data' | 'calc' | 'display'; valueType?: 'amount' | 'quantity' | 'ratio'; level: number; parentCode: string | null; isLeaf: boolean; values: Record<string, number> }
 
 /**
  * 数据管理 · 数据预览：指标 × 公司的交叉表浏览（多层级展开、全部展开/折叠、
@@ -35,6 +37,9 @@ type CrossRow = { code: string; name: string; valueType?: 'amount' | 'quantity' 
 export default function DataBrowsePage() {
   const { can } = usePermission()
   const canExport = can('data', 'export')
+  // 导出 loading + 结果反馈（成功/失败，自动消失）
+  const [exporting, setExporting] = useState(false)
+  const [exportFlash, setExportFlash] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   // 吸顶测量：标题区 + 筛选卡高度实时测量，驱动筛选卡/表格容器吸顶偏移
   const { headerRef, filterRef, headerHeight, filterHeight } = useStickyHeader()
   const stickyTop = headerHeight + filterHeight
@@ -165,28 +170,39 @@ export default function DataBrowsePage() {
         header: displayNameMap.get(code) ?? code,
         align: 'right',
         cellClassName: 'font-num',
-        // 按科目值类型渲染：金额千分位 / 数量整数 / 比率百分比
-        render: (r) => formatMetricValue(r.values[code] ?? 0, r.valueType),
+        // 按科目值类型渲染：金额千分位 / 数量整数 / 比率百分比；展示类（display）只读展示，值列统一渲染「—」
+        render: (r) => (r.dataType === 'display' ? '—' : formatMetricValue(r.values[code] ?? 0, r.valueType)),
       })
     }
     return cols
   }, [visibleCompanyCodes, displayNameMap, hasChildrenSet, expandedRowSet, toggleRowExpand])
 
   const handleBrowseExport = async () => {
-    const rows = (crossTable?.rows ?? []).map((r) => {
-      const row: Record<string, unknown> = { name: r.name }
-      for (const code of visibleCompanyCodes) row[code] = Number((r.values[code] ?? 0).toFixed(2))
-      return row
-    })
-    await exportToExcel({
-      filename: `数据明细_${new Date().toISOString().slice(0, 10)}.xlsx`,
-      sheetName: '数据明细',
-      columns: [
-        { header: '指标', key: 'name', width: 20 },
-        ...visibleCompanyCodes.map((code) => ({ header: companyNameMap.get(code) ?? code, key: code, width: 16 })),
-      ],
-      rows,
-    })
+    if (exporting) return
+    setExporting(true)
+    setExportFlash(null)
+    try {
+      const rows = ((crossTable?.rows ?? []) as CrossRow[]).map((r) => {
+        const row: Record<string, unknown> = { name: r.name }
+        // 展示类（display）只读展示，导出值列统一写「—」
+        for (const code of visibleCompanyCodes) row[code] = r.dataType === 'display' ? '—' : Number((r.values[code] ?? 0).toFixed(2))
+        return row
+      })
+      await exportToExcel({
+        filename: `数据明细_${new Date().toISOString().slice(0, 10)}.xlsx`,
+        sheetName: '数据明细',
+        columns: [
+          { header: '指标', key: 'name', width: 20 },
+          ...visibleCompanyCodes.map((code) => ({ header: companyNameMap.get(code) ?? code, key: code, width: 16 })),
+        ],
+        rows,
+      })
+      setExportFlash({ type: 'success', text: `已导出 ${rows.length} 行（${visibleCompanyCodes.length} 家公司）` })
+    } catch (e) {
+      setExportFlash({ type: 'error', text: e instanceof Error ? e.message : '导出失败，请稍后重试' })
+    } finally {
+      setExporting(false)
+    }
   }
 
   return (
@@ -256,9 +272,9 @@ export default function DataBrowsePage() {
               {isAllRowsExpanded ? '全部折叠' : '全部展开'}
             </Button>
             {canExport && (
-              <Button variant="outline" size="sm" onClick={handleBrowseExport}>
-                <Download className="mr-2 h-4 w-4" />
-                导出
+              <Button variant="outline" size="sm" onClick={handleBrowseExport} disabled={exporting}>
+                {exporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                {exporting ? '导出中…' : '导出'}
               </Button>
             )}
           </div>
@@ -270,6 +286,11 @@ export default function DataBrowsePage() {
         <Card className="flex min-h-0 flex-1 flex-col rounded-card border border-border">
           <div className="border-b px-4 py-2.5">
             <h3 className="text-base font-semibold tracking-tight">数据预览</h3>
+            {exportFlash && (
+              <FlashMessage type={exportFlash.type} autoHideMs={4000} onAutoHide={() => setExportFlash(null)} className="mt-1">
+                {exportFlash.text}
+              </FlashMessage>
+            )}
           </div>
           <div className="flex min-h-0 flex-1 flex-col p-4">
             {crossLoading ? (

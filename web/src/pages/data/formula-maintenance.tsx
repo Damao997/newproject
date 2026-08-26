@@ -35,8 +35,9 @@ import {
   useDependencies,
   useAvailablePeriods,
 } from '@/hooks/api-queries'
-import { Pencil, Sparkles, History, Trash2, MoreHorizontal, Plus, Calculator, Download, ShieldAlert, RotateCcw, ArrowRightLeft, ChevronDown, ChevronRight, Filter } from 'lucide-react'
+import { Pencil, Sparkles, History, Trash2, MoreHorizontal, Plus, Calculator, Download, Loader2, ShieldAlert, RotateCcw, ArrowRightLeft, ChevronDown, ChevronRight, Filter } from 'lucide-react'
 import { Collapsible } from '@/components/ui/collapsible'
+import { FlashMessage } from '@/components/ui/flash-message'
 import { usePageStore } from '@/stores/pageStateStore'
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
@@ -137,6 +138,34 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
   const [convertError, setConvertError] = useState<string | null>(null)
   const { confirm, element: confirmElement } = useConfirm()
   const [listError, setListError] = useState<string | null>(null)
+  // 导出公式（JSON）：loading + 结果反馈（成功/失败，自动消失）
+  const [formulaExporting, setFormulaExporting] = useState(false)
+  const [formulaExportFlash, setFormulaExportFlash] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  // 公式导出：fetch 接口返回 { code:0, data:[...] }，失败时展示错误信息（不再静默忽略）
+  const handleExportFormulas = async () => {
+    if (formulaExporting) return
+    setFormulaExporting(true)
+    setFormulaExportFlash(null)
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || '/api/v1'}/data/metrics/formulas/export`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('accessToken') ?? ''}` },
+      })
+      const json = await res.json()
+      if (!res.ok || !json?.data) throw new Error(json?.message || '导出失败，请稍后重试')
+      const blob = new Blob([JSON.stringify(json.data, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `formula-export-${new Date().toISOString().slice(0, 10)}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      setFormulaExportFlash({ type: 'success', text: `已导出 ${json.data.length} 条公式` })
+    } catch (e) {
+      setFormulaExportFlash({ type: 'error', text: e instanceof Error ? e.message : '导出失败，请稍后重试' })
+    } finally {
+      setFormulaExporting(false)
+    }
+  }
   const [subjectSearch, setSubjectSearch] = useState('')
   // 插入科目时的可选期间维度后缀（''=当前列，跨期间公式如周转天数用）
   const [insertDim, setInsertDim] = useState('')
@@ -580,26 +609,9 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
             </Button>
           )}
           {effectiveUpdate && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={async () => {
-                try {
-                  const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || '/api/v1'}/data/metrics/formulas/export`, {
-                    headers: { Authorization: `Bearer ${localStorage.getItem('accessToken') ?? ''}` },
-                  })
-                  const json = await res.json()
-                  const blob = new Blob([JSON.stringify(json.data, null, 2)], { type: 'application/json' })
-                  const url = URL.createObjectURL(blob)
-                  const a = document.createElement('a')
-                  a.href = url
-                  a.download = `formula-export-${new Date().toISOString().slice(0, 10)}.json`
-                  a.click()
-                  URL.revokeObjectURL(url)
-                } catch { /* ignore */ }
-              }}
-            >
-              <Download className="mr-2 h-4 w-4" /> 导出公式
+            <Button variant="ghost" size="sm" onClick={handleExportFormulas} disabled={formulaExporting}>
+              {formulaExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+              {formulaExporting ? '导出中…' : '导出公式'}
             </Button>
           )}
         </div>
@@ -608,6 +620,11 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
       </Collapsible>
 
       {listError && <p className="text-xs text-destructive">{listError}</p>}
+      {formulaExportFlash && (
+        <FlashMessage type={formulaExportFlash.type} autoHideMs={4000} onAutoHide={() => setFormulaExportFlash(null)} className="mb-2">
+          {formulaExportFlash.text}
+        </FlashMessage>
+      )}
 
       <DataTable columns={columns} data={paged} rowKey={(r) => r.code} dense emptyText="暂无计算类指标" />
       <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onPageChange={setPage} />

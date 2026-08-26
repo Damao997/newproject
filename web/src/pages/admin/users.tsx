@@ -22,6 +22,7 @@ import {
   MoreHorizontal,
   Edit,
   Key,
+  Loader2,
   UserCheck,
   UserX,
   Users,
@@ -65,6 +66,8 @@ export default function UsersPage() {
 
   // 操作反馈（成功/失败，自动消失）
   const [flash, setFlash] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  // 导出 loading（防重复提交）
+  const [exporting, setExporting] = useState(false)
 
   // 确认对话框：停用 danger 红色；彻底删除 danger + 输入用户名防呆
   const { confirm, element: confirmElement } = useConfirm()
@@ -241,24 +244,34 @@ export default function UsersPage() {
   ]
 
   const handleExportUsers = async () => {
-    await exportToExcel({
-      filename: `用户列表_${new Date().toISOString().slice(0, 10)}.xlsx`,
-      sheetName: '用户列表',
-      columns: [
-        { header: '用户名', key: 'username', width: 16 },
-        { header: '姓名', key: 'name', width: 14 },
-        { header: '角色', key: 'role', width: 18 },
-        { header: '数据范围', key: 'dataScope', width: 14 },
-        { header: '状态', key: 'status', width: 10 },
-      ],
-      rows: filteredUsers.map((u) => ({
-        username: u.username,
-        name: u.name,
-        role: getRoleName(u.role),
-        dataScope: u.dataScope === '*' ? '全部' : u.dataScope,
-        status: u.status === 'active' ? '启用' : '停用',
-      })),
-    })
+    if (exporting) return
+    setExporting(true)
+    setFlash(null)
+    try {
+      await exportToExcel({
+        filename: `用户列表_${new Date().toISOString().slice(0, 10)}.xlsx`,
+        sheetName: '用户列表',
+        columns: [
+          { header: '用户名', key: 'username', width: 16 },
+          { header: '姓名', key: 'name', width: 14 },
+          { header: '角色', key: 'role', width: 18 },
+          { header: '数据范围', key: 'dataScope', width: 14 },
+          { header: '状态', key: 'status', width: 10 },
+        ],
+        rows: filteredUsers.map((u) => ({
+          username: u.username,
+          name: u.name,
+          role: getRoleName(u.role),
+          dataScope: u.dataScope === '*' ? '全部' : u.dataScope,
+          status: u.status === 'active' ? '启用' : '停用',
+        })),
+      })
+      setFlash({ type: 'success', text: `已导出 ${filteredUsers.length} 个用户` })
+    } catch (e) {
+      setFlash({ type: 'error', text: e instanceof Error ? e.message : '导出失败，请稍后重试' })
+    } finally {
+      setExporting(false)
+    }
   }
 
   return (
@@ -313,9 +326,9 @@ export default function UsersPage() {
           <h3 className="text-base font-semibold tracking-tight">用户列表</h3>
           <div className="flex items-center space-x-2">
             {canExportUser && (
-              <Button variant="outline" size="sm" onClick={handleExportUsers}>
-                <Download className="mr-2 h-4 w-4" />
-                导出
+              <Button variant="outline" size="sm" onClick={handleExportUsers} disabled={exporting}>
+                {exporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                {exporting ? '导出中…' : '导出'}
               </Button>
             )}
             {canCreateUser && (
