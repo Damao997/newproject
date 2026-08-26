@@ -13,6 +13,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn, formatMoneyWan } from '@/lib/utils'
+import { FilterBar } from '@/components/layout/filter-bar'
+import { FILTER_WIDTH } from '@/components/layout/filter-width'
 import { Pagination } from '@/components/data-table/pagination'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { usePermission } from '@/hooks/usePermission'
@@ -544,9 +546,9 @@ export function CollectionsTab({ stickyTop = 0 }: { stickyTop?: number }) {
     <div className="space-y-4">
       {/* 筛选卡：公司 / 客商状态 / 客商关键词（吸顶） */}
       <Card className="sticky z-10 rounded-card p-4" style={{ top: stickyTop }}>
-      <div className="flex flex-wrap items-center gap-3">
+      <FilterBar>
         <Select value={periodFilter || 'all'} onValueChange={(v) => { setPeriodFilter(v === 'all' ? '' : v); setPage(1) }}>
-          <SelectTrigger className="w-[140px]">
+          <SelectTrigger className={`h-9 ${FILTER_WIDTH.period}`}>
             <SelectValue placeholder="期间" />
           </SelectTrigger>
           <SelectContent>
@@ -556,9 +558,9 @@ export function CollectionsTab({ stickyTop = 0 }: { stickyTop?: number }) {
             ))}
           </SelectContent>
         </Select>
-        <CompanySelect value={companyFilter} onChange={(v) => { setCompanyFilter(v); setPage(1) }} />
+        <CompanySelect value={companyFilter} onChange={(v) => { setCompanyFilter(v); setPage(1) }} className="h-9" />
         <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v === 'all' ? '' : v); setPage(1) }}>
-          <SelectTrigger className="w-[140px]">
+          <SelectTrigger className={`h-9 ${FILTER_WIDTH.period}`}>
             <SelectValue placeholder="客商状态" />
           </SelectTrigger>
           <SelectContent>
@@ -571,7 +573,7 @@ export function CollectionsTab({ stickyTop = 0 }: { stickyTop?: number }) {
         </Select>
         <Input
           placeholder="搜索客商..."
-          className="w-[200px]"
+          className={`h-9 ${FILTER_WIDTH.medium}`}
           value={keyword}
           onChange={(e) => { setKeyword(e.target.value); setPage(1) }}
         />
@@ -581,7 +583,7 @@ export function CollectionsTab({ stickyTop = 0 }: { stickyTop?: number }) {
             业务员管理
           </Button>
         )}
-      </div>
+      </FilterBar>
       {stats && (
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-dashed border-border pt-2.5 text-xs">
           {(Object.keys(STATUS_LABELS) as (CollectionStatus | 'unplanned')[]).map((s) => (
