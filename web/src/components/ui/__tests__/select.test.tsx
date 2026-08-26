@@ -1,41 +1,96 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 /**
- * 小屏响应式适配验证：jsdom 不应用 Tailwind CSS，以渲染类名断言
- * （与 collapsible.test.tsx 同思路）。
+ * Select 门面（antd Select）行为验证：
+ * - 占位文案（Radix 空串语义 '' → antd undefined）
+ * - mouseDown 打开下拉（antd 触发时机）后渲染选项并选择回调
+ * - 分组选项（SelectGroup + SelectLabel）与禁用项
  */
-describe('Select 小屏响应式', () => {
-  it('SelectContent 渲染视口最大宽度约束类（窄屏面板不超视口）', () => {
+describe('Select 门面（antd）', () => {
+  it('未选值时显示占位文案（空串语义）', () => {
     render(
-      <Select>
-        <SelectTrigger aria-label="选择主体"><SelectValue placeholder="选择主体" /></SelectTrigger>
+      <Select value="" onValueChange={vi.fn()}>
+        <SelectTrigger aria-label="选择主体">
+          <SelectValue placeholder="请选择" />
+        </SelectTrigger>
         <SelectContent>
-          <SelectItem value="a">单体公司-测试集团有限公司</SelectItem>
+          <SelectItem value="a">选项A</SelectItem>
         </SelectContent>
       </Select>,
     )
-    fireEvent.click(screen.getByRole('combobox'))
-    // 面板经 Portal 渲染，选项文本所在 ItemText 上溯找到带 max-w 类的 content 根
-    const itemText = screen.getByText('单体公司-测试集团有限公司')
-    const content = itemText.closest('[class*="max-w-[calc(100vw-2rem)]"]')
-    expect(content).toBeTruthy()
+    expect(screen.getByText('请选择')).toBeInTheDocument()
   })
 
-  it('SelectItem 选项单行截断类（长选项不换行）', () => {
+  it('打开下拉选择后回调 onValueChange（携带选项值）', async () => {
+    const onValueChange = vi.fn()
     render(
-      <Select>
-        <SelectTrigger aria-label="选择主体"><SelectValue placeholder="选择主体" /></SelectTrigger>
+      <Select value="" onValueChange={onValueChange}>
+        <SelectTrigger aria-label="选择主体">
+          <SelectValue placeholder="请选择" />
+        </SelectTrigger>
         <SelectContent>
-          <SelectItem value="a">单体公司-测试集团有限公司</SelectItem>
+          <SelectItem value="a">选项A</SelectItem>
+          <SelectItem value="b">选项B</SelectItem>
         </SelectContent>
       </Select>,
     )
-    fireEvent.click(screen.getByRole('combobox'))
-    // Radix ItemText 不透传 className，截断类作用于外层 SelectItem
-    const item = screen.getByText('单体公司-测试集团有限公司').parentElement
-    expect(item).toHaveClass('whitespace-nowrap')
-    expect(item).toHaveClass('[&>span]:min-w-0', '[&>span]:truncate')
+    // antd Select 以 mouseDown 开合下拉
+    fireEvent.mouseDown(screen.getByText('请选择'))
+    fireEvent.click(await screen.findByText('选项A'))
+    expect(onValueChange).toHaveBeenCalledWith('a')
+  })
+
+  it('选中值直接回显选项文案', () => {
+    render(
+      <Select value="b" onValueChange={vi.fn()}>
+        <SelectTrigger>
+          <SelectValue placeholder="请选择" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="a">选项A</SelectItem>
+          <SelectItem value="b">选项B</SelectItem>
+        </SelectContent>
+      </Select>,
+    )
+    expect(screen.getByText('选项B')).toBeInTheDocument()
+  })
+
+  it('分组选项渲染（SelectGroup + SelectLabel）', async () => {
+    render(
+      <Select value="" onValueChange={vi.fn()}>
+        <SelectTrigger>
+          <SelectValue placeholder="请选择" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            <SelectLabel>公司</SelectLabel>
+            <SelectItem value="c1">甲公司</SelectItem>
+          </SelectGroup>
+          <SelectGroup>
+            <SelectLabel>汇总主体</SelectLabel>
+            <SelectItem value="s1">汇总一号</SelectItem>
+          </SelectGroup>
+          <SelectSeparator />
+          <SelectItem value="all">全部</SelectItem>
+        </SelectContent>
+      </Select>,
+    )
+    fireEvent.mouseDown(screen.getByText('请选择'))
+    expect(await screen.findByText('公司')).toBeInTheDocument()
+    expect(await screen.findByText('甲公司')).toBeInTheDocument()
+    expect(screen.getByText('汇总主体')).toBeInTheDocument()
+    expect(screen.getByText('汇总一号')).toBeInTheDocument()
+    expect(screen.getByText('全部')).toBeInTheDocument()
   })
 })

@@ -70,7 +70,7 @@ export function CompanySelect({
 
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className={cn('w-[200px] max-w-full shrink-0', className)} id={id} aria-label={ariaLabel} title={title}>
+      <SelectTrigger className={cn('w-[200px] max-w-full shrink-0', className)} id={id} aria-label={ariaLabel} title={title} placeholder={placeholder}>
         <span className={cn('truncate', !value && 'text-muted-foreground')}>{selectedLabel}</span>
       </SelectTrigger>
       <SelectContent>

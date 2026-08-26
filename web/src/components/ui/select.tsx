@@ -1,147 +1,187 @@
 import * as React from "react"
-import * as SelectPrimitive from "@radix-ui/react-select"
-import { Check, ChevronDown, ChevronUp } from "lucide-react"
+import { Select as AntdSelect } from "antd"
+import type { DefaultOptionType } from "antd/es/select"
+import { ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { antdSizeFromClassName } from "./antd-size"
 
-const Select = SelectPrimitive.Root
+/**
+ * Select 门面：antd Select。
+ *
+ * 保持 Radix Select 的组合 API（Select/SelectTrigger/SelectValue/SelectContent/
+ * SelectItem/SelectGroup/SelectLabel/SelectSeparator），全站 40+ 调用点零改动。
+ *
+ * 实现方式（声明式子组件收集）：
+ * - Select root 遍历 children：SelectTrigger 收集 className/id/title/disabled/aria-label，
+ *   其子 SelectValue 收集 placeholder；非 SelectValue 的 trigger children 作为自定义回显
+ *   （antd labelRender，用于 CompanySelect 等触发器文案与选项文案不同的场景）；
+ * - SelectContent 下的 SelectItem → options；SelectGroup+SelectLabel → 分组 options；
+ *   SelectSeparator → divider；
+ * - 空值语义：Radix 以 '' 为未选 → antd undefined（placeholder 展示），onChange 回填 ''。
+ * - 下拉宽度自适应内容（popupMatchSelectWidth=false），对齐 Radix popper 行为
+ *   （窄触发器 + 长选项场景，如账龄页 94px 期间选择器）。
+ */
 
-const SelectGroup = SelectPrimitive.Group
+interface SelectItemProps {
+  value: string
+  disabled?: boolean
+  children?: React.ReactNode
+  className?: string
+}
 
-const SelectValue = SelectPrimitive.Value
+interface SelectTriggerProps extends React.HTMLAttributes<HTMLButtonElement> {
+  /** 门面扩展：空值占位文案（company-select 等自定义回显场景由 antd placeholder 承担空值态） */
+  placeholder?: string
+  children?: React.ReactNode
+  disabled?: boolean
+}
 
-const SelectTrigger = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>
->(({ className, children, ...props }, ref) => (
-  <SelectPrimitive.Trigger
-    ref={ref}
-    className={cn(
-      "flex h-8 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground hover:border-primary focus:border-input focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
-      className
-    )}
-    {...props}
-  >
-    {children}
-    <SelectPrimitive.Icon asChild>
-      <ChevronDown className="h-4 w-4 opacity-50" />
-    </SelectPrimitive.Icon>
-  </SelectPrimitive.Trigger>
-))
-SelectTrigger.displayName = SelectPrimitive.Trigger.displayName
+interface SelectValueProps {
+  placeholder?: React.ReactNode
+  children?: React.ReactNode
+}
 
-const SelectScrollUpButton = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.ScrollUpButton>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.ScrollUpButton>
->(({ className, ...props }, ref) => (
-  <SelectPrimitive.ScrollUpButton
-    ref={ref}
-    className={cn(
-      "flex cursor-default items-center justify-center py-1",
-      className
-    )}
-    {...props}
-  >
-    <ChevronUp className="h-4 w-4" />
-  </SelectPrimitive.ScrollUpButton>
-))
-SelectScrollUpButton.displayName = SelectPrimitive.ScrollUpButton.displayName
+interface SelectGroupProps {
+  children?: React.ReactNode
+}
 
-const SelectScrollDownButton = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.ScrollDownButton>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.ScrollDownButton>
->(({ className, ...props }, ref) => (
-  <SelectPrimitive.ScrollDownButton
-    ref={ref}
-    className={cn(
-      "flex cursor-default items-center justify-center py-1",
-      className
-    )}
-    {...props}
-  >
-    <ChevronDown className="h-4 w-4" />
-  </SelectPrimitive.ScrollDownButton>
-))
-SelectScrollDownButton.displayName =
-  SelectPrimitive.ScrollDownButton.displayName
+interface SelectLabelProps {
+  children?: React.ReactNode
+}
 
-const SelectContent = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
->(({ className, children, position = "popper", ...props }, ref) => (
-  <SelectPrimitive.Portal>
-    <SelectPrimitive.Content
-      ref={ref}
-      className={cn(
-        "relative z-50 max-h-96 min-w-[8rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
-        position === "popper" &&
-          "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
-        className
-      )}
-      position={position}
-      {...props}
-    >
-      <SelectScrollUpButton />
-      <SelectPrimitive.Viewport
-        className={cn(
-          "p-1",
-          position === "popper" &&
-            "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]"
-        )}
-      >
-        {children}
-      </SelectPrimitive.Viewport>
-      <SelectScrollDownButton />
-    </SelectPrimitive.Content>
-  </SelectPrimitive.Portal>
-))
-SelectContent.displayName = SelectPrimitive.Content.displayName
+/** 提取 trigger children 中非 SelectValue 的部分作为自定义回显 */
+function extractCustomDisplay(children: React.ReactNode): React.ReactNode | undefined {
+  let display: React.ReactNode | undefined
+  React.Children.forEach(children, (child) => {
+    if (!React.isValidElement(child)) return
+    if (child.type !== SelectValue) display = child
+  })
+  return display
+}
 
-const SelectLabel = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.Label>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Label>
->(({ className, ...props }, ref) => (
-  <SelectPrimitive.Label
-    ref={ref}
-    className={cn("py-1.5 pl-8 pr-2 text-sm font-semibold", className)}
-    {...props}
-  />
-))
-SelectLabel.displayName = SelectPrimitive.Label.displayName
+/** 提取 SelectValue 的 placeholder（prop 优先，children 兜底） */
+function extractPlaceholder(children: React.ReactNode): string | undefined {
+  let placeholder: string | undefined
+  React.Children.forEach(children, (child) => {
+    if (React.isValidElement(child) && child.type === SelectValue) {
+      const p = child.props as SelectValueProps
+      const raw = p.placeholder ?? p.children
+      placeholder = typeof raw === 'string' ? raw : undefined
+    }
+  })
+  return placeholder
+}
 
-const SelectItem = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
->(({ className, children, ...props }, ref) => (
-  <SelectPrimitive.Item
-    ref={ref}
-    className={cn(
-      "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm text-foreground outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 whitespace-nowrap [&>span]:min-w-0 [&>span]:truncate",
-      className
-    )}
-    {...props}
-  >
-    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
-      <SelectPrimitive.ItemIndicator>
-        <Check className="h-4 w-4" />
-      </SelectPrimitive.ItemIndicator>
-    </span>
+/** SelectContent 子树 → antd options（支持 Item/Group+Label/Separator 与条件数组） */
+function collectOptions(nodes: React.ReactNode, options: DefaultOptionType[]): void {
+  React.Children.forEach(nodes, (child) => {
+    if (!React.isValidElement(child)) return
+    if (child.type === SelectItem) {
+      const p = child.props as SelectItemProps
+      options.push({ value: p.value, label: p.children, disabled: p.disabled })
+    } else if (child.type === SelectGroup) {
+      const group: DefaultOptionType & { options: DefaultOptionType[] } = { label: '', options: [] }
+      React.Children.forEach((child.props as SelectGroupProps).children, (c) => {
+        if (!React.isValidElement(c)) return
+        if (c.type === SelectLabel) {
+          const lp = c.props as SelectLabelProps
+          group.label = lp.children as string
+        } else if (c.type === SelectItem) {
+          const p = c.props as SelectItemProps
+          group.options.push({ value: p.value, label: p.children, disabled: p.disabled })
+        }
+      })
+      if (group.options.length > 0) options.push(group)
+    } else if (child.type === SelectSeparator) {
+      options.push({ type: 'divider' } as DefaultOptionType)
+    }
+  })
+}
 
-    <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
-  </SelectPrimitive.Item>
-))
-SelectItem.displayName = SelectPrimitive.Item.displayName
+interface SelectProps {
+  value?: string
+  defaultValue?: string
+  onValueChange?: (value: string) => void
+  children?: React.ReactNode
+  /** Radix 兼容：整组禁用 */
+  disabled?: boolean
+  /** 无障碍：传给 combobox 触发器 */
+  'aria-label'?: string
+}
 
-const SelectSeparator = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.Separator>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Separator>
->(({ className, ...props }, ref) => (
-  <SelectPrimitive.Separator
-    ref={ref}
-    className={cn("-mx-1 my-1 h-px bg-muted", className)}
-    {...props}
-  />
-))
-SelectSeparator.displayName = SelectPrimitive.Separator.displayName
+const Select = ({ value, defaultValue, onValueChange, disabled, children, ...rest }: SelectProps) => {
+  // ---- 声明式子组件收集 ----
+  let triggerProps: SelectTriggerProps | null = null
+  let customDisplay: React.ReactNode | undefined
+  let placeholder: string | undefined
+  const options: DefaultOptionType[] = []
+
+  React.Children.forEach(children, (child) => {
+    if (!React.isValidElement(child)) return
+    if (child.type === SelectTrigger) {
+      const p = child.props as SelectTriggerProps
+      triggerProps = p
+      placeholder = p.placeholder ?? extractPlaceholder(p.children)
+      customDisplay = extractCustomDisplay(p.children)
+    } else if (child.type === SelectContent) {
+      collectOptions((child.props as { children?: React.ReactNode }).children, options)
+    }
+  })
+
+  const trigger = triggerProps as SelectTriggerProps | null
+
+  return (
+    <AntdSelect
+      // Radix 空串语义 ↔ antd undefined（placeholder 展示）
+      value={value === '' || value === undefined ? undefined : value}
+      defaultValue={defaultValue === '' || defaultValue === undefined ? undefined : defaultValue}
+      onChange={(v) => onValueChange?.(v ?? '')}
+      options={options}
+      placeholder={placeholder}
+      disabled={disabled || trigger?.disabled}
+      id={trigger?.id}
+      title={trigger?.title}
+      aria-label={rest['aria-label'] ?? (trigger?.['aria-label'] as string | undefined)}
+      size={antdSizeFromClassName(trigger?.className, 'middle')}
+      className={cn('w-full', trigger?.className)}
+      // 自定义回显：CompanySelect 等"触发器文案 ≠ 选项文案"场景（antd ≥5.23 labelRender）
+      labelRender={customDisplay ? () => <>{customDisplay}</> : undefined}
+      // 对齐原 Radix 触发器的 lucide 折叠箭头
+      suffixIcon={<ChevronDown className="h-4 w-4 opacity-50" />}
+      // 下拉宽度自适应内容（Radix popper 行为；窄触发器+长选项不截断）
+      popupMatchSelectWidth={false}
+    />
+  )
+}
+Select.displayName = "Select"
+
+/** 声明式占位：由 Select root 收集 props，自身不渲染 DOM */
+const SelectGroup = (_props: SelectGroupProps) => null
+SelectGroup.displayName = "SelectGroup"
+
+const SelectValue = (_props: SelectValueProps) => null
+SelectValue.displayName = "SelectValue"
+
+const SelectTrigger = React.forwardRef<HTMLButtonElement, SelectTriggerProps>(
+  (_props, _ref) => null
+)
+SelectTrigger.displayName = "SelectTrigger"
+
+const SelectContent = (_props: { children?: React.ReactNode; className?: string }) => null
+SelectContent.displayName = "SelectContent"
+
+const SelectLabel = (_props: SelectLabelProps) => null
+SelectLabel.displayName = "SelectLabel"
+
+const SelectItem = (_props: SelectItemProps) => null
+SelectItem.displayName = "SelectItem"
+
+const SelectSeparator = () => null
+SelectSeparator.displayName = "SelectSeparator"
+
+// Radix 兼容导出（滚动按钮在 antd 中无对应物，占位）
+const SelectScrollUpButton = () => null
+const SelectScrollDownButton = () => null
 
 export {
   Select,

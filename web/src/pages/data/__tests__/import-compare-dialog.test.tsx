@@ -103,8 +103,8 @@ describe('ImportCompareDialog 批次差异对比', () => {
         onRollbackSuccess={onRollbackSuccess}
       />,
     )
-    // 先选择对比目标批次（Radix Select：打开下拉 → 点选项）
-    fireEvent.click(screen.getByRole('combobox'))
+    // 先选择对比目标批次（antd Select：mouseDown 打开下拉 → 点选项）
+    fireEvent.mouseDown(screen.getByRole('combobox'))
     fireEvent.click(await screen.findByRole('option', { name: /B批次.xlsx/ }))
     fireEvent.click(screen.getByRole('button', { name: /回滚到《B批次.xlsx》/ }))
     // 确认对话框出现

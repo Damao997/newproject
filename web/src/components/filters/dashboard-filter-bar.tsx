@@ -33,7 +33,11 @@ export function DashboardFilterBar({ dimFilter, onDimChange, selectedPeriod, onP
             onValueChange={(v) => onPeriodChange(v === 'latest' ? '' : v)}
           >
             {/* 未选时直接回显最新期间实际值（YYYY-MM），而非占位符文本；'latest' 项仍保留「跟随最新」语义 */}
-            <SelectTrigger className={`h-9 ${FILTER_WIDTH.period} border-input/60 bg-page hover:bg-muted/60`} title="选择预览期间">
+            <SelectTrigger
+              className={`h-9 ${FILTER_WIDTH.period} border-input/60 bg-page hover:bg-muted/60`}
+              title="选择预览期间"
+              aria-label="选择预览期间"
+            >
               <SelectValue placeholder="最新期间" />
             </SelectTrigger>
             <SelectContent>

@@ -16,15 +16,17 @@ describe('DashboardFilterBar 看板筛选块', () => {
     periodOptions: ['2026-01', '2026-02'],
   }
 
-  it('渲染主体选择与期间选择（含最新期间选项）', () => {
+  it('渲染主体选择与期间选择（含最新期间选项）', async () => {
     render(<DashboardFilterBar {...base} />)
-    // 主体触发器：未选定时显示占位符（Radix 下拉选项仅在打开后渲染，见 select.test.tsx）
+    // 主体触发器：未选定时显示占位符（antd Select 下拉选项仅在打开后渲染，见 select.test.tsx）
     expect(screen.getByRole('combobox', { name: '选择主体维度（汇总主体自动展开为成员合并口径）' })).toBeInTheDocument()
     // 期间触发器：未选定时直接回显最新期间实际值（YYYY-MM）；打开后含「最新期间」选项
     const periodTrigger = screen.getByRole('combobox', { name: '选择预览期间' })
-    expect(periodTrigger).toHaveTextContent('2026-02')
-    fireEvent.click(periodTrigger)
-    expect(screen.getByText('最新期间')).toBeInTheDocument()
+    // antd combobox 角色在内部 input 上，回显文本在其外层 .ant-select 容器
+    expect(periodTrigger.closest('.ant-select')).toHaveTextContent('2026-02')
+    // antd Select 以 mouseDown 开合下拉
+    fireEvent.mouseDown(periodTrigger)
+    expect(await screen.findByText('最新期间')).toBeInTheDocument()
   })
 
   it('无期间候选时不渲染期间选择器', () => {

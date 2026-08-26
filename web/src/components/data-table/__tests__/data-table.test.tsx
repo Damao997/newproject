@@ -276,11 +276,12 @@ describe('Pagination', () => {
   it('传 onPageSizeChange 才渲染每页条数下拉', () => {
     const onPageChange = vi.fn()
     const { rerender } = render(<Pagination page={1} pageSize={20} total={100} onPageChange={onPageChange} />)
-    expect(screen.queryByLabelText('每页条数')).toBeNull()
+    // antd Select：aria-label 同时落在根节点与内部 input（role=combobox），按角色查询避免多命中
+    expect(screen.queryByRole('combobox', { name: '每页条数' })).toBeNull()
     rerender(
       <Pagination page={1} pageSize={20} total={100} onPageChange={onPageChange} onPageSizeChange={vi.fn()} />,
     )
-    expect(screen.getByLabelText('每页条数')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: '每页条数' })).toBeInTheDocument()
   })
 
   it('跳转框：合法页码跳转、越界 clamp、非数字忽略', () => {
