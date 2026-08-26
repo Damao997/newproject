@@ -2,109 +2,42 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { CompanySelect } from '@/components/filters/company-select'
 import { PageContainer } from '@/components/layout/page-container'
 import { SubPageTabs } from '@/components/layout/sub-page-tabs'
 import { INDICATOR_TABS } from '@/components/layout/module-tabs'
-import { MetricTree, OPERATING_COLUMNS, STATIC_COLUMNS, CASHFLOW_COLUMNS } from '@/components/subject-tree/metric-tree'
+import { MetricTree } from '@/components/subject-tree/metric-tree'
 import { AnalysisDrawer, type AnalysisTarget } from '@/components/indicators/analysis-drawer'
 import { AiOverviewDialog } from '@/components/indicators/ai-overview-panel'
-import { Switch } from '@/components/ui/switch'
-import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { usePermission } from '@/hooks/usePermission'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
-import { useCompanies, useOperatingIndicators, useStaticIndicators, useCashflowIndicators, useAvailablePeriods, type OperatingRow, type StaticRow, type CashflowRow } from '@/hooks/api-queries'
+import { useCompanies, useOperatingIndicators, useStaticIndicators, useCashflowIndicators, useAvailablePeriods } from '@/hooks/api-queries'
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { usePageStore } from '@/stores/pageStateStore'
-import { exportToExcel } from '@/lib/export'
 import { filterTreeKeepSubtree } from '@/lib/subject-tree'
 import { sortTreeByLevel, type MetricSortKey } from '@/lib/metric-sort'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { MetricValue } from '@/lib/metric-values'
-import { Download, ChevronsDownUp, ChevronsUpDown, History, Eye, Sparkles, Loader2, Search, X, MoreHorizontal, Rows3, Columns3, CheckCircle2, TriangleAlert, ArrowLeft } from 'lucide-react'
+import { History, CheckCircle2, TriangleAlert, ArrowLeft } from 'lucide-react'
 import type { SubjectNode } from '@/types'
-
-/** 收集含子节点的科目编码（用于全部展开） */
-function collectExpandableCodes(nodes: SubjectNode[]): string[] {
-  const codes: string[] = []
-  for (const node of nodes) {
-    if (node.children.length > 0) {
-      codes.push(node.code)
-      codes.push(...collectExpandableCodes(node.children))
-    }
-  }
-  return codes
-}
-
-type Row = OperatingRow | StaticRow | CashflowRow
-
-// 列设置面板元数据（复用 metric-tree 列配置，仅取 key/header）
-const OPERATING_COLUMN_META = OPERATING_COLUMNS.map((c) => ({ key: c.key, header: c.header }))
-const STATIC_COLUMN_META = STATIC_COLUMNS.map((c) => ({ key: c.key, header: c.header }))
-const CASHFLOW_COLUMN_META = CASHFLOW_COLUMNS.map((c) => ({ key: c.key, header: c.header }))
-
-/** 将后端嵌套行转为 MetricTree 需要的结构树 + 数值 Map */
-function adapt(items: Row[], variant: 'operating' | 'static' | 'cashflow'): { nodes: SubjectNode[]; map: Map<string, MetricValue> } {
-  const map = new Map<string, MetricValue>()
-  const walk = (rows: Row[]): SubjectNode[] =>
-    rows.map((r) => {
-      if (variant === 'operating') {
-        const o = r as OperatingRow
-        map.set(o.code, { budget: o.budget, actual: o.actual, samePeriod: o.samePeriod, ytd: o.ytd, samePeriodYtd: o.samePeriodYtd })
-      } else if (variant === 'cashflow') {
-        const f = r as CashflowRow
-        // 现金流映射到统一 MetricValue：本月→actual、同期→samePeriod、本年累计→ytd、同期累计→samePeriodYtd
-        map.set(f.code, { budget: 0, actual: f.current, samePeriod: f.samePeriod, ytd: f.ytd, samePeriodYtd: f.samePeriodYtd })
-      } else {
-        const s = r as StaticRow
-        // 静态科目映射到统一 MetricValue：本期→actual、同期→samePeriod、年初→ytd、上年年初→samePeriodYtd
-        map.set(s.code, { budget: s.yearStart, actual: s.current, samePeriod: s.samePeriod, ytd: s.yearStart, samePeriodYtd: s.lastYearStart })
-      }
-      return {
-        code: r.code, name: r.name, level: r.level, category: r.category,
-        dataType: r.dataType as SubjectNode['dataType'],
-        valueType: r.valueType,
-        children: r.children ? walk(r.children as Row[]) : [],
-      }
-    })
-  return { nodes: walk(items), map }
-}
-
-/** 前序展开为 {row, depth} 供导出 */
-function flattenForExport<T extends { children?: T[] }>(rows: T[], depth = 0): { row: T; depth: number }[] {
-  const out: { row: T; depth: number }[] = []
-  for (const r of rows) {
-    out.push({ row: r, depth })
-    if (r.children && r.children.length > 0) out.push(...flattenForExport(r.children, depth + 1))
-  }
-  return out
-}
+import { IndicatorFilterBar } from './indicator-filter-bar'
+import { useIndicatorExport, flattenForExport } from './use-indicator-export'
+import { adapt, collectExpandableCodes, buildColumnsFor } from './indicators-adapters'
 
 /**
- * 财务指标页（经营/静态共用实现）：按科目层级查看指标数据。
- * subjectType 决定数据源（经营指标 / 静态指标）与展示列；
+ * 财务指标页（经营/静态/现金流共用实现）：按科目层级查看指标数据。
+ * subjectType 决定数据源（经营指标 / 静态指标 / 现金流量表）与展示列；
  * 支持主体/期间/去重分类口径筛选、科目搜索、全部展开/折叠、Excel 导出、
  * 单项分析撰写（需单选公司）与 AI 全局预分析。
+ * 筛选区/导出逻辑/列与树适配分别拆分至 indicator-filter-bar / use-indicator-export / indicators-adapters。
  */
 export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'static' | 'cashflow' }) {
   const { can } = usePermission()
   const navigate = useNavigate()
-  // 从看板 KPI 钻取进入时显示「返回首页」按钮（sessionStorage 标记，点击返回时清除；刷新后仍保留）
+  // 从看板 KPI/关键指标表明细钻取进入时显示「返回看板」按钮（sessionStorage 标记，点击返回时清除；刷新后仍保留）
   const [fromDashboardKpi] = useState(() => sessionStorage.getItem('dashboard.fromDashboard') === '1')
   const handleBackToDashboard = useCallback(() => {
     sessionStorage.removeItem('dashboard.fromDashboard')
-    navigate('/')
+    navigate('/dashboard/analysis/key-metrics')
   }, [navigate])
   // 子标签类型由路由入口决定（/indicators/operating | /indicators/static）
   const activeTab = subjectType
@@ -136,22 +69,10 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
   const setPeriodFilter = useCallback((v: string) => setIndicators({ periodFilter: v }), [setIndicators])
   const setExcludeReclassify = useCallback((v: boolean) => setIndicators({ excludeReclassify: v }), [setIndicators])
   const setSubjectKeyword = useCallback((v: string) => setIndicators({ subjectKeyword: v }), [setIndicators])
-  const setSort = useCallback(
-    (key: string, direction: 'asc' | 'desc' | null) => setIndicators({ sortKey: key, sortDirection: direction }),
-    [setIndicators],
-  )
+  const setSort = useCallback((key: string, direction: 'asc' | 'desc' | null) => setIndicators({ sortKey: key, sortDirection: direction }), [setIndicators])
   // 表格密度与隐藏列（持久化到 pageStateStore，刷新保持）
   const density = usePageStore((s) => s.indicators.density)
-  const setDensity = useCallback(
-    (v: 'default' | 'dense' | 'compact') => setIndicators({ density: v }),
-    [setIndicators],
-  )
-  // 小屏（<lg）搜索框浮层展开态（图标按钮点击切换）
-  const [searchOpen, setSearchOpen] = useState(false)
-  // 导出中状态（按钮 loading 反馈）与结果提示（内联提示条：成功/失败）
-  const [exporting, setExporting] = useState(false)
-  const [exportMsg, setExportMsg] = useState<string | null>(null)
-  const [exportErr, setExportErr] = useState<string | null>(null)
+  const setDensity = useCallback((v: 'default' | 'dense' | 'compact') => setIndicators({ density: v }), [setIndicators])
   // 展开集合由持久化数组派生（Set 不可序列化，store 以数组存储）
   const expandedSet = useMemo(() => new Set(expandedCodes), [expandedCodes])
   const setExpandedCodes = useCallback((updater: (prev: Set<string>) => Set<string>) => {
@@ -169,10 +90,7 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
       // 隐藏当前排序列时联动清空排序（避免无表头入口的静默排序）
       const patch: Record<string, unknown> = isOperating ? { hiddenOperatingColumns: cols } : isCashflow ? { hiddenCashflowColumns: cols } : { hiddenStaticColumns: cols }
       const cur = usePageStore.getState().indicators
-      if (cur.sortKey && cols.includes(cur.sortKey)) {
-        patch.sortKey = null
-        patch.sortDirection = null
-      }
+      if (cur.sortKey && cols.includes(cur.sortKey)) { patch.sortKey = null; patch.sortDirection = null }
       setIndicators(patch as Parameters<typeof setIndicators>[0])
     },
     [isOperating, isCashflow, setIndicators],
@@ -189,9 +107,7 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
   useEffect(() => {
     if (periods.length === 0) return
     // 首次加载（periodFilter 为空）默认选中最新期间；已选期间不存在时回退最新
-    if (periodFilter === '' || (!periods.includes(periodFilter) && periodFilter !== 'all')) {
-      setPeriodFilter(periods[periods.length - 1])
-    }
+    if (periodFilter === '' || (!periods.includes(periodFilter) && periodFilter !== 'all')) setPeriodFilter(periods[periods.length - 1])
   }, [periods, periodFilter, setPeriodFilter])
 
   // 主体维度：company:CODE / summary:CODE → 传对应编码；all → 不传（后端按 scope 汇总）
@@ -216,18 +132,9 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
   }, [companies, setDimFilter])
   // AI 预分析需要两体系数据：当前 tab 的 query 恒挂载，另一体系在触发预分析时按需拉取（静态懒加载）
   const [aiNeedData, setAiNeedData] = useState(false)
-  const operatingQuery = useOperatingIndicators(
-    { companyCode, period, excludeReclassify: excludeReclassify || undefined },
-    { enabled: isOperating || aiNeedData },
-  )
-  const staticQuery = useStaticIndicators(
-    { companyCode, period, excludeReclassify: excludeReclassify || undefined },
-    { enabled: !isOperating || aiNeedData },
-  )
-  const cashflowQuery = useCashflowIndicators(
-    { companyCode, period },
-    { enabled: isCashflow },
-  )
+  const operatingQuery = useOperatingIndicators({ companyCode, period, excludeReclassify: excludeReclassify || undefined }, { enabled: isOperating || aiNeedData })
+  const staticQuery = useStaticIndicators({ companyCode, period, excludeReclassify: excludeReclassify || undefined }, { enabled: !isOperating || aiNeedData })
+  const cashflowQuery = useCashflowIndicators({ companyCode, period }, { enabled: isCashflow })
 
   const entityCompanies = useMemo(() => (companies ?? []).filter((c) => c.type === 'entity'), [companies])
 
@@ -238,24 +145,17 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
   // 去重分类口径下无法回溯的记录数（批次已替换/缺快照；现金流无重分类口径）
   const skippedReclassifyLogs = (isOperating ? operatingQuery.data?.skippedReclassifyLogs : staticQuery.data?.skippedReclassifyLogs) ?? 0
 
-  const { nodes: activeTree, map: activeValueMap } = useMemo(
-    () => adapt(activeItems as Row[], activeTab),
-    [activeItems, activeTab],
-  )
+  const { nodes: activeTree, map: activeValueMap } = useMemo(() => adapt(activeItems, activeTab), [activeItems, activeTab])
   const activeExpandable = useMemo(() => collectExpandableCodes(activeTree), [activeTree])
 
   // 科目关键字过滤：命中节点保留整棵子树 + 祖先链；过滤时强制展开可见路径（清空后恢复用户展开态）
   const visibleTree = useMemo(() => filterTreeKeepSubtree(activeTree, subjectKeyword), [activeTree, subjectKeyword])
-  const categoryFilteredTree = visibleTree
   const effectiveExpanded = useMemo(() => {
     if (!subjectKeyword.trim()) return expandedSet
     const next = new Set(expandedSet)
     const collect = (ns: SubjectNode[]) => {
       for (const n of ns) {
-        if (n.children.length > 0) {
-          next.add(n.code)
-          collect(n.children)
-        }
+        if (n.children.length > 0) { next.add(n.code); collect(n.children) }
       }
     }
     collect(visibleTree)
@@ -265,13 +165,10 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
   // 列排序：树内同级排序（全层级，含 level0 根；分类列已移除，无需保护分组列）
   // sortKey 不属于当前 tab 列集合时不排序（跨 tab 共享排序状态的计算层防护）
   const sortedTree = useMemo(() => {
-    if (!sortKey || !sortDirection) return categoryFilteredTree
-    const cols = isOperating ? OPERATING_COLUMNS : isCashflow ? CASHFLOW_COLUMNS : STATIC_COLUMNS
-    if (!cols.some((c) => c.key === sortKey)) return categoryFilteredTree
-    return sortTreeByLevel(categoryFilteredTree, activeValueMap, sortKey as MetricSortKey, sortDirection, {
-      fromLevel: 0,
-    })
-  }, [categoryFilteredTree, activeValueMap, sortKey, sortDirection])
+    if (!sortKey || !sortDirection) return visibleTree
+    if (!buildColumnsFor(activeTab).some((c) => c.key === sortKey)) return visibleTree
+    return sortTreeByLevel(visibleTree, activeValueMap, sortKey as MetricSortKey, sortDirection, { fromLevel: 0 })
+  }, [visibleTree, activeValueMap, sortKey, sortDirection, activeTab])
 
   // 数据到达后默认展开 level0 根节点
   useEffect(() => {
@@ -319,14 +216,8 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
     const companyName = getDisplayName(companyCode, entityCompanies.find((c) => c.code === companyCode)?.name ?? companyCode)
     const effectivePeriod = period ?? periods[periods.length - 1] ?? ''
     setAnalysisTarget({
-      companyCode,
-      companyName,
-      subjectCode: node.code,
-      subjectName: node.name,
-      subjectType: activeTab,
-      valueType: node.valueType,
-      fiscalYear: effectivePeriod.slice(0, 4),
-      period: effectivePeriod,
+      companyCode, companyName, subjectCode: node.code, subjectName: node.name, subjectType: activeTab,
+      valueType: node.valueType, fiscalYear: effectivePeriod.slice(0, 4), period: effectivePeriod,
       metric: activeValueMap.get(node.code),
     })
   }
@@ -344,126 +235,27 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
     }
   }, [aiNeedData, bothReady])
   // 预分析数据：经营+静态两体系；未加载的另一体系为空数组（触发预分析时按需拉取后自动生成）
-  const overviewOperatingRows = useMemo(
-    () => flattenForExport((operatingQuery.data?.items ?? []) as OperatingRow[]).map(({ row }) => row),
-    [operatingQuery.data?.items],
-  )
-  const overviewStaticRows = useMemo(
-    () => flattenForExport((staticQuery.data?.items ?? []) as StaticRow[]).map(({ row }) => row),
-    [staticQuery.data?.items],
-  )
+  const overviewOperatingRows = useMemo(() => flattenForExport(operatingQuery.data?.items ?? []).map(({ row }) => row), [operatingQuery.data?.items])
+  const overviewStaticRows = useMemo(() => flattenForExport(staticQuery.data?.items ?? []).map(({ row }) => row), [staticQuery.data?.items])
   const hasOverviewData = overviewOperatingRows.length + overviewStaticRows.length > 0
 
   /** 重置筛选：恢复默认主体/期间/重分类口径/科目搜索（空状态引导动作） */
-  const handleResetFilters = () => {
-    setDimFilter('all')
-    setPeriodFilter('')
-    setExcludeReclassify(false)
-    setSubjectKeyword('')
-  }
+  const handleResetFilters = () => { setDimFilter('all'); setPeriodFilter(''); setExcludeReclassify(false); setSubjectKeyword('') }
 
-  const handleExport = async () => {
-    if (exporting) return
-    setExporting(true)
-    setExportMsg(null)
-    setExportErr(null)
-    try {
-      const pct = (v: number) => `${v.toFixed(1)}%`
-      // 分型导出：比率列乘 100 加 %，数量取整，金额保持数值；同比统一按增长率百分比（后端已按增长率返回）
-      const fmtVal = (v: number, vt: string) => (vt === 'ratio' ? `${(v * 100).toFixed(1)}%` : vt === 'quantity' ? Math.round(v) : v)
-      const fmtYoy = (v: number) => pct(v)
-      const flat = flattenForExport(activeItems as Row[])
-      // 去重分类口径导出时文件名标识区分，避免与正式口径混淆
-      const scopeSuffix = excludeReclassify ? '_原始口径' : ''
-      if (isOperating) {
-        // 导出列顺序与表格一致（达成率归累计组尾）；跳过列设置中隐藏的列
-        const keys = (['budget', 'actual', 'samePeriod', 'yoy', 'ytd', 'samePeriodYtd', 'ytdYoy', 'achievement'] as const)
-          .filter((k) => !hiddenColumns.includes(k))
-        const rows = flat.map(({ row, depth }) => {
-          const o = row as OperatingRow
-          const cols: Record<string, string | number> = {
-            budget: fmtVal(o.budget, o.valueType), actual: fmtVal(o.actual, o.valueType), samePeriod: fmtVal(o.samePeriod, o.valueType),
-            yoy: fmtYoy(o.yoy), ytd: fmtVal(o.ytd, o.valueType), samePeriodYtd: fmtVal(o.samePeriodYtd, o.valueType),
-            ytdYoy: fmtYoy(o.ytdYoy), achievement: pct(o.achievement),
-          }
-          return { account: `${'　'.repeat(depth)}${o.name}`, ...Object.fromEntries(keys.map((k) => [k, cols[k]])) }
-        })
-        const headerMap: Record<string, string> = {
-          budget: '预算金额(万)', actual: '本月实际(万)', samePeriod: '同期实际(万)', yoy: '同比',
-          ytd: '本年累计(万)', samePeriodYtd: '同期累计(万)', ytdYoy: '累计同比', achievement: '达成率',
-        }
-        const filename = `财务指标_经营指标${scopeSuffix}_${new Date().toISOString().slice(0, 10)}.xlsx`
-        await exportToExcel({
-          filename,
-          sheetName: '经营指标',
-          columns: [
-            { header: '科目', key: 'account', width: 40 },
-            ...keys.map((k) => ({ header: headerMap[k], key: k, width: (k === 'yoy' || k === 'ytdYoy' || k === 'achievement') ? 10 : 14 })),
-          ],
-          rows,
-        })
-        setExportMsg(`已导出：${filename}`)
-      } else if (isCashflow) {
-        // 现金流量分支：本月/同期/本年累计/同期累计/同比，跳过隐藏列
-        const keys = (['actual', 'samePeriod', 'ytd', 'samePeriodYtd', 'yoy'] as const).filter((k) => !hiddenColumns.includes(k))
-        const rows = flat.map(({ row, depth }) => {
-          const f = row as CashflowRow
-          const cols: Record<string, string | number> = {
-            actual: fmtVal(f.current, f.valueType), samePeriod: fmtVal(f.samePeriod, f.valueType),
-            ytd: fmtVal(f.ytd, f.valueType), samePeriodYtd: fmtVal(f.samePeriodYtd, f.valueType), yoy: fmtYoy(f.yoy),
-          }
-          return { account: `${'　'.repeat(depth)}${f.name}`, ...Object.fromEntries(keys.map((k) => [k, cols[k]])) }
-        })
-        const filename = `财务指标_现金流量表${scopeSuffix}_${new Date().toISOString().slice(0, 10)}.xlsx`
-        await exportToExcel({
-          filename,
-          sheetName: '现金流量表',
-          columns: [
-            { header: '科目', key: 'account', width: 40 },
-            ...keys.map((k) => ({
-              header: k === 'actual' ? '本月金额(万)' : k === 'samePeriod' ? '同期金额(万)' : k === 'ytd' ? '本年累计(万)' : k === 'samePeriodYtd' ? '同期累计(万)' : '同比',
-              key: k, width: k === 'yoy' ? 10 : 14,
-            })),
-          ],
-          rows,
-        })
-        setExportMsg(`已导出：${filename}`)
-      } else {
-        // 静态分支同理：科目 + ['actual','samePeriod','yoy'] 过滤 hiddenColumns
-        const keys = (['actual', 'samePeriod', 'yoy'] as const).filter((k) => !hiddenColumns.includes(k))
-        const rows = flat.map(({ row, depth }) => {
-          const s = row as StaticRow
-          const cols: Record<string, string | number> = {
-            actual: fmtVal(s.current, s.valueType), samePeriod: fmtVal(s.samePeriod, s.valueType), yoy: fmtYoy(s.yoy),
-          }
-          return { account: `${'　'.repeat(depth)}${s.name}`, ...Object.fromEntries(keys.map((k) => [k, cols[k]])) }
-        })
-        const filename = `财务指标_静态指标${scopeSuffix}_${new Date().toISOString().slice(0, 10)}.xlsx`
-        await exportToExcel({
-          filename,
-          sheetName: '静态指标',
-          columns: [
-            { header: '科目', key: 'account', width: 40 },
-            ...keys.map((k) => ({ header: k === 'actual' ? '本期金额(万)' : k === 'samePeriod' ? '同期金额(万)' : '变动率', key: k, width: k === 'yoy' ? 10 : 16 })),
-          ],
-          rows,
-        })
-        setExportMsg(`已导出：${filename}`)
-      }
-    } catch (err) {
-      // 导出失败：仅提示错误（不误设成功提示），按钮状态由 finally 复位
-      setExportErr(`导出失败：${err instanceof Error ? err.message : '未知错误'}`)
-    } finally {
-      setExporting(false)
-    }
-  }
+  // 导出：loading + 结果反馈（exporting/exportMsg/exportErr 与 handleExport 全链路迁入 use-indicator-export）
+  const { exporting, exportMsg, exportErr, handleExport } = useIndicatorExport({
+    subjectType: activeTab,
+    getRows: () => activeItems,
+    getHiddenColumns: () => hiddenColumns,
+    getFilenameScope: () => (excludeReclassify ? '_原始口径' : ''),
+  })
 
   return (
     <PageContainer
       title={(
         <span className="flex items-center gap-1">
           {fromDashboardKpi && (
-            <Button variant="ghost" size="icon" className="-ml-2 h-8 w-8" onClick={handleBackToDashboard} aria-label="返回首页">
+            <Button variant="ghost" size="icon" className="-ml-2 h-8 w-8" onClick={handleBackToDashboard} aria-label="返回看板">
               <ArrowLeft className="h-4 w-4" />
             </Button>
           )}
@@ -478,261 +270,21 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
       headerRef={headerRef}
       actionsFullWidth
       actions={
-        // 筛选条流体自适应：主体/搜索按剩余空间弹性伸缩（min-w-0 可收缩 + max-w 限幅 + 内部截断），
-        // 固定项（期间/开关/按钮组）恒完整；中等分辨率单行不换行，仅极端窄屏 wrap 兜底；
-        // 极小屏搜索缩为图标浮层
-        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
-          {/* 左侧：主体维度选择（弹性伸缩，保证公司名称完整显示；选项前缀+简称跟随全局开关，触发器仅显名称） */}
-          <CompanySelect
-            value={dimFilter}
-            onChange={setDimFilter}
-            valueFormat="prefixed"
-            allLabel="全部主体"
-            ariaLabel="主体维度"
-            className="h-8 w-auto shrink min-w-0 flex-1 max-w-[260px] border-input/60 bg-page hover:bg-muted/60"
-          />
-
-          {/* 科目列关键字筛选：实时过滤科目树（命中节点保留整棵子树与祖先链）；>=600px 弹性伸缩，<600px 缩为图标浮层 */}
-          <div className="relative shrink-0 min-[600px]:min-w-0 min-[600px]:flex-1 min-[600px]:max-w-[220px]">
-            {/* >=600px：完整输入框（flex-1 弹性填充，min-w-0 可收缩截断） */}
-            <div className="hidden min-[600px]:flex min-[600px]:min-w-0">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={subjectKeyword}
-                onChange={(e) => setSubjectKeyword(e.target.value)}
-                placeholder="搜索科目"
-                aria-label="搜索科目"
-                className="h-8 w-auto min-w-0 flex-1 max-w-[220px] border-input/60 bg-page pl-8 pr-7 text-[13px]"
-              />
-              {subjectKeyword && (
-                <button
-                  type="button"
-                  onClick={() => setSubjectKeyword('')}
-                  aria-label="清空科目搜索"
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-            {/* <600px：仅图标按钮，点击展开 Popover 浮层输入框（Portal 渲染，不受侧边栏/吸顶层级遮挡） */}
-            <div className="min-[600px]:hidden">
-              <Popover open={searchOpen} onOpenChange={setSearchOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="fused"
-                    size="sm"
-                    className="h-8 w-8 p-0"
-                    aria-label={searchOpen ? '收起科目搜索' : '搜索科目'}
-                    title="搜索科目"
-                  >
-                    <Search className="h-3.5 w-3.5" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent align="end" sideOffset={6} className="w-64 p-1.5">
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      autoFocus
-                      value={subjectKeyword}
-                      onChange={(e) => setSubjectKeyword(e.target.value)}
-                      placeholder="搜索科目"
-                      aria-label="搜索科目"
-                      className="h-8 w-full border-input/60 bg-page pl-8 pr-7 text-[13px]"
-                    />
-                    {subjectKeyword && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSubjectKeyword('')
-                          setSearchOpen(false)
-                        }}
-                        aria-label="清空科目搜索"
-                        className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
-          </div>
-
-          {/* 右侧：期间 + 重分类 + 操作按钮组（lg 以上靠右对齐） */}
-          <div className="flex shrink-0 items-center gap-2 lg:ml-auto">
-            <Select value={periodFilter} onValueChange={setPeriodFilter}>
-              <SelectTrigger className="h-8 w-[100px] shrink-0 border-input/60 bg-page hover:bg-muted/60" aria-label="期间">
-                <SelectValue placeholder="选择期间" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部期间</SelectItem>
-                {periods.map((p) => (
-                  <SelectItem key={p} value={p}>{p}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {!isCashflow && (
-              <div
-                className="flex shrink-0 items-center gap-1.5"
-                title="按重分类日志快照回溯展示调整前口径，仅供对比查看，不修改数据"
-              >
-                <Switch id="exclude-reclassify" aria-label="去除重分类影响" checked={excludeReclassify} onCheckedChange={setExcludeReclassify} />
-                <Label htmlFor="exclude-reclassify" className="hidden cursor-pointer whitespace-nowrap text-[13px] min-[1300px]:inline">去除重分类影响</Label>
-              </div>
-            )}
-
-            <div className="mx-1 h-5 w-px shrink-0 bg-border/60" aria-hidden="true" />
-
-            {/* 展开/折叠：800px+ 独立显示（<800px 时在下拉内）；过滤态下禁用（展开由 effectiveExpanded 托管，避免污染持久化展开态） */}
-            <Button variant="fused" size="sm" onClick={toggleExpandAll} disabled={!!subjectKeyword.trim()} className="hidden shrink-0 min-[800px]:inline-flex">
-              {isAllExpanded ? <ChevronsDownUp className="mr-1 h-3.5 w-3.5" /> : <ChevronsUpDown className="mr-1 h-3.5 w-3.5" />}
-              {isAllExpanded ? '全部折叠' : '全部展开'}
-            </Button>
-
-            {/* 小屏与中屏（<1300px）：AI 预分析 / 查看分析 / 导出 合并为「更多操作」下拉；<800px 时展开/折叠也在下拉内 */}
-            <div className="shrink-0 min-[1300px]:hidden">
-              <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="fused" size="sm">
-                      <MoreHorizontal className="mr-1 h-3.5 w-3.5" /> 更多操作
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-40">
-                    {/* 展开/折叠全部（仅 <800px 在下拉内，800px+ 已独立显示）；过滤态下禁用 */}
-                    <DropdownMenuItem onClick={toggleExpandAll} disabled={!!subjectKeyword.trim()} className="min-[800px]:hidden">
-                      {isAllExpanded ? <ChevronsDownUp className="mr-2 h-3.5 w-3.5" /> : <ChevronsUpDown className="mr-2 h-3.5 w-3.5" />}
-                      {isAllExpanded ? '全部折叠' : '全部展开'}
-                    </DropdownMenuItem>
-                    {can('reports', 'create') && (
-                      <DropdownMenuItem onClick={() => setAiNeedData(true)} disabled={isLoading || !hasOverviewData || overviewPreparing}>
-                        {overviewPreparing ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-2 h-3.5 w-3.5" />}
-                        {overviewPreparing ? '数据准备中…' : 'AI 预分析'}
-                      </DropdownMenuItem>
-                    )}
-                    {can('reports', 'view') && (
-                      <DropdownMenuItem onClick={() => navigate('/reports/analyses')}>
-                        <Eye className="mr-2 h-3.5 w-3.5" /> 查看分析
-                      </DropdownMenuItem>
-                    )}
-                    {can('indicators', 'export') && (
-                      <DropdownMenuItem onClick={handleExport} disabled={isLoading || activeItems.length === 0 || exporting}>
-                        {exporting ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-2 h-3.5 w-3.5" />}
-                        {exporting ? '导出中…' : '导出 Excel'}
-                      </DropdownMenuItem>
-                    )}
-                    {/* 视图设置：密度 + 列设置（小屏收纳于下拉，大屏独立显示于右侧按钮组） */}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuLabel className="text-xs text-muted-foreground">密度</DropdownMenuLabel>
-                    <DropdownMenuRadioGroup value={density} onValueChange={(v) => setDensity(v as 'default' | 'dense' | 'compact')}>
-                      {(
-                        [
-                          ['default', '标准'],
-                          ['dense', '紧凑'],
-                          ['compact', '极简'],
-                        ] as const
-                      ).map(([v, label]) => (
-                        <DropdownMenuRadioItem key={v} value={v}>
-                          {label}
-                        </DropdownMenuRadioItem>
-                      ))}
-                    </DropdownMenuRadioGroup>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuLabel className="text-xs text-muted-foreground">列设置</DropdownMenuLabel>
-                    {(isOperating ? OPERATING_COLUMN_META : isCashflow ? CASHFLOW_COLUMN_META : STATIC_COLUMN_META).map((col) => (
-                      <DropdownMenuCheckboxItem
-                        key={col.key}
-                        checked={!hiddenColumns.includes(col.key)}
-                        onCheckedChange={(checked) => {
-                          const next = checked
-                            ? hiddenColumns.filter((k) => k !== col.key)
-                            : [...hiddenColumns, col.key]
-                          setHiddenColumns(next)
-                        }}
-                      >
-                        {col.header}
-                      </DropdownMenuCheckboxItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-
-            {/* 大屏（>=1300px）：AI 预分析 / 查看分析 / 导出 独立显示（展开/折叠已独立于上方） */}
-            <div className="hidden shrink-0 min-[1300px]:flex min-[1300px]:items-center min-[1300px]:gap-2">
-              {can('reports', 'create') ? (
-                <Button
-                  variant="fused"
-                  size="sm"
-                  onClick={() => setAiNeedData(true)}
-                  disabled={isLoading || !hasOverviewData || overviewPreparing}
-                >
-                  {overviewPreparing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1 h-3.5 w-3.5" />}
-                  {overviewPreparing ? '数据准备中…' : 'AI 预分析'}
-                </Button>
-              ) : null}
-              {can('reports', 'view') ? (
-                <Button variant="fused" size="sm" onClick={() => navigate('/reports/analyses')}>
-                  <Eye className="mr-1 h-3.5 w-3.5" /> 查看分析
-                </Button>
-              ) : null}
-              {can('indicators', 'export') ? (
-                <Button variant="fused" size="sm" onClick={handleExport} disabled={isLoading || activeItems.length === 0 || exporting}>
-                  {exporting ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1 h-3.5 w-3.5" />}
-                  {exporting ? '导出中…' : '导出 Excel'}
-                </Button>
-              ) : null}
-              {/* 视图设置：密度切换 + 列设置（大屏独立显示，状态持久化） */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="fused" size="sm">
-                    <Rows3 className="mr-1 h-3.5 w-3.5" /> 密度
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-32">
-                  <DropdownMenuRadioGroup value={density} onValueChange={(v) => setDensity(v as 'default' | 'dense' | 'compact')}>
-                    {(
-                      [
-                        ['default', '标准'],
-                        ['dense', '紧凑'],
-                        ['compact', '极简'],
-                      ] as const
-                    ).map(([v, label]) => (
-                      <DropdownMenuRadioItem key={v} value={v}>
-                        {label}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="fused" size="sm">
-                    <Columns3 className="mr-1 h-3.5 w-3.5" /> 列设置
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-44">
-                  {(isOperating ? OPERATING_COLUMN_META : isCashflow ? CASHFLOW_COLUMN_META : STATIC_COLUMN_META).map((col) => (
-                    <DropdownMenuCheckboxItem
-                      key={col.key}
-                      checked={!hiddenColumns.includes(col.key)}
-                      onCheckedChange={(checked) => {
-                        const next = checked
-                          ? hiddenColumns.filter((k) => k !== col.key)
-                          : [...hiddenColumns, col.key]
-                        setHiddenColumns(next)
-                      }}
-                    >
-                      {col.header}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </div>
-        </div>
-        }
-      >
+        <IndicatorFilterBar
+          subjectType={activeTab} dimFilter={dimFilter} onDimFilterChange={setDimFilter}
+          periodFilter={periodFilter} onPeriodFilterChange={setPeriodFilter} periods={periods}
+          excludeReclassify={excludeReclassify} onExcludeReclassifyChange={setExcludeReclassify}
+          subjectKeyword={subjectKeyword} onSubjectKeywordChange={setSubjectKeyword}
+          isAllExpanded={isAllExpanded} onToggleExpandAll={toggleExpandAll}
+          density={density} onDensityChange={setDensity}
+          hiddenColumns={hiddenColumns} onHiddenColumnsChange={setHiddenColumns}
+          canCreateReports={can('reports', 'create')} canViewReports={can('reports', 'view')} canExport={can('indicators', 'export')}
+          aiPreparing={overviewPreparing} aiDisabled={isLoading || !hasOverviewData || overviewPreparing}
+          onAiPreAnalyze={() => setAiNeedData(true)} onViewAnalyses={() => navigate('/reports/analyses')}
+          exporting={exporting} exportDisabled={isLoading || activeItems.length === 0 || exporting} onExport={handleExport}
+        />
+      }
+    >
 
       {/* 页内 Tab：经营指标 / 静态指标（路由驱动，切换即导航到子页） */}
       <SubPageTabs items={INDICATOR_TABS} />
