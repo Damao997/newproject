@@ -9,6 +9,8 @@ import { MonthPicker } from '@/components/ui/month-picker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { CompanyMultiSelect } from '@/components/filters/company-select'
 import { PageContainer } from '@/components/layout/page-container'
+import { FilterBar } from '@/components/layout/filter-bar'
+import { FILTER_WIDTH } from '@/components/layout/filter-width'
 import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { useExclusiveCompanyFilter } from '@/hooks/use-exclusive-company-filter'
 import { AnalysisDrawer, type AnalysisTarget } from '@/components/indicators/analysis-drawer'
@@ -590,18 +592,23 @@ export default function InventoryPage() {
       <div className="space-y-6">
         {/* 筛选卡：公司多选（单体/汇总互斥）+ 期间单选（财年由顶部导航全局控制，财年月外的月份禁用）；吸顶 */}
         <Card ref={filterRef} className="sticky z-10 rounded-card p-4" style={{ top: headerHeight }}>
-        <div className="flex flex-wrap items-center gap-3">
-          <CompanyMultiSelect value={selectedCompanies} onChange={handleCompaniesChange} selectAllType="entity" />
+        <FilterBar>
+          <CompanyMultiSelect
+            value={selectedCompanies}
+            onChange={handleCompaniesChange}
+            selectAllType="entity"
+            className={`h-9 ${FILTER_WIDTH.subject}`}
+          />
           <MonthPicker
             value={periodFilter}
             onChange={setPeriodFilter}
             availablePeriods={periods}
             allowedPeriods={periods}
             placeholder="最新期间"
-            className="w-full sm:w-[150px]"
+            className="h-9 w-full sm:w-[150px]"
           />
           <span className="text-xs text-muted-foreground">金额单位：万元</span>
-        </div>
+        </FilterBar>
         {noticeElement}
         </Card>
 

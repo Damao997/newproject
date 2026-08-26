@@ -10,6 +10,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { PageContainer } from '@/components/layout/page-container'
+import { FilterBar } from '@/components/layout/filter-bar'
+import { FILTER_WIDTH } from '@/components/layout/filter-width'
 import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { useExclusiveCompanyFilter } from '@/hooks/use-exclusive-company-filter'
 import { useTransactionOverview, useTransactionPeriods, useCompanies, useAvailablePeriods } from '@/hooks/api-queries'
@@ -130,10 +132,15 @@ export default function TransactionsOverviewPage() {
         <div className="space-y-6">
           {/* 筛选卡：公司多选（图表与卡片共享，单体/汇总互斥）+ 期间单选 + 对象类型多选（后两者仅作用于卡片）；吸顶 */}
           <Card ref={filterRef} className="sticky z-10 rounded-card p-4" style={{ top: headerHeight }}>
-          <div className="flex flex-wrap items-center gap-3">
-            <CompanyMultiSelect value={selectedCompanies} onChange={handleCompaniesChange} selectAllType="entity" />
+          <FilterBar>
+            <CompanyMultiSelect
+              value={selectedCompanies}
+              onChange={handleCompaniesChange}
+              selectAllType="entity"
+              className={`h-9 ${FILTER_WIDTH.subject}`}
+            />
             <Select value={period ?? ''} onValueChange={setPeriodFilter}>
-              <SelectTrigger className="w-[140px]">
+              <SelectTrigger className={`h-9 ${FILTER_WIDTH.period}`}>
                 <SelectValue placeholder="期间" />
               </SelectTrigger>
               <SelectContent>
@@ -143,7 +150,7 @@ export default function TransactionsOverviewPage() {
               </SelectContent>
             </Select>
             <PartyTypeSelect value={partyFilter} onChange={setPartyFilter} />
-          </div>
+          </FilterBar>
           {noticeElement}
           </Card>
 

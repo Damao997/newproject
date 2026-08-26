@@ -20,6 +20,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { PageContainer } from '@/components/layout/page-container'
+import { FilterBar } from '@/components/layout/filter-bar'
 import { SubPageTabs } from '@/components/layout/sub-page-tabs'
 import { TRANSACTION_DETAIL_TABS } from '@/components/layout/module-tabs'
 import { useStickyHeader } from '@/hooks/useStickyHeader'
@@ -263,11 +264,11 @@ export default function TransactionsAgingPage() {
         {/* 筛选卡：公司 / 期间 / 类型 / 科目 / 客商 / 分组 / 导出（吸顶） */}
         <Card ref={filterRef} className="sticky z-10 shrink-0 rounded-card p-4" style={{ top: headerHeight }}>
         {/* 行 1：核心筛选 + 高频操作（flex-nowrap 强制单行：小屏时下拉收缩省略号，按钮组恒完整） */}
-        <div className="flex flex-nowrap items-center gap-2">
-          <CompanyMultiSelect value={selectedCompanies} onChange={handleCompaniesChange} selectAllType="entity" className="w-[150px]" />
+        <FilterBar nowrap className="gap-2">
+          <CompanyMultiSelect value={selectedCompanies} onChange={handleCompaniesChange} selectAllType="entity" className="h-9 w-[150px]" />
           <Select value={period ?? ''} onValueChange={setPeriodFilter}>
             {/* 期间 YYYY-MM 共 7 字符（约 54px 文本 + 24px 内边距 + 16px 箭头） */}
-            <SelectTrigger className="w-[94px] min-w-0">
+            <SelectTrigger className="h-9 w-[94px] min-w-0">
               <SelectValue placeholder="期间" />
             </SelectTrigger>
             <SelectContent>
@@ -276,7 +277,7 @@ export default function TransactionsAgingPage() {
           </Select>
           <Select value={typeFilter} onValueChange={(v) => { setTypeFilter(v === 'all' ? '' : v); setAccountFilter([]) }}>
             {/* 宽度刚好容纳最长选项「其他应收款」等 5 字（70px 文本 + 24px 内边距 + 16px 箭头） */}
-            <SelectTrigger className="w-[110px] min-w-0">
+            <SelectTrigger className="h-9 w-[110px] min-w-0">
               <SelectValue placeholder="往来类型" />
             </SelectTrigger>
             <SelectContent>
@@ -286,7 +287,7 @@ export default function TransactionsAgingPage() {
           </Select>
           <Select value={groupBy} onValueChange={(v) => { setGroupBy(v); if (v !== 'counterparty') setKeyword('') }}>
             {/* 选项已精简为 3 字，宽度随之收窄（42px 文本 + 24px 内边距 + 16px 箭头） */}
-            <SelectTrigger className="w-[84px] min-w-0">
+            <SelectTrigger className="h-9 w-[84px] min-w-0">
               <SelectValue placeholder="分组方式" />
             </SelectTrigger>
             <SelectContent>
@@ -359,7 +360,7 @@ export default function TransactionsAgingPage() {
               </DropdownMenu>
             )}
           </div>
-        </div>
+        </FilterBar>
         {/* 行 2：明细筛选（科目/客商/关键词/仅小计），默认折叠，由行 1 按钮控制显隐 */}
         <Collapsible open={detailOpen} onOpenChange={setDetailOpen}>
           <div className="mt-1 flex flex-wrap items-center gap-3 border-t border-dashed border-border pt-1">
