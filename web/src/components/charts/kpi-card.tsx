@@ -1,11 +1,18 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card as AntdCard, Statistic } from 'antd'
+import {
+  Activity,
+  ArrowDownRight,
+  ArrowUpRight,
+  HandCoins,
+  Minus,
+  Percent,
+  PiggyBank,
+  TrendingUp,
+} from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+import { KpiSparkline } from './kpi-sparkline'
 import { formatMoneyWan, formatPercent } from '@/lib/utils'
 import { cn } from '@/lib/utils'
-import {
-  ArrowUpRight,
-  ArrowDownRight,
-  Minus
-} from 'lucide-react'
 import type { KpiData } from '@/types'
 
 interface KpiCardProps {
@@ -29,46 +36,93 @@ function rateColorClass(rate: number | null): string {
   return 'text-destructive'
 }
 
+/** 标题 → 图标映射（按业务关键词匹配，不侵入 KpiData 数据流） */
+const TITLE_ICON_MAP: Array<[RegExp, LucideIcon]> = [
+  [/收入|营收/, TrendingUp],
+  [/毛利/, Percent],
+  [/净利|利润/, PiggyBank],
+  [/回款|收款/, HandCoins],
+]
+
+function iconForTitle(title: string): LucideIcon {
+  return TITLE_ICON_MAP.find(([re]) => re.test(title))?.[1] ?? Activity
+}
+
 /**
- * 核心 KPI 卡（收入/毛利/净利润/回款）：
- * 大字体 = 本月合计 + 月度预算达成率（分级色）；小字体 = 累计实际 / 同比 / 累计达成率。
+ * 核心 KPI 卡（收入/毛利/净利润/回款）：antd Card + Statistic。
+ * 布局：图标色块 + 标题（hover 淡入钻取箭头）→ 大数字区（本月合计 + 月度达成率分级色）
+ * → 财年内月度趋势迷你图（KpiSparkline）→ 分隔线 → 小字区（累计/同比/累计达成率）。
  */
 export function KpiCard({ data, index = 0, onClick }: KpiCardProps) {
   // 红涨绿跌（A 股/国内财报习惯）：正数红 finance.red / 负数绿 finance.green / 持平灰；方向由箭头图标表达，数值不再重复加 "+" 前缀
   const isPositive = data.yoy > 0
   const isFlat = data.yoy === 0
+  const Icon = iconForTitle(data.title)
+  const hasTrend = data.trend.length > 1
 
   return (
-    <Card
+    <AntdCard
       className={cn(
-        'animate-fade-in group overflow-hidden border border-border shadow-sm',
-        onClick && 'cursor-pointer',
+        'animate-fade-in group overflow-hidden transition-all duration-200',
+        onClick && 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md',
       )}
+      styles={{ body: { padding: 0 } }}
       style={{ animationDelay: `${index * 80}ms` }}
       onClick={onClick}
-      title={onClick ? '点击查看财务指标明细' : undefined}
+      title={undefined}
+      aria-label={onClick ? `${data.title}：点击查看财务指标明细` : undefined}
     >
-      <CardHeader className="px-5 pb-1 pt-5">
-        <CardTitle className="text-sm font-semibold tracking-tight text-foreground">
-          {data.title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="px-5 pb-4">
-        {/* 大字体区：本月合计 + 月度达成率（分级色） */}
+      <div className="px-5 pb-4 pt-5">
+        {/* 头部：图标色块 + 标题 + hover 钻取箭头（可点击性可见暗示） */}
+        <div className="relative mb-3 flex items-center gap-2.5">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Icon className="h-5 w-5" />
+          </div>
+          <span className="text-sm font-semibold tracking-tight text-foreground">{data.title}</span>
+          {onClick && (
+            <ArrowUpRight
+              className="absolute right-0 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+              aria-hidden
+            />
+          )}
+        </div>
+
+        {/* 大数字区：本月合计 + 月度达成率（分级色） */}
         <div className="mb-3 flex items-end justify-between gap-2">
           <div className="min-w-0">
-            <span className="font-num block truncate text-2xl font-bold leading-tight tracking-tight text-foreground" title="本月合计（万元）">
-              {formatMoneyWan(data.monthActual)}
-            </span>
+            <Statistic
+              value={formatMoneyWan(data.monthActual)}
+              valueStyle={{
+                fontSize: 24,
+                fontWeight: 700,
+                lineHeight: 1.2,
+                letterSpacing: '-0.01em',
+                color: 'var(--foreground)',
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            />
             <span className="text-micro text-muted-foreground/70">本月合计（万元）</span>
           </div>
           <div className="shrink-0 text-right">
-            <span className={cn('font-num block text-lg font-bold leading-tight tracking-tight', rateColorClass(data.monthRate))} title="月度预算达成率">
+            <span
+              className={cn('font-num block text-lg font-bold leading-tight tracking-tight', rateColorClass(data.monthRate))}
+              title="月度预算达成率"
+            >
               {rateText(data.monthRate)}
             </span>
             <span className="text-micro text-muted-foreground/70">月度达成率</span>
           </div>
         </div>
+
+        {/* 财年内月度趋势迷你图（数据不足 2 点时不渲染） */}
+        {hasTrend && (
+          <div className="mb-3 -mx-1 h-10" aria-hidden>
+            <KpiSparkline data={data.trend} height={40} />
+          </div>
+        )}
+
+        <div className="mb-3 h-px bg-border/60" aria-hidden />
+
         {/* 小字体区：累计实际 / 同比 / 累计达成率 */}
         <div className="space-y-1.5 text-xs">
           <div className="flex items-center justify-between">
@@ -102,7 +156,7 @@ export function KpiCard({ data, index = 0, onClick }: KpiCardProps) {
             <span className={cn('font-num font-medium', rateColorClass(data.ytdRate))}>{rateText(data.ytdRate)}</span>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </AntdCard>
   )
 }
