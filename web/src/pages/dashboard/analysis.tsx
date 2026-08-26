@@ -12,11 +12,29 @@ import { ExpenseAnalysisCard } from './expense-analysis-card'
 import { KeyMetricsTable } from './key-metrics-table'
 import { AnalysisPlaceholder } from './analysis-placeholder'
 
-/** 占位子页标题（与 Tab 标签一致，用于占位卡展示；key-metrics 已实现功能不在占位列表） */
-const PLACEHOLDER_TITLES: Record<string, string> = {
-  'cash-flow': '壹品慧业务现金流分析',
-  'receivable-aging': '应收账款账龄分析表',
-  'inventory-aging': '存货库龄分析表',
+interface PlaceholderConfig {
+  title: string
+  note?: string
+  actionLabel?: string
+  actionHref?: string
+}
+
+/** 占位子页配置（与 Tab 标签一致）；receivable-aging 数据已在往来账龄落地，提供跳转通道 */
+const PLACEHOLDER_CONFIG: Record<string, PlaceholderConfig> = {
+  'cash-flow': {
+    title: '壹品慧业务现金流分析',
+    note: '功能规划中，如有需求请联系管理员反馈优先级',
+  },
+  'receivable-aging': {
+    title: '应收账款账龄分析表',
+    note: '数据已在「往来分析 · 账龄分析」落地，可直接前往查看',
+    actionLabel: '前往往来账龄分析',
+    actionHref: '/transactions/aging',
+  },
+  'inventory-aging': {
+    title: '存货库龄分析表',
+    note: '功能规划中，如有需求请联系管理员反馈优先级',
+  },
 }
 
 /** 经营分析子页类型：func=已迁移功能卡，placeholder=入口占位 */
@@ -144,7 +162,7 @@ export function AnalysisPage({ variant }: AnalysisPageProps) {
               </Card>
             )
           default:
-            return <AnalysisPlaceholder title={PLACEHOLDER_TITLES[variant] ?? '经营分析'} />
+            return <AnalysisPlaceholder {...(PLACEHOLDER_CONFIG[variant] ?? { title: '经营分析' })} />
         }
       })()}
     </PageContainer>
