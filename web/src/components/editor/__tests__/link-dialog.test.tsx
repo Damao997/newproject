@@ -20,9 +20,11 @@ describe('LinkDialog 链接编辑对话框（替代原生 prompt）', () => {
   })
 
   it('取消时不回传', () => {
+    const onConfirm = vi.fn()
     const onCancel = vi.fn()
-    render(<LinkDialog open initialUrl="https://a.com" onConfirm={vi.fn()} onCancel={onCancel} />)
+    render(<LinkDialog open initialUrl="https://a.com" onConfirm={onConfirm} onCancel={onCancel} />)
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
     expect(onCancel).toHaveBeenCalled()
+    expect(onConfirm).not.toHaveBeenCalled()
   })
 })

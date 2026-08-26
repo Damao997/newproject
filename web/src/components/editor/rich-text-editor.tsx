@@ -156,8 +156,8 @@ export function RichTextEditor({ value, onChange, placeholder, className, editab
   const [polish, setPolish] = useState<{ from: number; to: number; text: string } | null>(null)
   // 链接编辑对话框（替代原生 prompt）：打开时回填当前链接
   const [linkDialog, setLinkDialog] = useState<{ open: boolean; initialUrl: string }>({ open: false, initialUrl: 'https://' })
-  // 操作引导轻提示（替代原生 alert）：2.5s 自动消失
-  const [hint, setHint] = useState<string | null>(null)
+  // 操作引导轻提示（替代原生 alert）：2.5s 自动消失；对象 state 保证同文案重复触发时也重置计时
+  const [hint, setHint] = useState<{ text: string; key: number } | null>(null)
 
   const editor = useEditor({
     extensions: [
@@ -198,12 +198,12 @@ export function RichTextEditor({ value, onChange, placeholder, className, editab
   const handlePolish = () => {
     const { from, to } = editor.state.selection
     if (from === to) {
-      setHint('请先在编辑器中选中需润色的文本。')
+      setHint({ text: '请先在编辑器中选中需润色的文本。', key: Date.now() })
       return
     }
     const text = editor.state.doc.textBetween(from, to, '\n')
     if (!text.trim()) {
-      setHint('选区为空，无可润色的文本。')
+      setHint({ text: '选区为空，无可润色的文本。', key: Date.now() })
       return
     }
     setPolish({ from, to, text })
@@ -233,7 +233,7 @@ export function RichTextEditor({ value, onChange, placeholder, className, editab
     <div className={cn('overflow-hidden rounded-md border bg-background', className)}>
       {editable && <Toolbar editor={editor} onPolish={polishEnabled ? handlePolish : undefined} onEditLink={openLinkDialog} />}
       {hint && (
-        <p role="status" className="border-t px-3 py-1.5 text-[12px] text-muted-foreground">{hint}</p>
+        <p role="status" className="border-t px-3 py-1.5 text-[12px] text-muted-foreground">{hint.text}</p>
       )}
       <div className="flex">
         <div className="min-w-0 flex-1">

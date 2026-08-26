@@ -15,7 +15,7 @@ interface LinkDialogProps {
   open: boolean
   /** 初始链接地址（无链接时 'https://'） */
   initialUrl: string
-  /** 确定回调：空串表示移除链接（与旧 prompt 行为一致） */
+  /** 确定回调：trim 后空串表示移除链接（兼容旧 prompt 清空行为） */
   onConfirm: (url: string) => void
   onCancel: () => void
 }
@@ -35,20 +35,22 @@ export function LinkDialog({ open, initialUrl, onConfirm, onCancel }: LinkDialog
           <DialogTitle>编辑链接</DialogTitle>
           <DialogDescription>输入链接地址；清空后确定将移除当前链接。</DialogDescription>
         </DialogHeader>
-        <div className="space-y-1">
-          <Label htmlFor="link-url">链接地址</Label>
-          <Input
-            id="link-url"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://"
-            autoFocus
-          />
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onCancel}>取消</Button>
-          <Button onClick={() => onConfirm(url.trim())}>确定</Button>
-        </DialogFooter>
+        <form onSubmit={(e) => { e.preventDefault(); onConfirm(url.trim()) }}>
+          <div className="space-y-1">
+            <Label htmlFor="link-url">链接地址</Label>
+            <Input
+              id="link-url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://"
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onCancel}>取消</Button>
+            <Button type="submit">确定</Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )
