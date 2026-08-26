@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { render } from '@testing-library/react'
-import { FilterBar, FILTER_WIDTH } from '../filter-bar'
+import { FilterBar } from '../filter-bar'
 
 describe('FilterBar 筛选区容器', () => {
   it('默认换行布局：flex-wrap + gap-3 + items-center', () => {
@@ -17,10 +17,5 @@ describe('FilterBar 筛选区容器', () => {
     const { container } = render(<FilterBar stickyTop={56}><button>控件</button></FilterBar>)
     expect(container.firstChild).toHaveClass('sticky', 'z-10')
     expect((container.firstChild as HTMLElement).style.top).toBe('56px')
-  })
-
-  it('导出宽度语义常量（主体 180 / 期间 140）', () => {
-    expect(FILTER_WIDTH.subject).toBe('w-[180px]')
-    expect(FILTER_WIDTH.period).toBe('w-[140px]')
   })
 })

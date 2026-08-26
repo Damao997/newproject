@@ -1,6 +1,6 @@
 import { CompanySelect } from '@/components/filters/company-select'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { FILTER_WIDTH } from '@/components/layout/filter-bar'
+import { FILTER_WIDTH } from '@/components/layout/filter-width'
 
 interface DashboardFilterBarProps {
   dimFilter: string
@@ -32,6 +32,7 @@ export function DashboardFilterBar({ dimFilter, onDimChange, selectedPeriod, onP
             value={selectedPeriod || periodOptions[periodOptions.length - 1] || 'latest'}
             onValueChange={(v) => onPeriodChange(v === 'latest' ? '' : v)}
           >
+            {/* 未选时直接回显最新期间实际值（YYYY-MM），而非占位符文本；'latest' 项仍保留「跟随最新」语义 */}
             <SelectTrigger className={`h-9 ${FILTER_WIDTH.period} border-input/60 bg-page hover:bg-muted/60`} title="选择预览期间">
               <SelectValue placeholder="最新期间" />
             </SelectTrigger>

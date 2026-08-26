@@ -34,9 +34,9 @@ describe('DashboardFilterBar 看板筛选块', () => {
 
   it('控件统一 h-9 高度与语义宽度', () => {
     const { container } = render(<DashboardFilterBar {...base} />)
-    container.querySelectorAll('[class*="h-9"]').forEach((el) => {
-      expect(el.className).toContain('h-9')
-    })
+    // 主体 + 期间两个触发器均为 h-9（若实现回退为 h-8，数量断言会失败）
+    expect(container.querySelectorAll('[class*="h-9"]').length).toBeGreaterThanOrEqual(2)
     expect(container.querySelector('[class*="w-[180px]"]')).toBeTruthy()
+    expect(container.querySelector('[class*="w-[140px]"]')).toBeTruthy()
   })
 })
