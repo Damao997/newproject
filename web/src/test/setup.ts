@@ -14,3 +14,20 @@ if (typeof ResizeObserver === 'undefined') {
   }
   globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver
 }
+
+// antd 组件（wave/响应式断点等）依赖 window.matchMedia（jsdom 未实现），缺失时渲染会抛 TypeError
+if (typeof window !== 'undefined' && !window.matchMedia) {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  })
+}

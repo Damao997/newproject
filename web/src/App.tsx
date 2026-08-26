@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useSearchParams } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { AntdProvider } from '@/components/ui/antd-provider'
 import { MainLayout } from '@/components/layout/main-layout'
 import { RequirePermission } from '@/components/layout/require-permission'
 import { HomeRedirect } from '@/components/layout/home-redirect'
@@ -95,6 +96,7 @@ function LegacyQueryRedirect() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <AntdProvider>
       <TooltipProvider>
         <BrowserRouter>
           <ErrorBoundary>
@@ -159,6 +161,7 @@ function App() {
           </ErrorBoundary>
         </BrowserRouter>
       </TooltipProvider>
+      </AntdProvider>
     </QueryClientProvider>
   )
 }
