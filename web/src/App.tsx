@@ -7,6 +7,7 @@ import { MainLayout } from '@/components/layout/main-layout'
 import { RequirePermission } from '@/components/layout/require-permission'
 import { HomeRedirect } from '@/components/layout/home-redirect'
 import { ErrorBoundary } from '@/components/layout/error-boundary'
+import { RouteFallback } from '@/components/layout/route-fallback'
 
 const LoginPage = lazy(() => import('@/pages/login'))
 const DashboardPage = lazy(() => import('@/pages/dashboard'))
@@ -100,7 +101,7 @@ function App() {
       <TooltipProvider>
         <BrowserRouter>
           <ErrorBoundary>
-            <Suspense fallback={<div className="flex h-screen items-center justify-center text-sm text-muted-foreground">加载中…</div>}>
+            <Suspense fallback={<RouteFallback />}>
               <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/" element={<MainLayout />}>
