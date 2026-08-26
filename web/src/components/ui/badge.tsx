@@ -1,40 +1,53 @@
 import * as React from "react"
-import { cva, type VariantProps } from "class-variance-authority"
+import { Tag } from "antd"
 import { cn } from "@/lib/utils"
 
-const badgeVariants = cva(
-  "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
-  {
-    variants: {
-      variant: {
-        default:
-          "border-transparent bg-primary text-primary-foreground hover:bg-primary/80",
-        secondary:
-          "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        destructive:
-          "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
-        outline: "text-foreground",
-        success:
-          "border-transparent bg-success/10 text-success-strong",
-        warning:
-          "border-transparent bg-warning/15 text-warning-strong",
-        info: "border-transparent bg-info/10 text-info",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-    },
+export type BadgeVariant =
+  | 'default'
+  | 'secondary'
+  | 'destructive'
+  | 'outline'
+  | 'success'
+  | 'warning'
+  | 'info'
+
+/** variant → antd Tag 预设色（色值由 ConfigProvider token 决定：colorInfo=品牌主色等） */
+function toTagColor(variant?: BadgeVariant | null): string | undefined {
+  switch (variant) {
+    case 'destructive':
+      return 'error'
+    case 'success':
+      return 'success'
+    case 'warning':
+      return 'warning'
+    case 'info':
+      return 'processing'
+    case 'default':
+      // 品牌主色（colorInfo 跟随侧边栏风格）
+      return 'processing'
+    case 'outline':
+      return undefined
+    default:
+      // secondary → antd 默认灰
+      return undefined
   }
-)
+}
 
-export interface BadgeProps
-  extends React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof badgeVariants> {}
+export interface BadgeProps extends React.HTMLAttributes<HTMLDivElement> {
+  variant?: BadgeVariant
+}
 
-function Badge({ className, variant, ...props }: BadgeProps) {
+/**
+ * 徽标门面：antd Tag。
+ * 语义变体经 antd 预设色映射（success/error/warning/processing），
+ * 色值全部来自 ConfigProvider token（主色跟随侧边栏风格），不写死颜色。
+ */
+function Badge({ className, variant, children, ...props }: BadgeProps) {
   return (
-    <div className={cn(badgeVariants({ variant }), className)} {...props} />
+    <Tag color={toTagColor(variant)} className={cn('inline-flex items-center', className)} {...(props as React.ComponentProps<typeof Tag>)}>
+      {children}
+    </Tag>
   )
 }
 
-export { Badge, badgeVariants }
+export { Badge }

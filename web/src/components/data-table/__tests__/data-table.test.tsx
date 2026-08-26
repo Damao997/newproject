@@ -182,14 +182,14 @@ describe('DataTable', () => {
         rowSelection={{ selectedKeys: new Set([1]), onSelectionChange }}
       />,
     )
-    // 首列选择框（Radix Checkbox 渲染为 role="checkbox" 的 button）：表头 1 个 + 数据行 2 个
-    expect(container.querySelectorAll('thead [role="checkbox"]')).toHaveLength(1)
-    expect(container.querySelectorAll('tbody [role="checkbox"]')).toHaveLength(2)
+    // 首列选择框（antd Checkbox 渲染为原生 input[type=checkbox]）：表头 1 个 + 数据行 2 个
+    expect(container.querySelectorAll('thead input[type="checkbox"]')).toHaveLength(1)
+    expect(container.querySelectorAll('tbody input[type="checkbox"]')).toHaveLength(2)
     // 已选 1/2 → 表头半选态；点击表头 → 全选（回调携带全部行键）
-    fireEvent.click(container.querySelector('thead [role="checkbox"]')!)
+    fireEvent.click(container.querySelector('thead input[type="checkbox"]')!)
     expect(onSelectionChange).toHaveBeenLastCalledWith(new Set([1, 2]))
     // 点击已选行 → 移除该键
-    fireEvent.click(container.querySelectorAll('tbody [role="checkbox"]')[0]!)
+    fireEvent.click(container.querySelectorAll('tbody input[type="checkbox"]')[0]!)
     expect(onSelectionChange).toHaveBeenLastCalledWith(new Set())
   })
 
@@ -268,7 +268,8 @@ describe('Pagination', () => {
   it('首页时上一页禁用', () => {
     const onPageChange = vi.fn()
     render(<Pagination page={1} pageSize={10} total={35} onPageChange={onPageChange} />)
-    const prev = screen.getByText('上一页') as HTMLButtonElement
+    // antd Button 文本由内层 span 承载，disabled 属性在 button 元素上
+    const prev = screen.getByText('上一页').closest('button') as HTMLButtonElement
     expect(prev.disabled).toBe(true)
   })
 
@@ -288,7 +289,7 @@ describe('Pagination', () => {
     const input = screen.getByLabelText('跳转页码')
 
     fireEvent.change(input, { target: { value: '3' } })
-    fireEvent.click(screen.getByText('跳转'))
+    fireEvent.click(screen.getByText(/跳\s*转/))
     expect(onPageChange).toHaveBeenLastCalledWith(3)
 
     // 总页数为 4，输入 999 应 clamp 到 4
@@ -298,7 +299,7 @@ describe('Pagination', () => {
 
     onPageChange.mockClear()
     fireEvent.change(input, { target: { value: 'abc' } })
-    fireEvent.click(screen.getByText('跳转'))
+    fireEvent.click(screen.getByText(/跳\s*转/))
     expect(onPageChange).not.toHaveBeenCalled()
   })
 

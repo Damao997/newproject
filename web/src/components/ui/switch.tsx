@@ -1,26 +1,37 @@
 import * as React from "react"
-import * as SwitchPrimitives from "@radix-ui/react-switch"
+import { Switch as AntdSwitch } from "antd"
 import { cn } from "@/lib/utils"
 
-const Switch = React.forwardRef<
-  React.ElementRef<typeof SwitchPrimitives.Root>,
-  React.ComponentPropsWithoutRef<typeof SwitchPrimitives.Root>
->(({ className, ...props }, ref) => (
-  <SwitchPrimitives.Root
-    className={cn(
-      "peer inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=unchecked]:bg-input",
-      className
-    )}
-    {...props}
-    ref={ref}
-  >
-    <SwitchPrimitives.Thumb
-      className={cn(
-        "pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0"
-      )}
-    />
-  </SwitchPrimitives.Root>
-))
-Switch.displayName = SwitchPrimitives.Root.displayName
+export interface SwitchProps
+  extends Omit<React.ComponentPropsWithoutRef<typeof AntdSwitch>, 'onChange'> {
+  /** Radix 兼容：勾选回调（antd onChange 的布尔首参），全站统一用法 */
+  onCheckedChange?: (checked: boolean) => void
+  /** 原生 change 事件（透传给 antd） */
+  onChange?: (
+    checked: boolean,
+    event: React.MouseEvent<HTMLButtonElement> | React.KeyboardEvent<HTMLButtonElement>,
+  ) => void
+}
+
+/**
+ * 开关门面：antd Switch。
+ * 保留 Radix 的 onCheckedChange(checked) 签名，映射到 antd onChange；checked/disabled/id 等直接透传。
+ */
+const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
+  ({ className, onCheckedChange, onChange, ...props }, ref) => {
+    return (
+      <AntdSwitch
+        ref={ref}
+        className={cn(className)}
+        onChange={(checked, event) => {
+          onCheckedChange?.(checked)
+          onChange?.(checked, event)
+        }}
+        {...props}
+      />
+    )
+  }
+)
+Switch.displayName = "Switch"
 
 export { Switch }

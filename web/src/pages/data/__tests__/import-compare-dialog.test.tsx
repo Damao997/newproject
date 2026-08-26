@@ -111,7 +111,7 @@ describe('ImportCompareDialog 批次差异对比', () => {
     await waitFor(() => {
       expect(screen.getByText('回滚批次确认')).toBeInTheDocument()
     })
-    fireEvent.click(screen.getByRole('button', { name: '回滚' }))
+    fireEvent.click(screen.getByRole('button', { name: /回\s*滚/ }))
     await waitFor(() => {
       expect(rollbackMutation.mutateAsync).toHaveBeenCalledWith('b2')
       expect(onRollbackSuccess).toHaveBeenCalledWith(expect.stringContaining('B批次.xlsx'))

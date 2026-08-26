@@ -1,32 +1,39 @@
 import * as React from "react"
-import * as CheckboxPrimitive from "@radix-ui/react-checkbox"
-import { Check } from "lucide-react"
+import { Checkbox as AntdCheckbox } from "antd"
 import { cn } from "@/lib/utils"
 
+export interface CheckboxProps
+  extends Omit<
+    React.ComponentPropsWithoutRef<typeof AntdCheckbox>,
+    'onChange' | 'checked' | 'indeterminate'
+  > {
+  /** Radix 兼容：true/false/'indeterminate'（半选态） */
+  checked?: boolean | 'indeterminate'
+  /** Radix 兼容：勾选回调 */
+  onCheckedChange?: (checked: boolean | 'indeterminate') => void
+  /** 两档尺寸：default（16px）/ sm（14px，紧凑表格） */
+  size?: 'default' | 'sm'
+}
+
 /**
- * 复选框：基于 Radix Checkbox，选中态品牌橙（对齐 Switch/Select 交互色）。
- * 两档尺寸：默认 h-4 w-4（表单/表格行内），size="sm" 为 h-3.5 w-3.5（紧凑表格对比选择等）。
+ * 复选框门面：antd Checkbox。
+ * 保留 Radix 的 checked('indeterminate' 半选) 与 onCheckedChange 签名（全站统一用法）。
  */
-const Checkbox = React.forwardRef<
-  React.ElementRef<typeof CheckboxPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof CheckboxPrimitive.Root> & { size?: 'default' | 'sm' }
->(({ className, size = 'default', ...props }, ref) => (
-  <CheckboxPrimitive.Root
-    ref={ref}
-    className={cn(
-      "peer shrink-0 rounded-sm border border-input ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground",
-      size === 'default' ? 'h-4 w-4' : 'h-3.5 w-3.5',
-      className
-    )}
-    {...props}
-  >
-    <CheckboxPrimitive.Indicator
-      className={cn("flex items-center justify-center text-current")}
-    >
-      <Check className={size === 'default' ? 'h-3.5 w-3.5' : 'h-3 w-3'} strokeWidth={3} />
-    </CheckboxPrimitive.Indicator>
-  </CheckboxPrimitive.Root>
-))
-Checkbox.displayName = CheckboxPrimitive.Root.displayName
+const Checkbox = React.forwardRef<React.ComponentRef<typeof AntdCheckbox>, CheckboxProps>(
+  ({ className, size = 'default', checked, onCheckedChange, ...props }, ref) => {
+    const isIndeterminate = checked === 'indeterminate'
+    return (
+      <AntdCheckbox
+        ref={ref}
+        checked={checked === true}
+        indeterminate={isIndeterminate}
+        className={cn(size === 'sm' && 'scale-[0.875]', className)}
+        onChange={(e) => onCheckedChange?.(e.target.checked)}
+        {...props}
+      />
+    )
+  }
+)
+Checkbox.displayName = "Checkbox"
 
 export { Checkbox }

@@ -41,7 +41,7 @@ describe('useAnalysisForm 删除确认', () => {
     render(<Host />)
     fireEvent.click(await screen.findByRole('button', { name: '删除' }))
     expect(await screen.findByRole('dialog')).toHaveTextContent('确认删除该单项分析')
-    fireEvent.click(screen.getByRole('button', { name: '取消' }))
+    fireEvent.click(screen.getByRole('button', { name: /取\s*消/ }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(deleteMutateAsync).not.toHaveBeenCalled()
   })

@@ -1,18 +1,19 @@
 import * as React from "react"
+import { Input as AntdInput } from "antd"
 import { cn } from "@/lib/utils"
 
 export interface TextareaProps
   extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {}
 
+/**
+ * 多行文本门面：antd Input.TextArea，签名与原生 textarea 一致（value/onChange(event)/rows 等）。
+ */
 const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
   ({ className, ...props }, ref) => {
     return (
-      <textarea
-        className={cn(
-          "flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground hover:border-primary focus-visible:border-input focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
-          className
-        )}
+      <AntdInput.TextArea
         ref={ref}
+        className={cn("text-sm", className)}
         {...props}
       />
     )
