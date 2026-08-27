@@ -3,8 +3,9 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { useExclusiveCompanyFilter } from '@/hooks/use-exclusive-company-filter'
 import type { Company } from '@/types'
 
-const ENTITY = { code: 'C1', type: 'entity' } as unknown as Company
-const SUMMARY = { code: 'S1', type: 'summary' } as unknown as Company
+const ENTITY = { code: 'C1', name: '甲公司', type: 'entity' } as unknown as Company
+const SUMMARY = { code: 'S1', name: '汇总一号', type: 'summary' } as unknown as Company
+const SUMMARY2 = { code: 'S2', name: '汇总二号', type: 'summary' } as unknown as Company
 
 function Host({ companies, prev, setSelected }: {
   companies: Company[]
@@ -21,6 +22,7 @@ function Host({ companies, prev, setSelected }: {
       <button onClick={() => handleCompaniesChange(['C1', 'S1'])}>勾选 C1+S1</button>
       <button onClick={() => handleCompaniesChange(['S1'])}>勾选 S1</button>
       <button onClick={() => handleCompaniesChange(['C1'])}>勾选 C1</button>
+      <button onClick={() => handleCompaniesChange(['S1', 'S2'])}>勾选 S1+S2</button>
       {noticeElement}
     </div>
   )
@@ -49,5 +51,13 @@ describe('useExclusiveCompanyFilter 主体互斥过滤', () => {
     fireEvent.click(screen.getByRole('button', { name: '勾选 S1' }))
     expect(screen.queryByText(/不能同时筛选/)).not.toBeInTheDocument()
     expect(setSelected).toHaveBeenCalledWith(['S1'])
+  })
+
+  it('新选汇总主体自动替换已选汇总主体并以轻提示告知', () => {
+    const setSelected = vi.fn()
+    render(<Host companies={[ENTITY, SUMMARY, SUMMARY2]} prev={['S1']} setSelected={setSelected} />)
+    fireEvent.click(screen.getByRole('button', { name: '勾选 S1+S2' }))
+    expect(screen.getByText('汇总主体仅可选择一个，已切换为「汇总二号」。')).toBeInTheDocument()
+    expect(setSelected).toHaveBeenCalledWith(['S2'])
   })
 })

@@ -93,4 +93,31 @@ describe('Select 门面（antd）', () => {
     expect(screen.getByText('汇总一号')).toBeInTheDocument()
     expect(screen.getByText('全部')).toBeInTheDocument()
   })
+
+  it('无 SelectLabel 的分组平铺为普通选项（不渲染空组头行）', async () => {
+    const { container } = render(
+      <Select value="" onValueChange={vi.fn()}>
+        <SelectTrigger>
+          <SelectValue placeholder="请选择" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">全部公司</SelectItem>
+          <SelectGroup>
+            <SelectItem value="c1">单体公司-甲公司</SelectItem>
+            <SelectItem value="c2">单体公司-乙公司</SelectItem>
+          </SelectGroup>
+          <SelectGroup>
+            <SelectItem value="s1">汇总主体-汇总一号</SelectItem>
+          </SelectGroup>
+        </SelectContent>
+      </Select>,
+    )
+    fireEvent.mouseDown(screen.getByText('请选择'))
+    expect(await screen.findByText('全部公司')).toBeInTheDocument()
+    expect(screen.getByText('单体公司-甲公司')).toBeInTheDocument()
+    expect(screen.getByText('单体公司-乙公司')).toBeInTheDocument()
+    expect(screen.getByText('汇总主体-汇总一号')).toBeInTheDocument()
+    // 空组头（.ant-select-item-group）不应存在，否则下拉出现空白行
+    expect(container.querySelectorAll('.ant-select-item-group')).toHaveLength(0)
+  })
 })

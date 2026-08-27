@@ -118,7 +118,14 @@ function collectOptions(nodes: React.ReactNode, options: DefaultOptionType[]): v
           group.options.push({ value: p.value, label: p.children, disabled: p.disabled })
         }
       })
-      if (group.options.length > 0) options.push(group)
+      if (group.options.length > 0) {
+        // 无 SelectLabel 的分组平铺为普通选项（antd 空 label 分组会渲染空白组头行）
+        if (group.label === '') {
+          options.push(...group.options)
+        } else {
+          options.push(group)
+        }
+      }
     } else if (child.type === SelectSeparator) {
       options.push({ type: 'divider' } as DefaultOptionType)
     }

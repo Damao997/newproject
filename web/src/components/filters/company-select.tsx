@@ -1,15 +1,9 @@
 import { useMemo } from 'react'
+import { Select as AntdSelect, Tag } from 'antd'
 import { ChevronDown } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger } from '@/components/ui/select'
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { antdSizeFromClassName } from '@/components/ui/antd-size'
+import { FILTER_WIDTH } from '@/components/layout/filter-width'
 import { useCompanies } from '@/hooks/api-queries'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { cn } from '@/lib/utils'
@@ -110,9 +104,10 @@ interface CompanyMultiSelectProps {
 }
 
 /**
- * 公司多选筛选器（共享实现）：DropdownMenu 复选框式，内置"全选/清空（全部公司）"，
- * 触发器文案"全部公司 / 首选名称 / 首选名称 等 N 家"，名称跟随全局"显示简称"开关。
- * 选项按 单体公司/汇总主体 分组（前缀标识），触发器仅显示名称（无前缀）。
+ * 公司多选筛选器（共享实现）：antd Select multiple（与全站单选下拉同视觉），
+ * 内置"全选/清空（全部公司）"操作行（popupRender 顶部注入），支持输入搜索公司名。
+ * 触发器空数组显示"全部公司"，勾选后显示"名称 tag / 等 N 家"；名称跟随全局"显示简称"开关。
+ * 选项按 单体公司/汇总主体 前缀标识平铺；触发器仅显示名称（无前缀）。
  */
 export function CompanyMultiSelect({ value, onChange, entitiesOnly = false, selectAllType = 'all', className }: CompanyMultiSelectProps) {
   const { data: companies } = useCompanies()
@@ -123,63 +118,67 @@ export function CompanyMultiSelect({ value, onChange, entitiesOnly = false, sele
   )
   const summaryOptions = useMemo(() => (companies ?? []).filter((c) => c.type === 'summary' && !entitiesOnly), [companies, entitiesOnly])
 
+  const options = useMemo(
+    () => [
+      ...entityOptions.map((c) => ({ value: c.code, label: `单体公司-${displayNameMap.get(c.code) ?? c.name}` })),
+      ...summaryOptions.map((c) => ({ value: c.code, label: `汇总主体-${displayNameMap.get(c.code) ?? c.name}` })),
+    ],
+    [entityOptions, summaryOptions, displayNameMap],
+  )
+
   const triggerLabel = useMemo(() => {
     if (value.length === 0) return '全部公司'
     const firstName = displayNameMap.get(value[0]) ?? value[0]
     return value.length === 1 ? firstName : `${firstName} 等 ${value.length} 家`
   }, [value, displayNameMap])
 
-  const toggle = (code: string, checked: boolean) =>
-    onChange(checked ? [...value, code] : value.filter((c) => c !== code))
+  const selectAll = () =>
+    onChange(
+      [...entityOptions, ...summaryOptions]
+        .filter((c) => selectAllType === 'all' || c.type === selectAllType)
+        .map((c) => c.code),
+    )
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="outline"
-          aria-label={`公司筛选：${triggerLabel}`}
-          className={cn('h-8 w-[220px] max-w-full shrink-0 justify-between px-3 font-normal', className)}
+    <AntdSelect
+      mode="multiple"
+      value={value}
+      onChange={(next) => onChange(next)}
+      options={options}
+      placeholder="全部公司"
+      aria-label={`公司筛选：${triggerLabel}`}
+      size={antdSizeFromClassName(className, 'middle')}
+      className={cn(`h-9 ${FILTER_WIDTH.subject}`, className)}
+      maxTagCount={1}
+      maxTagPlaceholder={(omittedValues) => `等 ${omittedValues.length + 1} 家`}
+      tagRender={({ label, value: code, closable, onClose }) => (
+        <Tag
+          closable={closable}
+          onClose={onClose}
+          onMouseDown={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+          }}
+          className="mr-1"
         >
-          <span className="truncate">{triggerLabel}</span>
-          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent className="max-h-[320px] w-[240px] overflow-y-auto">
-        <DropdownMenuItem
-          className="text-xs text-muted-foreground"
-          onSelect={(e) => { e.preventDefault(); onChange([...entityOptions, ...summaryOptions].filter((c) => selectAllType === 'all' || c.type === selectAllType).map((c) => c.code)) }}
-        >
-          全选
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          className="text-xs text-muted-foreground"
-          onSelect={(e) => { e.preventDefault(); onChange([]) }}
-        >
-          清空（全部公司）
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        {entityOptions.map((company) => (
-          <DropdownMenuCheckboxItem
-            key={company.code}
-            checked={value.includes(company.code)}
-            onCheckedChange={(checked) => toggle(company.code, checked === true)}
-            onSelect={(e) => e.preventDefault()}
-          >
-            单体公司-{displayNameMap.get(company.code) ?? company.name}
-          </DropdownMenuCheckboxItem>
-        ))}
-        {entityOptions.length > 0 && summaryOptions.length > 0 && <DropdownMenuSeparator />}
-        {summaryOptions.map((company) => (
-          <DropdownMenuCheckboxItem
-            key={company.code}
-            checked={value.includes(company.code)}
-            onCheckedChange={(checked) => toggle(company.code, checked === true)}
-            onSelect={(e) => e.preventDefault()}
-          >
-            汇总主体-{displayNameMap.get(company.code) ?? company.name}
-          </DropdownMenuCheckboxItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+          {displayNameMap.get(code as string) ?? label}
+        </Tag>
+      )}
+      suffixIcon={<ChevronDown className="h-4 w-4 opacity-50" />}
+      popupMatchSelectWidth={false}
+      popupRender={(menu) => (
+        <div>
+          <div className="flex items-center gap-4 border-b border-border/60 px-3 py-1.5">
+            <button type="button" className="text-xs text-muted-foreground hover:text-foreground" onClick={selectAll}>
+              全选
+            </button>
+            <button type="button" className="text-xs text-muted-foreground hover:text-foreground" onClick={() => onChange([])}>
+              清空（全部公司）
+            </button>
+          </div>
+          {menu}
+        </div>
+      )}
+    />
   )
 }

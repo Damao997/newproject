@@ -3,8 +3,9 @@ import { FlashMessage } from '@/components/ui/flash-message'
 import type { Company } from '@/types'
 
 /**
- * 主体互斥过滤：单体公司与汇总主体不能同时筛选（防止成员公司双重计数）。
- * 新增勾选某一类时自动取消另一类，并以轻提示告知（替代三处复制的 window.alert）。
+ * 主体互斥过滤：单体公司与汇总主体不能同时筛选（防止成员公司双重计数）；
+ * 汇总主体最多选择一个（多汇总成员可能重叠，且合并抵消口径仅支持单一汇总），新选自动替换。
+ * 触发时以轻提示告知（替代三处复制的 window.alert）。
  * getPrev 由调用方提供（各页持久化 store 路径不同）。
  */
 export function useExclusiveCompanyFilter(opts: {
@@ -31,6 +32,17 @@ export function useExclusiveCompanyFilter(opts: {
         setNotice({ text: '单体公司与汇总主体不能同时筛选，已自动取消已选单体公司。', key: Date.now() })
         setSelected(next.filter((c) => typeOf(c) !== 'entity'))
         return
+      }
+      // 汇总主体最多一个：多汇总成员可能重叠、抵消口径仅支持单一汇总，新选自动替换旧选
+      if (addedType === 'summary') {
+        const summaries = next.filter((c) => typeOf(c) === 'summary')
+        const newest = [...added].reverse().find((c) => typeOf(c) === 'summary')
+        if (summaries.length > 1 && newest) {
+          const keptName = companies?.find((c) => c.code === newest)?.name ?? newest
+          setNotice({ text: `汇总主体仅可选择一个，已切换为「${keptName}」。`, key: Date.now() })
+          setSelected(next.filter((c) => typeOf(c) !== 'summary' || c === newest))
+          return
+        }
       }
     }
     setSelected(next)
