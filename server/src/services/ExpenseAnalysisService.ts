@@ -43,12 +43,60 @@ export interface ExpenseMappingCheckResult {
 
 /** 科目编码（经营指标级联数字编码，如 PL05010101）：一对一映射 code=科目编码 */
 const SUBJECT_CODE_RE = /^PL[0-9]+$/
-/** 归并/自定义映射编码：EXP_ 前缀 + 小写英文/数字/下划线 */
-const CUSTOM_CODE_RE = /^EXP_[a-z][a-z0-9_]*$/
+/** 归并/自定义映射编码：EXP_ 前缀 + 小写英文/数字/下划线（含统一自动编码 EXP_001） */
+const CUSTOM_CODE_RE = /^EXP_[a-z0-9][a-z0-9_]*$/
+/** 统一自动编码的数字序号部分（EXP_001 → 001） */
+const EXP_NUMERIC_RE = /^EXP_(\d+)$/
 
-/** 映射编码合法格式：一对一映射=科目编码（PL 前缀数字）；归并/自定义=EXP_ 前缀小写英文（如 EXP_rd_expense） */
+/** 映射编码合法格式：一对一映射=科目编码（PL 前缀数字）；归并/自定义=EXP_ 前缀（小写英文或数字序号，如 EXP_001/EXP_rd_expense） */
 export function isValidMappingCode(code: string): boolean {
   return SUBJECT_CODE_RE.test(code) || CUSTOM_CODE_RE.test(code)
+}
+
+/** 统一编码生成输入行（expenseSubjectMapping 行子集：code + 墓碑标记） */
+export type MappingCodeRow = { code: string; deletedAt: Date | null }
+
+/**
+ * 下一个统一映射编码：EXP_ + 现有数字序号最大值 + 1（3 位零填充，超 999 自然扩位）。
+ * 统计含墓碑行：被删除的编码不复用，避免与"同 code 重建=复活"语义冲突；
+ * 非数字 EXP_ 编码（EXP_rd_expense）与科目编码不参与序号计算。
+ */
+export function nextExpenseMappingCode(rows: MappingCodeRow[]): string {
+  let max = 0
+  for (const r of rows) {
+    const m = EXP_NUMERIC_RE.exec(r.code)
+    if (m) max = Math.max(max, Number(m[1]))
+  }
+  return `EXP_${String(max + 1).padStart(3, '0')}`
+}
+
+/** 旧格式映射行（buildLegacyMappingMigration 输入，expenseSubjectMapping 行子集） */
+export type LegacyMappingRow = {
+  id: string
+  code: string
+  name: string
+  subjectCodes: string[]
+  sortOrder: number
+  status: string
+  deletedAt: Date | null
+}
+
+/** 旧格式迁移计划项：legacy=被迁移的旧行，targetCode=分配的统一编码 */
+export interface LegacyMappingMigration {
+  legacy: LegacyMappingRow
+  targetCode: string
+}
+
+/**
+ * 旧默认映射迁移计划（统一编码改造）：code 为科目编码（PL 前缀）的非墓碑映射视为旧 seed 默认映射，
+ * 按 sortOrder 升序分配 EXP_001 起统一编码；归并（subjectCodes）/停用（status）等管理员修改原样保留。
+ * 墓碑行 / EXP_ 自定义编码不参与迁移（后者本就不在默认集合中）。
+ */
+export function buildLegacyMappingMigration(rows: LegacyMappingRow[]): LegacyMappingMigration[] {
+  const legacy = rows
+    .filter((r) => r.deletedAt === null && SUBJECT_CODE_RE.test(r.code))
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code))
+  return legacy.map((r, i) => ({ legacy: r, targetCode: `EXP_${String(i + 1).padStart(3, '0')}` }))
 }
 
 /** 科目树节点（check 场景仅用 code/name/children 定位候选） */
@@ -173,6 +221,12 @@ function toDto(row: {
   }
 }
 
+/** 查询全部映射行（含墓碑）并计算下一个统一编码（nextCode 与 create 兜底共用） */
+async function nextMappingCode(): Promise<string> {
+  const rows = await prisma.expenseSubjectMapping.findMany({ select: { code: true, deletedAt: true } })
+  return nextExpenseMappingCode(rows)
+}
+
 export const ExpenseAnalysisService = {
   /** 全部映射（sortOrder 升序；不含墓碑行） */
   async list(): Promise<ExpenseMappingDto[]> {
@@ -180,12 +234,18 @@ export const ExpenseAnalysisService = {
     return rows.map(toDto)
   },
 
-  async create(input: { code: string; name: string; subjectCodes: string[]; sortOrder?: number; status?: string }, ctx: AuditCtx): Promise<ExpenseMappingDto> {
-    const code = String(input.code ?? '').trim()
+  /** 下一个统一映射编码（含墓碑行统计，供新增映射对话框预取展示） */
+  async nextCode(): Promise<{ code: string }> {
+    return { code: await nextMappingCode() }
+  },
+
+  async create(input: { code?: string; name: string; subjectCodes: string[]; sortOrder?: number; status?: string }, ctx: AuditCtx): Promise<ExpenseMappingDto> {
+    // 编码缺省时自动生成统一编码（EXP_ 数字序号）；显式传入时按原有格式校验
+    const code = String(input.code ?? '').trim() || await nextMappingCode()
     const name = String(input.name ?? '').trim()
     const subjectCodes = Array.isArray(input.subjectCodes) ? input.subjectCodes.map((c) => String(c).trim()).filter(Boolean) : []
-    if (!code || !name) throw errors.badRequest('展示名称与映射编码必填')
-    if (!isValidMappingCode(code)) throw errors.badRequest('映射编码需为科目编码（PL_ 前缀）或 EXP_ 前缀小写英文（如 EXP_rd_expense）')
+    if (!name) throw errors.badRequest('展示名称必填')
+    if (!isValidMappingCode(code)) throw errors.badRequest('映射编码需为科目编码（PL 前缀）或 EXP_ 前缀（小写英文/数字序号，如 EXP_001）')
     if (subjectCodes.length === 0) throw errors.badRequest('至少选择 1 个运营费用科目')
     const exists = await prisma.expenseSubjectMapping.findUnique({ where: { code } })
     if (exists) {
