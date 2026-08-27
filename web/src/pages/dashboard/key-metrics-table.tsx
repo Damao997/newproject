@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+﻿import { useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -36,8 +36,27 @@ function Money({ value }: { value: number | null }) {
   return <span className="font-num text-foreground">{value == null ? '—' : formatMoneyWan(value)}</span>
 }
 
+/** 明细跳转按钮：纯文字链接风格（无背景边框），hover 变主题色；已处于目标页时隐藏；跳转前记录返回标记（与看板 KPI 钻取惯例一致） */
+function DetailLink({ to }: { to: string }) {
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
+  if (pathname === to || pathname.startsWith(`${to}/`)) return null
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        sessionStorage.setItem('dashboard.fromDashboard', '1')
+        navigate(to)
+      }}
+      className="shrink-0 text-xs text-muted-foreground transition-colors hover:text-primary"
+    >
+      明细
+    </button>
+  )
+}
+
 // 表头对齐《统一表格设计标准》：13px/500 黑字居中（数值列表头同样居中）；TD 保持右对齐 font-num
-const TH_CLS = 'px-3 py-2 text-center text-[13px] font-medium text-foreground'
+const TH_CLS = 'px-3 py-2 text-center text-body font-medium text-foreground'
 const TD_CLS = 'px-3 py-2 text-right font-num text-sm text-foreground'
 
 /** 单行 14 列数值区（月度组 8 + 年度组 6）：同比/环比/累计同比及变动金额红涨绿跌 */
@@ -211,7 +230,12 @@ export function KeyMetricsTable({ period, companyCode }: KeyMetricsTableProps) {
             <tbody>
               {/* 损益板块 */}
               <tr className="bg-muted/40">
-                <td colSpan={15} className="px-3 py-1.5 text-left text-xs font-semibold text-foreground">损益</td>
+                <td colSpan={15} className="px-3 py-1.5 text-left text-xs font-semibold text-foreground">
+                  <span className="inline-flex items-center gap-1.5">
+                    损益
+                    <DetailLink to="/indicators/operating" />
+                  </span>
+                </td>
               </tr>
               {incomeRow && renderExpandable(incomeRow, (p) => p.income)}
               {profitRow && renderExpandable(profitRow, (p) => p.profit)}
@@ -235,7 +259,12 @@ export function KeyMetricsTable({ period, companyCode }: KeyMetricsTableProps) {
                 ))}
               {/* 现金流板块 */}
               <tr className="bg-muted/40">
-                <td colSpan={15} className="px-3 py-1.5 text-left text-xs font-semibold text-foreground">现金流</td>
+                <td colSpan={15} className="px-3 py-1.5 text-left text-xs font-semibold text-foreground">
+                  <span className="inline-flex items-center gap-1.5">
+                    现金流
+                    <DetailLink to="/indicators/cashflow" />
+                  </span>
+                </td>
               </tr>
               {otherRows
                 .filter((r) => ['fcf', 'operating', 'investing', 'financing'].includes(r.key))

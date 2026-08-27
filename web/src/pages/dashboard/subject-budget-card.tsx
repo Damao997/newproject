@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { TipLabel } from '@/components/ui/tip-label'
@@ -36,7 +36,7 @@ function YoYBadge({ value }: { value: number }) {
 }
 
 // 表头对齐《统一表格设计标准》：13px/500 黑字居中（数值列表头同样居中）；TD 保持右对齐 font-num
-const TH_CLS = 'px-3 py-2 text-center text-[13px] font-medium text-foreground'
+const TH_CLS = 'px-3 py-2 text-center text-body font-medium text-foreground'
 const TD_CLS = 'px-3 py-2 text-right font-num text-sm text-foreground'
 
 /**
@@ -83,10 +83,10 @@ export function SubjectBudgetCard({ period, companyCode }: SubjectBudgetCardProp
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  <th rowSpan={2} className="px-3 py-2 text-left text-[13px] font-medium text-foreground w-[10em]">主体</th>
-                  <th colSpan={5} className="px-3 py-2 text-center text-[13px] font-semibold text-foreground">收入</th>
-                  <th colSpan={5} className="px-3 py-2 text-center text-[13px] font-semibold text-foreground">毛利</th>
-                  <th colSpan={5} className="px-3 py-2 text-center text-[13px] font-semibold text-foreground">净利润</th>
+                  <th rowSpan={2} className="px-3 py-2 text-left text-body font-medium text-foreground w-[10em]">主体</th>
+                  <th colSpan={5} className="px-3 py-2 text-center text-body font-semibold text-foreground">收入</th>
+                  <th colSpan={5} className="px-3 py-2 text-center text-body font-semibold text-foreground">毛利</th>
+                  <th colSpan={5} className="px-3 py-2 text-center text-body font-semibold text-foreground">净利润</th>
                 </tr>
                 <tr className="border-b border-border">
                   <th className={TH_CLS}>{amountMode === 'month' ? '月度预算' : '年度预算'}</th>

@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from 'react'
+﻿import { Fragment, type ReactNode } from 'react'
 import { ChevronRight, ChevronDown } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
@@ -147,16 +147,16 @@ export function SubjectTree({
 }: SubjectTreeProps) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full caption-bottom text-[13px]">
+      <table className="w-full caption-bottom text-body">
         <thead className="[&_tr]:border-b">
           <tr className="border-b bg-muted/50">
-            <th className="h-8 px-4 text-[13px] leading-[14px] text-center align-middle font-medium text-foreground">科目名称</th>
-            <th className="h-8 px-4 text-[13px] leading-[14px] text-center align-middle font-medium text-foreground">科目编码</th>
-            <th className="h-8 px-4 text-[13px] leading-[14px] text-center align-middle font-medium text-foreground">层级</th>
-            <th className="h-8 px-4 text-[13px] leading-[14px] text-center align-middle font-medium text-foreground">类别</th>
-            <th className="h-8 px-4 text-[13px] leading-[14px] text-center align-middle font-medium text-foreground">数据类型</th>
+            <th className="h-8 px-4 text-body leading-[14px] text-center align-middle font-medium text-foreground">科目名称</th>
+            <th className="h-8 px-4 text-body leading-[14px] text-center align-middle font-medium text-foreground">科目编码</th>
+            <th className="h-8 px-4 text-body leading-[14px] text-center align-middle font-medium text-foreground">层级</th>
+            <th className="h-8 px-4 text-body leading-[14px] text-center align-middle font-medium text-foreground">类别</th>
+            <th className="h-8 px-4 text-body leading-[14px] text-center align-middle font-medium text-foreground">数据类型</th>
             {actions && (
-              <th className="h-8 px-4 text-[13px] leading-[14px] text-center align-middle font-medium text-foreground">操作</th>
+              <th className="h-8 px-4 text-body leading-[14px] text-center align-middle font-medium text-foreground">操作</th>
             )}
           </tr>
         </thead>

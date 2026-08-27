@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import { RefreshCw, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
@@ -32,7 +32,7 @@ function ReleaseNotesBody({ entry }: { entry: ReleaseEntry }) {
   return (
     <ul className="space-y-2">
       {entry.notes.map((n, i) => (
-        <li key={i} className="flex items-start gap-2 text-[13px] leading-6 text-foreground">
+        <li key={i} className="flex items-start gap-2 text-body leading-6 text-foreground">
           <Badge variant={NOTE_TYPE_META[n.type].variant} className="mt-0.5 shrink-0">
             {NOTE_TYPE_META[n.type].label}
           </Badge>
@@ -102,7 +102,7 @@ export function VersionNotice() {
       {/* 底部横幅：检测到服务器已发布新版本（本地仍为旧版）时常驻 */}
       {hasNewVersion && !bannerDismissed && (
         <div className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-between gap-3 border-t bg-background/95 px-4 py-2 backdrop-blur-sm">
-          <p className="flex items-center gap-2 text-[13px] text-foreground">
+          <p className="flex items-center gap-2 text-body text-foreground">
             <RefreshCw className="h-4 w-4 shrink-0 text-primary" />
             系统有新版本 {latest.version}，点击查看更新内容
           </p>

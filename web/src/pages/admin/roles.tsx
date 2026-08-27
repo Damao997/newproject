@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -507,7 +507,7 @@ export default function RolesPage() {
                     </div>
                     <p className="mt-2 line-clamp-2 min-h-10 text-sm text-muted-foreground">{role.description || '暂无描述'}</p>
                     {/* 统计行：权限数 / 高危数 / 成员数 */}
-                    <div className="mt-4 flex items-center gap-5 border-t pt-3 text-[13px] text-muted-foreground">
+                    <div className="mt-4 flex items-center gap-5 border-t pt-3 text-body text-muted-foreground">
                       <span>权限 <span className="font-num font-medium text-foreground">{role.permissions.length}</span></span>
                       <span>高危 <span className="font-num font-medium text-destructive">{highRiskCount(role)}</span></span>
                       <span>成员 <span className="font-num font-medium text-foreground">{role.userCount ?? '-'}</span></span>

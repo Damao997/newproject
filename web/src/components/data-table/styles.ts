@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 表格共享样式常量（《统一表格设计标准》v1.0）。
  *
  * DataTable 与 metric-tree 等自研表格共同引用，保证表头/冻结列视觉一致；
@@ -7,7 +7,7 @@
 
 /** 表头基础样式：13px/500 黑字居中（对齐规范 §4.4：所有标题行单元格一律居中） */
 export const TABLE_HEAD_BASE =
-  'whitespace-nowrap px-4 text-[13px] text-center align-middle font-medium text-foreground'
+  'whitespace-nowrap px-4 text-body text-center align-middle font-medium text-foreground'
 
 /** 冻结列（sticky 左列）单元格基础：白底 + 右侧分隔线，hover 时跟随行高亮 */
 export const TABLE_STICKY_CELL_BASE =

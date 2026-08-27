@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+﻿import { useMemo, useState } from 'react'
 import { Calendar, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
@@ -125,7 +125,7 @@ export function MonthPicker({
                 disabled={disabled}
                 onClick={() => pick(period)}
                 className={cn(
-                  'relative h-9 rounded-md text-[13px] text-foreground transition-colors',
+                  'relative h-9 rounded-md text-body text-foreground transition-colors',
                   isSelected
                     ? 'bg-primary font-medium text-primary-foreground'
                     : 'hover:bg-muted',

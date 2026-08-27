@@ -151,14 +151,15 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
         headers: { Authorization: `Bearer ${localStorage.getItem('accessToken') ?? ''}` },
       })
       const json = await res.json()
-      if (!res.ok || !json?.data) throw new Error(json?.message || '导出失败，请稍后重试')
+      if (!res.ok || !json?.data || !Array.isArray(json.data)) throw new Error(json?.message || '导出数据格式异常，请稍后重试')
       const blob = new Blob([JSON.stringify(json.data, null, 2)], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
       a.download = `formula-export-${new Date().toISOString().slice(0, 10)}.json`
       a.click()
-      URL.revokeObjectURL(url)
+      // 延迟释放：避免部分浏览器在 click 后同步 revoke 导致下载中断
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
       setFormulaExportFlash({ type: 'success', text: `已导出 ${json.data.length} 条公式` })
     } catch (e) {
       setFormulaExportFlash({ type: 'error', text: e instanceof Error ? e.message : '导出失败，请稍后重试' })

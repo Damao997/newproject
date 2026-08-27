@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+﻿import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -286,7 +286,7 @@ export function AnalysisManager({ stickyTop = 0 }: { stickyTop?: number }) {
               className="h-8 pl-8"
             />
           </div>
-          <label className="ml-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[13px] text-muted-foreground">
+          <label className="ml-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap text-body text-muted-foreground">
             <Switch checked={includeInactive} onCheckedChange={(v) => { setIncludeInactive(v); resetPage() }} />
             包含已删除
           </label>
@@ -372,10 +372,10 @@ function RefsBadge({ refs }: { refs: { reportId: string; reportTitle: string; re
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-80 p-3">
-        <p className="mb-2 text-[13px] font-medium text-foreground">被以下报告引用</p>
+        <p className="mb-2 text-body font-medium text-foreground">被以下报告引用</p>
         <ul className="space-y-1.5">
           {refs.map((r) => (
-            <li key={`${r.reportId}`} className="flex items-center justify-between gap-2 text-[13px]">
+            <li key={`${r.reportId}`} className="flex items-center justify-between gap-2 text-body">
               <span className="truncate text-foreground">{r.reportTitle}</span>
               <Badge variant="outline" className="shrink-0">{REPORT_STATUS_LABEL[r.reportStatus] ?? r.reportStatus}</Badge>
             </li>

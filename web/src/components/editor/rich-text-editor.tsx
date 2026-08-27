@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+﻿import { useEffect, useRef, useState } from 'react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
@@ -112,7 +112,7 @@ function PolishPanel({
   return (
     <div className="flex w-72 shrink-0 flex-col border-l bg-muted/20">
       <div className="flex items-center justify-between border-b px-3 py-2">
-        <span className="flex items-center gap-1 text-[13px] font-medium text-foreground"><Sparkles className="h-3.5 w-3.5 text-primary" /> AI 润色</span>
+        <span className="flex items-center gap-1 text-body font-medium text-foreground"><Sparkles className="h-3.5 w-3.5 text-primary" /> AI 润色</span>
         <button type="button" onClick={onClose} aria-label="关闭" className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"><X className="h-4 w-4" /></button>
       </div>
       <div className="flex items-center gap-1 border-b px-3 py-1.5">
@@ -128,7 +128,7 @@ function PolishPanel({
           </button>
         ))}
       </div>
-      <div className="flex-1 overflow-y-auto px-3 py-2 text-[13px] leading-relaxed text-foreground" aria-live="polite">
+      <div className="flex-1 overflow-y-auto px-3 py-2 text-body leading-relaxed text-foreground" aria-live="polite">
         {ai.error ? (
           <span className="text-destructive">{ai.error}</span>
         ) : result ? (
@@ -168,7 +168,7 @@ export function RichTextEditor({ value, onChange, placeholder, className, editab
     editable,
     editorProps: {
       attributes: {
-        class: 'prose-editor min-h-[200px] max-w-none px-3 py-2 text-[13px] text-foreground focus:outline-none',
+        class: 'prose-editor min-h-[200px] max-w-none px-3 py-2 text-body text-foreground focus:outline-none',
         'data-placeholder': placeholder ?? '请输入分析内容…',
       },
     },

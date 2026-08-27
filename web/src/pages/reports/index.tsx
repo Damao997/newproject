@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type Ref } from 'react'
+﻿import { useEffect, useMemo, useState, type Ref } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -290,7 +290,7 @@ function CreateReportDialog({ open, onOpenChange, onCreated }: { open: boolean; 
             <Label htmlFor="report-scope">主体范围</Label>
             <CompanySelect id="report-scope" value={scopeCode} onChange={setScopeCode} allowAll={false} placeholder="选择公司或汇总主体" className="w-full" />
           </div>
-          {error && <p className="text-[13px] text-destructive">{error}</p>}
+          {error && <p className="text-body text-destructive">{error}</p>}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>

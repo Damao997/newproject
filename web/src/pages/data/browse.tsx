@@ -12,7 +12,7 @@ import { IMPORT_TABS } from '@/components/layout/module-tabs'
 import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { usePermission } from '@/hooks/usePermission'
-import { useCompanies, useCrossTable, useAvailablePeriods } from '@/hooks/api-queries'
+import { useCompanies, useCrossTable, useAvailablePeriods, type CrossTable } from '@/hooks/api-queries'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { exportToExcel } from '@/lib/export'
 import { formatMetricValue, cn } from '@/lib/utils'
@@ -28,7 +28,8 @@ import {
   Loader2,
 } from 'lucide-react'
 
-type CrossRow = { code: string; name: string; dataType?: 'data' | 'calc' | 'display'; valueType?: 'amount' | 'quantity' | 'ratio'; level: number; parentCode: string | null; isLeaf: boolean; values: Record<string, number> }
+/** 交叉表行：共享类型（数据源头 CrossTable.rows，含 dataType/valueType 供 display 掩码与分型格式化） */
+type CrossRow = CrossTable['rows'][number]
 
 /**
  * 数据管理 · 数据预览：指标 × 公司的交叉表浏览（多层级展开、全部展开/折叠、

@@ -1,4 +1,4 @@
-import { useExpenseAnalysis } from '@/hooks/api-queries'
+﻿import { useExpenseAnalysis } from '@/hooks/api-queries'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { TipLabel } from '@/components/ui/tip-label'
 import { totalMetrics } from './budget-total'
@@ -39,7 +39,7 @@ function YoYBadge({ value }: { value: number }) {
 }
 
 // 表头对齐《统一表格设计标准》：13px/500 黑字居中（数值列表头同样居中）；TD 保持右对齐 font-num
-const TH_CLS = 'px-3 py-2 text-center text-[13px] font-medium text-foreground'
+const TH_CLS = 'px-3 py-2 text-center text-body font-medium text-foreground'
 const TD_CLS = 'px-3 py-2 text-right font-num text-sm text-foreground'
 
 /** 单行指标组（ExpenseAnalysisRow 去掉 code/name 即指标组字段） */
@@ -95,9 +95,9 @@ export function ExpenseAnalysisCard({ period, companyCode }: ExpenseAnalysisCard
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  <th rowSpan={2} className="px-3 py-2 text-left text-[13px] font-medium text-foreground w-[10em]">指标名称</th>
-                  <th colSpan={6} className="px-3 py-2 text-center text-[13px] font-semibold text-foreground">月度完成情况</th>
-                  <th colSpan={6} className="px-3 py-2 text-center text-[13px] font-semibold text-foreground">财年累计完成情况</th>
+                  <th rowSpan={2} className="px-3 py-2 text-left text-body font-medium text-foreground w-[10em]">指标名称</th>
+                  <th colSpan={6} className="px-3 py-2 text-center text-body font-semibold text-foreground">月度完成情况</th>
+                  <th colSpan={6} className="px-3 py-2 text-center text-body font-semibold text-foreground">财年累计完成情况</th>
                 </tr>
                 <tr className="border-b border-border">
                   <th className={TH_CLS}>月度预算</th>

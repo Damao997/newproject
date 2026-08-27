@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+﻿import { useEffect } from 'react'
 import { Sparkles, Loader2, Save, Eye } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
@@ -92,15 +92,15 @@ export function AiOverviewDialog({ open, onOpenChange, onViewAnalyses, companyCo
         </DialogHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-5">
-          {!hasData && <p className="text-[13px] text-muted-foreground">当前筛选无指标数据，无法生成预分析。</p>}
+          {!hasData && <p className="text-body text-muted-foreground">当前筛选无指标数据，无法生成预分析。</p>}
 
           {/* 内容区：流式增长限高内部滚动，不撑高弹窗 */}
           {slot && hasData && (
             <>
               {slot.status === 'error' ? (
-                <p className="text-[13px] text-destructive">{slot.error}</p>
+                <p className="text-body text-destructive">{slot.error}</p>
               ) : (
-                <div className="rounded-md border bg-muted/20 px-3 py-2 text-[13px] leading-relaxed" aria-live="polite">
+                <div className="rounded-md border bg-muted/20 px-3 py-2 text-body leading-relaxed" aria-live="polite">
                   {slot.status === 'streaming' && (
                     <p className="mb-1 flex items-center gap-1 text-caption text-muted-foreground">
                       <Loader2 className="h-3 w-3 animate-spin" /> AI 预分析生成中…（模型推理通常需 10-40 秒）
@@ -112,7 +112,7 @@ export function AiOverviewDialog({ open, onOpenChange, onViewAnalyses, companyCo
 
               {/* 生成完成：后端已自动归档为单项分析（全局预分析），提供查看/插入报告入口 */}
               {slot.status === 'done' && (
-                <div className="flex items-center gap-2 rounded-md border border-success/30 bg-success/[0.08] px-3 py-2 text-[13px] text-success-strong">
+                <div className="flex items-center gap-2 rounded-md border border-success/30 bg-success/[0.08] px-3 py-2 text-body text-success-strong">
                   <Save className="h-4 w-4 shrink-0" />
                   <span className="min-w-0 flex-1">已自动保存到「单项分析」列表（全局预分析），可在分析管理页编辑或插入报告章节。</span>
                   <Button variant="outline" size="sm" className="h-7 shrink-0" onClick={onViewAnalyses}>

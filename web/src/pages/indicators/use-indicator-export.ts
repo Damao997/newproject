@@ -47,11 +47,12 @@ export function useIndicatorExport(opts: {
         const keys = exportKeysFor('operating').filter((k) => !opts.getHiddenColumns().includes(k))
         const rows = flat.map(({ row, depth }) => {
           const o = row as OperatingRow
-          const cols: Record<string, string | number> = {
-            budget: fmtVal(o.budget, o.valueType), actual: fmtVal(o.actual, o.valueType), samePeriod: fmtVal(o.samePeriod, o.valueType),
-            yoy: fmtYoy(o.yoy), ytd: fmtVal(o.ytd, o.valueType), samePeriodYtd: fmtVal(o.samePeriodYtd, o.valueType),
-            ytdYoy: fmtYoy(o.ytdYoy), achievement: pct(o.achievement),
-          }
+          // 展示类（display）只读展示：导出值列统一写「—」，与 browse/后端 maskDisplayRows 口径对齐
+          const cols: Record<string, string | number> = o.dataType === 'display'
+            ? { budget: '—', actual: '—', samePeriod: '—', yoy: '—', ytd: '—', samePeriodYtd: '—', ytdYoy: '—', achievement: '—' }
+            : { budget: fmtVal(o.budget, o.valueType), actual: fmtVal(o.actual, o.valueType), samePeriod: fmtVal(o.samePeriod, o.valueType),
+                yoy: fmtYoy(o.yoy), ytd: fmtVal(o.ytd, o.valueType), samePeriodYtd: fmtVal(o.samePeriodYtd, o.valueType),
+                ytdYoy: fmtYoy(o.ytdYoy), achievement: pct(o.achievement) }
           return { account: `${'　'.repeat(depth)}${o.name}`, ...Object.fromEntries(keys.map((k) => [k, cols[k]])) }
         })
         const headerMap: Record<string, string> = {
@@ -74,10 +75,11 @@ export function useIndicatorExport(opts: {
         const keys = exportKeysFor('cashflow').filter((k) => !opts.getHiddenColumns().includes(k))
         const rows = flat.map(({ row, depth }) => {
           const f = row as CashflowRow
-          const cols: Record<string, string | number> = {
-            actual: fmtVal(f.current, f.valueType), samePeriod: fmtVal(f.samePeriod, f.valueType),
-            ytd: fmtVal(f.ytd, f.valueType), samePeriodYtd: fmtVal(f.samePeriodYtd, f.valueType), yoy: fmtYoy(f.yoy),
-          }
+          // 展示类（display）只读展示：导出值列统一写「—」（口径同 browse/后端 maskDisplayRows）
+          const cols: Record<string, string | number> = f.dataType === 'display'
+            ? { actual: '—', samePeriod: '—', ytd: '—', samePeriodYtd: '—', yoy: '—' }
+            : { actual: fmtVal(f.current, f.valueType), samePeriod: fmtVal(f.samePeriod, f.valueType),
+                ytd: fmtVal(f.ytd, f.valueType), samePeriodYtd: fmtVal(f.samePeriodYtd, f.valueType), yoy: fmtYoy(f.yoy) }
           return { account: `${'　'.repeat(depth)}${f.name}`, ...Object.fromEntries(keys.map((k) => [k, cols[k]])) }
         })
         const filename = `财务指标_现金流量表${scopeSuffix}_${new Date().toISOString().slice(0, 10)}.xlsx`
@@ -99,9 +101,10 @@ export function useIndicatorExport(opts: {
         const keys = exportKeysFor('static').filter((k) => !opts.getHiddenColumns().includes(k))
         const rows = flat.map(({ row, depth }) => {
           const s = row as StaticRow
-          const cols: Record<string, string | number> = {
-            actual: fmtVal(s.current, s.valueType), samePeriod: fmtVal(s.samePeriod, s.valueType), yoy: fmtYoy(s.yoy),
-          }
+          // 展示类（display）只读展示：导出值列统一写「—」（口径同 browse/后端 maskDisplayRows）
+          const cols: Record<string, string | number> = s.dataType === 'display'
+            ? { actual: '—', samePeriod: '—', yoy: '—' }
+            : { actual: fmtVal(s.current, s.valueType), samePeriod: fmtVal(s.samePeriod, s.valueType), yoy: fmtYoy(s.yoy) }
           return { account: `${'　'.repeat(depth)}${s.name}`, ...Object.fromEntries(keys.map((k) => [k, cols[k]])) }
         })
         const filename = `财务指标_静态指标${scopeSuffix}_${new Date().toISOString().slice(0, 10)}.xlsx`

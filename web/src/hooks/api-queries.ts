@@ -432,7 +432,7 @@ export function useDeleteSubject() {
 export interface CrossTable {
   period: string
   companies: string[]
-  rows: { code: string; name: string; valueType?: 'amount' | 'quantity' | 'ratio'; level: number; parentCode: string | null; isLeaf: boolean; values: Record<string, number> }[]
+  rows: { code: string; name: string; dataType?: 'data' | 'calc' | 'display'; valueType?: 'amount' | 'quantity' | 'ratio'; level: number; parentCode: string | null; isLeaf: boolean; values: Record<string, number> }[]
 }
 export function useCrossTable(params: { period?: string; subjectType?: 'operating' | 'static' | 'cashflow' } = {}) {
   return useQuery({

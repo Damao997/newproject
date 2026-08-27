@@ -112,10 +112,12 @@ export default {
         ],
       },
       fontSize: {
-        // 语义字号：正文最小 12px 红线；micro 仅限装饰性后缀（单位标注/角标），caption 辅助信息，helper 小号正文/小按钮
+        // 语义字号：正文最小 12px 红线；micro 仅限装饰性后缀（单位标注/角标），caption 辅助信息，helper 小号正文/小按钮，
+        // body 标准正文/表头 13px（对齐《统一表格设计标准》表头字号，如 TABLE_HEAD_BASE）
         micro: ["10px", { lineHeight: "14px" }],
         caption: ["11px", { lineHeight: "16px" }],
         helper: ["12px", { lineHeight: "18px" }],
+        body: ["13px", { lineHeight: "20px" }],
       },
       keyframes: {
         "accordion-down": {

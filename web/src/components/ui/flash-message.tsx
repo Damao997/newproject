@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+﻿import { useEffect, useState, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 interface FlashMessageProps {
@@ -33,7 +33,7 @@ export function FlashMessage({ type = 'info', children, className, autoHideMs = 
     <p
       role="status"
       className={cn(
-        'text-[13px]',
+        'text-body',
         type === 'success' ? 'text-success-strong' : type === 'error' ? 'text-destructive' : 'text-primary',
         className,
       )}

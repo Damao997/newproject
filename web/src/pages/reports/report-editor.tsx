@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { PageContainer } from '@/components/layout/page-container'
 import { useStickyHeader } from '@/hooks/useStickyHeader'
@@ -336,7 +336,7 @@ export function ReportEditor() {
 
       {msg && <FlashMessage type={msg.type} className="px-1">{msg.text}</FlashMessage>}
       {!isDraft && (
-        <p className="px-1 text-[13px] text-muted-foreground">
+        <p className="px-1 text-body text-muted-foreground">
           当前报告为{REPORT_STATUS_LABEL[report.status] ?? report.status}状态，内容只读；如需修改请先{report.status === 'published' ? '撤回' : '恢复'}为草稿。
         </p>
       )}
@@ -347,7 +347,7 @@ export function ReportEditor() {
           <CardContent className="p-4">
             <h4 className="mb-2 text-sm font-medium text-foreground">版本历史</h4>
             {versions && versions.items.length > 0 ? (
-              <ul className="space-y-1 text-[13px] text-muted-foreground">
+              <ul className="space-y-1 text-body text-muted-foreground">
                 {versions.items.map((v) => (
                   <li key={v.id} className="flex items-center gap-2">
                     <Badge variant="outline">v{v.versionNo}</Badge>
@@ -365,7 +365,7 @@ export function ReportEditor() {
                 ))}
               </ul>
             ) : (
-              <p className="text-[13px] text-muted-foreground">暂无版本快照</p>
+              <p className="text-body text-muted-foreground">暂无版本快照</p>
             )}
           </CardContent>
         </Card>
@@ -404,11 +404,11 @@ export function ReportEditor() {
               </div>
               {/* 引用章节实时展示最新正文（只读）；自由章节草稿态可编辑 */}
               {s.analysisId ? (
-                <div className="prose-editor max-w-none rounded-md border bg-muted/20 px-3 py-2 text-[13px]" dangerouslySetInnerHTML={{ __html: sanitizeForDisplay(s.content || '<p>（暂无内容）</p>') }} />
+                <div className="prose-editor max-w-none rounded-md border bg-muted/20 px-3 py-2 text-body" dangerouslySetInnerHTML={{ __html: sanitizeForDisplay(s.content || '<p>（暂无内容）</p>') }} />
               ) : canEdit ? (
                 <RichTextEditor value={s.content} onChange={(html) => updateSection(s.key, { content: html })} editable placeholder="撰写该章节内容…" polishEnabled />
               ) : (
-                <div className="prose-editor max-w-none rounded-md border bg-muted/20 px-3 py-2 text-[13px]" dangerouslySetInnerHTML={{ __html: sanitizeForDisplay(s.content || '<p>（暂无内容）</p>') }} />
+                <div className="prose-editor max-w-none rounded-md border bg-muted/20 px-3 py-2 text-body" dangerouslySetInnerHTML={{ __html: sanitizeForDisplay(s.content || '<p>（暂无内容）</p>') }} />
               )}
             </CardContent>
           </Card>
@@ -481,7 +481,7 @@ function VersionSnapshotDialog({ reportId, versionNo, onClose, canRollback, onRo
             {data.snapshot.sections.map((s, i) => (
               <div key={i} className="rounded-md border p-3">
                 <p className="mb-1 text-sm font-medium text-foreground">{i + 1}. {s.title}{s.missing && <Badge variant="destructive" className="ml-2">原文已删除</Badge>}</p>
-                <div className="prose-editor max-w-none text-[13px]" dangerouslySetInnerHTML={{ __html: sanitizeForDisplay(s.content || '<p>（暂无内容）</p>') }} />
+                <div className="prose-editor max-w-none text-body" dangerouslySetInnerHTML={{ __html: sanitizeForDisplay(s.content || '<p>（暂无内容）</p>') }} />
               </div>
             ))}
           </div>
@@ -532,11 +532,11 @@ function AISummaryDialog({ reportId, open, onOpenChange, onInsert }: {
           <DialogTitle>AI 总体概述</DialogTitle>
           <DialogDescription>基于报告各章节内容生成「总体概述」初稿（预览确认后插入，不直接修改报告）。</DialogDescription>
         </DialogHeader>
-        <div aria-live="polite" className="min-h-[160px] whitespace-pre-wrap rounded-md border bg-muted/20 p-3 text-[13px] leading-6 text-foreground">
+        <div aria-live="polite" className="min-h-[160px] whitespace-pre-wrap rounded-md border bg-muted/20 p-3 text-body leading-6 text-foreground">
           {text || ai.preview || (ai.streaming ? '生成中…' : '点击「开始生成」获取概述初稿。')}
           {ai.streaming && <Loader2 className="ml-1 inline h-3.5 w-3.5 animate-spin text-muted-foreground" />}
         </div>
-        {ai.error && <p className="text-[13px] text-destructive">{ai.error}</p>}
+        {ai.error && <p className="text-body text-destructive">{ai.error}</p>}
         <DialogFooter>
           {ai.streaming ? (
             <Button variant="outline" onClick={stop}>停止</Button>

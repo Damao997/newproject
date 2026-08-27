@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import { Save, Trash2, FileText, Sparkles, Loader2, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -216,7 +216,7 @@ function DrawerBody({ target, onClose }: { target: AnalysisTarget; onClose: () =
               </Button>
             </div>
             {(ai.streaming || ai.preview || aiDraft || ai.error) && (
-              <div className="rounded-md border bg-muted/20 px-3 py-2 text-[13px] leading-relaxed" aria-live="polite">
+              <div className="rounded-md border bg-muted/20 px-3 py-2 text-body leading-relaxed" aria-live="polite">
                 {ai.error ? (
                   <span className="text-destructive">{ai.error}</span>
                 ) : (

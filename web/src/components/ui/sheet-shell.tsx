@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+﻿import type { ReactNode } from 'react'
 import { Drawer } from 'antd'
 import { cn } from '@/lib/utils'
 
@@ -38,7 +38,7 @@ export function SheetShell({ onClose, icon, title, description, children, footer
           {icon}
           <div className="min-w-0">
             <h3 className="text-base font-semibold text-foreground">{title}</h3>
-            {description && <p className="text-[13px] text-muted-foreground">{description}</p>}
+            {description && <p className="text-body text-muted-foreground">{description}</p>}
           </div>
         </div>
       }

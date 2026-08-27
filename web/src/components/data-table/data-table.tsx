@@ -1,4 +1,4 @@
-/* eslint-disable react/only-export-components -- compareRaw/类型导出供 pro-table-inner 与使用方复用，属模块能力而非组件 */
+﻿/* eslint-disable react/only-export-components -- compareRaw/类型导出供 pro-table-inner 与使用方复用，属模块能力而非组件 */
 import { Fragment, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -264,7 +264,7 @@ export function DataTable<T>({
         {/* border-separate（仅限高模式）：sticky 表头单元格边框随滚动稳定跟随，collapse 模式下边框渲染异常（对齐 metric-tree） */}
         <table
           className={cn(
-            'w-full caption-bottom text-[13px]',
+            'w-full caption-bottom text-body',
             resizable && 'table-fixed',
             // 限高模式行边框下沉到单元格（separate 下 tr 边框不渲染），sticky th 边框跟随滚动
             maxHeight && 'border-separate border-spacing-0 [&_th]:border-b [&_td]:border-b [&_th]:border-border [&_td]:border-border',

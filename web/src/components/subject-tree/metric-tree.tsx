@@ -1,4 +1,4 @@
-/* eslint-disable react/only-export-components -- OPERATING_COLUMNS/STATIC_COLUMNS 列配置导出供后续任务（排序/筛选/列设置）复用 */
+﻿/* eslint-disable react/only-export-components -- OPERATING_COLUMNS/STATIC_COLUMNS 列配置导出供后续任务（排序/筛选/列设置）复用 */
 import { Fragment, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronRight, ChevronDown, MessageSquarePlus } from 'lucide-react'
 import type { SortDirection } from '@/components/data-table/data-table'
@@ -110,12 +110,14 @@ export const CASHFLOW_COLUMNS: MetricColumn[] = [
   { key: 'yoy', header: '同比', minWidth: 80, kind: 'pct' },
 ]
 
-/** 数值单元格：按列配置渲染（金额/数量/比率分型格式化；同比红涨绿跌；达成率进度条 + 条内居中的百分比） */
+/** 数值单元格：按列配置渲染（金额/数量/比率分型格式化；同比红涨绿跌；达成率进度条 + 条内居中的百分比）。
+ * 展示类（display）只读展示、不参与计算：即使值映射存在也不显示数值，值列统一渲染「—」（全站口径，与 browse/后端 maskDisplayRows 一致）。 */
 function renderValueCells(
   mv: MetricValue | undefined,
   columns: MetricColumn[],
   valueType?: SubjectNode['valueType'],
   rowPad = ROW_PAD.default,
+  dataType?: SubjectNode['dataType'],
 ) {
   const fmt = (v: number) => formatMetricValue(v, valueType)
   const yoyOf = (key: string, value: MetricValue) => (key === 'ytdYoy' ? calcYtdYoy(value) : calcYoy(value))
@@ -126,8 +128,8 @@ function renderValueCells(
       col.primary && 'font-medium',
       col.secondary && 'text-muted-foreground',
     )
-    let content: ReactNode = '-'
-    if (mv) {
+    let content: ReactNode = '—'
+    if (mv && dataType !== 'display') {
       if (col.kind === 'amount') {
         content = fmt(mv[col.key as 'budget' | 'actual' | 'samePeriod' | 'ytd' | 'samePeriodYtd'])
       } else if (col.kind === 'pct') {
@@ -255,7 +257,7 @@ function MetricRows({
                 analyzeHint={analyzeHint}
                 rowPad={rowPad}
               />
-              {renderValueCells(valueMap.get(node.code), columns, node.valueType, rowPad)}
+              {renderValueCells(valueMap.get(node.code), columns, node.valueType, rowPad, node.dataType)}
             </tr>
             {hasChildren && isExpanded && (
               <MetricRows
@@ -345,7 +347,7 @@ export function MetricTree({
         {/* minWidth 兜底：窄容器下表格保持完整列宽走横向滚动，列宽永不小于各列 min-w，杜绝浏览器压缩截断 */}
         {/* 斑马纹：tbody 偶数行浅灰底；hover:!bg-muted 加 important 盖过斑马纹选择器（[&_tbody_tr:nth-child(even)] 特异性更高，不加 important 时偶数行悬停高亮不生效） */}
         <table
-          className="w-full caption-bottom border-separate border-spacing-0 text-[13px] [&_tbody_tr:nth-child(even)]:bg-muted/30"
+          className="w-full caption-bottom border-separate border-spacing-0 text-body [&_tbody_tr:nth-child(even)]:bg-muted/30"
           style={{ minWidth: isOperating ? 1128 : 464 }}
         >
           <thead>
@@ -365,7 +367,7 @@ export function MetricTree({
                       key={g.label}
                       colSpan={g.keys.length}
                       scope="colgroup"
-                      className={cn(headBase, 'border-l border-border/60 text-[13px] font-semibold')}
+                      className={cn(headBase, 'border-l border-border/60 text-body font-semibold')}
                     >
                       {g.label}
                     </th>

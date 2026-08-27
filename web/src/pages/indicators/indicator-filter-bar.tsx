@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -96,7 +96,7 @@ export function IndicatorFilterBar({
             onChange={(e) => onSubjectKeywordChange(e.target.value)}
             placeholder="搜索科目"
             aria-label="搜索科目"
-            className="h-8 w-auto min-w-0 flex-1 max-w-[220px] border-input/60 bg-page pl-8 pr-7 text-[13px]"
+            className="h-8 w-auto min-w-0 flex-1 max-w-[220px] border-input/60 bg-page pl-8 pr-7 text-body"
           />
           {subjectKeyword && (
             <button
@@ -132,7 +132,7 @@ export function IndicatorFilterBar({
                   onChange={(e) => onSubjectKeywordChange(e.target.value)}
                   placeholder="搜索科目"
                   aria-label="搜索科目"
-                  className="h-8 w-full border-input/60 bg-page pl-8 pr-7 text-[13px]"
+                  className="h-8 w-full border-input/60 bg-page pl-8 pr-7 text-body"
                 />
                 {subjectKeyword && (
                   <button
@@ -173,7 +173,7 @@ export function IndicatorFilterBar({
             title="按重分类日志快照回溯展示调整前口径，仅供对比查看，不修改数据"
           >
             <Switch id="exclude-reclassify" aria-label="去除重分类影响" checked={excludeReclassify} onCheckedChange={onExcludeReclassifyChange} />
-            <Label htmlFor="exclude-reclassify" className="hidden cursor-pointer whitespace-nowrap text-[13px] min-[1300px]:inline">去除重分类影响</Label>
+            <Label htmlFor="exclude-reclassify" className="hidden cursor-pointer whitespace-nowrap text-body min-[1300px]:inline">去除重分类影响</Label>
           </div>
         )}
 
