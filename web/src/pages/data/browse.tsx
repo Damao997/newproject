@@ -258,7 +258,7 @@ export default function DataBrowsePage() {
                 <SelectItem value="cashflow">现金流量</SelectItem>
               </SelectContent>
             </Select>
-            <CompanyMultiSelect value={browseCompanies} onChange={setBrowseCompanies} entitiesOnly className="w-[200px]" />
+            <CompanyMultiSelect value={browseCompanies} onChange={setBrowseCompanies} entitiesOnly />
             <div className="flex shrink-0 items-center space-x-2">
               <MonthPicker value={browsePeriod} onChange={setBrowsePeriod} availablePeriods={dynamicPeriods ?? []} placeholder="最新期间" />
             </div>
