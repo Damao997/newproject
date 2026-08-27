@@ -16,6 +16,7 @@ import {
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { useExpenseMappings, useExpenseMappingCheck, useExpenseMappingMutations } from '@/hooks/api-queries'
+import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { Plus, RefreshCw, Pencil, Trash2, AlertTriangle, XCircle, Loader2, Check } from 'lucide-react'
 import type { ExpenseMapping, ExpenseMappingCheckResult } from '@/types'
@@ -32,14 +33,12 @@ interface MappingForm {
   subjectCodes: string[]
   sortOrder: string
   status: 'active' | 'inactive'
-  /** 编码是否被用户手动编辑过（自动预填只在未手动编辑时生效） */
-  codeTouched: boolean
 }
 
-const EMPTY_FORM: MappingForm = { code: '', name: '', subjectCodes: [], sortOrder: '', status: 'active', codeTouched: false }
+const EMPTY_FORM: MappingForm = { code: '', name: '', subjectCodes: [], sortOrder: '', status: 'active' }
 
-/** 映射编码合法格式（与后端 isValidMappingCode 一致）：一对一=科目编码（OP_ 前缀）；归并/自定义=EXP_ 前缀小写英文 */
-const MAPPING_CODE_RE = /^(OP_[0-9]+|EXP_[a-z][a-z0-9_]*)$/
+/** 映射编码合法格式（与后端 isValidMappingCode 一致）：一对一=科目编码（PL 前缀）；归并/自定义=EXP_ 前缀（小写英文/数字序号） */
+const MAPPING_CODE_RE = /^(PL[0-9]+|EXP_[a-z0-9][a-z0-9_]*)$/
 
 /**
  * 运营费用映射管理面板（运营费用分析）：维护展示指标 ↔ 经营科目编码集合的对应关系，
@@ -56,6 +55,7 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
   const [editing, setEditing] = useState<ExpenseMapping | null>(null)
   const [form, setForm] = useState<MappingForm>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
+  const [codeLoading, setCodeLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const refresh = () => {
@@ -65,17 +65,25 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
   const toggleSubject = (code: string) => {
     setForm((f) => {
       const next = f.subjectCodes.includes(code) ? f.subjectCodes.filter((c) => c !== code) : [...f.subjectCodes, code]
-      // 未手动编辑过编码时自动预填：单选科目=科目编码；多选清空（归并映射须用 EXP_ 前缀）
-      const autoCode = f.codeTouched ? f.code : next.length === 1 ? next[0] : ''
-      return { ...f, subjectCodes: next, code: autoCode }
+      return { ...f, subjectCodes: next }
     })
   }
 
-  const openCreate = () => {
+  const openCreate = async () => {
     setEditing(null)
     setForm(EMPTY_FORM)
     setError(null)
+    setCodeLoading(true)
     setDialogOpen(true)
+    try {
+      // 预取下一个统一编码（EXP_ 数字序号，系统自动生成）
+      const { code } = await api.getNextExpenseMappingCode()
+      setForm((f) => ({ ...f, code }))
+    } catch (e: any) {
+      setError(e?.response?.data?.message ?? e?.message ?? '自动编码获取失败，请重试')
+    } finally {
+      setCodeLoading(false)
+    }
   }
 
   const openEdit = (row: ExpenseMapping) => {
@@ -86,7 +94,6 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
       subjectCodes: [...row.subjectCodes],
       sortOrder: String(row.sortOrder),
       status: row.status,
-      codeTouched: true,
     })
     setError(null)
     setDialogOpen(true)
@@ -98,13 +105,11 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
       return
     }
     if (!editing && !form.code.trim()) {
-      setError(form.subjectCodes.length > 1
-        ? '归并多个科目时映射编码需使用 EXP_ 前缀（如 EXP_rd_expense）'
-        : '映射编码必填')
+      setError('自动编码获取失败，请关闭对话框后重新打开')
       return
     }
     if (!editing && !MAPPING_CODE_RE.test(form.code.trim())) {
-      setError('映射编码需为科目编码（OP_ 前缀）或 EXP_ 前缀小写英文（如 EXP_rd_expense）')
+      setError('映射编码需为科目编码（PL 前缀）或 EXP_ 前缀（小写英文/数字序号，如 EXP_001）')
       return
     }
     if (form.subjectCodes.length === 0) {
@@ -289,11 +294,11 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">映射编码（唯一，创建后不可修改）</Label>
+                <Label className="text-xs text-muted-foreground">映射编码（系统自动生成，创建后不可修改）</Label>
                 <Input
                   value={form.code}
-                  onChange={(e) => setForm((f) => ({ ...f, code: e.target.value, codeTouched: true }))}
-                  placeholder={form.subjectCodes.length > 1 ? '归并映射使用 EXP_ 前缀，如 EXP_rd_expense' : '单选科目自动使用科目编码；自定义可用 EXP_ 前缀'}
+                  readOnly
+                  placeholder={codeLoading ? '生成中...' : '系统自动生成'}
                   disabled={!!editing}
                   autoFocus
                 />
