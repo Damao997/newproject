@@ -40,8 +40,8 @@ function parseRows(data: unknown): MappingImportRow[] {
   return data.map((r, i) => {
     const row = r as Partial<MappingImportRow>
     if (typeof row.code !== 'string' || !row.code) throw new Error(`第 ${i + 1} 条缺少 code`)
-    // 与 ExpenseAnalysisService.create 同口径：code 须为科目编码（OP_ 数字）或 EXP_ 前缀小写英文
-    if (!isValidMappingCode(row.code.trim())) throw new Error(`第 ${i + 1} 条 code 不合法（${row.code}）：需为科目编码或 EXP_ 前缀小写英文`)
+    // 与 ExpenseAnalysisService.create 同口径：code 须为科目编码（PL 前缀数字）或 EXP_ 前缀（小写英文/数字序号）
+    if (!isValidMappingCode(row.code.trim())) throw new Error(`第 ${i + 1} 条 code 不合法（${row.code}）：需为科目编码（PL 前缀）或 EXP_ 前缀（小写英文/数字序号）`)
     if (typeof row.name !== 'string' || !row.name) throw new Error(`第 ${i + 1} 条缺少 name`)
     if (!Array.isArray(row.subjectCodes)) throw new Error(`第 ${i + 1} 条 subjectCodes 应为数组`)
     const subjectCodes = [...new Set(row.subjectCodes.map((c) => String(c).trim()).filter(Boolean))]
