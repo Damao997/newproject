@@ -27,7 +27,7 @@ export interface ValueNode {
   children: ValueNode[]
 }
 
-interface SubjectRow {
+export interface SubjectRow {
   code: string
   name: string
   level: number
@@ -368,7 +368,7 @@ const EMPTY_CASHFLOW: Record<string, number> = {
   [CASHFLOW_DIMS.BUDGET_AMOUNT]: 0,
 }
 
-function buildTree(subjects: SubjectRow[], leafValues: Map<string, Record<string, number>>, emptyDims: Record<string, number>): ValueNode[] {
+export function buildTree(subjects: SubjectRow[], leafValues: Map<string, Record<string, number>>, emptyDims: Record<string, number>): ValueNode[] {
   const byCode = new Map<string, ValueNode>()
   const roots: ValueNode[] = []
 
@@ -389,14 +389,17 @@ function buildTree(subjects: SubjectRow[], leafValues: Map<string, Record<string
   }
 
   // 后序：叶子取事实值，父节点 = 子求和
+  // 展示类（display）只读展示、不参与计算：自身恒 0（不取事实值、不子级求和），子节点照常聚合
   const dims = Object.keys(emptyDims)
   const aggregate = (node: ValueNode): void => {
     if (node.children.length === 0) {
+      if (node.dataType === 'display') return
       const v = leafValues.get(node.code)
       if (v) for (const d of dims) node.values[d] = round2(v[d] ?? 0)
       return
     }
     for (const child of node.children) aggregate(child)
+    if (node.dataType === 'display') return
     for (const d of dims) {
       node.values[d] = round2(node.children.reduce((sum, c) => sum + (c.values[d] ?? 0), 0))
     }
@@ -608,6 +611,23 @@ export const AggregationService = {
             opts.reclassifyMeta.skippedLogs += stRes.skippedLogs
           }
         }
+        // 汇总抵消：仅汇总主体查询链路叠加（内部公司间交易在汇总口径的抵消，单体报表不受影响）。
+        // 静态树四维目标均为快照月（期/年初/同期/上年年初），抵消单月期间直接映射对应目标月。
+        if (opts?.consolidationSummaryCode) {
+          const adjustments = await prisma.consolidationAdjustment.findMany({
+            where: {
+              summaryCompanyCode: opts.consolidationSummaryCode,
+              templateType: 'static',
+              deletedAt: null,
+            },
+            select: { accountCode: true, period: true, amount: true },
+          })
+          for (const a of adjustments) {
+            for (const [dim, tPeriod] of dimTargets) {
+              if (a.period === tPeriod) addDim(a.accountCode, dim, a.amount)
+            }
+          }
+        }
       }
     }
     const tree = buildTree(subjects, leafValues, EMPTY_STATIC)
@@ -744,6 +764,25 @@ export const AggregationService = {
         if (a.period >= fyStart && a.period <= period) addDim(a.accountCode, CASHFLOW_DIMS.YTD_ACTUAL, a.amount)
         if (a.period === prevPeriod) addDim(a.accountCode, CASHFLOW_DIMS.SAME_PERIOD_ACTUAL, a.amount)
         if (a.period >= prevFyStart && a.period <= prevPeriod) addDim(a.accountCode, CASHFLOW_DIMS.SAME_PERIOD_YTD, a.amount)
+      }
+    }
+    // 去除重分类影响：同经营树——按快照回放现金流重分类差额，与上方各维度派生口径一致
+    if (opts?.excludeReclassify) {
+      const companySet = new Set(companyCodes)
+      const prevPeriod = periodMinusYears(period, 1)
+      const fyStart = fiscalYearStartPeriod(period)
+      const prevFyStart = fiscalYearStartPeriod(prevPeriod)
+      const cfRes = await ReclassifyReversalService.buildReversalDeltas('cashflow')
+      for (const d of cfRes.deltas) {
+        if (!companySet.has(d.companyCode) || d.periodDimCode !== CASHFLOW_DIMS.ACTUAL_MONTH || !d.period) continue
+        if (d.period === period) addDim(d.accountCode, CASHFLOW_DIMS.ACTUAL_MONTH, d.delta)
+        if (d.period === prevPeriod) addDim(d.accountCode, CASHFLOW_DIMS.SAME_PERIOD_ACTUAL, d.delta)
+        if (d.period >= fyStart && d.period <= period) addDim(d.accountCode, CASHFLOW_DIMS.YTD_ACTUAL, d.delta)
+        if (d.period >= prevFyStart && d.period <= prevPeriod) addDim(d.accountCode, CASHFLOW_DIMS.SAME_PERIOD_YTD, d.delta)
+      }
+      if (opts.reclassifyMeta) {
+        opts.reclassifyMeta.appliedLogs += cfRes.appliedLogs
+        opts.reclassifyMeta.skippedLogs += cfRes.skippedLogs
       }
     }
     const tree = buildTree(subjects, leafValues, EMPTY_CASHFLOW)

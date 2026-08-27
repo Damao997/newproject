@@ -59,17 +59,19 @@ export default function DataReclassifyPage() {
   const browseCompanies = usePageStore((s) => s.dataBrowse.companies)
   const singleBrowseCompany = browseCompanies.length === 1 ? browseCompanies[0] : undefined
 
-  // 只读详情名称映射：公司 + 经营/静态科目（无匹配时回退编码展示）
+  // 只读详情名称映射：公司 + 经营/静态/现金流科目（无匹配时回退编码展示）
   const { data: companies } = useCompanies()
   const { data: operatingSubjects } = useSubjects({ type: 'operating', pageSize: 1000 })
   const { data: staticSubjects } = useSubjects({ type: 'static', pageSize: 1000 })
+  const { data: cashflowSubjects } = useSubjects({ type: 'cashflow', pageSize: 1000 })
   const nameMap = useMemo(() => {
     const m = new Map<string, string>()
     for (const c of companies ?? []) m.set(c.code, c.name)
     for (const s of operatingSubjects?.items ?? []) m.set(s.code, s.name)
     for (const s of staticSubjects?.items ?? []) m.set(s.code, s.name)
+    for (const s of cashflowSubjects?.items ?? []) m.set(s.code, s.name)
     return m
-  }, [companies, operatingSubjects, staticSubjects])
+  }, [companies, operatingSubjects, staticSubjects, cashflowSubjects])
   const nameOf = (code: string | null) => (code ? (nameMap.get(code) ?? null) : null)
 
   /** 分型金额展示：数量类整数（无“万”），其余按金额（万元）；历史记录无 valueType 回退金额 */
@@ -156,8 +158,8 @@ export default function DataReclassifyPage() {
       {/* 日志 → 对话框预填参数与只读元信息（company/subject_adjust 共用；subject 换父类型无表单参数） */}
       {(() => {
         const log = viewLog ?? reapplyLog
-        const templateTypeOf = (l: ReclassifyLog): 'operating' | 'static' | 'budget' =>
-          l.templateType === 'static' || l.templateType === 'budget' ? l.templateType : 'operating'
+        const templateTypeOf = (l: ReclassifyLog): 'operating' | 'static' | 'cashflow' | 'budget' =>
+          l.templateType === 'static' || l.templateType === 'budget' || l.templateType === 'cashflow' ? l.templateType : 'operating'
         const metaOf = (l: ReclassifyLog): ReclassifyLogMeta => ({
           operator: l.operator,
           createdAt: l.createdAt,

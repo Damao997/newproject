@@ -3,7 +3,7 @@ import { basePrisma, prisma } from '../lib/prisma'
 import { ConsolidationService } from './ConsolidationService'
 import { AggregationService, type ValueNode } from './AggregationService'
 import { DashboardService } from './DashboardService'
-import { OPERATING_DIMS } from '../lib/metric-values'
+import { OPERATING_DIMS, STATIC_DIMS } from '../lib/metric-values'
 
 /**
  * 汇总抵消调整集成测试（真实 DB）：创建 → 汇总聚合叠加生效（本月/累计）、
@@ -271,5 +271,60 @@ describe('ConsolidationService 汇总抵消调整', () => {
     const afterVal = after.kpiData.find((k) => k.title === '收入')?.monthActual ?? null
     expect(afterVal).not.toBeNull()
     expect((afterVal as number) - beforeVal).toBeCloseTo(amount, 1)
+  })
+})
+
+describe('静态模板汇总抵消（templateType=static）', () => {
+  let ok = false
+  let staticLeaf = ''
+  let memberCode = ''
+  let adjustId = ''
+  const SP = '2098-05'
+
+  beforeAll(async () => {
+    try {
+      await basePrisma.$queryRaw`SELECT 1`
+      const leaves = await basePrisma.accountSubject.findMany({ where: { subjectType: 'static', isLeaf: true, status: 'active' }, select: { code: true } })
+      const dm = await basePrisma.metric.findFirst({ where: { code: { in: leaves.map((l) => l.code) }, dataType: 'data' }, select: { code: true } })
+      staticLeaf = dm?.code ?? ''
+      if (!staticLeaf || !summaryCode) return
+      const m = await basePrisma.companyAggregationMap.findFirst({ where: { summaryCompanyCode: summaryCode }, select: { singleCompanyCode: true } })
+      memberCode = m?.singleCompanyCode ?? ''
+      if (!memberCode) return
+      const created = await ConsolidationService.createAdjustment(
+        { templateType: 'static', summaryCompanyCode: summaryCode, accountCode: staticLeaf, period: SP, amount: 123.45, reason: '静态模板抵消测试' },
+        fullScope,
+        ctx(),
+      )
+      adjustId = created.id
+      createdAdjustmentIds.push(created.id)
+      ok = true
+    } catch {
+      ok = false
+    }
+  })
+
+  afterAll(async () => {
+    if (adjustId) await basePrisma.consolidationAdjustment.deleteMany({ where: { id: adjustId } }).catch(() => undefined)
+  })
+
+  it('static 模板创建成功，并在静态树汇总口径叠加（单体链路不叠加）', async () => {
+    if (!ok) return
+    // 成员公司无静态行数据 → 默认四维为 0；抵消叠加后本期快照 = 123.45
+    const treeWith = await AggregationService.buildStaticTree([memberCode], SP, { consolidationSummaryCode: summaryCode })
+    expect(flattenValueTree(treeWith).find((n) => n.code === staticLeaf)?.values[STATIC_DIMS.CURRENT_AMOUNT] ?? 0).toBe(123.45)
+    const treeWithout = await AggregationService.buildStaticTree([memberCode], SP)
+    expect(flattenValueTree(treeWithout).find((n) => n.code === staticLeaf)?.values[STATIC_DIMS.CURRENT_AMOUNT] ?? 0).toBe(0)
+  })
+
+  it('static 模板拒绝经营科目（科目不属于所选模板科目树）', async () => {
+    if (!ok) return
+    await expect(
+      ConsolidationService.createAdjustment(
+        { templateType: 'static', summaryCompanyCode: summaryCode, accountCode: dataSubjectCode, period: SP, amount: 50, reason: '科目树校验测试' },
+        fullScope,
+        ctx(),
+      ),
+    ).rejects.toThrow('不属于所选模板科目树')
   })
 })

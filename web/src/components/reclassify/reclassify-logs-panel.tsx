@@ -110,17 +110,19 @@ export function ReclassifyLogsPanel({ canRevert, onReapply, onViewDetail, action
   const { data, isFetching } = useReclassifyLogs({ page, pageSize: PAGE_SIZE, type: type === 'all' ? undefined : type })
   const revertMutation = useRevertReclassifyLog()
 
-  // 源/目标中文名称映射：公司 + 经营/静态科目（无匹配时回退编码展示）
+  // 源/目标中文名称映射：公司 + 经营/静态/现金流科目（无匹配时回退编码展示）
   const { data: companies } = useCompanies()
   const { data: operatingSubjects } = useSubjects({ type: 'operating', pageSize: 1000 })
   const { data: staticSubjects } = useSubjects({ type: 'static', pageSize: 1000 })
+  const { data: cashflowSubjects } = useSubjects({ type: 'cashflow', pageSize: 1000 })
   const nameMap = useMemo(() => {
     const m = new Map<string, string>()
     for (const c of companies ?? []) m.set(c.code, c.name)
     for (const s of operatingSubjects?.items ?? []) m.set(s.code, s.name)
     for (const s of staticSubjects?.items ?? []) m.set(s.code, s.name)
+    for (const s of cashflowSubjects?.items ?? []) m.set(s.code, s.name)
     return m
-  }, [companies, operatingSubjects, staticSubjects])
+  }, [companies, operatingSubjects, staticSubjects, cashflowSubjects])
   const nameOf = (code: string | null) => (code ? (nameMap.get(code) ?? null) : null)
 
   const items = (data?.items ?? []) as ReclassifyLog[]

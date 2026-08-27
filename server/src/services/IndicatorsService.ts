@@ -207,7 +207,7 @@ export const IndicatorsService = {
 
   async getStatic(scope: Scope, params: { companyCode?: string; period?: string; excludeReclassify?: boolean }): Promise<{ items: StaticRow[]; total: number; period: string; companyCount: number; reclassifyExcluded: boolean; skippedReclassifyLogs: number }> {
     const companyCodes = await resolveCompanyCodes(scope, params.companyCode)
-    // 静态树本版不叠加抵消，但透传上下文以保持跨树引用（静态比率引用经营科目）口径一致
+    // 汇总主体查询链路叠加静态抵消（templateType='static'，单体报表不受影响）；透传上下文保持跨树引用口径一致
     const consolidationSummaryCode = await summaryContextOf(params.companyCode)
     const period = params.period || (await latestStaticPeriod())
     const meta: ReclassifyReversalMeta = { appliedLogs: 0, skippedLogs: 0 }
@@ -220,15 +220,19 @@ export const IndicatorsService = {
     return { items, total, period, companyCount: companyCodes.length, reclassifyExcluded: !!params.excludeReclassify, skippedReclassifyLogs: meta.skippedLogs }
   },
 
-  async getCashflow(scope: Scope, params: { companyCode?: string; period?: string }): Promise<{ items: CashflowRow[]; total: number; period: string; companyCount: number }> {
+  async getCashflow(scope: Scope, params: { companyCode?: string; period?: string; excludeReclassify?: boolean }): Promise<{ items: CashflowRow[]; total: number; period: string; companyCount: number; reclassifyExcluded: boolean; skippedReclassifyLogs: number }> {
     const companyCodes = await resolveCompanyCodes(scope, params.companyCode)
     // 现金流树按汇总主体叠加抵消（templateType='cashflow' 调整单，四维口径与经营树一致）
     const consolidationSummaryCode = await summaryContextOf(params.companyCode)
     const period = params.period || (await latestCashflowPeriod())
-    const tree = await AggregationService.buildCashflowTree(companyCodes, period, { consolidationSummaryCode })
+    const meta: ReclassifyReversalMeta = { appliedLogs: 0, skippedLogs: 0 }
+    const tree = await AggregationService.buildCashflowTree(companyCodes, period, {
+      consolidationSummaryCode,
+      ...(params.excludeReclassify ? { excludeReclassify: true, reclassifyMeta: meta } : {}),
+    })
     const items = tree.map(serializeCashflow)
     const total = flattenValueTree(tree).length
-    return { items, total, period, companyCount: companyCodes.length }
+    return { items, total, period, companyCount: companyCodes.length, reclassifyExcluded: !!params.excludeReclassify, skippedReclassifyLogs: meta.skippedLogs }
   },
 
   async getByCode(scope: Scope, code: string, params: { companyCode?: string; period?: string }): Promise<OperatingRow | StaticRow | CashflowRow> {
@@ -253,7 +257,7 @@ export const IndicatorsService = {
   },
 
   /** 交叉表：指标（行）× 公司（列）的本月实际（经营/现金流）或本期金额（静态）；未指定 metricCodes 时返回全部层级科目（树前序）供前端展开浏览 */
-  async getCross(scope: Scope, body: { companyCodes?: string[]; metricCodes?: string[]; period?: string; subjectType?: 'operating' | 'static' | 'cashflow' }): Promise<{ period: string; companies: string[]; rows: { code: string; name: string; valueType: string; level: number; parentCode: string | null; isLeaf: boolean; values: Record<string, number> }[] }> {
+  async getCross(scope: Scope, body: { companyCodes?: string[]; metricCodes?: string[]; period?: string; subjectType?: 'operating' | 'static' | 'cashflow' }): Promise<{ period: string; companies: string[]; rows: { code: string; name: string; dataType: string; valueType: string; level: number; parentCode: string | null; isLeaf: boolean; values: Record<string, number> }[] }> {
     const subjectType = body.subjectType === 'static' ? 'static' : body.subjectType === 'cashflow' ? 'cashflow' : 'operating'
     const scopeCompanies = await resolveCompanyCodes(scope)
     // 请求的公司码（可能含汇总主体）逐个经映射展开为单体成员，再取权限交集
@@ -285,12 +289,14 @@ export const IndicatorsService = {
       perCompany.set(cc, m)
     }
 
-    // 行元信息：全量 active 科目（按 orderNo），附层级/父码/叶子标记
+    // 行元信息：全量 active 科目（按 orderNo），附层级/父码/叶子标记；dataType 来自 metric 表（与 loadSubjects 口径一致）
     const subjects = await prisma.accountSubject.findMany({
       where: { subjectType, status: 'active' },
       orderBy: { orderNo: 'asc' },
       select: { code: true, name: true, valueType: true, level: true, parentCode: true, isLeaf: true },
     })
+    const metrics = await prisma.metric.findMany({ select: { code: true, dataType: true } })
+    const dtMap = new Map(metrics.map((m) => [m.code, m.dataType]))
     const metaMap = new Map(subjects.map((s) => [s.code, s]))
     // 行顺序：指定 metricCodes 按传入顺序；否则按科目树前序（保证父在前、子紧随其后，便于前端展开）
     let codes: string[]
@@ -324,6 +330,7 @@ export const IndicatorsService = {
         code,
         name: meta?.name ?? code,
         valueType: (meta?.valueType as string) ?? 'amount',
+        dataType: (dtMap.get(code) ?? 'data') as 'data' | 'calc' | 'display',
         level: meta?.level ?? 0,
         parentCode: meta?.parentCode ?? null,
         isLeaf: meta?.isLeaf ?? true,
@@ -362,7 +369,7 @@ export const IndicatorsService = {
   async exportIndicators(scope: Scope, subjectType: 'operating' | 'static' | 'cashflow', params: { companyCode?: string; period?: string }): Promise<Buffer> {
     if (subjectType === 'static') {
       const { items } = await this.getStatic(scope, params)
-      const flat = flattenRows(items)
+      const flat = maskDisplayRows(flattenRows(items), ['current', 'yearStart', 'samePeriod', 'lastYearStart', 'yoy'])
       return buildExcel('静态指标', [
         { header: '编码', key: 'code' }, { header: '名称', key: 'name', width: 28 },
         { header: '本期金额', key: 'current' }, { header: '年初金额', key: 'yearStart' },
@@ -372,7 +379,7 @@ export const IndicatorsService = {
     }
     if (subjectType === 'cashflow') {
       const { items } = await this.getCashflow(scope, params)
-      const flat = flattenRows(items)
+      const flat = maskDisplayRows(flattenRows(items), ['current', 'samePeriod', 'ytd', 'samePeriodYtd', 'yoy'])
       return buildExcel('现金流量表', [
         { header: '编码', key: 'code' }, { header: '名称', key: 'name', width: 28 },
         { header: '本月金额', key: 'current' }, { header: '同期金额', key: 'samePeriod' },
@@ -381,7 +388,7 @@ export const IndicatorsService = {
       ], flat as unknown as Record<string, unknown>[])
     }
     const { items } = await this.getOperating(scope, params)
-    const flat = flattenRows(items)
+    const flat = maskDisplayRows(flattenRows(items), ['budget', 'actual', 'samePeriod', 'ytd', 'samePeriodYtd', 'yoy', 'achievement'])
     return buildExcel('经营指标', [
       { header: '编码', key: 'code' }, { header: '名称', key: 'name', width: 28 },
       { header: '预算金额', key: 'budget' }, { header: '本月实际', key: 'actual' },
@@ -390,6 +397,13 @@ export const IndicatorsService = {
       { header: '达成率(%)', key: 'achievement' },
     ], flat as unknown as Record<string, unknown>[])
   },
+}
+
+/** 展示类（display）只读展示：导出时数值列统一写「—」，仅保留编码/名称 */
+function maskDisplayRows<T extends { code: string; name: string; dataType?: string }>(rows: T[], numericKeys: string[]): (T | Record<string, unknown>)[] {
+  return rows.map((r) => (r.dataType === 'display'
+    ? { code: r.code, name: r.name, ...Object.fromEntries(numericKeys.map((k) => [k, '—'])) }
+    : r))
 }
 
 function findRow<T extends { code: string; children?: T[] }>(rows: T[], code: string): T | null {

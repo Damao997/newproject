@@ -1,4 +1,4 @@
-﻿import { Router, type Response } from 'express'
+import { Router, type Response } from 'express'
 import multer from 'multer'
 import { authenticate } from '../middleware/auth'
 import { attachScope } from '../middleware/attach-scope'
@@ -311,6 +311,11 @@ router.get('/expense-mappings/check', requirePermission('data:browse:view', 'vie
   sendOk(res, await ExpenseAnalysisService.check())
 }))
 
+// 下一个统一映射编码（新增映射对话框预取展示）
+router.get('/expense-mappings/next-code', requirePermission('data:subject:create', 'create'), asyncHandler(async (_req, res) => {
+  sendOk(res, await ExpenseAnalysisService.nextCode())
+}))
+
 router.post('/expense-mappings', requirePermission('data:subject:create', 'create'), asyncHandler(async (req, res) => {
   sendOk(res, await ExpenseAnalysisService.create(req.body ?? {}, ctxOf(req)))
 }))
@@ -545,13 +550,13 @@ router.post('/reclassify/logs/:id/revert', requirePermission('data:reclassify:co
 }))
 
 // ===== 汇总抵消调整（内部公司间交易在汇总口径的抵消，单体报表不受影响）=====
-// 本版仅支持经营数据（现金流属经营科目树）；模板字段保留扩展
-const CONSOLIDATION_TEMPLATES = ['operating']
+// 支持经营/静态两模板（现金流有独立 cashflow 模板记录，经现金流查询链路叠加）
+const CONSOLIDATION_TEMPLATES = ['operating', 'static']
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function consolidationAdjustBody(b: any) {
   if (!b.summaryCompanyCode || !b.accountCode) throw errors.badRequest('汇总主体与科目必填')
-  if (!b.templateType || !CONSOLIDATION_TEMPLATES.includes(b.templateType)) throw errors.badRequest('模板类型不合法（本版仅支持经营数据）')
+  if (!b.templateType || !CONSOLIDATION_TEMPLATES.includes(b.templateType)) throw errors.badRequest('模板类型不合法（支持经营/静态数据）')
   if (typeof b.period !== 'string' || !PERIOD_RE.test(b.period)) throw errors.badRequest('请选择调整期间（单月 YYYY-MM）')
   const amount = Number(b.amount)
   if (!Number.isFinite(amount) || amount === 0) throw errors.badRequest('调整金额必须为非 0 数值（万元，正=调增、负=调减）')

@@ -15,7 +15,7 @@ type Scope = Pick<AuthUserContext, 'companyCode' | 'scopeValue'> & { dataScopeCo
 interface AuditCtx { userId: string; traceId?: string }
 
 export interface ConsolidationAdjustParams {
-  templateType: 'operating'
+  templateType: 'operating' | 'static'
   summaryCompanyCode: string
   accountCode: string
   /** 调整期间（单月 YYYY-MM） */
@@ -44,10 +44,11 @@ async function assertSummaryCompany(code: string): Promise<void> {
   if (company.entityType !== 'summary') throw errors.badRequest('抵消调整仅支持汇总主体（单体公司请使用科目间调整）')
 }
 
-/** 校验科目存在、属经营科目树且为 data 类（data 叶子，避免 calc 公式计算覆盖抵消额） */
-async function assertDataSubject(code: string): Promise<void> {
+/** 校验科目存在、属于所选模板科目树且为 data 类（data 叶子，避免 calc 公式计算覆盖抵消额） */
+async function assertDataSubject(code: string, templateType: 'operating' | 'static'): Promise<void> {
+  const expectedSubjectType = templateType === 'static' ? 'static' : 'operating'
   const subject = await prisma.accountSubject.findUnique({ where: { code }, select: { code: true, subjectType: true } })
-  if (!subject || subject.subjectType !== 'operating') throw errors.badRequest('科目不存在或不属于经营科目树')
+  if (!subject || subject.subjectType !== expectedSubjectType) throw errors.badRequest('科目不存在或不属于所选模板科目树')
   const metric = await prisma.metric.findUnique({ where: { code }, select: { dataType: true } })
   if ((metric?.dataType ?? 'data') !== 'data') throw errors.badRequest('仅支持对 data 类科目（叶子）做抵消调整，计算类科目由公式计算')
 }
@@ -110,7 +111,7 @@ export const ConsolidationService = {
       throw errors.badRequest('调整金额必须为非 0 数值（万元，正=调增、负=调减）')
     }
     await assertSummaryCompany(params.summaryCompanyCode)
-    await assertDataSubject(params.accountCode)
+    await assertDataSubject(params.accountCode, params.templateType)
     await assertSummaryInScope(params.summaryCompanyCode, scope)
 
     const created = await prisma.consolidationAdjustment.create({

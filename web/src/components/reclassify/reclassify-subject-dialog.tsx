@@ -43,7 +43,7 @@ interface ReclassifySubjectDialogProps {
 }
 
 export interface ReclassifySubjectPreset {
-  templateType: 'operating' | 'static' | 'budget'
+  templateType: 'operating' | 'static' | 'cashflow' | 'budget'
   companyCode: string
   adjustMode: AdjustMode
   sourceAccountCode?: string | null
@@ -307,6 +307,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                       <SelectContent>
                         <SelectItem value="operating">经营数据</SelectItem>
                         <SelectItem value="static">静态数据</SelectItem>
+                        <SelectItem value="cashflow">现金流量表</SelectItem>
                       </SelectContent>
                     </Select>
                   )}

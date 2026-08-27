@@ -15,12 +15,14 @@ import { AlertCircle, BookOpen, CheckCircle2, Info, Search, X } from 'lucide-rea
 export const TEMPLATE_LABEL: Record<string, string> = {
   operating: '经营数据',
   static: '静态数据',
+  cashflow: '现金流量表',
   budget: '年度预算',
 }
 
 export const TEMPLATE_LABEL_SHORT: Record<string, string> = {
   operating: '经营',
   static: '静态',
+  cashflow: '现金流',
   budget: '预算',
 }
 

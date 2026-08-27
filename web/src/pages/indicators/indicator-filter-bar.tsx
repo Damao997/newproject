@@ -1,4 +1,4 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -67,7 +67,6 @@ export function IndicatorFilterBar({
   const [searchOpen, setSearchOpen] = useState(false)
   // 过滤态：科目关键字非空时展开/折叠按钮禁用（展开由 effectiveExpanded 托管，避免污染持久化展开态）
   const subjectFiltering = !!subjectKeyword.trim()
-  const isCashflow = subjectType === 'cashflow'
   // 列设置面板元数据（按 tab 分区，key/header）
   const columnMeta = buildColumnsFor(subjectType)
 
@@ -167,15 +166,14 @@ export function IndicatorFilterBar({
           </SelectContent>
         </Select>
 
-        {!isCashflow && (
-          <div
-            className="flex shrink-0 items-center gap-1.5"
-            title="按重分类日志快照回溯展示调整前口径，仅供对比查看，不修改数据"
-          >
-            <Switch id="exclude-reclassify" aria-label="去除重分类影响" checked={excludeReclassify} onCheckedChange={onExcludeReclassifyChange} />
-            <Label htmlFor="exclude-reclassify" className="hidden cursor-pointer whitespace-nowrap text-body min-[1300px]:inline">去除重分类影响</Label>
-          </div>
-        )}
+        {/* 去除重分类影响：按重分类日志快照回溯展示调整前口径，仅供对比查看，不修改数据（经营/静态/现金流三体系一致） */}
+      <div
+        className="flex shrink-0 items-center gap-1.5"
+        title="按重分类日志快照回溯展示调整前口径，仅供对比查看，不修改数据"
+      >
+        <Switch id="exclude-reclassify" aria-label="去除重分类影响" checked={excludeReclassify} onCheckedChange={onExcludeReclassifyChange} />
+        <Label htmlFor="exclude-reclassify" className="hidden cursor-pointer whitespace-nowrap text-body min-[1300px]:inline">去除重分类影响</Label>
+      </div>
 
         <div className="mx-1 h-5 w-px shrink-0 bg-border/60" aria-hidden="true" />
 

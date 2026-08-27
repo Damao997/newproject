@@ -1,4 +1,4 @@
-﻿import { Router, type Response } from 'express'
+import { Router, type Response } from 'express'
 import { authenticate } from '../middleware/auth'
 import { attachScope } from '../middleware/attach-scope'
 import { requirePermission, requireAnyPermission } from '../middleware/permission'
@@ -79,6 +79,7 @@ router.get('/cashflow', requirePermission('indicators:view', 'view'), asyncHandl
   const data = await IndicatorsService.getCashflow(scopeOf(authUser), {
     companyCode: req.query.companyCode as string | undefined,
     period: req.query.period as string | undefined,
+    excludeReclassify: boolQuery(req.query.excludeReclassify),
   })
   sendOk(res, data)
 }))

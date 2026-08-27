@@ -59,8 +59,9 @@ export function ConsolidationAdjustDialog({ open, onClose }: ConsolidationAdjust
   const entityCompanies = useMemo(() => (companies ?? []).filter((c) => c.type === 'entity'), [companies])
   const { displayNameMap } = useCompanyDisplayName()
 
-  // 科目候选：经营科目树中 data 类叶子（calc/display 由公式计算，抵消会被覆盖；比率类不可调整）
-  const { data: subjectTree } = useSubjectTree('operating')
+  // 科目候选：经营/静态科目树中 data 类叶子（calc/display 由公式计算，抵消会被覆盖；比率类不可调整）
+  const [templateType, setTemplateType] = useState<'operating' | 'static'>('operating')
+  const { data: subjectTree } = useSubjectTree(templateType === 'static' ? 'static' : 'operating')
   const subjectOptions = useMemo(
     () => (subjectTree ?? []).filter((s) => s.dataType === 'data' && s.valueType !== 'ratio'),
     [subjectTree],
@@ -155,7 +156,7 @@ export function ConsolidationAdjustDialog({ open, onClose }: ConsolidationAdjust
     for (const code of selectedSummaries) {
       try {
         await createMutation.mutateAsync({
-          templateType: 'operating',
+          templateType,
           summaryCompanyCode: code,
           accountCode,
           period,
@@ -284,6 +285,16 @@ export function ConsolidationAdjustDialog({ open, onClose }: ConsolidationAdjust
               </div>
             </div>
             <p className="text-xs text-muted-foreground">内部交易抵消通常为调减（负数）：汇总口径的现金流入/流出将被扣减该金额。</p>
+            <div className="space-y-1">
+              <Label>模板类型</Label>
+              <Select value={templateType} onValueChange={(v) => { setTemplateType(v as 'operating' | 'static'); setAccountCode(''); setError(null); setDone(null) }}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="operating">经营数据</SelectItem>
+                  <SelectItem value="static">静态数据</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-1">
               <Label>科目（data 类叶子，如现金流流入/流出） <span className="text-destructive">*</span></Label>
               <SubjectPicker

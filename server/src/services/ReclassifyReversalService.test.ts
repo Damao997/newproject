@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { basePrisma } from '../lib/prisma'
 import { ReclassifyReversalService } from './ReclassifyReversalService'
 import { AggregationService, flattenValueTree } from './AggregationService'
-import { OPERATING_DIMS } from '../lib/metric-values'
+import { OPERATING_DIMS, CASHFLOW_DIMS } from '../lib/metric-values'
 
 /**
  * 重分类回溯差额服务验证（真实 DB）。
@@ -172,5 +172,68 @@ describe('ReclassifyReversalService 快照逆向回放（真实 DB）', () => {
     expect(flattenValueTree(treeB).find((n) => n.code === leafCode)!.values[OPERATING_DIMS.ACTUAL_MONTH]).toBe(100)
     const treeC = await AggregationService.buildOperatingTree([CB], period, { excludeReclassify: true })
     expect(flattenValueTree(treeC).find((n) => n.code === leafCode)!.values[OPERATING_DIMS.ACTUAL_MONTH]).toBe(0)
+  })
+})
+
+describe('现金流重分类回溯（cashflow 模板）', () => {
+  let ready = false
+  let cfBatchId = ''
+  const cfCA = `RVACF${suffix}`.slice(0, 20)
+  const cfCB = `RVBCF${suffix}`.slice(0, 20)
+  let cfLeaf = ''
+  const cfLogIds: string[] = []
+  const cfRowId = `rvcf_${suffix}`
+
+  beforeAll(async () => {
+    try {
+      await basePrisma.$queryRaw`SELECT 1`
+      const leaves = await basePrisma.accountSubject.findMany({ where: { subjectType: 'cashflow', isLeaf: true, status: 'active' }, select: { code: true } })
+      const dm = await basePrisma.metric.findFirst({ where: { code: { in: leaves.map((l) => l.code) }, dataType: 'data' }, select: { code: true } })
+      cfLeaf = dm?.code ?? ''
+      if (!cfLeaf) return
+      const b = await basePrisma.importBatch.create({
+        data: { fileName: `__test_cf_rev_${suffix}__.xlsx`, status: 'success', dataType: 'cashflow', lifecycleStatus: 'active', sourceType: 'upload', fiscalYear: 'FY2097' },
+      })
+      cfBatchId = b.id
+      // 跨公司重分类后现状：源公司 100 整行改挂到目标公司（现金流行 periodDimCode=CASHFLOW_DIMS.ACTUAL_MONTH）
+      await basePrisma.factOperating.create({
+        data: { id: cfRowId, batchId: cfBatchId, companyCode: cfCB, accountCode: cfLeaf, period, periodDimCode: CASHFLOW_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2097', value: 100 },
+      })
+      const log = await basePrisma.reclassificationLog.create({
+        data: {
+          type: 'company', templateType: 'cashflow',
+          sourceCompany: cfCA, targetCompany: cfCB,
+          period, periodFrom: period, periodTo: period,
+          affectedRows: 1, operatedBy: 'rev-test',
+          detail: { snapshot: { updated: [{ id: cfRowId, data: { companyCode: cfCA } }], created: [], deleted: [] } } as never,
+        },
+      })
+      cfLogIds.push(log.id)
+      ready = true
+    } catch {
+      ready = false
+    }
+  })
+
+  afterAll(async () => {
+    if (cfLogIds.length > 0) await basePrisma.reclassificationLog.deleteMany({ where: { id: { in: cfLogIds } } }).catch(() => undefined)
+    await basePrisma.factOperating.deleteMany({ where: { batchId: cfBatchId } }).catch(() => undefined)
+    await basePrisma.importBatch.delete({ where: { id: cfBatchId } }).catch(() => undefined)
+  })
+
+  it("buildReversalDeltas('cashflow') 识别现金流重分类日志并产出净差额（经 factOperating + cashflow 批次）", async () => {
+    if (!ready) return
+    const { deltas } = await ReclassifyReversalService.buildReversalDeltas('cashflow')
+    expect(deltaOf(deltas, cfCA, cfLeaf)).toBe(100) // 回挂源公司
+    expect(deltaOf(deltas, cfCB, cfLeaf)).toBe(-100) // 目标公司剔除
+  })
+
+  it('buildCashflowTree({ excludeReclassify }) 端到端还原现金流调整前口径', async () => {
+    if (!ready) return
+    // 去重分类口径：源公司还原为 100、目标公司归零（与经营树行为同构）
+    const treeB = await AggregationService.buildCashflowTree([cfCA], period, { excludeReclassify: true })
+    expect(flattenValueTree(treeB).find((n) => n.code === cfLeaf)!.values[CASHFLOW_DIMS.ACTUAL_MONTH]).toBe(100)
+    const treeC = await AggregationService.buildCashflowTree([cfCB], period, { excludeReclassify: true })
+    expect(flattenValueTree(treeC).find((n) => n.code === cfLeaf)!.values[CASHFLOW_DIMS.ACTUAL_MONTH]).toBe(0)
   })
 })

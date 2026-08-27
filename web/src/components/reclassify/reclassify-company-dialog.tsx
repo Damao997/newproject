@@ -27,8 +27,8 @@ import { TEMPLATE_LABEL, FeedbackAlert, PreviewStats, SubjectMultiPicker, Sectio
 interface ReclassifyCompanyDialogProps {
   open: boolean
   onClose: () => void
-  /** 预填模板类型（来自指标页当前标签） */
-  defaultTemplateType?: 'operating' | 'static'
+  /** 预填模板类型（来自日志/指标页标签） */
+  defaultTemplateType?: 'operating' | 'static' | 'cashflow'
   /** 预填源公司（来自指标页当前主体） */
   defaultSourceCompany?: string
   /** 完整预填参数（来自失效/已撤销日志的「重新应用」或只读查看）：父级以 key 强制重挂载使其生效 */
@@ -42,7 +42,7 @@ interface ReclassifyCompanyDialogProps {
 }
 
 export interface ReclassifyCompanyPreset {
-  templateType: 'operating' | 'static' | 'budget'
+  templateType: 'operating' | 'static' | 'cashflow' | 'budget'
   sourceCompanyCode: string
   targetCompanyCode: string
   transferMode: 'all' | 'ratio' | 'amount'
@@ -245,6 +245,7 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
                       <SelectContent>
                         <SelectItem value="operating">经营数据</SelectItem>
                         <SelectItem value="static">静态数据</SelectItem>
+                        <SelectItem value="cashflow">现金流量表</SelectItem>
                       </SelectContent>
                     </Select>
                   )}

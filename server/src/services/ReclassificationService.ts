@@ -25,10 +25,15 @@ import type { Prisma } from '@prisma/client'
  */
 
 type Scope = Pick<AuthUserContext, 'companyCode' | 'scopeValue'> & { dataScopeCodes?: string[] | null }
-type TemplateType = 'operating' | 'static' | 'budget'
+type TemplateType = 'operating' | 'static' | 'budget' | 'cashflow'
 type TransferMode = 'all' | 'ratio' | 'amount'
 export type AdjustMode = 'both' | 'decrease' | 'increase'
 type SubjectValueType = 'amount' | 'quantity' | 'ratio'
+
+/** 模板 → 可操作科目体系：经营/现金流各属其科目树，预算沿用经营树 */
+function subjectTypeOf(templateType: TemplateType): 'operating' | 'static' | 'cashflow' {
+  return templateType === 'static' ? 'static' : templateType === 'cashflow' ? 'cashflow' : 'operating'
+}
 
 interface AuditCtx { userId: string; traceId?: string }
 
@@ -187,7 +192,7 @@ async function assertAdjustableAccounts(templateType: TemplateType, accountCodes
  */
 async function loadAndValidateAdjustSubjects(templateType: TemplateType, mode: AdjustMode, source?: string, target?: string): Promise<SubjectValueType> {
   if (source && target && source === target) throw errors.badRequest('源科目与目标科目不能相同')
-  const subjectType = templateType === 'static' ? 'static' : 'operating'
+  const subjectType = subjectTypeOf(templateType)
   const codes = [source, target].filter(Boolean) as string[]
   const found = await prisma.accountSubject.findMany({ where: { code: { in: codes }, subjectType }, select: { code: true, valueType: true } })
   const byCode = new Map(found.map((s) => [s.code, s.valueType as SubjectValueType]))
@@ -266,7 +271,7 @@ function verdictOf(snap: RowSnapshot, rowById: Map<string, string>, activeBatche
 /** 按模板类型批量查询行 id → batchId 映射（快照校验用，空集合直接返回） */
 async function findRowsByIds(tx: Prisma.TransactionClient, templateType: TemplateType, ids: string[]): Promise<{ id: string; batchId: string }[]> {
   if (ids.length === 0) return []
-  const delegate = (templateType === 'operating' ? tx.factOperating : templateType === 'static' ? tx.factStatic : tx.factBudget) as unknown as {
+  const delegate = (templateType === 'static' ? tx.factStatic : templateType === 'budget' ? tx.factBudget : tx.factOperating) as unknown as {
     findMany: (args: { where: { id: { in: string[] } }; select: { id: true; batchId: true } }) => Promise<{ id: string; batchId: string }[]>
   }
   return delegate.findMany({ where: { id: { in: ids } }, select: { id: true, batchId: true } })
@@ -405,6 +410,17 @@ function budgetWhere(f: FactFilter, batchIds: string[], companyCode: string): Re
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function tableOps(db: any, templateType: TemplateType): TableOps {
   if (templateType === 'operating') {
+    return {
+      delegate: db.factOperating as Delegate,
+      where: operatingWhere,
+      periodKeyOf: (r) => `${r.period}|${r.periodDimCode}|${r.batchId}`,
+      createData: (r, companyCode, accountCode, value) => ({
+        batchId: r.batchId, companyCode, accountCode, period: r.period, periodDimCode: r.periodDimCode, fiscalYear: r.fiscalYear, value,
+      }),
+    }
+  }
+  if (templateType === 'cashflow') {
+    // 现金流：行存于 factOperating（cashflow 批次，与经营行按批次隔离），维度键 periodDimCode 保留现金流维度
     return {
       delegate: db.factOperating as Delegate,
       where: operatingWhere,

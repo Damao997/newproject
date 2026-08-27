@@ -674,7 +674,7 @@ export function useAdjustSubject() {
 
 // ---------------- 汇总抵消调整（汇总口径内部交易抵消，单体报表不受影响） ----------------
 export interface ConsolidationAdjustInput {
-  templateType: 'operating'
+  templateType: 'operating' | 'static'
   summaryCompanyCode: string
   accountCode: string
   period: string

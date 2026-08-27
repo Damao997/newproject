@@ -15,7 +15,7 @@ import { prisma } from '../lib/prisma'
  *   ReclassificationService.markInvalidatedReclassifications）。
  */
 
-type TemplateType = 'operating' | 'static' | 'budget'
+type TemplateType = 'operating' | 'static' | 'budget' | 'cashflow'
 
 /** 快照中的行级变更（结构见 ReclassificationService.RowSnapshot；created 兼容旧格式 string） */
 interface RowSnapshot {
@@ -81,31 +81,33 @@ function toVirtualRow(templateType: TemplateType, r: Record<string, unknown>): V
     accountCode: String(r.accountCode ?? ''),
     value: num(r.value),
   }
-  if (templateType === 'operating') {
-    base.period = String(r.period ?? '')
-    base.periodDimCode = String(r.periodDimCode ?? '')
-  } else if (templateType === 'static') {
+  if (templateType === 'static') {
     base.snapshotMonth = toMonth(r.snapshotDate)
     base.periodDimCode = String(r.periodDimCode ?? '')
-  } else {
+  } else if (templateType === 'budget') {
     base.fiscalYear = String(r.fiscalYear ?? '')
     base.period = String(r.period ?? '')
+  } else {
+    // operating / cashflow：均按单月期间 + 维度键（现金流行为 factOperating cashflow 批次行，口径同经营）
+    base.period = String(r.period ?? '')
+    base.periodDimCode = String(r.periodDimCode ?? '')
   }
   return base
 }
 
 /** 差额归并键：公司 + 科目 + 期间口径 + 批次 */
 function keyOf(templateType: TemplateType, r: VirtualRow): string {
-  if (templateType === 'operating') return `${r.companyCode}|${r.accountCode}|${r.period}|${r.periodDimCode}|${r.batchId}`
   if (templateType === 'static') return `${r.companyCode}|${r.accountCode}|${r.snapshotMonth}|${r.periodDimCode}|${r.batchId}`
-  return `${r.companyCode}|${r.accountCode}|${r.fiscalYear}|${r.period}|${r.batchId}`
+  if (templateType === 'budget') return `${r.companyCode}|${r.accountCode}|${r.fiscalYear}|${r.period}|${r.batchId}`
+  return `${r.companyCode}|${r.accountCode}|${r.period}|${r.periodDimCode}|${r.batchId}`
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function delegateOf(templateType: TemplateType): { findMany: (args: { where: Record<string, unknown> }) => Promise<any[]> } {
-  if (templateType === 'operating') return prisma.factOperating
   if (templateType === 'static') return prisma.factStatic
-  return prisma.factBudget
+  if (templateType === 'budget') return prisma.factBudget
+  // operating / cashflow：现金流行存于 factOperating（cashflow 批次）
+  return prisma.factOperating
 }
 
 function extractSnapshot(detail: unknown): RowSnapshot | null {

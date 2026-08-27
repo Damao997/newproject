@@ -496,7 +496,15 @@ class ApiClient {
     })
   }
 
-  async createExpenseMapping(input: { code: string; name: string; subjectCodes: string[]; sortOrder?: number; status?: string }): Promise<ExpenseMapping> {
+  /** 下一个统一映射编码（新增映射对话框预取展示，EXP_ 数字序号） */
+  async getNextExpenseMappingCode(): Promise<{ code: string }> {
+    return this.request({
+      method: 'GET',
+      url: '/data/expense-mappings/next-code',
+    })
+  }
+
+  async createExpenseMapping(input: { code?: string; name: string; subjectCodes: string[]; sortOrder?: number; status?: string }): Promise<ExpenseMapping> {
     return this.request({
       method: 'POST',
       url: '/data/expense-mappings',
@@ -889,7 +897,7 @@ class ApiClient {
   }
 
   async createConsolidationAdjustment(data: {
-    templateType: 'operating'
+    templateType: 'operating' | 'static'
     summaryCompanyCode: string
     accountCode: string
     period: string
