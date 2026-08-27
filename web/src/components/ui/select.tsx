@@ -6,6 +6,33 @@ import { cn } from "@/lib/utils"
 import { antdSizeFromClassName } from "./antd-size"
 
 /**
+ * antd Select 视觉本体是内部 .ant-select-selector（自带不透明白底 + 边框）；
+ * 调用方为旧 shadcn 触发器设计的底色/hover/border 类挂在根节点上不生效（selector 覆盖）。
+ * 解析后剥离（防误导），hover 底色与浅边框经组件级 styles.selector 以 CSS 变量转译，视觉与原 Tailwind 类完全一致。
+ */
+function extractSelectSurface(className: string | undefined): { cleaned: string; selectorStyle: Record<string, unknown> } {
+  if (!className) return { cleaned: '', selectorStyle: {} }
+  const style: Record<string, unknown> = {}
+  let cleaned = className
+  // hover 浅灰底（hover:bg-muted/N）→ selector 的 :hover 伪类（cssinjs 支持）
+  const hoverM = /(?:^|\s)hover:bg-muted\/(\d+)(?=\s|$)/.exec(className)
+  if (hoverM) {
+    style['&:hover'] = { backgroundColor: `hsl(var(--muted) / ${Number(hoverM[1]) / 100})` }
+    cleaned = cleaned.replace(hoverM[0], '').trim()
+  }
+  // 浅边框（border-input 或 border-input/N）→ selector 边框色
+  const borderM = /(?:^|\s)border-input(?:\/(\d+))?(?=\s|$)/.exec(className)
+  if (borderM) {
+    const alpha = borderM[1] ? Number(borderM[1]) / 100 : 1
+    style.borderColor = alpha < 1 ? `hsl(var(--input) / ${alpha})` : 'hsl(var(--input))'
+    cleaned = cleaned.replace(borderM[0], '').trim()
+  }
+  // 白底类（bg-page/bg-background）在 selector 白底下多余，剥离避免误导
+  cleaned = cleaned.replace(/(?:^|\s)(bg-page|bg-background)(?=\s|$)/g, ' ').replace(/\s{2,}/g, ' ').trim()
+  return { cleaned, selectorStyle: style }
+}
+
+/**
  * Select 门面：antd Select。
  *
  * 保持 Radix Select 的组合 API（Select/SelectTrigger/SelectValue/SelectContent/
@@ -130,6 +157,9 @@ const Select = ({ value, defaultValue, onValueChange, disabled, children, ...res
 
   const trigger = triggerProps as SelectTriggerProps | null
 
+  // 清洗底色类（根节点对 antd 无效）并经组件级 styles.selector 转译为 selector 样式（恢复 hover 底色/浅边框）
+  const { cleaned: cleanedClass, selectorStyle } = extractSelectSurface(trigger?.className)
+
   return (
     <AntdSelect
       // Radix 空串语义 ↔ antd undefined（placeholder 展示）
@@ -142,8 +172,13 @@ const Select = ({ value, defaultValue, onValueChange, disabled, children, ...res
       id={trigger?.id}
       title={trigger?.title}
       aria-label={rest['aria-label'] ?? (trigger?.['aria-label'] as string | undefined)}
-      size={antdSizeFromClassName(trigger?.className, 'middle')}
-      className={cn('w-full', trigger?.className)}
+      size={antdSizeFromClassName(cleanedClass, 'middle')}
+      className={cn('w-full', cleanedClass)}
+      styles={Object.keys(selectorStyle).length > 0
+        // antd Select 组件级样式仅暴露 root 命名空间；样式作用于内部 .ant-select-selector（视觉本体），
+        // cssinjs 支持嵌套选择器与 & 伪类，类型上以断言放宽
+        ? ({ root: { '& .ant-select-selector': selectorStyle } } as never)
+        : undefined}
       // 自定义回显：CompanySelect 等"触发器文案 ≠ 选项文案"场景（antd ≥5.23 labelRender）
       labelRender={customDisplay ? () => <>{customDisplay}</> : undefined}
       // 对齐原 Radix 触发器的 lucide 折叠箭头
