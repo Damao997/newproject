@@ -193,6 +193,21 @@
   }
 }
 
+/* ============ antd Select 门面表面类 ============
+ * antd Select 的视觉本体是内部 .ant-select-selector（根节点挂 className 不生效）。
+ * Select 门面把调用方旧 shadcn 触发器的悬停底色/浅边框类解析后转换为以下两个标记类，
+ * 普通 CSS 直接命中视觉本体（不依赖 Tailwind 任意变体对伪类/嵌套的选择器解析）。
+ * 色值用 CSS 变量，三套侧边栏主题自动跟随。 */
+.antd-select-surface {
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.antd-select-surface:hover .ant-select-selector {
+  background-color: hsl(var(--muted) / 0.6);
+}
+.antd-select-surface-border .ant-select-selector {
+  border-color: hsl(var(--input) / 0.6);
+}
+
 /* 尊重用户的“减少动态效果”偏好，保障可访问性与性能 */
 @media (prefers-reduced-motion: reduce) {
   *,

@@ -77,7 +77,8 @@ const Popover = ({ open, defaultOpen, onOpenChange, children }: PopoverProps) =>
       placement={toPlacement(side, align)}
       arrow={false}
       // 内层 padding 置零：调用方 className 的宽度与内边距类完全生效（原 Radix 语义）
-      overlayInnerStyle={{ padding: 0 }}
+      // styles.body：overlayInnerStyle 已弃用（antd 5.29+）
+      styles={{ body: { padding: 0 } }}
       content={<div className={cn(contentClassName)}>{contentChildren}</div>}
     >
       {trigger as React.ReactNode}

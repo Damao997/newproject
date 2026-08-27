@@ -8,28 +8,28 @@ import { antdSizeFromClassName } from "./antd-size"
 /**
  * antd Select 视觉本体是内部 .ant-select-selector（自带不透明白底 + 边框）；
  * 调用方为旧 shadcn 触发器设计的底色/hover/border 类挂在根节点上不生效（selector 覆盖）。
- * 解析后剥离（防误导），hover 底色与浅边框经组件级 styles.selector 以 CSS 变量转译，视觉与原 Tailwind 类完全一致。
+ * 解析后剥离（防误导），把悬停底色映射为标记类 .antd-select-surface、浅边框映射为
+ * .antd-select-surface-border（globals.css 中普通 CSS 命中视觉本体，三主题自适应）。
  */
-function extractSelectSurface(className: string | undefined): { cleaned: string; selectorStyle: Record<string, unknown> } {
-  if (!className) return { cleaned: '', selectorStyle: {} }
-  const style: Record<string, unknown> = {}
+function extractSelectSurface(className: string | undefined): { cleaned: string; surfaceClasses: string } {
+  if (!className) return { cleaned: '', surfaceClasses: '' }
   let cleaned = className
-  // hover 浅灰底（hover:bg-muted/N）→ selector 的 :hover 伪类（cssinjs 支持）
+  const surfaceParts: string[] = []
+  // hover 浅灰底（hover:bg-muted/N）→ .antd-select-surface（hover 时 selector 变浅灰）
   const hoverM = /(?:^|\s)hover:bg-muted\/(\d+)(?=\s|$)/.exec(className)
   if (hoverM) {
-    style['&:hover'] = { backgroundColor: `hsl(var(--muted) / ${Number(hoverM[1]) / 100})` }
+    surfaceParts.push('antd-select-surface')
     cleaned = cleaned.replace(hoverM[0], '').trim()
   }
-  // 浅边框（border-input 或 border-input/N）→ selector 边框色
+  // 浅边框（border-input 或 border-input/N）→ .antd-select-surface-border
   const borderM = /(?:^|\s)border-input(?:\/(\d+))?(?=\s|$)/.exec(className)
   if (borderM) {
-    const alpha = borderM[1] ? Number(borderM[1]) / 100 : 1
-    style.borderColor = alpha < 1 ? `hsl(var(--input) / ${alpha})` : 'hsl(var(--input))'
+    surfaceParts.push('antd-select-surface-border')
     cleaned = cleaned.replace(borderM[0], '').trim()
   }
   // 白底类（bg-page/bg-background）在 selector 白底下多余，剥离避免误导
   cleaned = cleaned.replace(/(?:^|\s)(bg-page|bg-background)(?=\s|$)/g, ' ').replace(/\s{2,}/g, ' ').trim()
-  return { cleaned, selectorStyle: style }
+  return { cleaned, surfaceClasses: surfaceParts.join(' ') }
 }
 
 /**
@@ -157,8 +157,8 @@ const Select = ({ value, defaultValue, onValueChange, disabled, children, ...res
 
   const trigger = triggerProps as SelectTriggerProps | null
 
-  // 清洗底色类（根节点对 antd 无效）并经组件级 styles.selector 转译为 selector 样式（恢复 hover 底色/浅边框）
-  const { cleaned: cleanedClass, selectorStyle } = extractSelectSurface(trigger?.className)
+  // 清洗底色类（根节点对 antd 无效）→ selector 经 arbitrary variant 类命中（恢复 hover 底色/浅边框）
+  const { cleaned: cleanedClass, surfaceClasses } = extractSelectSurface(trigger?.className)
 
   return (
     <AntdSelect
@@ -173,12 +173,7 @@ const Select = ({ value, defaultValue, onValueChange, disabled, children, ...res
       title={trigger?.title}
       aria-label={rest['aria-label'] ?? (trigger?.['aria-label'] as string | undefined)}
       size={antdSizeFromClassName(cleanedClass, 'middle')}
-      className={cn('w-full', cleanedClass)}
-      styles={Object.keys(selectorStyle).length > 0
-        // antd Select 组件级样式仅暴露 root 命名空间；样式作用于内部 .ant-select-selector（视觉本体），
-        // cssinjs 支持嵌套选择器与 & 伪类，类型上以断言放宽
-        ? ({ root: { '& .ant-select-selector': selectorStyle } } as never)
-        : undefined}
+      className={cn('w-full', cleanedClass, surfaceClasses)}
       // 自定义回显：CompanySelect 等"触发器文案 ≠ 选项文案"场景（antd ≥5.23 labelRender）
       labelRender={customDisplay ? () => <>{customDisplay}</> : undefined}
       // 对齐原 Radix 触发器的 lucide 折叠箭头

@@ -109,10 +109,12 @@ const DropdownMenu = ({ open, defaultOpen, onOpenChange, children }: DropdownMen
         onOpenChange={setOpen}
         trigger={['click']}
         placement={placement}
-        dropdownRender={() => (
+        // popupRender：dropdownRender 已弃用（antd 5.29+）
+        popupRender={() => (
           <div
             role="menu"
-            className={cn('min-w-[8rem] p-1', collected.panelClassName)}
+            // 自定义面板自带白底/边框/浮层阴影：antd 仅给 Menu 组件加背景，自定义内容需自持（修复透明面板）
+            className={cn('min-w-[8rem] rounded-md border border-border/60 bg-popover p-1 text-popover-foreground shadow-lg', collected.panelClassName)}
           >
             {collected.panelChildren}
           </div>
