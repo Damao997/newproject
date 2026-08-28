@@ -1,0 +1,6 @@
+{
+  "recordsRoot": "records",
+  "types": ["feat", "fix", "refactor", "docs", "config", "perf", "test", "other"],
+  "requiredFields": ["id", "project", "type", "date", "title", "owner", "files", "reason"],
+  "optionalFields": ["tags", "related", "status"]
+}

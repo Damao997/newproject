@@ -1,0 +1,10 @@
+{
+  "name": "kiwi-kb",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "kiwi 知识库 CLI：纯本地的项目改动记录工具（零第三方运行时依赖）",
+  "scripts": {
+    "kiwi": "node scripts/kiwi.mjs"
+  }
+}
