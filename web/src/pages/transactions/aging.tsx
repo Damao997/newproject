@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/select'
 import { api } from '@/lib/api'
 import { downloadBlob } from '@/lib/export'
-import { cn, formatMoneyWan } from '@/lib/utils'
+import { cn, formatWan } from '@/lib/utils'
 import { usePermission } from '@/hooks/usePermission'
 import { useTransactionAging } from '@/hooks/api-queries'
 import { usePageStore, type TransactionAgingState } from '@/stores/pageStateStore'
@@ -221,7 +221,7 @@ export default function TransactionsAgingPage() {
         <Card className="rounded-card p-4">
           <p className="text-sm text-muted-foreground">期末余额合计</p>
           <p className="mt-1 font-num text-2xl font-semibold tabular-nums text-foreground">
-            {isLoading ? <Skeleton className="h-8 w-28" /> : <>{formatMoneyWan(totalClosing / 10000)}<span className="ml-1 text-sm font-normal text-muted-foreground">万</span></>}
+            {isLoading ? <Skeleton className="h-8 w-28" /> : <>{formatWan(totalClosing)}<span className="ml-1 text-sm font-normal text-muted-foreground">万</span></>}
           </p>
         </Card>
         {[
@@ -232,7 +232,7 @@ export default function TransactionsAgingPage() {
           <Card key={s.label} className="rounded-card p-4">
             <p className="text-sm text-muted-foreground">{s.label}</p>
             <p className={cn('mt-1 font-num text-2xl font-semibold tabular-nums', s.cls)}>
-              {isLoading ? <Skeleton className="h-8 w-24" /> : <>{formatMoneyWan(s.value / 10000)}<span className="ml-1 text-sm font-normal text-muted-foreground">万{totalClosing > 0 ? ` · ${((s.value / totalClosing) * 100).toFixed(1)}%` : ''}</span></>}
+              {isLoading ? <Skeleton className="h-8 w-24" /> : <>{formatWan(s.value)}<span className="ml-1 text-sm font-normal text-muted-foreground">万{totalClosing > 0 ? ` · ${((s.value / totalClosing) * 100).toFixed(1)}%` : ''}</span></>}
             </p>
           </Card>
         ))}

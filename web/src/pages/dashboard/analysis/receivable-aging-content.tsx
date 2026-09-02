@@ -8,7 +8,7 @@ import { AlertTriangle, ArrowRight, ChevronDown, ChevronUp, FileText, RefreshCw 
 import { useDashboardReceivables, useTransactionAging } from '@/hooks/api-queries'
 import { usePageStore } from '@/stores/pageStateStore'
 import { AGING_GROUPS, AgingStackBar } from '@/pages/transactions/shared'
-import { cn, formatMoneyWan } from '@/lib/utils'
+import { cn, formatMoneyWan, formatWan } from '@/lib/utils'
 import type { AgingAnalysisRow } from '@/types'
 
 /** 客户视图默认展示条数（金额 Top 10），可展开查看完整列表 */
@@ -244,14 +244,14 @@ export function ReceivableAgingContent({ period, companyCode }: ReceivableAgingC
             />
             <StatTile
               label="一年以内账龄"
-              value={formatMoneyWan(within1y / 10000)}
+              value={formatWan(within1y)}
               unit="万"
               foot={agingClosingTotal > 0 ? `占比 ${((within1y / agingClosingTotal) * 100).toFixed(1)}%` : '账龄 1个月 ~ 半年以上'}
               accent="before:bg-success-500"
             />
             <StatTile
               label="一年以上账龄"
-              value={formatMoneyWan(over1y / 10000)}
+              value={formatWan(over1y)}
               unit="万"
               foot="1年至2年 / 2年至3年 / 3年以上 · 需催收"
               accent={over1y > 0 ? 'before:bg-orange-500' : 'before:bg-success-500'}
@@ -340,7 +340,7 @@ export function ReceivableAgingContent({ period, companyCode }: ReceivableAgingC
                 <h3 className="mb-3 text-base font-semibold text-foreground">
                   账龄结构（8 段）
                   <span className="ml-2 text-xs font-normal text-muted-foreground">
-                    合计 {formatMoneyWan(agingClosingTotal / 10000)}万 · 应收账款口径
+                    合计 {formatWan(agingClosingTotal)}万 · 应收账款口径
                   </span>
                 </h3>
                 {(agingRows ?? []).length === 0 ? (
@@ -365,7 +365,7 @@ export function ReceivableAgingContent({ period, companyCode }: ReceivableAgingC
                               />
                             </div>
                             <span className="w-[72px] shrink-0 text-right font-num text-body text-foreground">
-                              {formatMoneyWan(v / 10000)}
+                              {formatWan(v)}
                             </span>
                             <span className="w-[52px] shrink-0 text-right font-num text-xs text-muted-foreground">
                               {agingClosingTotal > 0 ? `${((v / agingClosingTotal) * 100).toFixed(1)}%` : '–'}
@@ -411,13 +411,13 @@ export function ReceivableAgingContent({ period, companyCode }: ReceivableAgingC
                               {r.companyName ?? r.companyCode}
                             </td>
                             <td className="px-3 py-2 text-right font-num text-sm font-semibold text-foreground">
-                              {formatMoneyWan(r.closingBalance / 10000)}
+                              {formatWan(r.closingBalance)}
                             </td>
                             {AGING_GROUPS.map((g) => {
                               const v = r.aging[g] ?? 0
                               return (
                                 <td key={g} className={cn('px-3 py-2 text-right font-num text-sm', v !== 0 ? 'text-foreground' : 'text-muted-foreground/60')}>
-                                  {v !== 0 ? formatMoneyWan(v / 10000) : '–'}
+                                  {v !== 0 ? formatWan(v) : '–'}
                                 </td>
                               )
                             })}
@@ -428,10 +428,10 @@ export function ReceivableAgingContent({ period, companyCode }: ReceivableAgingC
                         ))}
                       <tr className="border-t-2 border-border bg-muted/40 font-semibold">
                         <td className="px-3 py-2 text-left text-body">合计</td>
-                        <td className="px-3 py-2 text-right font-num text-sm">{formatMoneyWan(agingClosingTotal / 10000)}</td>
+                        <td className="px-3 py-2 text-right font-num text-sm">{formatWan(agingClosingTotal)}</td>
                         {AGING_GROUPS.map((g) => (
                           <td key={g} className="px-3 py-2 text-right font-num text-sm">
-                            {formatMoneyWan((agingTotalByGroup.get(g) ?? 0) / 10000)}
+                            {formatWan(agingTotalByGroup.get(g) ?? 0)}
                           </td>
                         ))}
                         <td />

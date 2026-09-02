@@ -14,7 +14,7 @@ import { TransactionImportDialog } from '@/pages/data/transaction-import-dialog'
 import { TransactionTrendCard } from './trend-card'
 import { TransactionAnalysisDrawer } from './analysis-drawer'
 import { PartyTypeSelect, PartyTypeTag, AgingStackBar, agingRisk, AGING_GROUPS } from './shared'
-import { cn, formatMoneyWan } from '@/lib/utils'
+import { cn, formatWan } from '@/lib/utils'
 import { ArrowRight, FileText, RefreshCw, Upload } from 'lucide-react'
 import type { TransactionOverviewItem } from '@/types'
 
@@ -104,7 +104,7 @@ export default function TransactionsOverviewPage() {
         <Card className="rounded-card p-4">
           <p className="text-sm text-muted-foreground">期末余额合计</p>
           <p className="mt-1 font-num text-2xl font-semibold tabular-nums text-foreground">
-            {isLoading ? <Skeleton className="h-8 w-28" /> : <>{formatMoneyWan(totalClosing / 10000)}<span className="ml-1 text-sm font-normal text-muted-foreground">万</span></>}
+            {isLoading ? <Skeleton className="h-8 w-28" /> : <>{formatWan(totalClosing)}<span className="ml-1 text-sm font-normal text-muted-foreground">万</span></>}
           </p>
         </Card>
         <Card className="rounded-card p-4">
@@ -116,7 +116,7 @@ export default function TransactionsOverviewPage() {
         <Card className="rounded-card p-4">
           <p className="text-sm text-muted-foreground">3 年以上长账龄</p>
           <p className={cn('mt-1 font-num text-2xl font-semibold tabular-nums', longAging > 0 ? 'text-destructive' : 'text-foreground')}>
-            {isLoading ? <Skeleton className="h-8 w-28" /> : <>{formatMoneyWan(longAging / 10000)}<span className="ml-1 text-sm font-normal text-muted-foreground">万 · {riskyTypes} 个类型</span></>}
+            {isLoading ? <Skeleton className="h-8 w-28" /> : <>{formatWan(longAging)}<span className="ml-1 text-sm font-normal text-muted-foreground">万 · {riskyTypes} 个类型</span></>}
           </p>
         </Card>
       </div>
@@ -207,7 +207,7 @@ function TypeSummaryCard({ row, period }: { row: TransactionOverviewItem; period
         </div>
       </div>
       <div className="mt-3 font-num text-2xl font-semibold leading-tight tabular-nums text-foreground">
-        {formatMoneyWan(row.totalClosingBalance / 10000)}
+        {formatWan(row.totalClosingBalance)}
         <span className="ml-1 text-sm font-normal text-muted-foreground">万</span>
       </div>
       <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">

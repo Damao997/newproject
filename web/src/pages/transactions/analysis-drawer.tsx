@@ -16,7 +16,7 @@ import { RichTextEditor } from '@/components/editor/rich-text-editor'
 import { useCompanies, useTransactionAging } from '@/hooks/api-queries'
 import { useAnalysisForm } from '@/hooks/use-analysis-form'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
-import { cn, formatMoneyWan } from '@/lib/utils'
+import { cn, formatWan } from '@/lib/utils'
 import type { AgingAnalysisRow } from '@/types'
 import { AgingStackBar, agingRisk, AGING_GROUPS } from './shared'
 
@@ -169,7 +169,7 @@ function TransactionDrawerBody({ target, onClose }: { target: TransactionAnalysi
                   <div className="flex items-baseline justify-between">
                     <span className="text-caption text-muted-foreground">期末余额</span>
                     <span className="font-num text-lg font-bold text-foreground">
-                      {formatMoneyWan(snapshot.closingBalance / 10000)}<span className="ml-0.5 text-xs font-normal text-muted-foreground">万</span>
+                      {formatWan(snapshot.closingBalance)}<span className="ml-0.5 text-xs font-normal text-muted-foreground">万</span>
                     </span>
                   </div>
                   <div className="mt-2">
@@ -210,7 +210,7 @@ function TransactionDrawerBody({ target, onClose }: { target: TransactionAnalysi
                           <div key={g} className={cn('rounded-md border px-1.5 py-1 text-center', isDanger ? 'border-destructive/30 bg-destructive/[0.06]' : 'border-border bg-background')}>
                             <p className="text-micro text-muted-foreground">{g}</p>
                             <p className={cn('font-num text-xs', isDanger ? 'font-medium text-destructive' : 'text-foreground')}>
-                              {v !== 0 ? formatMoneyWan(v / 10000) : '-'}
+                              {v !== 0 ? formatWan(v) : '-'}
                             </p>
                           </div>
                         )

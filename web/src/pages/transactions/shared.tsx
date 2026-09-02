@@ -9,7 +9,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 import { useCompanies, useTransactionAccounts } from '@/hooks/api-queries'
-import { cn, formatMoneyWan } from '@/lib/utils'
+import { cn, formatWan } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ChevronDown } from 'lucide-react'
 
@@ -43,7 +43,7 @@ export function useDefaultCompanyCode(): string | null {
 export function formatAmount(v: number): ReactNode {
   return (
     <>
-      {formatMoneyWan(v / 10000)}
+      {formatWan(v)}
       <span className="ml-0.5 text-[0.55em] font-normal text-muted-foreground">万</span>
     </>
   )
@@ -83,7 +83,7 @@ export function AgingStackBar({ aging, closingBalance, className }: { aging: Rec
             key={g}
             className={AGING_BAR_COLORS[i]}
             style={{ width: `${Math.max((v / total) * 100, 1)}%` }}
-            title={`${g}：${formatMoneyWan(v / 10000)} 万`}
+            title={`${g}：${formatWan(v)} 万`}
           />
         )
       })}

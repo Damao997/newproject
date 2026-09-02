@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { cn, formatMoneyWan } from '@/lib/utils'
+import { cn, formatWan } from '@/lib/utils'
 import { usePreviewTransactionImport, useImportTransactions, useActivateImport } from '@/hooks/api-queries'
 import { useBatchActivate, buildActivateConflictDescription } from '@/hooks/use-batch-activate'
 import { useConfirm } from '@/components/ui/confirm-dialog'
@@ -19,10 +19,10 @@ type Step = 'select' | 'preview' | 'result'
 
 /**
  * 往来金额展示：ERP 原值单位为元，按往来模块统一约定换算为万元后走全局千分位格式化
- * （与 transactions/overview.tsx、analysis-drawer.tsx 的 `formatMoneyWan(v / 10000)` 口径一致）。
+ * （使用 lib/utils 的 formatWan，与 transactions/overview.tsx、analysis-drawer.tsx 口径一致）。
  */
 function formatAmount(v: number): string {
-  return `${formatMoneyWan(v / 10000)} 万`
+  return `${formatWan(v)} 万`
 }
 
 export function TransactionImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {

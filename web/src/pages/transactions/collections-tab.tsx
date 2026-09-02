@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { cn, formatMoneyWan } from '@/lib/utils'
+import { cn, formatWan } from '@/lib/utils'
 import { FilterBar } from '@/components/layout/filter-bar'
 import { FILTER_WIDTH } from '@/components/layout/filter-width'
 import { Pagination } from '@/components/data-table/pagination'
@@ -641,7 +641,7 @@ export function CollectionsTab({ stickyTop = 0 }: { stickyTop?: number }) {
             </button>
           ))}
           <span className="ml-auto text-muted-foreground">
-            应收金额合计 <span className="font-num font-medium text-destructive">{formatMoneyWan(stats.totalBalance / 10000)}<span className="ml-0.5 text-micro font-normal">万</span></span>
+            应收金额合计 <span className="font-num font-medium text-destructive">{formatWan(stats.totalBalance)}<span className="ml-0.5 text-micro font-normal">万</span></span>
           </span>
         </div>
       )}
