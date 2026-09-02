@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   formatMoney,
   formatMoneyWan,
+  formatWan,
   formatPercent,
   formatQuantity,
   formatMetricValue,
@@ -32,6 +33,22 @@ describe('formatMoneyWan', () => {
 
   it('零值显示 -', () => {
     expect(formatMoneyWan(0)).toBe('-')
+  })
+})
+
+describe('formatWan', () => {
+  it('元换算为万元（/10000）并保留两位小数千分位', () => {
+    // 12,345,000 元 → 1,234.50 万
+    expect(formatWan(12345000)).toBe('1,234.50')
+    expect(formatWan(50000)).toBe('5.00')
+  })
+
+  it('零值显示 -（与 formatMoneyWan 口径一致）', () => {
+    expect(formatWan(0)).toBe('-')
+  })
+
+  it('负值正确换算', () => {
+    expect(formatWan(-881000)).toBe('-88.10')
   })
 })
 

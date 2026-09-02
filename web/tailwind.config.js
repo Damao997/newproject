@@ -12,6 +12,7 @@ export default {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
+        subtle: "hsl(var(--border-subtle))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         page: "hsl(var(--page))",

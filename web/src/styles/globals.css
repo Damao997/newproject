@@ -47,6 +47,9 @@
     --border: 0 0% 85%;
     --input: 0 0% 85%;
     --ring: 29 100% 53%;
+    /* 次级分隔线：浅灰 #f0f0f0（antd colorSplit）——与 lib/chart-theme.ts 的 THEME_HEX.borderSubtle 同值镜像，
+     * 供原生报表表 .data-table-report 行线等使用；修改时两处必须同步 */
+    --border-subtle: 0 0% 94%;
     /* 侧边栏浅色风格（默认）：白底 + 浅橙高亮；三风格下 --sidebar-bg 均为 HSL 三元组，经 bg-sidebar-bg 类（hsl() 包装）使用 */
     --sidebar-bg: 0 0% 100%;
     --sidebar-fg: 220 9% 46%;
@@ -1753,5 +1756,34 @@
 /* 移动端：表单单列时给表单容器适当留白（与 v5 一致） */
 @media (max-width: 480px) {
   .login-shell-v6 .login-form-wrap { padding: 24px 20px; }
+}
+
+/* ============ 原生报表表统一皮肤 ============
+ * 目标：让未走 DataTable 的原生 <table>（报表/聚合表）与 antd Table token（antd-provider）同皮：
+ * 表头底色 #fafafa（--ink-2，对齐 Table.headerBg/rowHoverBg）、行线 #f0f0f0（--border-subtle，对齐 Table.borderColor）、
+ * 表头文字 13px foreground（对齐 Table.headerColor）。对齐方式无法从 CSS 推断的（数字列右对齐/等宽）仍由标记显式声明。
+ * 接入方式：table 挂 .data-table-report → 删除表头重复类 → th/td 仅保留对齐与业务类。 */
+@layer components {
+  .data-table-report {
+    @apply w-full border-collapse text-sm;
+  }
+  .data-table-report thead th {
+    @apply whitespace-nowrap border-b border-border bg-ink-2 px-3 py-2 text-left text-[13px] font-medium text-foreground;
+  }
+  .data-table-report tbody td {
+    @apply border-b border-subtle px-3 py-2;
+  }
+  /* 斑马纹变体：偶数行浅灰底（可选启用） */
+  .data-table-report--striped tbody tr:nth-child(even) td {
+    @apply bg-muted/30;
+  }
+  /* 行 hover：#fafafa（对齐 Table.rowHoverBg）；置于 striped 之后，同特异性下 hover 优先 */
+  .data-table-report tbody tr:hover td {
+    @apply bg-ink-2;
+  }
+  /* 合计行：顶部双线加重 + 浅灰底（可选启用） */
+  .data-table-report tr.report-total-row td {
+    @apply border-t-2 border-border bg-muted/40 font-semibold;
+  }
 }
 

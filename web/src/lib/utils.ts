@@ -24,6 +24,12 @@ export function formatMoneyWan(value: number): string {
   }).format(value)
 }
 
+/** 元 → 万元展示：入参为元，内部 /10000 后委托 formatMoneyWan（零值随其统一显示 '-'）。
+ * 用于接口返回"元"而页面按"万元"口径展示的场景，收敛散落的 formatMoneyWan(v / 10000) 写法 */
+export function formatWan(valueInYuan: number): string {
+  return formatMoneyWan(valueInYuan / 10000)
+}
+
 export function formatPercent(value: number): string {
   if (value === 0) return '-'
   return (value * 100).toFixed(1) + '%'
