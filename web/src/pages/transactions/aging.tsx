@@ -268,18 +268,18 @@ export default function TransactionsAgingPage() {
               当前筛选条件下暂无账龄数据，请调整筛选或先导入并激活批次
             </p>
           ) : (
-            <table className="w-full text-sm tabular-nums" style={{ minWidth: 1180 }}>
+            <table className="data-table-report" style={{ minWidth: 1180 }}>
               <thead>
-                <tr className="border-b bg-muted/50">
-                  <th className="px-3 py-2 text-left font-medium">公司</th>
-                  <th className="px-3 py-2 text-left font-medium">往来类型</th>
-                  <th className="px-3 py-2 text-left font-medium">{groupBy === 'account' ? '会计科目' : groupBy === 'counterparty' ? '往来客商' : '明细维度'}</th>
-                  <th className="px-3 py-2 text-center font-medium">对象</th>
-                  <th className="px-3 py-2 text-right font-medium">期末余额</th>
+                <tr>
+                  <th className="text-left">公司</th>
+                  <th className="text-left">往来类型</th>
+                  <th className="text-left">{groupBy === 'account' ? '会计科目' : groupBy === 'counterparty' ? '往来客商' : '明细维度'}</th>
+                  <th className="text-center">对象</th>
+                  <th className="text-right">期末余额</th>
                   {AGING_GROUPS.map((g) => (
-                    <th key={g} className="px-2 py-2 text-right font-medium whitespace-nowrap">{g}</th>
+                    <th key={g} className="px-2 py-2 text-right">{g}</th>
                   ))}
-                  <th className="px-3 py-2 text-center font-medium">分析</th>
+                  <th className="text-center">分析</th>
                 </tr>
               </thead>
               <tbody>
@@ -293,7 +293,7 @@ export default function TransactionsAgingPage() {
                   />
                 ))}
                 {/* 合计行 */}
-                <tr className="border-t-2 bg-muted/40 font-medium">
+                <tr className="report-total-row">
                   <td className="px-3 py-2" colSpan={4}>合计 · {groups.length} 组</td>
                   <td className="px-3 py-2 text-right font-num">{fmtAmount(totalClosing)}</td>
                   {AGING_GROUPS.map((g) => (
@@ -356,7 +356,7 @@ function AgingGroupBlock({ group, groupBy, subtotalOnly, onAnalyze }: {
       {!subtotalOnly && group.rows.map((r, i) => {
         const rowKey = `${r.companyCode}|${r.transactionType}|${r.counterpartyCode ?? ''}|${r.accountCode ?? ''}|${i}`
         return (
-          <tr key={rowKey} className="group border-b last:border-b-0 hover:bg-muted/40">
+          <tr key={rowKey} className="group">
             <td className="px-3 py-2" title={r.companyCode}>{getDisplayName(r.companyCode, r.companyName ?? undefined)}</td>
             <td className="px-3 py-2">{r.transactionType}</td>
             <td className="px-3 py-2">

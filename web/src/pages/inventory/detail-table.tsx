@@ -63,7 +63,7 @@ function SortableTh({ label, sortKey, sort, onSort }: {
   const active = sort?.key === sortKey
   const dir = active ? sort!.dir : 'desc'
   return (
-    <th aria-sort={active ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'} className="px-2 py-2 font-medium">
+    <th aria-sort={active ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'} className="px-2 py-2 text-center">
       <button
         type="button"
         onClick={() => onSort(sortKey)}
@@ -395,10 +395,10 @@ export function DetailTable({
               tabIndex={0}
               className={cn('max-h-[520px] overflow-auto transition-opacity duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', fetching && 'opacity-60')}
             >
-              <table className="w-full min-w-[880px] text-sm">
+              <table className="data-table-report min-w-[880px]">
                 <thead className="sticky top-0 z-[2] bg-card">
-                  <tr className="border-b bg-muted/50 text-center text-foreground">
-                    <th className="sticky left-0 z-[3] w-9 bg-card px-2 py-2">
+                  <tr>
+                    <th className="sticky left-0 z-[3] w-9 bg-card px-2 py-2 text-center">
                       <Checkbox
                         size="sm"
                         aria-label="全选当前筛选结果"
@@ -407,22 +407,22 @@ export function DetailTable({
                         onCheckedChange={toggleAll}
                       />
                     </th>
-                    <th className="sticky left-9 z-[3] whitespace-nowrap bg-card px-2 py-2 font-medium">
+                    <th className="sticky left-9 z-[3] whitespace-nowrap bg-card px-2 py-2 text-center">
                       {detailDim === 'category' ? '品类' : '公司'}
                     </th>
-                    {detailDim === 'detail' && <th className="px-2 py-2 font-medium">品类</th>}
+                    {detailDim === 'detail' && <th className="px-2 py-2 text-center">品类</th>}
                     <SortableTh label="本期金额" sortKey="current" sort={sort} onSort={cycleSort} />
                     <SortableTh label="年初金额" sortKey="yearStart" sort={sort} onSort={cycleSort} />
                     <SortableTh label="较年初" sortKey="vsYearStart" sort={sort} onSort={cycleSort} />
                     <SortableTh label="同期金额" sortKey="samePeriod" sort={sort} onSort={cycleSort} />
                     <SortableTh label="同比" sortKey="yoy" sort={sort} onSort={cycleSort} />
                     {/* 操作列仅公司×品类明细维度提供（按公司汇总的公司级分析依赖存货根科目静态树，未就绪前不渲染占位按钮） */}
-                    {canAnalyze && detailDim === 'detail' && <th className="px-2 py-2 font-medium">操作</th>}
+                    {canAnalyze && detailDim === 'detail' && <th className="px-2 py-2 text-center">操作</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {visibleRows.map((row) => (
-                    <tr key={row.key} className="group border-b last:border-0 hover:bg-muted/50">
+                    <tr key={row.key} className="group">
                       <td className="sticky left-0 z-[1] w-9 bg-card px-2 py-2 text-center transition-colors group-hover:bg-muted">
                         <Checkbox
                           size="sm"
