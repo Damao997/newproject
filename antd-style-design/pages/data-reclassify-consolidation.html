@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>汇总重分类 · 数据管理 · 经营分析平台</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; }
+  .shell-side { background: #001529; color: rgba(255,255,255,0.85); display: flex; flex-direction: column; }
+  .shell-side-logo { height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #fff; }
+  .shell-side-logo-mark { width: 32px; height: 32px; background: var(--color-primary); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 16px; }
+  .shell-side-logo-text { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
+  .shell-side-nav { padding: 12px 0; flex: 1; overflow-y: auto; }
+  .shell-nav-group-title { padding: 12px 28px 8px; color: rgba(255,255,255,0.35); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .shell-nav-item { display: flex; align-items: center; gap: 12px; padding: 0 20px; height: 40px; color: rgba(255,255,255,0.75); cursor: pointer; transition: all 0.2s; border-left: 3px solid transparent; font-size: 14px; text-decoration: none; }
+  .shell-nav-item:hover { color: #fff; background: rgba(255,255,255,0.04); }
+  .shell-nav-item.is-active { background: var(--color-primary); color: #fff; border-left-color: #fff; }
+  .shell-nav-item.is-active .shell-nav-ic { color: #fff; }
+  .shell-nav-ic { width: 18px; flex-shrink: 0; color: rgba(255,255,255,0.55); }
+  .shell-nav-item:hover .shell-nav-ic { color: #fff; }
+
+  .shell-header { background: #fff; border-bottom: 1px solid var(--antd-gray-3); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .shell-header-l { display: flex; align-items: center; gap: 16px; }
+  .shell-header-r { display: flex; align-items: center; gap: 16px; }
+  .period-pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; background: var(--antd-gray-2); border-radius: var(--radius-medium); color: var(--color-foreground); font-size: 13px; cursor: pointer; }
+  .period-pill:hover { background: var(--antd-gray-3); }
+  .user-chip { display: flex; align-items: center; gap: 10px; padding: 4px 10px 4px 4px; border-radius: 20px; cursor: pointer; }
+  .user-chip:hover { background: var(--antd-gray-2); }
+  .user-chip-name { font-size: 13px; font-weight: 500; }
+  .user-chip-role { font-size: 11px; color: var(--color-text-tertiary); }
+
+  /* 汇总主体标识行 */
+  .entity-bar {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 20px;
+    background: linear-gradient(90deg, var(--antd-brand-50) 0%, transparent 80%);
+    border: 1px solid var(--antd-brand-100);
+    border-radius: var(--radius-large);
+    margin-bottom: var(--antd-space-4);
+  }
+  .entity-bar .entity-tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 26px; padding: 0 10px;
+    background: var(--color-primary);
+    color: #fff;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .entity-bar .entity-tag::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%; background: #fff;
+  }
+  .entity-bar .entity-name { font-size: 15px; font-weight: 600; }
+  .entity-bar .entity-sub { color: var(--color-text-tertiary); font-size: 12px; }
+  .entity-bar .entity-act { margin-left: auto; display: flex; gap: 8px; }
+
+  /* 入口卡 */
+  .entry-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: var(--antd-space-5); }
+  .entry-card { display: flex; align-items: flex-start; gap: 16px; padding: 20px; background: var(--color-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-large); box-shadow: var(--antd-shadow-sm); transition: box-shadow 0.2s, transform 0.2s; cursor: pointer; }
+  .entry-card:hover { box-shadow: var(--antd-shadow-md); transform: translateY(-1px); }
+  .entry-card .entry-ic { width: 48px; height: 48px; border-radius: 10px; background: var(--antd-brand-50); color: var(--color-primary); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .entry-card.is-orange .entry-ic { background: var(--antd-orange-bg); color: var(--antd-orange-500); }
+  .entry-card.is-green .entry-ic { background: var(--antd-state-success-bg); color: var(--antd-state-success); }
+  .entry-card .entry-body { flex: 1; min-width: 0; }
+  .entry-card .entry-title { font-size: 15px; font-weight: 600; color: var(--color-foreground); margin-bottom: 4px; }
+  .entry-card .entry-desc { font-size: 12px; color: var(--color-text-tertiary); line-height: 1.5; margin-bottom: 10px; }
+  .entry-card .entry-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .entry-card .entry-num { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; font-family: var(--antd-font-family-mono); color: var(--color-foreground); }
+  .entry-card .entry-num-label { color: var(--color-text-tertiary); font-size: 12px; }
+
+  .seg-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--antd-space-4); }
+  .seg-row .seg-title { font-size: 16px; font-weight: 600; }
+  .seg-row .seg-extra { color: var(--color-text-tertiary); font-size: 12px; }
+
+  .reco-card { background: var(--color-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-large); overflow: hidden; }
+  .antd-table.antd-table-zebra tbody tr:nth-child(even) td { background: var(--color-table-zebra); }
+  .antd-table.antd-table-zebra tbody tr:hover td { background: var(--color-table-hover); }
+  .antd-table.antd-table-density-compact th,
+  .antd-table.antd-table-density-compact td { padding: 8px 12px; }
+</style>
+</head>
+<body>
+<div class="antd-page">
+  <aside class="shell-side" style="grid-column: 1;">
+    <div class="shell-side-logo">
+      <div class="shell-side-logo-mark">J</div>
+      <div class="shell-side-logo-text">经营分析平台</div>
+    </div>
+    <nav class="shell-side-nav">
+      <div class="shell-nav-group-title">主数据</div>
+      <a class="shell-nav-item" href="dashboard.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        首页看板
+      </a>
+      <a class="shell-nav-item" href="indicators-operating.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+        财务指标
+      </a>
+      <a class="shell-nav-item" href="transactions-overview.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+        往来分析
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7-4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        存货管理
+      </a>
+      <a class="shell-nav-item" href="reports-list.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+        分析报告
+      </a>
+      <div class="shell-nav-group-title">业务工具</div>
+      <a class="shell-nav-item" href="enterprise-lookup.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        企业信息查询
+      </a>
+      <div class="shell-nav-group-title">数据管理</div>
+      <a class="shell-nav-item" href="data-import.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        数据导入
+      </a>
+      <a class="shell-nav-item is-active" href="data-reclassify.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h12"/></svg>
+        重分类管理
+      </a>
+      <a class="shell-nav-item" href="data-dimensions.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        维度管理
+      </a>
+      <div class="shell-nav-group-title">系统</div>
+      <a class="shell-nav-item" href="admin-users.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><circle cx="17" cy="7" r="3"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
+        用户管理
+      </a>
+      <a class="shell-nav-item" href="admin-roles.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+        角色权限
+      </a>
+    </nav>
+  </aside>
+
+  <main class="antd-content">
+    <header class="shell-header">
+      <div class="shell-header-l">
+        <div class="antd-breadcrumb">
+          <span>首页</span><span class="sep">/</span>
+          <a href="data-import.html">数据管理</a><span class="sep">/</span>
+          <a href="data-reclassify.html">单体重分类</a><span class="sep">/</span>
+          <span class="current">汇总重分类</span>
+        </div>
+      </div>
+      <div class="shell-header-r">
+        <div class="antd-select" style="min-width: 160px;">浙江壹品慧生活集团</div>
+        <div class="period-pill">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          2026 财年 · 8月
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <button class="antd-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          刷新
+        </button>
+        <div class="user-chip">
+          <div class="antd-avatar" style="background: var(--antd-brand-100); color: var(--color-primary);">张</div>
+          <div>
+            <div class="user-chip-name">张伟</div>
+            <div class="user-chip-role">财务总监</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="antd-content-body">
+      <div class="antd-page-head">
+        <div>
+          <div class="antd-page-head-title">汇总重分类</div>
+          <div class="antd-page-head-desc">按汇总主体维度对合并报表进行调整，按汇总维度调整与平衡</div>
+        </div>
+        <div class="antd-page-head-actions">
+          <button class="antd-btn">导入调整单</button>
+          <button class="antd-btn antd-btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            新建汇总调整
+          </button>
+        </div>
+      </div>
+
+      <!-- 汇总主体标识行 -->
+      <div class="entity-bar">
+        <span class="entity-tag">汇总主体</span>
+        <span class="entity-name">浙江壹品慧生活集团（合并）</span>
+        <span class="entity-sub">· 包含 8 个子主体 · 集团口径</span>
+        <div class="entity-act">
+          <div class="antd-select" style="min-width: 200px;">切换汇总主体 ▾</div>
+          <button class="antd-btn antd-btn-sm">查看合并规则</button>
+        </div>
+      </div>
+
+      <!-- 入口卡 3 列 -->
+      <div class="entry-row">
+        <div class="entry-card">
+          <div class="entry-ic">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h12"/></svg>
+          </div>
+          <div class="entry-body">
+            <div class="entry-title">科目调整</div>
+            <div class="entry-desc">按汇总维度调整合并报表科目余额与分类</div>
+            <div class="entry-meta">
+              <span class="entry-num">14</span>
+              <span class="entry-num-label">本月汇总调整笔数</span>
+            </div>
+            <button class="antd-btn antd-btn-primary antd-btn-sm">进入 →</button>
+          </div>
+        </div>
+        <div class="entry-card is-orange">
+          <div class="entry-ic">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h12"/><path d="M17 16l4 4-4 4"/></svg>
+          </div>
+          <div class="entry-body">
+            <div class="entry-title">跨公司</div>
+            <div class="entry-desc">汇总维度的内部交易抵消 / 跨公司重分类</div>
+            <div class="entry-meta">
+              <span class="entry-num">7</span>
+              <span class="entry-num-label">本月汇总跨公司</span>
+            </div>
+            <button class="antd-btn antd-btn-primary antd-btn-sm">进入 →</button>
+          </div>
+        </div>
+        <div class="entry-card is-green">
+          <div class="entry-ic">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          </div>
+          <div class="entry-body">
+            <div class="entry-title">预算调整</div>
+            <div class="entry-desc">按汇总维度的集团预算调整、追加</div>
+            <div class="entry-meta">
+              <span class="entry-num">5</span>
+              <span class="entry-num-label">本月汇总预算调整</span>
+            </div>
+            <button class="antd-btn antd-btn-primary antd-btn-sm">进入 →</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="seg-row">
+        <div>
+          <div class="seg-title">调整记录</div>
+          <div class="seg-extra">近 30 天共 26 条 · 待复核 2 条</div>
+        </div>
+        <div class="antd-flex">
+          <div class="antd-segmented">
+            <div class="antd-segmented-item"><a href="data-reclassify.html" style="color: inherit; text-decoration: none;">单主体</a></div>
+            <div class="antd-segmented-item is-active">汇总</div>
+          </div>
+          <button class="antd-btn antd-btn-sm">导出</button>
+        </div>
+      </div>
+
+      <div class="reco-card">
+        <table class="antd-table antd-table-zebra antd-table-density-compact">
+          <thead>
+            <tr>
+              <th style="width: 60px;">序号</th>
+              <th>汇总主体</th>
+              <th>调整类型</th>
+              <th>调整前</th>
+              <th>调整后</th>
+              <th>调整人</th>
+              <th>时间</th>
+              <th>状态</th>
+              <th style="width: 140px;">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="antd-text-tertiary">001</td>
+              <td><span class="antd-pill is-blue">集团合并</span></td>
+              <td><span class="antd-pill is-blue">科目调整</span></td>
+              <td>合并-其他业务收入 ¥36,800</td>
+              <td>合并-主营业务收入 ¥36,800</td>
+              <td>王芳</td>
+              <td class="antd-text-tertiary">08-27 15:20</td>
+              <td><span class="antd-pill is-green">已生效</span></td>
+              <td><a class="antd-text-primary" href="#">查看</a> · <a class="antd-text-primary" href="#">撤销</a></td>
+            </tr>
+            <tr>
+              <td class="antd-text-tertiary">002</td>
+              <td><span class="antd-pill is-blue">集团合并</span></td>
+              <td><span class="antd-pill is-orange">跨公司</span></td>
+              <td>内部交易-浙江/宁波 ¥128,000</td>
+              <td>内部交易抵消 ¥0</td>
+              <td>李娜</td>
+              <td class="antd-text-tertiary">08-27 13:42</td>
+              <td><span class="antd-pill is-orange">待复核</span></td>
+              <td><a class="antd-text-primary" href="#">复核</a> · <a class="antd-text-primary" href="#">查看</a></td>
+            </tr>
+            <tr>
+              <td class="antd-text-tertiary">003</td>
+              <td><span class="antd-pill is-blue">集团合并</span></td>
+              <td><span class="antd-pill is-blue">预算调整</span></td>
+              <td>集团销售预算 ¥9,800,000</td>
+              <td>集团销售预算 ¥10,500,000</td>
+              <td>陈勇</td>
+              <td class="antd-text-tertiary">08-26 17:08</td>
+              <td><span class="antd-pill is-blue">审批中</span></td>
+              <td><a class="antd-text-primary" href="#">查看</a></td>
+            </tr>
+            <tr>
+              <td class="antd-text-tertiary">004</td>
+              <td><span class="antd-pill is-blue">华东合并</span></td>
+              <td><span class="antd-pill is-blue">科目调整</span></td>
+              <td>华东-应收账款 ¥248,000</td>
+              <td>华东-应收账款-长账龄 ¥248,000</td>
+              <td>赵敏</td>
+              <td class="antd-text-tertiary">08-26 11:15</td>
+              <td><span class="antd-pill is-green">已生效</span></td>
+              <td><a class="antd-text-primary" href="#">查看</a></td>
+            </tr>
+            <tr>
+              <td class="antd-text-tertiary">005</td>
+              <td><span class="antd-pill is-blue">集团合并</span></td>
+              <td><span class="antd-pill is-orange">跨公司</span></td>
+              <td>内部交易-浙江/温州 ¥86,500</td>
+              <td>内部交易抵消 ¥0</td>
+              <td>王芳</td>
+              <td class="antd-text-tertiary">08-25 16:32</td>
+              <td><span class="antd-pill is-green">已生效</span></td>
+              <td><a class="antd-text-primary" href="#">查看</a></td>
+            </tr>
+            <tr>
+              <td class="antd-text-tertiary">006</td>
+              <td><span class="antd-pill is-blue">集团合并</span></td>
+              <td><span class="antd-pill is-blue">预算调整</span></td>
+              <td>管理费用-集团 ¥1,200,000</td>
+              <td>管理费用-集团 ¥1,500,000</td>
+              <td>李娜</td>
+              <td class="antd-text-tertiary">08-25 10:48</td>
+              <td><span class="antd-pill is-red">已驳回</span></td>
+              <td><a class="antd-text-primary" href="#">查看</a> · <a class="antd-text-primary" href="#">重新发起</a></td>
+            </tr>
+            <tr>
+              <td class="antd-text-tertiary">007</td>
+              <td><span class="antd-pill is-blue">华东合并</span></td>
+              <td><span class="antd-pill is-blue">科目调整</span></td>
+              <td>应付账款-暂估 ¥35,600</td>
+              <td>应付账款-正式 ¥35,600</td>
+              <td>陈勇</td>
+              <td class="antd-text-tertiary">08-24 14:20</td>
+              <td><span class="antd-pill is-green">已生效</span></td>
+              <td><a class="antd-text-primary" href="#">查看</a></td>
+            </tr>
+            <tr>
+              <td class="antd-text-tertiary">008</td>
+              <td><span class="antd-pill is-blue">集团合并</span></td>
+              <td><span class="antd-pill is-orange">跨公司</span></td>
+              <td>内部交易-合并内 ¥48,200</td>
+              <td>内部交易抵消 ¥0</td>
+              <td>赵敏</td>
+              <td class="antd-text-tertiary">08-24 09:38</td>
+              <td><span class="antd-pill is-orange">待复核</span></td>
+              <td><a class="antd-text-primary" href="#">复核</a> · <a class="antd-text-primary" href="#">查看</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

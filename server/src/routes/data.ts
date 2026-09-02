@@ -116,9 +116,20 @@ router.post('/imports/merged', requirePermission('data:import:upload', 'import')
   sendOk(res, dto)
 }))
 
+// 批次生命周期状态筛选白名单（与 Prisma LifecycleStatus 枚举一致）
+const VALID_LIFECYCLE_STATUS = new Set(['draft', 'active', 'archived', 'purged'])
+// 时间范围参数格式：YYYY-MM-DD
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+
 router.get('/imports', requirePermission('data:browse:view', 'view'), asyncHandler(async (req, res) => {
   const { page, pageSize } = pageParams(req.query)
-  const data = await ImportService.list({ page, pageSize, templateType: req.query.templateType as string | undefined, userId: (req.authUser as AuthUserContext).userId })
+  const status = req.query.status as string | undefined
+  if (status !== undefined && !VALID_LIFECYCLE_STATUS.has(status)) throw errors.badRequest('非法的批次状态')
+  const startDate = req.query.startDate as string | undefined
+  const endDate = req.query.endDate as string | undefined
+  if (startDate !== undefined && !DATE_PATTERN.test(startDate)) throw errors.badRequest('非法的起始日期格式')
+  if (endDate !== undefined && !DATE_PATTERN.test(endDate)) throw errors.badRequest('非法的结束日期格式')
+  const data = await ImportService.list({ page, pageSize, templateType: req.query.templateType as string | undefined, lifecycleStatus: status, startDate, endDate, userId: (req.authUser as AuthUserContext).userId })
   sendOk(res, data)
 }))
 

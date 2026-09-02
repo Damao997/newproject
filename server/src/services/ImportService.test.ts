@@ -76,6 +76,35 @@ describe('ImportService（真实 DB）', () => {
     expect(found?.errors).toBeUndefined()
   })
 
+  it('list 支持按生命周期状态筛选', async () => {
+    if (!dbReady) return
+    // fixture 批次为 draft：draft 结果包含，archived 结果不含
+    const draftPage = await ImportService.list({ page: 1, pageSize: 1000, lifecycleStatus: 'draft' })
+    expect(draftPage.items.some((b) => b.id === batchId)).toBe(true)
+    const archivedPage = await ImportService.list({ page: 1, pageSize: 1000, lifecycleStatus: 'archived' })
+    expect(archivedPage.items.some((b) => b.id === batchId)).toBe(false)
+  })
+
+  it('list 支持按导入时间范围筛选（endDate 含当日）', async () => {
+    if (!dbReady) return
+    const d = new Date()
+    const local = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    // 当日起止：批次 createdAt 为 now，应命中
+    const todayPage = await ImportService.list({ page: 1, pageSize: 1000, startDate: local, endDate: local })
+    expect(todayPage.items.some((b) => b.id === batchId)).toBe(true)
+    // 未来区间：不应命中
+    const futurePage = await ImportService.list({ page: 1, pageSize: 1000, startDate: '2099-01-01', endDate: '2099-01-02' })
+    expect(futurePage.items.some((b) => b.id === batchId)).toBe(false)
+  })
+
+  it('list 支持 templateType + lifecycleStatus 组合筛选', async () => {
+    if (!dbReady) return
+    const hit = await ImportService.list({ page: 1, pageSize: 1000, templateType: 'operating', lifecycleStatus: 'draft' })
+    expect(hit.items.some((b) => b.id === batchId)).toBe(true)
+    const miss = await ImportService.list({ page: 1, pageSize: 1000, templateType: 'budget', lifecycleStatus: 'draft' })
+    expect(miss.items.some((b) => b.id === batchId)).toBe(false)
+  })
+
   it('preview 非法文件抛错（magic 校验，不依赖 DB）', async () => {
     await expect(ImportService.preview({ buffer: Buffer.from('not-a-xlsx-file') }, 'operating')).rejects.toBeTruthy()
   })

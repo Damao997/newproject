@@ -343,12 +343,23 @@ export const AdminService = {
 
   // ===== 审计日志 =====
   async listAuditLogs(params: {
-    page: number; pageSize: number; module?: string; action?: string
+    page: number; pageSize: number; module?: string; action?: string; q?: string
     role?: string; username?: string; startDate?: string; endDate?: string
   }) {
     const where: Record<string, unknown> = {}
     if (params.module) where.module = params.module
     if (params.action) where.action = params.action
+    // 高级搜索关键词：raw 预筛命中 id（target_id / detail 全文 ILIKE，忽略大小写），
+    // 再与主查询其他条件 AND 组合；上限 5000 条防命中集过大（超出静默截断，与导出上限一致）
+    if (params.q) {
+      const like = `%${params.q}%`
+      const hits = await prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM audit_log
+        WHERE target_id ILIKE ${like} OR detail::text ILIKE ${like}
+        LIMIT 5000`
+      const hitIds = hits.map((h) => h.id)
+      where.id = { in: hitIds.length > 0 ? hitIds : ['__no_match__'] }
+    }
     // 按操作用户的角色/用户名关键字筛选（关联 user 过滤，自然排除无用户的记录）
     const userWhere: Record<string, unknown> = {}
     if (params.role) userWhere.role = { code: params.role }
@@ -373,7 +384,24 @@ export const AdminService = {
       module: r.module,
       action: r.action,
       detail: r.detail ? JSON.stringify(r.detail) : '',
+      ip: r.ip,
+      userAgent: r.userAgent,
+      targetId: r.targetId,
     }))
     return { items, total, page: params.page, pageSize: params.pageSize, totalPages: Math.ceil(total / params.pageSize) }
+  },
+
+  /** 今日审计统计：总数 + 按 module 分组计数（头部「今日 N 条」与分类 pills 用） */
+  async todayAuditStats(): Promise<{ total: number; byModule: Record<string, number> }> {
+    const start = new Date(); start.setHours(0, 0, 0, 0)
+    const end = new Date(start); end.setDate(end.getDate() + 1)
+    const where = { createdAt: { gte: start, lt: end } }
+    const [total, groups] = await Promise.all([
+      prisma.auditLog.count({ where }),
+      prisma.auditLog.groupBy({ by: ['module'], where, _count: { _all: true } }),
+    ])
+    const byModule: Record<string, number> = {}
+    groups.forEach((g) => { byModule[g.module] = g._count._all })
+    return { total, byModule }
   },
 }

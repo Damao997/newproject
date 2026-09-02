@@ -1203,8 +1203,17 @@ export const ImportService = {
     return { items }
   },
 
-  async list(params: { page: number; pageSize: number; templateType?: string; userId?: string }): Promise<{ items: ImportBatchDto[]; total: number; page: number; pageSize: number; totalPages: number }> {
+  async list(params: { page: number; pageSize: number; templateType?: string; lifecycleStatus?: string; startDate?: string; endDate?: string; userId?: string }): Promise<{ items: ImportBatchDto[]; total: number; page: number; pageSize: number; totalPages: number }> {
     const where: Record<string, unknown> = params.templateType ? { dataType: params.templateType as TemplateType } : {}
+    // 生命周期状态筛选（draft/active/archived/purged，路由层已白名单校验）
+    if (params.lifecycleStatus) where.lifecycleStatus = params.lifecycleStatus
+    // 导入时间范围筛选（endDate 含当日，路由层已校验 YYYY-MM-DD 格式）
+    if (params.startDate || params.endDate) {
+      where.createdAt = {
+        ...(params.startDate ? { gte: new Date(`${params.startDate}T00:00:00`) } : {}),
+        ...(params.endDate ? { lte: new Date(`${params.endDate}T23:59:59.999`) } : {}),
+      }
+    }
     // 元数据（文件名/行数）按数据范围收敛：仅保留申报覆盖与范围有交集的批次；
     // 无申报覆盖信息的历史批次仅上传者本人可见。
     const scope = await effectiveScope()

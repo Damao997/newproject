@@ -1,3 +1,4 @@
+import { useCallback, useMemo, useState } from 'react'
 import { usePermission } from '@/hooks/usePermission'
 import { useImports } from '@/hooks/api-queries'
 import { Card, CardContent } from '@/components/ui/card'
@@ -9,6 +10,7 @@ import { BatchPanel } from './import-batch-panel'
 import { ImportCompareDialog } from './import-compare-dialog'
 import { TransactionImportDialog } from './transaction-import-dialog'
 import { CoverageTab } from '@/pages/transactions/coverage-tab'
+import type { BatchFilterValue } from './batch-filter-bar'
 import { ChevronDown, ChevronRight, Grid3X3 } from 'lucide-react'
 
 /**
@@ -27,8 +29,39 @@ export function ImportPanel() {
   const canPurgeBatch = can('data:import', 'purge')
   const canViewTransactions = can('transactions', 'view')
 
-  // 批次列表（导入流状态机据此派生批次选择/质量统计/差异对比候选）
-  const { data: importsData } = useImports({ page: 1, pageSize: 50 })
+  // 批次筛选状态（'all' 哨兵 = 不过滤；四类条件互不影响，重置仅清空筛选）
+  const [batchFilterValue, setBatchFilterValue] = useState<BatchFilterValue>({
+    module: 'all', status: 'all', startDate: '', endDate: '',
+  })
+  const handleBatchFilterChange = useCallback((patch: Partial<BatchFilterValue>) => {
+    setBatchFilterValue((prev) => ({ ...prev, ...patch }))
+  }, [])
+  const resetBatchFilters = useCallback(() => {
+    setBatchFilterValue({ module: 'all', status: 'all', startDate: '', endDate: '' })
+  }, [])
+  // 生效筛选项计数（模块/状态/起止日期），用于筛选状态展示与重置按钮
+  const batchActiveCount = useMemo(() => {
+    let n = 0
+    if (batchFilterValue.module !== 'all') n += 1
+    if (batchFilterValue.status !== 'all') n += 1
+    if (batchFilterValue.startDate) n += 1
+    if (batchFilterValue.endDate) n += 1
+    return n
+  }, [batchFilterValue])
+
+  // 批次列表（导入流状态机据此派生批次选择/质量统计/差异对比候选）；筛选条件变化经 queryKey 触发实时重新请求
+  const batchFilterParams = useMemo(
+    () => ({
+      page: 1 as const,
+      pageSize: 50,
+      templateType: batchFilterValue.module === 'all' ? undefined : batchFilterValue.module,
+      status: batchFilterValue.status === 'all' ? undefined : batchFilterValue.status,
+      startDate: batchFilterValue.startDate || undefined,
+      endDate: batchFilterValue.endDate || undefined,
+    }),
+    [batchFilterValue],
+  )
+  const { data: importsData } = useImports(batchFilterParams)
   const flow = useImportFlow({ importsData })
 
   return (
@@ -70,6 +103,12 @@ export function ImportPanel() {
           canImport={canImport}
           canArchive={canArchive}
           canPurgeBatch={canPurgeBatch}
+          batchFilter={{
+            value: batchFilterValue,
+            onChange: handleBatchFilterChange,
+            activeCount: batchActiveCount,
+            onReset: resetBatchFilters,
+          }}
           qualityOpen={flow.qualityOpen}
           onQualityOpenChange={flow.handleQualityOpenChange}
           qualityStats={flow.qualityStats}

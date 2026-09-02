@@ -10,7 +10,7 @@ import { useThemeStore } from '@/stores/themeStore'
  * 主题配方上提自 pro-table-inner.tsx 的局部 ConfigProvider（已在线上验证）：
  * - 交互主色（colorPrimary/colorInfo/colorLink）跟随侧边栏风格（SIDEBAR_PRESETS hex 镜像，
  *   antd token 只接受字面色值，不能直接吃 CSS 变量）；
- * - 语义色走 THEME_HEX 镜像（与 globals.css 的同名令牌一一对应）；主页面恒白，恒用亮色算法。
+ * - 语义色走 THEME_HEX 镜像（与 globals.css 的同名令牌一一对应）；页面浅灰 #f0f2f5、组件恒白，恒用亮色算法。
  * 主题对象随 sidebarStyle 变化重建（ConfigProvider 内部按 token 引用重算样式）。
  */
 export function AntdProvider({ children }: { children: React.ReactNode }) {
@@ -38,15 +38,18 @@ export function AntdProvider({ children }: { children: React.ReactNode }) {
         borderRadius: 8,
         fontSize: 13,
         fontFamily: "'Microsoft YaHei', '微软雅黑', system-ui, sans-serif",
-        // 遮罩暖褐 45%（替代 Radix Dialog 的 bg-black/80，与 antd 默认 45% 黑同透光度）
-        colorBgMask: 'rgba(28, 20, 12, 0.45)',
+        // 遮罩 antd 标准黑 45%（B 端规范，与 antd Modal 默认一致）
+        colorBgMask: 'rgba(0, 0, 0, 0.45)',
+        // 布局底色浅灰（antd colorBgLayout，与 globals.css --page #f0f2f5 一致），供内部使用该 token 的组件统一
+        colorBgLayout: '#f0f2f5',
       },
       components: {
         Table: {
-          headerBg: THEME_HEX.muted,
+          // antd Table 标准中性配色：表头/悬停 #fafafa（colorFillQuaternary）、边框 #f0f0f0（colorSplit）
+          headerBg: '#fafafa',
           headerColor: THEME_HEX.foreground,
-          rowHoverBg: THEME_HEX.accent,
-          borderColor: THEME_HEX.border,
+          rowHoverBg: '#fafafa',
+          borderColor: '#f0f0f0',
         },
       },
     }),

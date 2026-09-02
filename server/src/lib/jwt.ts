@@ -1,9 +1,11 @@
 import jwt, { type SignOptions } from 'jsonwebtoken'
+import { createHash, randomBytes } from 'node:crypto'
 import { randomUUID } from 'node:crypto'
 import { loadConfig } from '../config/env'
 
 /**
  * JWT 工具：签发/验证 access（短期）与 refresh（长期含 jti，用于轮转与黑名单）。
+ * 持久令牌（persistent login token）：高熵随机串，明文仅下发到客户端，DB 只存 SHA-256 哈希。
  */
 
 export interface AccessTokenPayload {
@@ -71,4 +73,16 @@ export function getRefreshTokenExpiry(token: string): Date {
   }
   // 兜底：按 7 天
   return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+}
+
+/** 生成持久登录令牌：明文 32 字节 base64url + SHA-256 哈希（落库用） */
+export function generatePersistentLoginToken(): { raw: string; hash: string } {
+  const raw = randomBytes(32).toString('base64url')
+  const hash = createHash('sha256').update(raw).digest('hex')
+  return { raw, hash }
+}
+
+/** 对客户端上送的明文持久令牌做 SHA-256 哈希（与 DB 比对） */
+export function hashPersistentLoginToken(raw: string): string {
+  return createHash('sha256').update(raw).digest('hex')
 }

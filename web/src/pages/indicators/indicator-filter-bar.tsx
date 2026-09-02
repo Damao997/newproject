@@ -1,13 +1,5 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { CompanySelect } from '@/components/filters/company-select'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
@@ -18,12 +10,7 @@ import { buildColumnsFor, type IndicatorSubjectType } from './indicators-adapter
 
 interface IndicatorFilterBarProps {
   subjectType: IndicatorSubjectType
-  // 主体/期间/去重分类/科目搜索（状态与 handler 由主文件经 props 传入）
-  dimFilter: string
-  onDimFilterChange: (v: string) => void
-  periodFilter: string
-  onPeriodFilterChange: (v: string) => void
-  periods: string[]
+  // 科目搜索/去重分类（状态与 handler 由主文件经 props 传入；公司/期间全局口径读 Header 筛选，不在页面内）
   excludeReclassify: boolean
   onExcludeReclassifyChange: (v: boolean) => void
   subjectKeyword: string
@@ -49,11 +36,9 @@ interface IndicatorFilterBarProps {
   onExport: () => void
 }
 
-/** 指标页筛选与视图设置区：主体/期间/去重分类/科目搜索 + 列设置 + 密度切换 + 更多操作（AI 预分析/查看分析/导出） */
+/** 指标页筛选与视图设置区：去重分类/科目搜索 + 列设置 + 密度切换 + 更多操作（AI 预分析/查看分析/导出）；公司/期间口径在顶部 Header 筛选 */
 export function IndicatorFilterBar({
   subjectType,
-  dimFilter, onDimFilterChange,
-  periodFilter, onPeriodFilterChange, periods,
   excludeReclassify, onExcludeReclassifyChange,
   subjectKeyword, onSubjectKeywordChange,
   isAllExpanded, onToggleExpandAll,
@@ -71,22 +56,12 @@ export function IndicatorFilterBar({
   const columnMeta = buildColumnsFor(subjectType)
 
   return (
-    // 筛选条流体自适应：主体/搜索按剩余空间弹性伸缩（min-w-0 可收缩 + max-w 限幅 + 内部截断），
-    // 固定项（期间/开关/按钮组）恒完整；中等分辨率单行不换行，仅极端窄屏 wrap 兜底；
-    // 极小屏搜索缩为图标浮层
+    // 筛选条流体自适应：搜索框按剩余空间弹性伸缩（min-w-0 可收缩 + max-w 限幅 + 内部截断），
+    // 固定项（开关/按钮组）恒完整；中等分辨率单行不换行，仅极端窄屏 wrap 兜底；
+    // 极小屏搜索缩为图标浮层。公司/期间为全局口径（Header 筛选），页面内不再提供选择器
     <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
-      {/* 左侧：主体维度选择（弹性伸缩，保证公司名称完整显示；选项前缀+简称跟随全局开关，触发器仅显名称） */}
-      <CompanySelect
-        value={dimFilter}
-        onChange={onDimFilterChange}
-        valueFormat="prefixed"
-        allLabel="全部主体"
-        ariaLabel="主体维度"
-        className="h-8 w-auto shrink min-w-0 flex-1 max-w-[260px] border-input/60 bg-page hover:bg-muted/60"
-      />
-
       {/* 科目列关键字筛选：实时过滤科目树（命中节点保留整棵子树与祖先链）；>=600px 弹性伸缩，<600px 缩为图标浮层 */}
-      <div className="relative shrink-0 min-[600px]:min-w-0 min-[600px]:flex-1 min-[600px]:max-w-[220px]">
+      <div className="relative shrink-0 min-[600px]:min-w-0 min-[600px]:flex-1 min-[600px]:max-w-[240px]">
         {/* >=600px：完整输入框（flex-1 弹性填充，min-w-0 可收缩截断） */}
         <div className="hidden min-[600px]:flex min-[600px]:min-w-0">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -95,7 +70,7 @@ export function IndicatorFilterBar({
             onChange={(e) => onSubjectKeywordChange(e.target.value)}
             placeholder="搜索科目"
             aria-label="搜索科目"
-            className="h-8 w-auto min-w-0 flex-1 max-w-[220px] border-input/60 bg-page pl-8 pr-7 text-body"
+            className="h-8 w-auto min-w-0 flex-1 max-w-[220px] border-input/60 bg-background pl-8 pr-7 text-body"
           />
           {subjectKeyword && (
             <button
@@ -131,7 +106,7 @@ export function IndicatorFilterBar({
                   onChange={(e) => onSubjectKeywordChange(e.target.value)}
                   placeholder="搜索科目"
                   aria-label="搜索科目"
-                  className="h-8 w-full border-input/60 bg-page pl-8 pr-7 text-body"
+                  className="h-8 w-full border-input/60 bg-background pl-8 pr-7 text-body"
                 />
                 {subjectKeyword && (
                   <button
@@ -152,20 +127,8 @@ export function IndicatorFilterBar({
         </div>
       </div>
 
-      {/* 右侧：期间 + 重分类 + 操作按钮组（lg 以上靠右对齐） */}
+      {/* 右侧：重分类开关 + 操作按钮组（lg 以上靠右对齐；期间为全局口径，见 Header PeriodPill） */}
       <div className="flex shrink-0 items-center gap-2 lg:ml-auto">
-        <Select value={periodFilter} onValueChange={onPeriodFilterChange}>
-          <SelectTrigger className="h-8 w-[100px] shrink-0 border-input/60 bg-page hover:bg-muted/60" aria-label="期间">
-            <SelectValue placeholder="选择期间" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">全部期间</SelectItem>
-            {periods.map((p) => (
-              <SelectItem key={p} value={p}>{p}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
         {/* 去除重分类影响：按重分类日志快照回溯展示调整前口径，仅供对比查看，不修改数据（经营/静态/现金流三体系一致） */}
       <div
         className="flex shrink-0 items-center gap-1.5"

@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>看板管理 · 数据管理 · 经营分析平台</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; }
+  .shell-side { background: #001529; color: rgba(255,255,255,0.85); display: flex; flex-direction: column; }
+  .shell-side-logo { height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #fff; }
+  .shell-side-logo-mark { width: 32px; height: 32px; background: var(--color-primary); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 16px; }
+  .shell-side-logo-text { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
+  .shell-side-nav { padding: 12px 0; flex: 1; overflow-y: auto; }
+  .shell-nav-group-title { padding: 12px 28px 8px; color: rgba(255,255,255,0.35); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .shell-nav-item { display: flex; align-items: center; gap: 12px; padding: 0 20px; height: 40px; color: rgba(255,255,255,0.75); cursor: pointer; transition: all 0.2s; border-left: 3px solid transparent; font-size: 14px; text-decoration: none; }
+  .shell-nav-item:hover { color: #fff; background: rgba(255,255,255,0.04); }
+  .shell-nav-item.is-active { background: var(--color-primary); color: #fff; border-left-color: #fff; }
+  .shell-nav-item.is-active .shell-nav-ic { color: #fff; }
+  .shell-nav-ic { width: 18px; flex-shrink: 0; color: rgba(255,255,255,0.55); }
+  .shell-nav-item:hover .shell-nav-ic { color: #fff; }
+
+  .shell-header { background: #fff; border-bottom: 1px solid var(--antd-gray-3); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .shell-header-l { display: flex; align-items: center; gap: 16px; }
+  .shell-header-r { display: flex; align-items: center; gap: 16px; }
+  .period-pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; background: var(--antd-gray-2); border-radius: var(--radius-medium); color: var(--color-foreground); font-size: 13px; cursor: pointer; }
+  .period-pill:hover { background: var(--antd-gray-3); }
+  .user-chip { display: flex; align-items: center; gap: 10px; padding: 4px 10px 4px 4px; border-radius: 20px; cursor: pointer; }
+  .user-chip:hover { background: var(--antd-gray-2); }
+  .user-chip-name { font-size: 13px; font-weight: 500; }
+  .user-chip-role { font-size: 11px; color: var(--color-text-tertiary); }
+
+  /* 新增 .antd-tab-pill：tab 名称右侧 4px 圆角小药丸显示条目数 */
+  .antd-tab-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 18px;
+    padding: 0 6px;
+    margin-left: 6px;
+    background: var(--antd-gray-2);
+    color: var(--color-text-secondary);
+    font-size: 11px;
+    font-weight: 500;
+    border-radius: 4px;
+    font-variant-numeric: tabular-nums;
+    font-family: var(--antd-font-family-mono);
+  }
+  .antd-tab.is-active .antd-tab-pill { background: var(--antd-brand-100); color: var(--color-primary); }
+  .antd-tab { display: inline-flex; align-items: center; }
+
+  .panel-card { background: var(--color-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-large); overflow: hidden; }
+  .panel-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 20px 0 20px;
+  }
+  .panel-head h3 { font-size: 15px; font-weight: 600; }
+  .panel-head .panel-meta { color: var(--color-text-tertiary); font-size: 12px; margin-top: 4px; }
+
+  .grid-2-board { display: grid; grid-template-columns: 1fr 1.4fr; gap: 16px; }
+
+  /* 品类树 */
+  .cat-tree { padding: 0 20px 20px 20px; }
+  .cat-tree ul { list-style: none; padding: 0; margin: 0; }
+  .cat-tree li { padding: 8px 0; border-bottom: 1px dashed var(--color-row-divider); font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  .cat-tree li.lv-2 { padding-left: 18px; color: var(--color-text-secondary); }
+  .cat-tree li.lv-3 { padding-left: 36px; color: var(--color-text-tertiary); font-size: 12px; }
+  .cat-tree li .caret { width: 12px; color: var(--color-text-tertiary); }
+  .cat-tree li .cat-name { flex: 1; }
+  .cat-tree li .cat-cnt { color: var(--color-text-tertiary); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+  .antd-table.antd-table-zebra tbody tr:nth-child(even) td { background: var(--color-table-zebra); }
+  .antd-table.antd-table-zebra tbody tr:hover td { background: var(--color-table-hover); }
+  .antd-table.antd-table-density-compact th,
+  .antd-table.antd-table-density-compact td { padding: 8px 12px; }
+  .antd-table.antd-table-bordered { border: 1px solid var(--color-row-divider); border-radius: var(--radius-medium); overflow: hidden; }
+  .antd-table.antd-table-bordered th,
+  .antd-table.antd-table-bordered td { border-right: 1px solid var(--color-row-divider); }
+  .antd-table.antd-table-bordered th:last-child,
+  .antd-table.antd-table-bordered td:last-child { border-right: none; }
+</style>
+</head>
+<body>
+<div class="antd-page">
+  <aside class="shell-side" style="grid-column: 1;">
+    <div class="shell-side-logo">
+      <div class="shell-side-logo-mark">J</div>
+      <div class="shell-side-logo-text">经营分析平台</div>
+    </div>
+    <nav class="shell-side-nav">
+      <div class="shell-nav-group-title">主数据</div>
+      <a class="shell-nav-item" href="dashboard.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        首页看板
+      </a>
+      <a class="shell-nav-item" href="indicators-operating.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+        财务指标
+      </a>
+      <a class="shell-nav-item" href="transactions-overview.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+        往来分析
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        存货管理
+      </a>
+      <a class="shell-nav-item" href="reports-list.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+        分析报告
+      </a>
+      <div class="shell-nav-group-title">业务工具</div>
+      <a class="shell-nav-item" href="enterprise-lookup.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        企业信息查询
+      </a>
+      <div class="shell-nav-group-title">数据管理</div>
+      <a class="shell-nav-item" href="data-import.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        数据导入
+      </a>
+      <a class="shell-nav-item" href="data-reclassify.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h12"/></svg>
+        重分类管理
+      </a>
+      <a class="shell-nav-item is-active" href="data-dimensions.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        维度管理
+      </a>
+      <div class="shell-nav-group-title">系统</div>
+      <a class="shell-nav-item" href="admin-users.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><circle cx="17" cy="7" r="3"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
+        用户管理
+      </a>
+      <a class="shell-nav-item" href="admin-roles.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+        角色权限
+      </a>
+    </nav>
+  </aside>
+
+  <main class="antd-content">
+    <header class="shell-header">
+      <div class="shell-header-l">
+        <div class="antd-breadcrumb">
+          <span>首页</span><span class="sep">/</span>
+          <a href="data-import.html">数据管理</a><span class="sep">/</span>
+          <span class="current">看板管理</span>
+        </div>
+      </div>
+      <div class="shell-header-r">
+        <div class="antd-select" style="min-width: 160px;">浙江壹品慧生活集团</div>
+        <div class="period-pill">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          2026 财年
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <button class="antd-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          刷新
+        </button>
+        <div class="user-chip">
+          <div class="antd-avatar" style="background: var(--antd-brand-100); color: var(--color-primary);">张</div>
+          <div>
+            <div class="user-chip-name">张伟</div>
+            <div class="user-chip-role">财务总监</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="antd-content-body">
+      <div class="antd-page-head">
+        <div>
+          <div class="antd-page-head-title">看板管理</div>
+          <div class="antd-page-head-desc">配置经营看板的品类、费用映射、主体、月度预算与产品维度</div>
+        </div>
+        <div class="antd-page-head-actions">
+          <button class="antd-btn">导入配置</button>
+          <button class="antd-btn antd-btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            新增配置
+          </button>
+        </div>
+      </div>
+
+      <!-- 5 tab + .antd-tab-pill -->
+      <div class="antd-tabs">
+        <div class="antd-tab is-active">品类配置<span class="antd-tab-pill">12</span></div>
+        <div class="antd-tab">运营费用映射<span class="antd-tab-pill">28</span></div>
+        <div class="antd-tab">主体配置<span class="antd-tab-pill">8</span></div>
+        <div class="antd-tab">月度预算比例<span class="antd-tab-pill">12</span></div>
+        <div class="antd-tab">产品配置<span class="antd-tab-pill">36</span></div>
+      </div>
+
+      <!-- tab：品类配置 -->
+      <div class="panel-card">
+        <div class="panel-head">
+          <div>
+            <h3>品类配置 · 品类树 / 品类属性</h3>
+            <div class="panel-meta">左侧为品类树，右侧为选中品类的属性</div>
+          </div>
+          <div class="antd-flex">
+            <button class="antd-btn antd-btn-sm">新增根品类</button>
+            <button class="antd-btn antd-btn-sm">导入</button>
+          </div>
+        </div>
+        <div class="grid-2-board" style="padding: 0 20px 20px 20px; margin-top: 14px;">
+          <!-- 品类树 -->
+          <div class="cat-tree" style="background: var(--antd-gray-2); border-radius: var(--radius-medium); padding: 14px 16px;">
+            <div class="antd-overline antd-mb-2">品类树</div>
+            <ul>
+              <li><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg><span class="cat-name antd-fw-600">商品销售</span><span class="cat-cnt">5</span></li>
+              <li class="lv-2"><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg><span class="cat-name">家电</span><span class="cat-cnt">2</span></li>
+              <li class="lv-3">- 大家电</li>
+              <li class="lv-3">- 小家电</li>
+              <li class="lv-2"><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg><span class="cat-name">日用百货</span><span class="cat-cnt">3</span></li>
+              <li class="lv-3">- 食品</li>
+              <li class="lv-3">- 洗护</li>
+              <li class="lv-3">- 文具</li>
+              <li><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg><span class="cat-name antd-fw-600">服务收入</span><span class="cat-cnt">3</span></li>
+              <li class="lv-2"><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg><span class="cat-name">安装服务</span><span class="cat-cnt">1</span></li>
+              <li class="lv-2"><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg><span class="cat-name">维修服务</span><span class="cat-cnt">1</span></li>
+              <li class="lv-2"><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg><span class="cat-name">配送服务</span><span class="cat-cnt">1</span></li>
+              <li><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg><span class="cat-name antd-fw-600">其他业务</span><span class="cat-cnt">2</span></li>
+            </ul>
+          </div>
+          <!-- 品类属性 -->
+          <div>
+            <div class="antd-overline antd-mb-2">品类属性 · 当前选中：商品销售 / 家电 / 大家电</div>
+            <table class="antd-table antd-table-bordered antd-table-density-compact">
+              <tbody>
+                <tr>
+                  <th style="width: 120px; background: var(--antd-gray-2); text-align: left;">名称</th>
+                  <td><input class="antd-input" value="大家电" /></td>
+                </tr>
+                <tr>
+                  <th style="background: var(--antd-gray-2); text-align: left;">编码</th>
+                  <td><input class="antd-input" value="CAT-AP-01" /></td>
+                </tr>
+                <tr>
+                  <th style="background: var(--antd-gray-2); text-align: left;">父级</th>
+                  <td>
+                    <div class="antd-select" style="width: 100%;">家电</div>
+                  </td>
+                </tr>
+                <tr>
+                  <th style="background: var(--antd-gray-2); text-align: left;">类别</th>
+                  <td><div class="antd-select" style="width: 100%;">商品销售 - 家电</div></td>
+                </tr>
+                <tr>
+                  <th style="background: var(--antd-gray-2); text-align: left;">状态</th>
+                  <td>
+                    <div class="antd-flex">
+                      <div class="antd-switch is-on"></div>
+                      <span class="antd-text-success">启用</span>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <th style="background: var(--antd-gray-2); text-align: left;">关联科目</th>
+                  <td><div class="antd-select" style="width: 100%;">REV-01-01 商品销售收入</div></td>
+                </tr>
+                <tr>
+                  <th style="background: var(--antd-gray-2); text-align: left;">操作</th>
+                  <td>
+                    <button class="antd-btn antd-btn-sm">保存</button>
+                    <button class="antd-btn antd-btn-sm">取消</button>
+                    <button class="antd-btn antd-btn-sm antd-btn-danger">删除</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- tab：运营费用映射 -->
+      <div class="panel-card antd-mt-4">
+        <div class="panel-head">
+          <div>
+            <h3>运营费用映射 · 费用类型 → 科目</h3>
+            <div class="panel-meta">共 28 条映射 · 默认按规则自动归集</div>
+          </div>
+          <div class="antd-flex">
+            <button class="antd-btn antd-btn-sm">批量编辑</button>
+            <button class="antd-btn antd-btn-sm antd-btn-primary">+ 新增映射</button>
+          </div>
+        </div>
+        <div style="padding: 0 20px 20px 20px;">
+          <table class="antd-table antd-table-bordered antd-table-zebra antd-table-density-compact" style="margin-top: 14px;">
+            <thead>
+              <tr>
+                <th>费用类型</th>
+                <th>映射科目</th>
+                <th>规则</th>
+                <th style="width: 100px;">状态</th>
+                <th style="width: 160px;">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>广告投放</td><td>销售费用 - 广告费</td><td>按发生额 100% 归集</td><td><span class="antd-pill is-green">启用</span></td><td><a class="antd-text-primary" href="#">编辑</a> · <a class="antd-text-primary" href="#">禁用</a></td></tr>
+              <tr><td>办公用品</td><td>管理费用 - 办公费</td><td>按发生额 100% 归集</td><td><span class="antd-pill is-green">启用</span></td><td><a class="antd-text-primary" href="#">编辑</a> · <a class="antd-text-primary" href="#">禁用</a></td></tr>
+              <tr><td>差旅</td><td>管理费用 - 差旅费</td><td>按发生额 100% 归集</td><td><span class="antd-pill is-green">启用</span></td><td><a class="antd-text-primary" href="#">编辑</a></td></tr>
+              <tr><td>业务招待</td><td>管理费用 - 招待费</td><td>按 60% 归集</td><td><span class="antd-pill is-orange">部分</span></td><td><a class="antd-text-primary" href="#">编辑</a></td></tr>
+              <tr><td>运输费</td><td>销售费用 - 运输费</td><td>按发生额 100% 归集</td><td><span class="antd-pill is-green">启用</span></td><td><a class="antd-text-primary" href="#">编辑</a></td></tr>
+              <tr><td>水电费</td><td>管理费用 - 水电费</td><td>按面积分摊</td><td><span class="antd-pill is-green">启用</span></td><td><a class="antd-text-primary" href="#">编辑</a></td></tr>
+              <tr><td>租赁费</td><td>管理费用 - 租赁费</td><td>按租期分摊</td><td><span class="antd-pill is-gray">停用</span></td><td><a class="antd-text-primary" href="#">编辑</a> · <a class="antd-text-primary" href="#">启用</a></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- tab：主体配置 -->
+      <div class="panel-card antd-mt-4">
+        <div class="panel-head">
+          <div>
+            <h3>主体配置 · 公司主体列表</h3>
+            <div class="panel-meta">共 8 个主体 · 集团合并 1 个 · 独立 7 个</div>
+          </div>
+          <button class="antd-btn antd-btn-sm antd-btn-primary">+ 新增主体</button>
+        </div>
+        <div style="padding: 0 20px 20px 20px;">
+          <table class="antd-table antd-table-bordered antd-table-zebra antd-table-density-compact" style="margin-top: 14px;">
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th style="width: 140px;">编码</th>
+                <th style="width: 120px;">类型</th>
+                <th style="width: 80px;">启用</th>
+                <th style="width: 160px;">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>浙江壹品慧生活集团</td><td class="antd-text-mono">ENT-001</td><td><span class="antd-pill is-blue">集团合并</span></td><td><div class="antd-switch is-on"></div></td><td><a class="antd-text-primary" href="#">编辑</a> · <a class="antd-text-primary" href="#">查看子主体</a></td></tr>
+              <tr><td>杭州壹品慧科技</td><td class="antd-text-mono">ENT-002</td><td><span class="antd-pill is-gray">独立</span></td><td><div class="antd-switch is-on"></div></td><td><a class="antd-text-primary" href="#">编辑</a></td></tr>
+              <tr><td>宁波壹品贸易</td><td class="antd-text-mono">ENT-003</td><td><span class="antd-pill is-gray">独立</span></td><td><div class="antd-switch is-on"></div></td><td><a class="antd-text-primary" href="#">编辑</a></td></tr>
+              <tr><td>温州壹品服务</td><td class="antd-text-mono">ENT-004</td><td><span class="antd-pill is-gray">独立</span></td><td><div class="antd-switch is-on"></div></td><td><a class="antd-text-primary" href="#">编辑</a></td></tr>
+              <tr><td>绍兴壹品物流</td><td class="antd-text-mono">ENT-005</td><td><span class="antd-pill is-gray">独立</span></td><td><div class="antd-switch is-on"></div></td><td><a class="antd-text-primary" href="#">编辑</a></td></tr>
+              <tr><td>金华壹品电商</td><td class="antd-text-mono">ENT-006</td><td><span class="antd-pill is-gray">独立</span></td><td><div class="antd-switch is-on"></div></td><td><a class="antd-text-primary" href="#">编辑</a></td></tr>
+              <tr><td>嘉兴壹品供应链</td><td class="antd-text-mono">ENT-007</td><td><span class="antd-pill is-gray">独立</span></td><td><div class="antd-switch"></div></td><td><a class="antd-text-primary" href="#">编辑</a> · <a class="antd-text-primary" href="#">启用</a></td></tr>
+              <tr><td>台州壹品物业</td><td class="antd-text-mono">ENT-008</td><td><span class="antd-pill is-gray">独立</span></td><td><div class="antd-switch is-on"></div></td><td><a class="antd-text-primary" href="#">编辑</a></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- tab：月度预算比例 -->
+      <div class="panel-card antd-mt-4">
+        <div class="panel-head">
+          <div>
+            <h3>月度预算比例 · 12 月份分配</h3>
+            <div class="panel-meta">合计 100% · 销售旺季 6-9 月加码</div>
+          </div>
+          <button class="antd-btn antd-btn-sm antd-btn-primary">保存调整</button>
+        </div>
+        <div style="padding: 0 20px 20px 20px;">
+          <table class="antd-table antd-table-bordered antd-table-zebra antd-table-density-compact" style="margin-top: 14px;">
+            <thead>
+              <tr>
+                <th style="width: 80px;">月份</th>
+                <th>占比</th>
+                <th>调整</th>
+                <th style="width: 80px;">占比</th>
+                <th>占比</th>
+                <th>调整</th>
+                <th style="width: 80px;">占比</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>1月</td><td><div class="antd-mini-bar is-orange"><i style="width:6%"></i></div></td><td><input class="antd-input" value="6%" style="width:80px; text-align:right;" /></td><td>5月</td><td><div class="antd-mini-bar is-orange"><i style="width:9%"></i></div></td><td><input class="antd-input" value="9%" style="width:80px; text-align:right;" /></td><td>9月</td></tr>
+              <tr><td>2月</td><td><div class="antd-mini-bar is-orange"><i style="width:5%"></i></div></td><td><input class="antd-input" value="5%" style="width:80px; text-align:right;" /></td><td>6月</td><td><div class="antd-mini-bar is-orange"><i style="width:11%"></i></div></td><td><input class="antd-input" value="11%" style="width:80px; text-align:right;" /></td><td>10月</td></tr>
+              <tr><td>3月</td><td><div class="antd-mini-bar is-orange"><i style="width:7%"></i></div></td><td><input class="antd-input" value="7%" style="width:80px; text-align:right;" /></td><td>7月</td><td><div class="antd-mini-bar is-orange"><i style="width:12%"></i></div></td><td><input class="antd-input" value="12%" style="width:80px; text-align:right;" /></td><td>11月</td></tr>
+              <tr><td>4月</td><td><div class="antd-mini-bar is-orange"><i style="width:8%"></i></div></td><td><input class="antd-input" value="8%" style="width:80px; text-align:right;" /></td><td>8月</td><td><div class="antd-mini-bar is-orange"><i style="width:11%"></i></div></td><td><input class="antd-input" value="11%" style="width:80px; text-align:right;" /></td><td>12月</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- tab：产品配置 -->
+      <div class="panel-card antd-mt-4">
+        <div class="panel-head">
+          <div>
+            <h3>产品配置 · 产品列表</h3>
+            <div class="panel-meta">共 36 个产品 · 来自品类：商品销售 / 服务</div>
+          </div>
+          <div class="antd-flex">
+            <div class="antd-select" style="min-width: 140px;">按品类筛选</div>
+            <button class="antd-btn antd-btn-sm antd-btn-primary">+ 新增产品</button>
+          </div>
+        </div>
+        <div style="padding: 0 20px 20px 20px;">
+          <table class="antd-table antd-table-bordered antd-table-zebra antd-table-density-compact" style="margin-top: 14px;">
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th style="width: 140px;">编码</th>
+                <th style="width: 140px;">品类</th>
+                <th style="width: 100px;">价格</th>
+                <th style="width: 160px;">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>海尔变频空调 1.5匹</td><td class="antd-text-mono">PRD-0001</td><td>家电 / 大家电</td><td class="antd-text-mono">¥2,899</td><td><a class="antd-text-primary" href="#">编辑</a> · <a class="antd-text-primary" href="#">下架</a></td></tr>
+              <tr><td>美的电饭煲 4L</td><td class="antd-text-mono">PRD-0002</td><td>家电 / 小家电</td><td class="antd-text-mono">¥399</td><td><a class="antd-text-primary" href="#">编辑</a> · <a class="antd-text-primary" href="#">下架</a></td></tr>
+              <tr><td>农夫山泉饮用水 550ml*24</td><td class="antd-text-mono">PRD-0003</td><td>日用百货 / 食品</td><td class="antd-text-mono">¥36</td><td><a class="antd-text-primary" href="#">编辑</a> · <a class="antd-text-primary" href="#">下架</a></td></tr>
+              <tr><td>海飞丝洗发水 750ml</td><td class="antd-text-mono">PRD-0004</td><td>日用百货 / 洗护</td><td class="antd-text-mono">¥58</td><td><a class="antd-text-primary" href="#">编辑</a> · <a class="antd-text-primary" href="#">下架</a></td></tr>
+              <tr><td>晨光中性笔 0.5mm*12</td><td class="antd-text-mono">PRD-0005</td><td>日用百货 / 文具</td><td class="antd-text-mono">¥18</td><td><a class="antd-text-primary" href="#">编辑</a> · <a class="antd-text-primary" href="#">下架</a></td></tr>
+              <tr><td>空调安装服务</td><td class="antd-text-mono">PRD-0006</td><td>服务 / 安装</td><td class="antd-text-mono">¥150</td><td><a class="antd-text-primary" href="#">编辑</a> · <a class="antd-text-primary" href="#">下架</a></td></tr>
+              <tr><td>家电维修上门服务</td><td class="antd-text-mono">PRD-0007</td><td>服务 / 维修</td><td class="antd-text-mono">¥80 起</td><td><a class="antd-text-primary" href="#">编辑</a> · <a class="antd-text-primary" href="#">下架</a></td></tr>
+              <tr><td>同城配送</td><td class="antd-text-mono">PRD-0008</td><td>服务 / 配送</td><td class="antd-text-mono">¥8 起</td><td><a class="antd-text-primary" href="#">编辑</a> · <a class="antd-text-primary" href="#">下架</a></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

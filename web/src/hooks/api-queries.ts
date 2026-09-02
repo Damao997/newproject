@@ -797,16 +797,27 @@ export function useRoles() {
   return useQuery({ queryKey: queryKeys.roles, queryFn: () => api.getRoles() })
 }
 
-/** 审计日志查询参数：在通用分页/时间范围之外支持角色/模块/用户关键字筛选 */
+/** 审计日志查询参数：在通用分页/时间范围之外支持角色/模块/用户/关键词筛选 */
 export interface AuditLogParams extends FilterParams {
   module?: string
   action?: string
   role?: string
   username?: string
+  /** 高级搜索关键词：模糊匹配操作对象 ID 与详情内容 */
+  q?: string
 }
 
 export function useAuditLogs(params: AuditLogParams = {}) {
   return useQuery({ queryKey: queryKeys.auditLogs(params), queryFn: () => api.getAuditLogs(params), placeholderData: keepPreviousData })
+}
+
+/** 今日审计统计（头部「今日 N 条」与分类 pills）：30s 缓存避免频繁重复请求 */
+export function useAuditTodayStats() {
+  return useQuery({
+    queryKey: ['admin', 'audit-logs', 'today-stats'],
+    queryFn: () => api.getAuditTodayStats(),
+    staleTime: 30_000,
+  })
 }
 
 export function useDisableUser() {
@@ -908,6 +919,16 @@ export function useUpdateRolePermissionsBatch() {
   })
 }
 
+/** 财年月度趋势（近 N 月，授权范围全主体口径，与看板趋势卡一致）：关键指标表热力/趋势/磁贴 sparkline 数据源 */
+export function useDashboardTrend(params: { months?: number } = {}) {
+  return useQuery({
+    queryKey: ['dashboard', 'trend', params.months ?? 12] as const,
+    queryFn: () => api.getDashboardTrend({ months: params.months }),
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
 // ---------------- AI 公式生成 ----------------
 export interface FormulaSuggestion {
   suggestedFormula: string | null
@@ -972,6 +993,15 @@ export function useRejectMetric() {
       qc.invalidateQueries({ queryKey: ['data', 'metrics'] })
       qc.invalidateQueries({ queryKey: ['data', 'metric-history'] })
     },
+  })
+}
+
+/** 公式批量导入（配合公式导出）：逐条校验更新计算类指标公式，成功后刷新指标列表 */
+export function useImportFormulas() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (items: { code: string; formula: string }[]) => api.importFormulas(items),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['data', 'metrics'] }),
   })
 }
 
@@ -1436,5 +1466,13 @@ export function useAddCollectionLog() {
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ['transactions', 'collections', 'logs', vars.id] })
     },
+  })
+}
+
+export function useGenerateCollectionSuggestions() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { companyCode?: string; minAgingBucket?: string }) => api.generateCollectionSuggestions(data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transactions', 'collections'] }),
   })
 }

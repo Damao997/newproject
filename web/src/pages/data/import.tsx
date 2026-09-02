@@ -2,17 +2,21 @@ import { PageContainer } from '@/components/layout/page-container'
 import { SubPageTabs } from '@/components/layout/sub-page-tabs'
 import { IMPORT_TABS } from '@/components/layout/module-tabs'
 import { ImportPanel } from './import-panel'
-import { useStickyHeader } from '@/hooks/useStickyHeader'
 
 /**
- * 数据管理 · 导入：Excel 导入（经营/静态/现金流量/预算/往来/存货）+ 导入批次生命周期
- * （预览/激活/归档/清除）+ 导入质量概览。数据浏览在 /data/browse 独立页面。
+ * 数据导入页（薄壳路由页）：渲染完整导入链 ImportPanel。
+ *
+ * 权限门禁在 ImportPanel 内部完成（usePermission）：
+ * - 上传/预览/激活/模板下载 = data:import:upload；
+ * - 回滚/归档/清除 = 高危权限码（data:import:rollback/archive/purge，仅 superadmin 持有）；
+ * - 往来导入覆盖 = transactions:view。
  */
 export default function DataImportPage() {
-  const { headerRef } = useStickyHeader()
   return (
-    <PageContainer title="导入管理" stickyHeader headerRef={headerRef}>
-      {/* 页内 Tab：导入管理（默认）/ 数据预览 */}
+    <PageContainer
+      title="数据导入"
+      description="支持经营/静态/现金流/预算/往来等模板批量导入，上传后预览校验（dry-run），批次在质量概览中激活管理"
+    >
       <SubPageTabs items={IMPORT_TABS} />
       <ImportPanel />
     </PageContainer>

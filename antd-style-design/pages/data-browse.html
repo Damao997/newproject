@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>交叉浏览 · 数据管理 · 经营分析平台</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; }
+  .shell-side {
+    background: #001529;
+    color: rgba(255, 255, 255, 0.85);
+    display: flex; flex-direction: column;
+  }
+  .shell-side-logo {
+    height: 64px;
+    display: flex; align-items: center; gap: 12px;
+    padding: 0 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    color: #fff;
+  }
+  .shell-side-logo-mark {
+    width: 32px; height: 32px;
+    background: var(--color-primary);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 700; font-size: 16px;
+  }
+  .shell-side-logo-text { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
+  .shell-side-nav { padding: 12px 0; flex: 1; overflow-y: auto; }
+  .shell-nav-group-title {
+    padding: 12px 28px 8px;
+    color: rgba(255, 255, 255, 0.35);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .shell-nav-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 0 20px;
+    height: 40px;
+    color: rgba(255, 255, 255, 0.75);
+    cursor: pointer;
+    transition: all 0.2s;
+    border-left: 3px solid transparent;
+    font-size: 14px;
+    text-decoration: none;
+  }
+  .shell-nav-item:hover { color: #fff; background: rgba(255, 255, 255, 0.04); }
+  .shell-nav-item.is-active {
+    background: var(--color-primary);
+    color: #fff;
+    border-left-color: #fff;
+  }
+  .shell-nav-item.is-active .shell-nav-ic { color: #fff; }
+  .shell-nav-ic { width: 18px; flex-shrink: 0; color: rgba(255, 255, 255, 0.55); }
+  .shell-nav-item:hover .shell-nav-ic { color: #fff; }
+
+  .shell-header {
+    background: #fff;
+    border-bottom: 1px solid var(--antd-gray-3);
+    padding: 0 24px;
+    height: 56px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 10;
+  }
+  .shell-header-l { display: flex; align-items: center; gap: 16px; }
+  .shell-header-r { display: flex; align-items: center; gap: 16px; }
+  .period-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    height: 32px;
+    padding: 0 12px;
+    background: var(--antd-gray-2);
+    border-radius: var(--radius-medium);
+    color: var(--color-foreground);
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .period-pill:hover { background: var(--antd-gray-3); }
+  .user-chip {
+    display: flex; align-items: center; gap: 10px;
+    padding: 4px 10px 4px 4px;
+    border-radius: 20px;
+    cursor: pointer;
+  }
+  .user-chip:hover { background: var(--antd-gray-2); }
+  .user-chip-name { font-size: 13px; font-weight: 500; }
+  .user-chip-role { font-size: 11px; color: var(--color-text-tertiary); }
+
+  /* 筛选行 */
+  .filter-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 16px 20px;
+    background: var(--color-card);
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-large);
+    margin-bottom: var(--antd-space-4);
+  }
+  .filter-row .filter-label { color: var(--color-text-secondary); font-size: 13px; }
+  .filter-row .filter-act { margin-left: auto; display: flex; gap: 8px; }
+
+  /* 交叉表 */
+  .cross-card {
+    background: var(--color-card);
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-large);
+    padding: 20px;
+    margin-bottom: var(--antd-space-4);
+  }
+  .cross-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .cross-head h3 { font-size: 16px; font-weight: 600; }
+  .cross-meta { color: var(--color-text-tertiary); font-size: 12px; }
+
+  .cross-scroll {
+    max-width: 1200px;
+    overflow-x: auto;
+    border: 1px solid var(--color-row-divider);
+    border-radius: var(--radius-medium);
+  }
+  .cross-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    font-family: var(--antd-font-family-mono);
+  }
+  .cross-table th,
+  .cross-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--color-row-divider);
+    border-right: 1px solid var(--color-row-divider);
+    white-space: nowrap;
+  }
+  .cross-table th:last-child,
+  .cross-table td:last-child { border-right: none; }
+  .cross-table thead th {
+    background: var(--antd-gray-2);
+    color: var(--color-foreground);
+    font-weight: 600;
+    font-size: 12px;
+    text-align: center;
+    position: sticky; top: 0; z-index: 2;
+  }
+  .cross-table thead th.corner {
+    background: var(--antd-gray-2);
+    text-align: left;
+    position: sticky; left: 0; z-index: 3;
+  }
+  .cross-table tbody th {
+    background: var(--antd-gray-2);
+    color: var(--color-foreground);
+    font-weight: 500;
+    text-align: left;
+    font-family: var(--antd-font-family);
+    position: sticky; left: 0; z-index: 1;
+    min-width: 180px;
+  }
+  .cross-table .num { text-align: right; }
+  .cross-table tbody tr:nth-child(even) td,
+  .cross-table tbody tr:nth-child(even) th { background: var(--color-table-zebra); }
+  .cross-table tbody tr:hover td,
+  .cross-table tbody tr:hover th { background: var(--color-table-hover); }
+  .cross-table .row-total th,
+  .cross-table .row-total td { font-weight: 600; background: var(--antd-gray-2); }
+  .cross-table .col-total { font-weight: 600; background: var(--antd-gray-2); }
+  .cross-table tfoot th,
+  .cross-table tfoot td { background: var(--antd-gray-2); font-weight: 600; }
+
+  .cross-table .pos { color: var(--antd-state-success); }
+  .cross-table .neg { color: var(--antd-state-error); }
+
+  /* 操作行 */
+  .op-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 14px 20px;
+    background: var(--color-card);
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-large);
+  }
+  .op-row .op-meta { color: var(--color-text-tertiary); font-size: 12px; margin-right: auto; }
+</style>
+</head>
+<body>
+<div class="antd-page">
+  <aside class="shell-side" style="grid-column: 1;">
+    <div class="shell-side-logo">
+      <div class="shell-side-logo-mark">J</div>
+      <div class="shell-side-logo-text">经营分析平台</div>
+    </div>
+    <nav class="shell-side-nav">
+      <div class="shell-nav-group-title">主数据</div>
+      <a class="shell-nav-item" href="dashboard.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        首页看板
+      </a>
+      <a class="shell-nav-item" href="indicators-operating.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+        财务指标
+      </a>
+      <a class="shell-nav-item" href="transactions-overview.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+        往来分析
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        存货管理
+      </a>
+      <a class="shell-nav-item" href="reports-list.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+        分析报告
+      </a>
+      <div class="shell-nav-group-title">业务工具</div>
+      <a class="shell-nav-item" href="enterprise-lookup.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        企业信息查询
+      </a>
+      <div class="shell-nav-group-title">数据管理</div>
+      <a class="shell-nav-item" href="data-import.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        数据导入
+      </a>
+      <a class="shell-nav-item is-active" href="data-reclassify.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h12"/></svg>
+        重分类管理
+      </a>
+      <a class="shell-nav-item" href="data-dimensions.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        维度管理
+      </a>
+      <div class="shell-nav-group-title">系统</div>
+      <a class="shell-nav-item" href="admin-users.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><circle cx="17" cy="7" r="3"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
+        用户管理
+      </a>
+      <a class="shell-nav-item" href="admin-roles.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+        角色权限
+      </a>
+    </nav>
+  </aside>
+
+  <main class="antd-content">
+    <header class="shell-header">
+      <div class="shell-header-l">
+        <div class="antd-breadcrumb">
+          <span>首页</span><span class="sep">/</span>
+          <a href="data-import.html">数据管理</a><span class="sep">/</span>
+          <span class="current">交叉浏览</span>
+        </div>
+      </div>
+      <div class="shell-header-r">
+        <div class="antd-select" style="min-width: 160px;">浙江壹品慧生活集团</div>
+        <div class="period-pill">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          2026 财年 · 1-8月
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <button class="antd-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          刷新
+        </button>
+        <div class="user-chip">
+          <div class="antd-avatar" style="background: var(--antd-brand-100); color: var(--color-primary);">张</div>
+          <div>
+            <div class="user-chip-name">张伟</div>
+            <div class="user-chip-role">财务总监</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="antd-content-body">
+      <!-- PageHead -->
+      <div class="antd-page-head">
+        <div>
+          <div class="antd-page-head-title">交叉浏览</div>
+          <div class="antd-page-head-desc">以行维度 × 列维度透视经营数据，支持多公司多期间对比与导出</div>
+        </div>
+        <div class="antd-page-head-actions">
+          <button class="antd-btn">保存视图</button>
+          <button class="antd-btn">列设置</button>
+          <button class="antd-btn antd-btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            导出
+          </button>
+        </div>
+      </div>
+
+      <!-- 筛选行 -->
+      <div class="filter-row">
+        <span class="filter-label">公司</span>
+        <div class="antd-select" style="min-width: 200px;">浙江壹品慧生活集团（合并）</div>
+        <span class="filter-label">期间</span>
+        <div class="antd-select" style="min-width: 160px;">2026 财年 · 1-8月</div>
+        <span class="filter-label">行维度</span>
+        <div class="antd-select" style="min-width: 140px;">公司主体</div>
+        <span class="filter-label">列维度</span>
+        <div class="antd-select" style="min-width: 140px;">月度</div>
+        <div class="antd-select" style="min-width: 120px;">科目：营业收入</div>
+        <div class="filter-act">
+          <button class="antd-btn">重置</button>
+          <button class="antd-btn antd-btn-primary">查询</button>
+        </div>
+      </div>
+
+      <!-- 交叉表 -->
+      <div class="cross-card">
+        <div class="cross-head">
+          <h3>交叉表 · 营业收入（万元）</h3>
+          <div class="cross-meta">行=公司主体（8） · 列=月度（8） · 数据源：合并报表 · 更新于 8 分钟前</div>
+        </div>
+        <div class="cross-scroll">
+          <table class="cross-table">
+            <thead>
+              <tr>
+                <th class="corner">公司主体</th>
+                <th>1月</th><th>2月</th><th>3月</th><th>4月</th><th>5月</th><th>6月</th><th>7月</th><th>8月</th>
+                <th class="col-total">合计</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th>浙江壹品慧生活集团</th>
+                <td class="num">486.2</td><td class="num">412.5</td><td class="num">528.4</td><td class="num">556.8</td>
+                <td class="num">602.3</td><td class="num">648.7</td><td class="num">712.5</td><td class="num">684.2</td>
+                <td class="num col-total">4,631.6</td>
+              </tr>
+              <tr>
+                <th>杭州壹品慧科技</th>
+                <td class="num">128.4</td><td class="num">142.6</td><td class="num">156.3</td><td class="num">168.9</td>
+                <td class="num">182.5</td><td class="num">195.7</td><td class="num">210.4</td><td class="num">198.6</td>
+                <td class="num col-total">1,383.4</td>
+              </tr>
+              <tr>
+                <th>宁波壹品贸易</th>
+                <td class="num">85.6</td><td class="num">92.3</td><td class="num">78.4</td><td class="num">105.2</td>
+                <td class="num">118.7</td><td class="num">128.4</td><td class="num">135.6</td><td class="num">142.8</td>
+                <td class="num col-total">887.0</td>
+              </tr>
+              <tr>
+                <th>温州壹品服务</th>
+                <td class="num">62.5</td><td class="num">58.4</td><td class="num">71.2</td><td class="num">68.9</td>
+                <td class="num">75.6</td><td class="num">82.4</td><td class="num">88.7</td><td class="num">95.3</td>
+                <td class="num col-total">603.0</td>
+              </tr>
+              <tr>
+                <th>绍兴壹品物流</th>
+                <td class="num">45.3</td><td class="num">52.6</td><td class="num">48.7</td><td class="num">55.4</td>
+                <td class="num">62.8</td><td class="num">68.9</td><td class="num">72.5</td><td class="num">78.6</td>
+                <td class="num col-total">484.8</td>
+              </tr>
+              <tr>
+                <th>金华壹品电商</th>
+                <td class="num">38.4</td><td class="num">42.6</td><td class="num">56.3</td><td class="num">62.8</td>
+                <td class="num">68.4</td><td class="num">75.6</td><td class="num">82.3</td><td class="num">88.7</td>
+                <td class="num col-total">515.1</td>
+              </tr>
+              <tr>
+                <th>嘉兴壹品供应链</th>
+                <td class="num">28.6</td><td class="num">32.4</td><td class="num">35.7</td><td class="num">38.9</td>
+                <td class="num">42.6</td><td class="num">48.4</td><td class="num">52.7</td><td class="num">58.6</td>
+                <td class="num col-total">337.9</td>
+              </tr>
+              <tr>
+                <th>台州壹品物业</th>
+                <td class="num">18.4</td><td class="num">22.6</td><td class="num">25.3</td><td class="num">28.7</td>
+                <td class="num">32.4</td><td class="num">36.8</td><td class="num">42.5</td><td class="num">48.6</td>
+                <td class="num col-total">255.3</td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <th>合计</th>
+                <td class="num">893.4</td><td class="num">856.0</td><td class="num">1,000.3</td><td class="num">1,085.6</td>
+                <td class="num">1,185.3</td><td class="num">1,284.9</td><td class="num">1,397.2</td><td class="num">1,395.4</td>
+                <td class="num">9,098.1</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <!-- 操作行 -->
+      <div class="op-row">
+        <span class="op-meta">已选中 0 行 · 共 8 行 8 列</span>
+        <button class="antd-btn">筛选</button>
+        <button class="antd-btn">对比</button>
+        <button class="antd-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          导出 Excel
+        </button>
+        <button class="antd-btn">导出 PDF</button>
+        <button class="antd-btn antd-btn-primary">生成图表</button>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

@@ -1,6 +1,6 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios'
 import { useAuthStore } from '@/stores/authStore'
-import type { ApiResponse, LoginRequest, LoginResponse, User, PaginatedResponse, FilterParams, BatchActivateCheckResult, KpiData, TrendData, DashboardAlert, ReceivableRow, ProductBudgetResponse, SubjectBudgetResponse, ExpenseAnalysisResponse, KeyMetricsResponse, ProductCategory, ProductCategoryCheckResult, KeyMetricsProduct, KeyMetricsProductCheckResult, ExpenseMapping, ExpenseMappingCheckResult, SubjectBudgetConfig, SubjectBudgetConfigCheckResult, BudgetRatio, ImportBatch, ImportDiff, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, ConsolidationAdjustment, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData } from '@/types'
+import type { ApiResponse, LoginRequest, LoginResponse, AutoLoginResponse, User, PaginatedResponse, FilterParams, BatchActivateCheckResult, KpiData, TrendData, DashboardAlert, ReceivableRow, ProductBudgetResponse, SubjectBudgetResponse, ExpenseAnalysisResponse, KeyMetricsResponse, ProductCategory, ProductCategoryCheckResult, KeyMetricsProduct, KeyMetricsProductCheckResult, ExpenseMapping, ExpenseMappingCheckResult, SubjectBudgetConfig, SubjectBudgetConfigCheckResult, BudgetRatio, ImportBatch, ImportDiff, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, ConsolidationAdjustment, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData } from '@/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
@@ -221,11 +221,12 @@ class ApiClient {
         const originalRequest = error.config
 
         // 认证接口自身的 401 直接透传：/auth/login 密码错误、/auth/refresh 令牌失效、
-        // /auth/logout 主动登出时不应触发刷新流程（未登录态 refreshToken 为空会走 logout+跳转，吞掉登录错误提示）
+        // /auth/logout 主动登出、/auth/auto-login 持久令牌失效（避免被 refresh 流程吞掉真实错误）
         const isAuthEndpoint =
           originalRequest.url?.includes('/auth/login') ||
           originalRequest.url?.includes('/auth/refresh') ||
-          originalRequest.url?.includes('/auth/logout')
+          originalRequest.url?.includes('/auth/logout') ||
+          originalRequest.url?.includes('/auth/auto-login')
 
         if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
           originalRequest._retry = true
@@ -286,6 +287,18 @@ class ApiClient {
     return this.request<void>({
       method: 'POST',
       url: '/auth/logout',
+    })
+  }
+
+  /**
+   * 7 天免登录：拿本地持久令牌去服务端换新 access/refresh；服务端会旋转持久令牌。
+   * 401/403/404 表示令牌失效或已轮换，前端应清空本地持久令牌并退回登录页。
+   */
+  async autoLogin(persistentLoginToken: string): Promise<AutoLoginResponse> {
+    return this.request<AutoLoginResponse>({
+      method: 'POST',
+      url: '/auth/auto-login',
+      data: { persistentLoginToken },
     })
   }
 
@@ -1138,11 +1151,19 @@ class ApiClient {
     })
   }
 
-  async getAuditLogs(params?: FilterParams): Promise<PaginatedResponse<any>> {
+  async getAuditLogs(params?: Partial<FilterParams> & { module?: string; action?: string; role?: string; username?: string; q?: string }): Promise<PaginatedResponse<any>> {
     return this.request({
       method: 'GET',
       url: '/admin/audit-logs',
       params,
+    })
+  }
+
+  /** 今日审计统计（总数 + 按 module 分组计数） */
+  async getAuditTodayStats(): Promise<{ total: number; byModule: Record<string, number> }> {
+    return this.request({
+      method: 'GET',
+      url: '/admin/audit-logs/today-stats',
     })
   }
 
@@ -1184,6 +1205,11 @@ class ApiClient {
 
   async rejectMetric(id: string): Promise<Metric> {
     return this.request({ method: 'POST', url: `/data/metrics/${id}/reject` })
+  }
+
+  /** 公式批量导入（配合公式导出）：按编码更新计算类指标公式，后端逐条校验并返回逐条结果（最多 200 条） */
+  async importFormulas(items: { code: string; formula: string }[]): Promise<{ applied: number; results: { code: string; ok: boolean; message?: string }[] }> {
+    return this.request({ method: 'POST', url: '/data/metrics/formulas/import', data: { items } })
   }
 
   // ============ 分析报告：单项分析（公司 × 科目 × 期间） ============
@@ -1474,6 +1500,11 @@ class ApiClient {
 
   async addCollectionLog(id: string, data: { content: string; attachmentUrl?: string }) {
     return this.request({ method: 'POST', url: `/transactions/collections/${id}/logs`, data })
+  }
+
+  // 从账龄数据批量生成催收建议（按 公司×客商×科目 聚合逾期，幂等跳过已有未完结计划）
+  async generateCollectionSuggestions(data: { companyCode?: string; minAgingBucket?: string }): Promise<{ created: number; skipped: number }> {
+    return this.request({ method: 'POST', url: '/transactions/collections/generate', data })
   }
 
   // ============ 其他工具 ============

@@ -1,0 +1,59 @@
+{
+  "intent": "project_mutation",
+  "lane": "existing_edit_add_comparison",
+  "page": "login",
+  "version": "v5",
+  "summary": "登录页 v5 产品门面化改造",
+  "design_choice": "A",
+  "design_choice_label": "产品门面化",
+  "compares_against": "v4",
+  "node_id": "page-login-v5",
+  "node_title": "登录页 · v5 产品门面化",
+  "node_position": {
+    "x": 0,
+    "y": 600,
+    "group": 0
+  },
+  "layoutSnapshot": {
+    "version": 1,
+    "contentHeight": 880,
+    "viewportWidth": 1440,
+    "sourceHash": "fnv1a-login-v5",
+    "measuredAt": 1787821000000
+  },
+  "files": {
+    "design": "d:\\flies\\fy200-clone\\antd-style-design\\antd-style-design.design",
+    "html": "d:\\flies\\fy200-clone\\antd-style-design\\pages\\login-v5.html"
+  },
+  "deltas": [
+    "left column: brand + pitch + 3 KPI cards + trend sparkline",
+    "right column: 3 Tab login area (account/scan/SSO) + strength bar + error state",
+    "contentHeight 560 -> 880"
+  ],
+  "design_tokens_used": [
+    "var(--antd-brand-500/600/900)",
+    "var(--antd-orange-500)",
+    "var(--antd-state-success)",
+    "var(--antd-state-warning)",
+    "var(--antd-state-error)",
+    "var(--antd-white)",
+    "var(--color-primary)",
+    "var(--color-card)",
+    "var(--color-background)",
+    "var(--antd-font-family)",
+    "var(--antd-font-family-mono)"
+  ],
+  "validation": {
+    "v5_infrastructure": "OK",
+    "v5_semantic_fallback": "OK",
+    "v5_look_valid": "OK",
+    "v5_hardcoded_color_warnings": 0,
+    "baseline_errors_pre_existing": 257,
+    "baseline_errors_introduced_by_v5": 0,
+    "verdict": "v5 clean; project-wide 257 baseline errors are pre-existing across 38 pages (out of scope for this single-page add)"
+  },
+  "next_steps": [
+    "user reviews v5 on canvas",
+    "optional: continue transforming indicator / transactions / data-report / admin groups"
+  ]
+}

@@ -2,23 +2,36 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 登录品牌色：注册为 <color> 支持主题切换时渐变平滑插值
+ * （Chrome/Edge 85+、Safari 16.4+、Firefox 128+；旧浏览器优雅降级为直接切换，颜色值不受影响） */
+@property --login-brand-g1  { syntax: '<color>'; inherits: true; initial-value: #fff7ed; }
+@property --login-brand-g2  { syntax: '<color>'; inherits: true; initial-value: #ffe4c7; }
+@property --login-brand-g3  { syntax: '<color>'; inherits: true; initial-value: #ffc895; }
+@property --login-brand-400 { syntax: '<color>'; inherits: true; initial-value: #ff8a1f; }
+@property --login-brand-500 { syntax: '<color>'; inherits: true; initial-value: #ff7a00; }
+@property --login-brand-600 { syntax: '<color>'; inherits: true; initial-value: #e06500; }
+
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 24 10% 10%;
+    /* 中性黑（antd colorText #1F1F1F），B 端规范不使用暖黑 */
+    --foreground: 0 0% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 24 10% 10%;
+    --card-foreground: 0 0% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 24 10% 10%;
-    /* 页面底色：纯白，卡片层次改由边框 + 阴影承担（品牌主题色切换不改变页面底色） */
-    --page: 0 0% 100%;
+    --popover-foreground: 0 0% 12%;
+    /* 页面底色：浅灰 #f0f2f5（antd colorBgLayout，B 端布局标准灰），
+     * 卡片/表单/导航等功能组件恒纯白（--card/--background），形成灰底白组件的 antd 层次；
+     * 品牌主题色切换不改变页面底色 */
+    --page: 214 25% 95%;
     --primary: 29 100% 53%;
     --primary-foreground: 0 0% 100%;
-    /* 辅助色统一随品牌主题色相（浅色调），不再使用固定暖灰 */
+    /* --secondary/--accent 随品牌主题色相（antd colorPrimaryBg 语义：主色浅底）；
+     * --muted/--border 中性灰（antd colorFillQuaternary / colorBorder） */
     --secondary: 29 55% 96%;
     --secondary-foreground: 29 55% 22%;
-    --muted: 29 55% 96%;
-    --muted-foreground: 29 30% 45%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 40%;
     --accent: 29 65% 94%;
     --accent-foreground: 29 60% 20%;
     --destructive: 0 84% 60%;
@@ -30,8 +43,9 @@
     --warning-strong: 32 90% 36%;
     /* 信息态：替代蓝色调色板，承担中性提示/进行中状态 */
     --info: 205 80% 38%;
-    --border: 29 20% 88%;
-    --input: 29 20% 88%;
+    /* 边框/输入描边：中性灰 #d9d9d9（antd colorBorder），不随主题色相着色 */
+    --border: 0 0% 85%;
+    --input: 0 0% 85%;
     --ring: 29 100% 53%;
     /* 侧边栏浅色风格（默认）：白底 + 浅橙高亮；三风格下 --sidebar-bg 均为 HSL 三元组，经 bg-sidebar-bg 类（hsl() 包装）使用 */
     --sidebar-bg: 0 0% 100%;
@@ -62,12 +76,113 @@
     --chart-11: 280 42% 55%;
     --chart-12: 45 72% 44%;
     --chart-13: 210 20% 52%;
+
+    /* ============ 扩展色板（antd-style 迁移底层）============
+     * 与 antd-style-design/colors_and_type.css 双向同步；上层 4 风格预设优先复用 --primary/--chart-1，
+     * 这里提供"按数字级别"的细粒度访问，供 KPI 渐变 / 热力 / 排行 / 步骤 / RingProgress / StaleBar 等组件直接消费。
+     * 命名：blue 13 级（1 最浅 → 13 最深，8 = #1677ff，13 = #001529），orange/cool-gray 9/12 级，ink 10 级中性灰，
+     * 状态色 5 类各 6 级（50/100/300/500/700/900）。所有值以 HSL 三元组存储，hsl() 包装在 Tailwind colors 中。 */
+
+    /* 13 级蓝：AntD blue-1~13 镜像；8 = --primary，13 = --sidebar-bg('antd') */
+    --blue-1: 214 100% 98%;
+    --blue-2: 214 100% 96%;
+    --blue-3: 214 100% 92%;
+    --blue-4: 214 100% 86%;
+    --blue-5: 214 100% 78%;
+    --blue-6: 214 100% 70%;
+    --blue-7: 214 100% 60%;
+    --blue-8: 214 100% 54%;
+    --blue-9: 214 100% 44%;
+    --blue-10: 214 100% 35%;
+    --blue-11: 214 100% 25%;
+    --blue-12: 214 100% 15%;
+    --blue-13: 214 100% 8%;
+
+    /* 9 级橙：500 = #ff830f（与 --primary 对齐） */
+    --orange-50: 30 100% 96%;
+    --orange-100: 30 100% 88%;
+    --orange-200: 30 100% 80%;
+    --orange-300: 30 100% 70%;
+    --orange-400: 30 100% 60%;
+    --orange-500: 29 100% 53%;
+    --orange-600: 24 95% 45%;
+    --orange-700: 20 90% 38%;
+    --orange-800: 18 85% 30%;
+    --orange-900: 16 80% 22%;
+
+    /* 10 级中性灰（ink）：1 白 → 10 近黑；通用边框 / 文字 / 浅底 */
+    --ink-1: 0 0% 100%;
+    --ink-2: 0 0% 98%;
+    --ink-3: 0 0% 96%;
+    --ink-4: 0 0% 93%;
+    --ink-5: 0 0% 88%;
+    --ink-6: 0 0% 80%;
+    --ink-7: 0 0% 70%;
+    --ink-8: 0 0% 60%;
+    --ink-9: 0 0% 40%;
+    --ink-10: 0 0% 14%;
+
+    /* 5 类状态色 × 6 级（50/100/300/500/700/900）：success / warning / destructive / info / neutral
+     * 500 与现有 --success / --warning / --destructive / --info 主值对齐（视觉一致，可互用） */
+    --success-50: 152 60% 96%;
+    --success-100: 152 60% 88%;
+    --success-300: 152 60% 60%;
+    --success-500: 160 84% 39%;
+    --success-700: 160 84% 28%;
+    --success-900: 160 84% 18%;
+    --warning-50: 45 100% 96%;
+    --warning-100: 45 100% 88%;
+    --warning-300: 45 100% 70%;
+    --warning-500: 45 100% 50%;
+    --warning-700: 32 90% 36%;
+    --warning-900: 24 80% 24%;
+    --destructive-50: 0 86% 96%;
+    --destructive-100: 0 86% 90%;
+    --destructive-300: 0 86% 65%;
+    --destructive-500: 0 84% 60%;
+    --destructive-700: 0 70% 40%;
+    --destructive-900: 0 60% 24%;
+    --info-50: 205 80% 96%;
+    --info-100: 205 80% 90%;
+    --info-300: 205 80% 60%;
+    --info-500: 205 80% 38%;
+    --info-700: 205 80% 26%;
+    --info-900: 205 80% 16%;
+    --neutral-50: 220 14% 96%;
+    --neutral-100: 220 14% 92%;
+    --neutral-300: 220 14% 75%;
+    --neutral-500: 220 14% 50%;
+    --neutral-700: 220 14% 30%;
+    --neutral-900: 220 14% 14%;
+
+    /* 12 级冷灰（cool）：1 最浅 → 12 最深；金融/数据图表的中性背景、深色面板、阶梯式 0~11 灰阶 */
+    --cool-1: 210 20% 98%;
+    --cool-2: 210 20% 95%;
+    --cool-3: 210 16% 92%;
+    --cool-4: 210 16% 85%;
+    --cool-5: 210 14% 75%;
+    --cool-6: 210 14% 65%;
+    --cool-7: 210 14% 50%;
+    --cool-8: 210 18% 35%;
+    --cool-9: 210 22% 22%;
+    --cool-10: 210 25% 14%;
+    --cool-11: 210 30% 9%;
+    --cool-12: 210 35% 5%;
+
+    /* 阴影/圆角的 antd 镜像（与 HTML 样式表同步） */
+    --antd-radius-sm: 4px;
+    --antd-radius-md: 6px;
+    --antd-radius-lg: 8px;
+    --antd-shadow-1: 0 1px 2px 0 rgb(0 21 41 / 0.04), 0 1px 1px 0 rgb(0 21 41 / 0.03);
+    --antd-shadow-2: 0 3px 6px -4px rgb(0 21 41 / 0.12), 0 6px 16px 0 rgb(0 21 41 / 0.08);
+    --antd-shadow-3: 0 6px 16px -8px rgb(0 21 41 / 0.16), 0 9px 28px 0 rgb(0 21 41 / 0.10);
   }
 
   /* ============ 侧边栏风格预设 ============
-   * 由 Header 风格切换器写入 html[data-sidebar]；仅 3 种风格（浅色/紫渐变/深色）。
-   * 主页面恒白：--background/--page/--card 三种风格下均为纯白；
-   * 交互元素（--primary/--ring/--chart-1/辅助色）跟随侧边栏主题色。
+   * 由 Header 风格切换器写入 html[data-sidebar]；4 种风格（浅色/紫渐变/深色/深蓝）。
+   * 页面底浅灰 #f0f2f5、组件恒白：--background/--page/--card 不随风格变化；
+   * 交互元素（--primary/--ring/--chart-1/--secondary/--accent）跟随侧边栏主题色；
+   * --muted/--muted-foreground/--border/--input 统一中性灰（antd B 端规范），不随风格着色。
    * 深紫纯色：侧边栏 #472159，选中用更亮的紫蓝 ≈#3D41C6（--sidebar-selected-bg: 239 55% 51%）。
    */
   /* 深紫纯色：侧边栏背景与交互主色统一 #472159（深紫）；图表主色用淡紫提亮 #BBA9F7 */
@@ -78,12 +193,12 @@
     --chart-1: 254 83% 82%;
     --secondary: 281 30% 96%;
     --secondary-foreground: 281 45% 26%;
-    --muted: 281 30% 96%;
-    --muted-foreground: 281 22% 45%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 40%;
     --accent: 281 40% 94%;
     --accent-foreground: 281 45% 26%;
-    --border: 281 25% 88%;
-    --input: 281 25% 88%;
+    --border: 0 0% 85%;
+    --input: 0 0% 85%;
     --sidebar-bg: 281 46% 24%;
     --sidebar-fg: 231 100% 94%;
     --sidebar-icon: 231 100% 90%;
@@ -104,12 +219,12 @@
     --chart-1: 224 82% 71%;
     --secondary: 222 25% 96%;
     --secondary-foreground: 222 30% 18%;
-    --muted: 222 25% 96%;
-    --muted-foreground: 222 15% 45%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 40%;
     --accent: 222 30% 94%;
     --accent-foreground: 222 30% 18%;
-    --border: 222 15% 88%;
-    --input: 222 15% 88%;
+    --border: 0 0% 85%;
+    --input: 0 0% 85%;
     --sidebar-bg: 222 47% 11%;
     --sidebar-fg: 220 9% 65%;
     --sidebar-icon: 220 9% 65%;
@@ -123,6 +238,85 @@
     --sidebar-scrollbar-hover: 222 20% 44%;
     --sidebar-border: 222 47% 18%;
     --sidebar-brand-fg: 0 0% 100%;
+  }
+
+  /* 深蓝：AntD ProLayout 风格（#001529 侧栏 + #1677ff 选中）；主页面交互色与侧边栏主色一致（蓝）。
+   * 分组标题走低透明度白（35%），与 AntD 视觉惯例一致；选中态为实色蓝 + 白字 + 白左侧条。 */
+  :root[data-sidebar='antd'] {
+    --primary: 214 100% 54%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 214 100% 54%;
+    --chart-1: 214 100% 54%;
+    --secondary: 214 30% 96%;
+    --secondary-foreground: 214 60% 26%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 40%;
+    --accent: 214 40% 94%;
+    --accent-foreground: 214 60% 26%;
+    --border: 0 0% 85%;
+    --input: 0 0% 85%;
+    --sidebar-bg: 204 100% 8%;
+    --sidebar-fg: 0 0% 85%;
+    --sidebar-icon: 0 0% 70%;
+    /* 选中态：实色 #1677ff + 白字（与 AntD 一致）；用 100% 54% 表达 */
+    --sidebar-selected-bg: 214 100% 54%;
+    --sidebar-selected-fg: 0 0% 100%;
+    /* 激活指示条：白（与 AntD 实色蓝对比强烈，3px 左条辨识度高） */
+    --sidebar-active-bar: 0 0% 100%;
+    /* 侧边栏滚动条：深蓝下用半透明白，避免抢色 */
+    --sidebar-scrollbar: 204 30% 30%;
+    --sidebar-scrollbar-hover: 204 30% 45%;
+    --sidebar-border: 204 60% 14%;
+    --sidebar-brand-fg: 0 0% 100%;
+    /* antd 风格下：卡片圆角压到 6px（与 AntD Card 一致），配合 1px 浅边框的"扁平描边"感 */
+    --radius-card: 0.375rem;
+  }
+
+  /* ============ 登录页品牌色板（随 data-sidebar 主题联动，粉彩淡雅风） ============
+   * 每个主题重定义 .login-shell 的 --login-brand-*：粉彩渐变背景（g1→g3）+ 主题深色文字
+   * + 饱和强调色（表单按钮/链接/输入框交互）。新增主题预设时须同步在此加一块
+   * （由 login-brand-theme.test.tsx 契约测试守护）。 */
+  /* 深紫主题：淡紫渐变 + 紫深文字（锚点 #472159） */
+  :root[data-sidebar='gradient'] .login-shell {
+    --login-brand-g1: #f7f3fb;
+    --login-brand-g2: #ebdff5;
+    --login-brand-g3: #d9c2ee;
+    --login-brand-text: #472159;
+    --login-brand-50:  #f7f3fb;
+    --login-brand-100: #ebdff5;
+    --login-brand-300: #b18cd0;
+    --login-brand-400: #8a5cb8;
+    --login-brand-500: #6d3f9e;
+    --login-brand-600: #552f80;
+    --login-brand-700: #472159;
+  }
+  /* 深色主题：淡灰蓝渐变 + 石板深文字（锚点 #1F2937） */
+  :root[data-sidebar='dark'] .login-shell {
+    --login-brand-g1: #f4f6f9;
+    --login-brand-g2: #e4e9f0;
+    --login-brand-g3: #cdd6e2;
+    --login-brand-text: #1f2937;
+    --login-brand-50:  #f4f6f9;
+    --login-brand-100: #e4e9f0;
+    --login-brand-300: #94a3b8;
+    --login-brand-400: #64748b;
+    --login-brand-500: #475569;
+    --login-brand-600: #374151;
+    --login-brand-700: #1f2937;
+  }
+  /* 深蓝主题：淡蓝渐变 + AntD 深蓝文字（锚点 #1677ff / #001529） */
+  :root[data-sidebar='antd'] .login-shell {
+    --login-brand-g1: #f0f7ff;
+    --login-brand-g2: #dcecff;
+    --login-brand-g3: #bcdcff;
+    --login-brand-text: #003eb3;
+    --login-brand-50:  #e6f4ff;
+    --login-brand-100: #bae0ff;
+    --login-brand-300: #69b1ff;
+    --login-brand-400: #4096ff;
+    --login-brand-500: #1677ff;
+    --login-brand-600: #0958d9;
+    --login-brand-700: #003eb3;
   }
 
   * {
@@ -139,6 +333,20 @@
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
     line-height: 1.5;
+  }
+
+  /* 主题切换过渡：仅切换瞬间由 themeStore 写入 html[data-theme-anim] 开启，
+   * 约 320ms 后移除（避免全局常驻 transition 的性能开销）。
+   * 只过渡颜色类属性，不碰 transform/width 等布局属性，防止干扰既有交互动画；
+   * 追加的 --login-brand-* 为 @property 注册色，驱动登录页品牌区/按钮渐变平滑插值。 */
+  :root[data-theme-anim],
+  :root[data-theme-anim] *,
+  :root[data-theme-anim] *::before,
+  :root[data-theme-anim] *::after {
+    transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease,
+      fill 0.25s ease, stroke 0.25s ease, box-shadow 0.25s ease,
+      --login-brand-g1 0.25s ease, --login-brand-g2 0.25s ease, --login-brand-g3 0.25s ease,
+      --login-brand-400 0.25s ease, --login-brand-500 0.25s ease, --login-brand-600 0.25s ease !important;
   }
 }
 
@@ -288,3 +496,1262 @@
   margin: 6px 0;
   overflow-x: auto;
 }
+
+/* =========================================================
+ * 登录页 v6（2026-08-27 · 精简门面 + 品牌橙）
+ * 基于 antd-style-design/pages/login-v6.html 改造
+ * 双栏：左侧品牌粉彩渐变区 + 右侧精简登录区
+ * 品牌色板（--login-brand-*）随全局主题（html[data-sidebar]）联动：
+ * 默认为浅色主题橙色调，gradient/dark/antd 主题在下方对应覆盖块中重定义
+ * ========================================================= */
+.login-shell {
+  /* 粉彩渐变（品牌区背景：最浅 → 最饱和的淡色） */
+  --login-brand-g1: #fff7ed;
+  --login-brand-g2: #ffe4c7;
+  --login-brand-g3: #ffc895;
+  /* 深色强调（品牌文字/版本号） */
+  --login-brand-text: #8a4200;
+  /* 表单饱和强调色（按钮渐变/链接/输入框交互色） */
+  --login-brand-50:  #fff7ed;
+  --login-brand-100: #ffe8d1;
+  --login-brand-300: #ffa552;
+  --login-brand-400: #ff8a1f;
+  --login-brand-500: #ff7a00;  /* 主橙 */
+  --login-brand-600: #e06500;
+  --login-brand-700: #b14f00;
+
+  --login-error-50:  #fff2f0;
+  --login-error-100: #ffccc7;
+  --login-error-500: #ff4d4f;
+  --login-warning-50:  #fffbe6;
+  --login-warning-100: #ffe58f;
+  --login-warning-500: #faad14;
+  --login-ink-1:  #fafafa;
+  --login-ink-2:  #f5f5f5;
+  --login-ink-3:  #f0f0f0;
+  --login-ink-4:  #d9d9d9;
+  --login-ink-5:  #bfbfbf;
+  --login-ink-6:  #8c8c8c;
+  --login-ink-7:  #595959;
+  --login-ink-10: #1f1f1f;
+
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr 480px;
+  background: var(--login-ink-2);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial,
+    sans-serif;
+}
+
+/* ============ 左侧：品牌区（仅 logo + 脚注，粉彩淡雅渐变背景，随主题联动） ============ */
+.login-side {
+  position: relative;
+  overflow: hidden;
+  padding: 56px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  color: var(--login-brand-text);
+  background:
+    radial-gradient(circle at 80% 12%, rgba(255, 255, 255, 0.55) 0%, transparent 50%),
+    radial-gradient(circle at 12% 88%, rgba(255, 255, 255, 0.4) 0%, transparent 55%),
+    linear-gradient(135deg, var(--login-brand-g1) 0%, var(--login-brand-g2) 55%, var(--login-brand-g3) 100%);
+}
+/* 装饰光斑（右下角）—— 色相无关白晕，避免橙色光斑污染非橙色主题 */
+.login-side::after {
+  content: '';
+  position: absolute;
+  right: -120px;
+  bottom: -120px;
+  width: 360px;
+  height: 360px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.45) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+/* 品牌块：LOGO + 文字单行（桌面+移动共用；桌面端浮在粉彩渐变上字色随主题深色，移动端白底深字） */
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  position: relative;
+  z-index: 1;
+}
+/* 裸 logo：直接浮在粉彩渐变上，浅底黑影减淡 + 白晕轻抬离背景；不加任何容器/底色/边框，保持品牌纯粹 */
+.login-brand-logo {
+  height: 48px;
+  width: auto;
+  display: block;
+  filter:
+    drop-shadow(0 2px 6px rgba(0, 0, 0, 0.14))
+    drop-shadow(0 0 14px rgba(255, 255, 255, 0.6));
+  user-select: none;
+}
+.login-brand-text {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: var(--login-brand-text);
+  white-space: nowrap;
+}
+
+/* 品牌区堆叠容器：把品牌块和版本号垂直居中 */
+.login-brand-stack {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 18px;
+}
+
+/* 版本号（品牌块下方居中，主题深色弱化显示） */
+.login-version {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--login-brand-text);
+  opacity: 0.6;
+  font-weight: 400;
+}
+
+/* 桌面端品牌块放大（.login-side 仅桌面端显示，≤768px 由响应式规则隐藏，移动端品牌块不受影响） */
+.login-side .login-brand { gap: 18px; }
+.login-side .login-brand-logo { height: 76px; }
+.login-side .login-brand-text {
+  font-size: 26px;
+  letter-spacing: 2px;
+}
+
+/* 移动端品牌块：白底上的同款品牌块，深色字 + 更轻的 drop-shadow 防止 logo 糊。
+ * 与登录表单统一宽度（width:100% + max-width:380px），边缘对齐表单字段；
+ * 内容左对齐，logo 与账号输入框左缘齐平，视觉整齐。 */
+.login-brand-mobile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--login-ink-10);
+  width: 100%;
+  max-width: 380px;
+  /* 与登录表单拉开间距（40px），强化品牌区与表单的视觉分区 */
+  margin: 0 auto 40px;
+}
+.login-brand-mobile .login-brand-text {
+  color: var(--login-ink-10);
+  /* ≤1024px 单栏布局下的品牌标题（该品牌块仅在 ≤1024px 显示），较基础 17px 放大 */
+  font-size: 24px;
+}
+.login-brand-logo-dark {
+  filter:
+    drop-shadow(0 2px 4px rgba(0, 0, 0, 0.12))
+    drop-shadow(0 0 8px rgba(255, 122, 0, 0.18));
+}
+
+/* ============ 右侧：登录表单 ============ */
+.login-form-wrap {
+  display: flex;
+  /* 纵向堆叠：小尺寸/移动端品牌块（logo+主标题）位于表单上方（桌面端品牌块隐藏，仅剩表单不受影响） */
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background: #fff;
+}
+.login-form {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: login-fade-in 0.3s ease-out;
+}
+@keyframes login-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.login-form-head { margin-bottom: 4px; }
+.login-form-h {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--login-ink-10);
+}
+.login-form-sub {
+  margin: 0;
+  font-size: 13px;
+  color: var(--login-ink-6);
+}
+
+/* 告警条（错误 / 会话过期） */
+.login-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.login-alert-icon {
+  margin-top: 1px;
+  height: 14px;
+  width: 14px;
+  flex-shrink: 0;
+}
+.login-alert-error {
+  background: var(--login-error-50);
+  border-color: var(--login-error-100);
+  color: var(--login-error-500);
+}
+.login-alert-warning {
+  background: var(--login-warning-50);
+  border-color: var(--login-warning-100);
+  color: var(--login-warning-500);
+}
+
+/* 字段 */
+.login-field { display: flex; flex-direction: column; gap: 6px; }
+.login-field .antd-label,
+.login-field label {
+  font-size: 12px !important;
+  font-weight: 400 !important;
+  color: var(--login-ink-7);
+  line-height: 1.4;
+}
+.login-input-wrap { position: relative; }
+.login-input.ant-input,
+.login-input-pwd.ant-input {
+  height: 40px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  color: var(--login-ink-10);
+  background: #fff;
+  border-color: var(--login-ink-4);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.login-input-pwd.ant-input { padding-right: 38px; }
+.login-input.ant-input::placeholder,
+.login-input-pwd.ant-input::placeholder { color: var(--login-ink-5); }
+.login-input.ant-input:hover,
+.login-input-pwd.ant-input:hover { border-color: var(--login-brand-500); }
+.login-input.ant-input:focus,
+.login-input-pwd.ant-input:focus,
+.login-input.ant-input:focus-within,
+.login-input-pwd.ant-input:focus-within {
+  border-color: var(--login-brand-500);
+  box-shadow: 0 0 0 2px rgba(255, 122, 0, 0.12);
+}
+.login-input-error.ant-input,
+.login-input-error.ant-input:hover,
+.login-input-error.ant-input:focus {
+  border-color: var(--login-error-500) !important;
+  box-shadow: 0 0 0 2px rgba(255, 77, 79, 0.1);
+}
+
+.login-eye {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  width: 32px;
+  border: none;
+  background: transparent;
+  color: var(--login-ink-6);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color 0.15s, background-color 0.15s;
+}
+.login-eye:hover:not(:disabled) {
+  color: var(--login-brand-500);
+  background: var(--login-ink-2);
+}
+.login-eye:disabled { cursor: not-allowed; opacity: 0.5; }
+
+.login-field-err {
+  margin: 0;
+  font-size: 12px;
+  color: var(--login-error-500);
+  animation: login-fade-in 0.2s ease-out;
+}
+.login-field-tip {
+  margin: 0;
+  font-size: 12px;
+  color: var(--login-warning-500);
+}
+
+/* 7 天内免登录 + 忘记密码 */
+.login-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 4px 0 6px;
+  font-size: 13px;
+}
+.login-check-text { color: var(--login-ink-7); margin-left: 6px; }
+.login-link {
+  color: var(--login-brand-500);
+  cursor: pointer;
+  text-decoration: none;
+  font-size: 13px;
+}
+.login-link:hover { text-decoration: underline; }
+.login-link:focus-visible {
+  outline: 2px solid var(--login-brand-300);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* 登录主按钮（覆盖默认 antd 主按钮，注入品牌橙渐变） */
+.login-submit.ant-btn {
+  width: 100%;
+  height: 42px;
+  border: none;
+  border-radius: 6px;
+  background: linear-gradient(135deg, var(--login-brand-400) 0%, var(--login-brand-500) 50%, var(--login-brand-600) 100%);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 2px 0 rgba(255, 122, 0, 0.08);
+  transition: opacity 0.15s, transform 0.1s;
+  margin-top: 2px;
+}
+.login-submit.ant-btn span { letter-spacing: 4px; }
+.login-submit.ant-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--login-brand-400) 0%, var(--login-brand-500) 50%, var(--login-brand-600) 100%);
+  opacity: 0.94;
+  color: #fff;
+}
+.login-submit.ant-btn:active:not(:disabled) { transform: translateY(1px); }
+.login-submit.ant-btn:disabled { opacity: 0.65; cursor: not-allowed; }
+/* 加载态：仅用 antd 原生 loading（单一 spinner），保留品牌渐变不置灰；
+ * 轻微降透明度 + 进度光标表达进行中，复用按钮既有 opacity/transform 过渡 */
+.login-submit.ant-btn.ant-btn-loading {
+  opacity: 0.88;
+  cursor: progress;
+}
+.login-submit.ant-btn.ant-btn-loading:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--login-brand-400) 0%, var(--login-brand-500) 50%, var(--login-brand-600) 100%);
+  opacity: 0.88;
+}
+.login-submit.ant-btn .ant-btn-loading-icon { margin-right: 8px; }
+
+/* 首次登录提示（橙色） */
+.login-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding: 8px 12px;
+  background: var(--login-brand-50);
+  border: 1px solid var(--login-brand-100);
+  border-radius: 6px;
+  color: var(--login-brand-700);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.login-hint-dot { font-weight: 700; }
+
+/* =========================================================
+ * 响应式（必须放在所有基础规则之后，CSS 级联才能让 display:none 覆盖 .login-side 的 display:flex）
+ * 断点语义：≥1025px 桌面双栏（左侧品牌区 + 右侧登录区）；
+ * ≤1024px 小尺寸/移动端单栏——品牌区（logo+主标题）并入登录区（表单上方品牌块）。
+ * ========================================================= */
+@media (min-width: 1025px) {
+  /* 桌面端：品牌区整体居中（不再 space-between 顶天立地）；隐藏登录区内品牌块 */
+  .login-side {
+    justify-content: center;
+    align-items: center;
+  }
+  .login-brand-mobile { display: none; }
+}
+@media (max-width: 1024px) {
+  /* 小尺寸/移动端：单栏布局，左侧品牌区隐藏，logo 和主标题并入登录区顶部 */
+  .login-shell { grid-template-columns: 1fr; }
+  .login-side  { display: none; }
+  .login-brand-mobile { display: flex; }
+}
+@media (max-width: 480px) {
+  /* 小屏手机：收窄登录区内边距，保证 380px 表单与品牌块的可用宽度与留白平衡 */
+  .login-form-wrap { padding: 24px 20px; }
+}
+
+/* =========================================================
+ * 登录页 v6（2026-08-27 · 精简门面）
+ * 基于 antd-style-design/pages/login-v6.html 改造
+ * 双栏：左侧深蓝渐变 + 网格底纹 + 橙色光斑 + 壹标识 + 主标语
+ *      右侧白底精简登录区（账号密码 + 7 天免登录 + 演示态错误/首次登录提示）
+ * 由 .login-shell-v6 修饰类切换，不影响旧版（.login-shell 不带 v6）
+ * ========================================================= */
+
+/* ============ 左侧：品牌 + 标语（v6 精简门面，深蓝渐变） ============ */
+.login-shell-v6 .login-side {
+  background:
+    radial-gradient(circle at 75% 15%, rgba(22, 119, 255, 0.38) 0%, transparent 45%),
+    radial-gradient(circle at 15% 85%, rgba(250, 140, 22, 0.18) 0%, transparent 50%),
+    linear-gradient(135deg, #001d66 0%, #0958d9 60%, #1677ff 100%);
+  color: #ffffff;
+  padding: 56px;
+  gap: 48px;
+  justify-content: flex-start;
+  align-items: stretch;
+}
+
+/* 网格底纹（白线 4.5% 透明，48px 间距） */
+.login-shell-v6 .login-side::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none;
+}
+
+/* 右下角橙色装饰光斑 */
+.login-shell-v6 .login-side::after {
+  content: "";
+  position: absolute;
+  right: -120px;
+  bottom: -120px;
+  width: 360px;
+  height: 360px;
+  background: radial-gradient(circle, rgba(250, 140, 22, 0.18) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+/* 隐藏旧版（v5）品牌栈与版本号（v6 不用） */
+.login-shell-v6 .login-brand-stack,
+.login-shell-v6 .login-version,
+.login-shell-v6 .login-brand-logo,
+.login-shell-v6 .login-brand-text,
+.login-shell-v6 .login-brand-mobile {
+  display: none;
+}
+
+/* 顶部品牌块：壹标识 + 名称 + 英文小标 */
+.login-shell-v6 .login-brand {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 0;
+}
+.login-shell-v6 .login-brand-mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 20px;
+  color: #ffffff;
+  flex-shrink: 0;
+}
+.login-shell-v6 .login-brand-name {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: #ffffff;
+  line-height: 1.2;
+}
+.login-shell-v6 .login-brand-en {
+  display: block;
+  font-size: 9px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.6);
+  letter-spacing: 3px;
+  margin-top: 2px;
+  line-height: 1.2;
+}
+
+/* 中部：主标题 + 标语（垂直居中） */
+.login-shell-v6 .login-pitch {
+  position: relative;
+  z-index: 1;
+  margin: auto 0;
+}
+.login-shell-v6 .login-pitch h1 {
+  font-size: 42px;
+  line-height: 1.25;
+  font-weight: 600;
+  margin: 0 0 18px;
+  letter-spacing: 1px;
+  color: #ffffff;
+}
+.login-shell-v6 .login-pitch h1 .accent {
+  color: #fa8c16;
+}
+.login-shell-v6 .login-pitch .slogan {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 0;
+  letter-spacing: 4px;
+}
+
+/* ============ 错误条（v6 设计稿：圆形红标 + 文字） ============ */
+.login-shell-v6 .login-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding: 8px 12px;
+  background: #fff2f0;
+  border: 1px solid #ffccc7;
+  border-radius: 6px;
+  color: #ff4d4f;
+  font-size: 12px;
+}
+.login-shell-v6 .login-error > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ff4d4f;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 11px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+/* ============ 首次登录提示（v6 设计稿：橙色块） ============ */
+.login-shell-v6 .login-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 14px 0 0;
+  padding: 8px 12px;
+  background: #fff7e6;
+  border: 1px solid #ffe7ba;
+  border-radius: 6px;
+  color: #ad4e00;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.login-shell-v6 .login-hint-dot {
+  font-weight: 700;
+}
+
+/* ============ 表单交互色（v6 设计稿：品牌蓝，替代原品牌橙） ============ */
+.login-shell-v6 .login-input.ant-input:hover,
+.login-shell-v6 .login-input-pwd.ant-input:hover {
+  border-color: #1677ff;
+}
+.login-shell-v6 .login-input.ant-input:focus,
+.login-shell-v6 .login-input-pwd.ant-input:focus,
+.login-shell-v6 .login-input.ant-input:focus-within,
+.login-shell-v6 .login-input-pwd.ant-input:focus-within {
+  border-color: #1677ff;
+  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
+}
+.login-shell-v6 .login-eye:hover:not(:disabled) {
+  color: #1677ff;
+  background: transparent;
+}
+.login-shell-v6 .login-link {
+  color: #1677ff;
+}
+.login-shell-v6 .login-link:hover {
+  text-decoration: underline;
+}
+.login-shell-v6 .login-link:focus-visible {
+  outline-color: #69b1ff;
+}
+
+/* =========================================================
+ * 权限不足兜底页（基于 antd-style-design/pages/no-access.html）
+ * 双栏：左侧深蓝渐变 + 网格底纹（品牌区）
+ *      右侧白底居中卡（插画 + 标题 + 用户卡 + 操作按钮 + 退出）
+ * MainLayout 内布局时通过 fixed 拉满整屏，避免被侧边栏/header 框住
+ * ========================================================= */
+.noaccess-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  background: #f5f5f5;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial,
+    sans-serif;
+}
+
+/* ============ 左侧：深蓝渐变品牌区 ============ */
+.noaccess-side {
+  position: relative;
+  overflow: hidden;
+  padding: 56px 64px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  color: #fff;
+  background:
+    radial-gradient(circle at 80% 20%, rgba(22, 119, 255, 0.30) 0%, transparent 50%),
+    radial-gradient(circle at 20% 80%, rgba(22, 119, 255, 0.15) 0%, transparent 50%),
+    linear-gradient(135deg, #001d66 0%, #1677ff 100%);
+}
+/* 网格底纹：等距细线 + 透明度低，营造数据平台感 */
+.noaccess-side::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none;
+}
+
+.noaccess-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+}
+.noaccess-brand-mark {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 1;
+}
+.noaccess-brand-name {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+.noaccess-pitch {
+  position: relative;
+  max-width: 480px;
+}
+.noaccess-pitch h1 {
+  font-size: 32px;
+  line-height: 1.3;
+  font-weight: 600;
+  margin: 0 0 16px;
+  color: #fff;
+}
+.noaccess-pitch p {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 14px;
+  line-height: 1.7;
+  margin: 0;
+}
+
+.noaccess-foot {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 12px;
+  position: relative;
+}
+
+/* 左侧大光晕：与设计稿「径向高光」气质一致 */
+.noaccess-side-glow {
+  position: absolute;
+  top: -120px;
+  right: -120px;
+  width: 360px;
+  height: 360px;
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.18) 0%, rgba(22, 119, 255, 0.08) 45%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
+/* 数据平台装饰点阵：6×6 的低透明度圆点，叠在网格底纹之上 */
+.noaccess-side-dots {
+  position: absolute;
+  left: 48px;
+  bottom: 96px;
+  width: 144px;
+  height: 144px;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.18) 1.2px, transparent 1.6px);
+  background-size: 24px 24px;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.7;
+}
+
+/* 安全特性标签条 */
+.noaccess-features {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  position: relative;
+}
+.noaccess-features li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 8px;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 9999px;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.noaccess-features-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #69b1ff;
+  box-shadow: 0 0 0 2px rgba(105, 177, 255, 0.25);
+  display: inline-block;
+}
+
+/* 右侧浅色背景纹理 */
+.noaccess-content-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 80% 100%, rgba(22, 119, 255, 0.04) 0%, transparent 60%),
+    radial-gradient(circle at 0% 0%, rgba(22, 119, 255, 0.03) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+/* ============ 右侧：白底居中卡 ============ */
+.noaccess-content {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background: #f5f5f5;
+}
+.noaccess-card {
+  width: 100%;
+  max-width: 480px;
+  padding: 48px 40px;
+  background: #fff;
+  border-radius: 8px;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+/* 状态插画：圆角蓝渐变方块 + 双层装饰圆环 */
+.antd-state-illustration {
+  width: 120px;
+  height: 120px;
+  margin: 0 auto 28px;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.25) 0%, transparent 60%),
+    linear-gradient(135deg, #4096ff 0%, #1677ff 60%, #0958d9 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  box-shadow: 0 12px 32px rgba(22, 119, 255, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.antd-state-illustration::before {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  border-radius: 18px;
+  pointer-events: none;
+}
+.antd-state-illustration-icon {
+  color: #fff;
+  width: 56px !important;
+  height: 56px !important;
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.15));
+}
+.antd-state-illustration-ring {
+  position: absolute;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.antd-state-illustration-ring.r1 {
+  width: 156px;
+  height: 156px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+.antd-state-illustration-ring.r2 {
+  width: 192px;
+  height: 192px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-color: rgba(255, 255, 255, 0.10);
+}
+
+.noaccess-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.88);
+  margin: 0 0 8px;
+  line-height: 1.4;
+}
+.noaccess-sub {
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 14px;
+  margin: 0 0 28px;
+  line-height: 1.6;
+}
+
+.noaccess-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: #f5f5f5;
+  border-radius: 6px;
+  margin: 0 0 24px;
+  text-align: left;
+}
+.noaccess-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #bae0ff;
+  color: #1677ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+.noaccess-user-info {
+  flex: 1;
+  min-width: 0;
+}
+.noaccess-user-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.88);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.noaccess-user-meta {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+  margin-top: 2px;
+}
+
+.noaccess-actions {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.noaccess-actions > * {
+  flex: 1;
+  height: 40px !important;
+  font-size: 14px;
+}
+.noaccess-btn-primary.ant-btn {
+  background: #1677ff;
+  border-color: #1677ff;
+  color: #fff;
+  box-shadow: 0 2px 0 rgba(5, 145, 255, 0.06);
+}
+.noaccess-btn-primary.ant-btn:hover {
+  background: #4096ff;
+  border-color: #4096ff;
+  color: #fff;
+}
+.noaccess-btn-ghost.ant-btn {
+  background: transparent;
+  border-color: transparent;
+  color: #1677ff;
+  box-shadow: none;
+}
+.noaccess-btn-ghost.ant-btn:hover {
+  background: rgba(22, 119, 255, 0.06);
+  color: #1677ff;
+  border-color: transparent;
+}
+
+.noaccess-logout {
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.45);
+  text-decoration: none;
+  border-top: 1px solid #f0f0f0;
+  padding-top: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.noaccess-logout:hover { color: #ff4d4f; }
+.noaccess-logout-icon {
+  width: 14px !important;
+  height: 14px !important;
+  vertical-align: -3px;
+  margin-right: 2px;
+}
+
+/* 底部状态条：会话已加密 + 时间戳 */
+.noaccess-status {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px dashed #f0f0f0;
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.45);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.noaccess-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #52c41a;
+  box-shadow: 0 0 0 2px rgba(82, 196, 26, 0.18);
+  display: inline-block;
+  animation: noaccess-pulse 2s ease-in-out infinite;
+}
+@keyframes noaccess-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+/* 申请流程 3 步说明 */
+.noaccess-flow {
+  margin-top: 18px;
+  padding: 14px 16px;
+  background: linear-gradient(180deg, #fafbff 0%, #f0f5ff 100%);
+  border: 1px solid #e6f0ff;
+  border-radius: 8px;
+  text-align: left;
+}
+.noaccess-flow-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.65);
+  margin-bottom: 10px;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.noaccess-flow-title::before {
+  content: "";
+  display: inline-block;
+  width: 3px;
+  height: 12px;
+  background: linear-gradient(180deg, #4096ff 0%, #1677ff 100%);
+  border-radius: 2px;
+}
+.noaccess-flow-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+}
+.noaccess-flow-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  position: relative;
+}
+.noaccess-flow-steps li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  right: -5px;
+  top: 12px;
+  width: 10px;
+  height: 1px;
+  background: linear-gradient(90deg, #d9e4ff 0%, transparent 100%);
+}
+.noaccess-flow-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4096ff 0%, #1677ff 100%);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 4px rgba(22, 119, 255, 0.25);
+}
+.noaccess-flow-text { min-width: 0; flex: 1; }
+.noaccess-flow-step {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.88);
+  line-height: 1.4;
+}
+.noaccess-flow-desc {
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.45);
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+/* 联系方式 + 常见原因 */
+.noaccess-meta {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px dashed #e6e6e6;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  background: #fafafa;
+}
+.noaccess-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.noaccess-meta-label {
+  flex-shrink: 0;
+  width: 56px;
+  color: rgba(0, 0, 0, 0.45);
+}
+.noaccess-meta-value {
+  color: rgba(0, 0, 0, 0.75);
+  font-weight: 500;
+  word-break: break-all;
+}
+
+/* 可申请模块 */
+.noaccess-modules {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #fff 0%, #f8faff 100%);
+  border: 1px solid #eef0f5;
+  text-align: left;
+}
+.noaccess-modules-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.65);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.noaccess-modules-title::before {
+  content: "";
+  display: inline-block;
+  width: 3px;
+  height: 12px;
+  background: linear-gradient(180deg, #4096ff 0%, #1677ff 100%);
+  border-radius: 2px;
+}
+.noaccess-modules-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.noaccess-module-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.75);
+  background: #f0f5ff;
+  border: 1px solid #d6e4ff;
+  border-radius: 4px;
+  line-height: 1.4;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+.noaccess-module-chip:hover {
+  background: #e6f0ff;
+  border-color: #91caff;
+  color: #1677ff;
+}
+
+/* ============ 响应式：≤1024px 保持 2 栏，仅缩窄左栏 padding/字号（对齐设计稿行为） ============ */
+@media (max-width: 1024px) {
+  .noaccess-shell {
+    grid-template-columns: 1fr 1fr;
+  }
+  .noaccess-side {
+    padding: 32px 24px;
+  }
+  .noaccess-pitch { max-width: 100%; }
+  .noaccess-pitch h1 { font-size: 24px; margin-bottom: 12px; }
+  .noaccess-pitch p { font-size: 13px; line-height: 1.6; }
+  .noaccess-content { padding: 28px 20px; }
+  .noaccess-card { padding: 36px 28px; }
+  .antd-state-illustration { margin-bottom: 20px; }
+  .antd-state-illustration-ring.r1 { width: 140px; height: 140px; }
+  .antd-state-illustration-ring.r2 { width: 170px; height: 170px; }
+}
+@media (max-width: 480px) {
+  .noaccess-shell {
+    grid-template-columns: 1fr 1fr;
+  }
+  .noaccess-side {
+    padding: 20px 12px;
+  }
+  .noaccess-brand-name { font-size: 14px; letter-spacing: 0; }
+  .noaccess-brand-mark { width: 32px; height: 32px; font-size: 16px; }
+  .noaccess-pitch h1 { font-size: 18px; margin-bottom: 6px; }
+  .noaccess-pitch p { font-size: 11px; line-height: 1.5; }
+  .noaccess-foot { font-size: 10px; }
+  .noaccess-content { padding: 16px 12px; }
+  .noaccess-card { padding: 20px 14px; }
+  .noaccess-title { font-size: 16px; margin-bottom: 6px; }
+  .noaccess-sub { font-size: 12px; margin-bottom: 16px; }
+  .antd-state-illustration { width: 88px; height: 88px; margin-bottom: 14px; border-radius: 18px; }
+  .antd-state-illustration-icon { width: 40px !important; height: 40px !important; }
+  .antd-state-illustration-ring.r1 { width: 116px; height: 116px; }
+  .antd-state-illustration-ring.r2 { width: 142px; height: 142px; }
+  .antd-state-illustration::before { inset: 6px; border-radius: 14px; }
+  .noaccess-user { padding: 10px 12px; margin-bottom: 16px; }
+  .noaccess-avatar { width: 32px; height: 32px; font-size: 12px; }
+  .noaccess-user-name { font-size: 13px; }
+  .noaccess-user-meta { font-size: 11px; }
+  .noaccess-actions { flex-direction: column; gap: 8px; margin-bottom: 14px; }
+  .noaccess-actions > * { height: 36px !important; font-size: 13px; }
+  .noaccess-logout { font-size: 12px; padding-top: 12px; }
+  .noaccess-features { display: none; }
+  .noaccess-flow { padding: 10px 12px; margin-top: 12px; }
+  .noaccess-flow-title { font-size: 11px; margin-bottom: 8px; }
+  .noaccess-flow-steps { grid-template-columns: 1fr; gap: 8px; }
+  .noaccess-flow-num { width: 20px; height: 20px; font-size: 11px; }
+  .noaccess-flow-step { font-size: 12px; }
+  .noaccess-flow-desc { font-size: 10px; }
+  .noaccess-flow-steps li:not(:last-child)::after { display: none; }
+  .noaccess-meta { padding: 8px 10px; margin-top: 10px; }
+  .noaccess-meta-item { font-size: 10px; gap: 6px; }
+  .noaccess-meta-label { width: 48px; }
+  .noaccess-modules { padding: 10px; margin-top: 10px; }
+  .noaccess-modules-title { font-size: 11px; margin-bottom: 8px; }
+  .noaccess-module-chip { font-size: 10px; padding: 3px 8px; }
+  .noaccess-status { font-size: 10px; margin-top: 10px; }
+}
+
+/* ============ 登录主按钮（v6 设计稿：蓝色渐变） ============ */
+.login-shell-v6 .login-submit.ant-btn {
+  width: 100%;
+  height: 42px;
+  border: none;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #1677ff 0%, #0958d9 100%);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 2px 0 rgba(22, 119, 255, 0.06);
+  transition: opacity 0.15s, transform 0.1s;
+  margin-top: 2px;
+}
+.login-shell-v6 .login-submit.ant-btn span { letter-spacing: 4px; }
+.login-shell-v6 .login-submit.ant-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1677ff 0%, #0958d9 100%);
+  opacity: 0.94;
+  color: #ffffff;
+}
+.login-shell-v6 .login-submit.ant-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.login-shell-v6 .login-submit.ant-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+.login-shell-v6 .login-submit.ant-btn.ant-btn-loading {
+  opacity: 0.88;
+  cursor: progress;
+}
+.login-shell-v6 .login-submit.ant-btn.ant-btn-loading:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1677ff 0%, #0958d9 100%);
+  opacity: 0.88;
+}
+.login-shell-v6 .login-submit.ant-btn .ant-btn-loading-icon { margin-right: 8px; }
+
+/* ============ 响应式：≤1024px 单栏堆叠，保留左侧品牌区（v6 设计稿约定） ============ */
+@media (max-width: 1024px) {
+  .login-shell-v6.login-shell,
+  .login-shell.login-shell-v6 {
+    grid-template-columns: 1fr;
+  }
+  /* 覆盖 v5 通用规则：v6 设计稿要求移动端保留品牌区并堆叠显示 */
+  .login-shell-v6 .login-side {
+    display: flex !important;
+  }
+}
+@media (max-width: 768px) {
+  .login-shell-v6 .login-side {
+    padding: 56px 40px;
+    gap: 48px;
+    min-height: 0;
+  }
+  .login-shell-v6 .login-pitch h1 {
+    font-size: 42px;
+    line-height: 1.25;
+  }
+  .login-shell-v6 .login-pitch .slogan {
+    font-size: 13px;
+    letter-spacing: 4px;
+  }
+  .login-shell-v6 .login-brand-mark {
+    width: 44px;
+    height: 44px;
+    font-size: 20px;
+  }
+  .login-shell-v6 .login-brand-name {
+    font-size: 17px;
+  }
+  .login-shell-v6 .login-brand-en {
+    font-size: 9px;
+    letter-spacing: 3px;
+  }
+  .login-shell-v6 .login-side::after {
+    width: 360px;
+    height: 360px;
+    right: -120px;
+    bottom: -120px;
+  }
+  .login-shell-v6 .login-side::before {
+    background-size: 48px 48px;
+  }
+}
+
+/* 移动端：表单单列时给表单容器适当留白（与 v5 一致） */
+@media (max-width: 480px) {
+  .login-shell-v6 .login-form-wrap { padding: 24px 20px; }
+}
+

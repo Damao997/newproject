@@ -8,6 +8,8 @@ import { z } from 'zod'
 export const loginSchema = z.object({
   username: z.string().trim().min(1, '用户名不能为空').max(64, '用户名过长'),
   password: z.string().min(1, '密码不能为空').max(128, '密码过长'),
+  // 勾选后服务端签发「7 天内免登录」持久令牌；仅在登录成功且勾选时下发，缺省 false
+  rememberMe: z.boolean().optional(),
 })
 export type LoginInput = z.infer<typeof loginSchema>
 
@@ -15,6 +17,12 @@ export const refreshSchema = z.object({
   refreshToken: z.string().min(1, 'refreshToken 不能为空'),
 })
 export type RefreshInput = z.infer<typeof refreshSchema>
+
+export const autoLoginSchema = z.object({
+  // 客户端持有的明文持久令牌；服务端 SHA-256 哈希后比对，不存明文
+  persistentLoginToken: z.string().min(1, '持久令牌不能为空').max(128, '持久令牌过长'),
+})
+export type AutoLoginInput = z.infer<typeof autoLoginSchema>
 
 export const updatePasswordSchema = z
   .object({

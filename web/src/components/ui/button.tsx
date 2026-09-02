@@ -18,14 +18,14 @@ const buttonVariants = cva(
         destructive:
           "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
         outline:
-          "border border-input bg-page hover:border-primary hover:bg-accent hover:text-accent-foreground focus-visible:border-input",
+          "border border-input bg-background hover:border-primary hover:bg-accent hover:text-accent-foreground focus-visible:border-input",
         secondary:
           "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
-        // 融合风格：基础态与页面底色（bg-page）同色 + 灰色描边，悬停/激活时描边变品牌色（antd default 按钮 hover 语义一致）
+        // 融合风格：纯白底（bg-background，antd default 按钮白底描边）+ 灰色描边，悬停/激活时描边变品牌色（浅灰页面底上保持组件白色层次）
         fused:
-          "border border-input bg-page text-foreground hover:border-primary hover:bg-primary/10 hover:text-primary active:border-primary focus-visible:border-input",
+          "border border-input bg-background text-foreground hover:border-primary hover:bg-primary/10 hover:text-primary active:border-primary focus-visible:border-input",
       },
       size: {
         default: "h-8 px-4 py-2",
@@ -52,7 +52,7 @@ function toAntdType(variant?: string | null): { type?: 'primary' | 'default' | '
       // secondary 附加浅色底（antd default 为白底）；fused hover 主色边框语义与 antd default hover 天然一致
       return {
         type: 'default',
-        className: variant === 'secondary' ? 'bg-secondary text-secondary-foreground hover:text-secondary-foreground' : variant === 'fused' ? 'bg-page hover:bg-primary/10 hover:text-primary' : undefined,
+        className: variant === 'secondary' ? 'bg-secondary text-secondary-foreground hover:text-secondary-foreground' : variant === 'fused' ? 'bg-background hover:bg-primary/10 hover:text-primary' : undefined,
       }
     case 'ghost':
       return { type: 'text' }

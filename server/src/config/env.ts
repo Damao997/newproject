@@ -34,6 +34,8 @@ export interface AppConfig {
   jwtRefreshSecret: string
   accessTokenTtl: string
   refreshTokenTtl: string
+  /** 「7 天内免登录」持久令牌有效期（天） */
+  persistentLoginTtlDays: number
   frontendOrigin: string
   bcryptCost: number
   logLevel: LogLevel
@@ -59,6 +61,7 @@ export function loadConfig(): AppConfig {
     jwtRefreshSecret: required('JWT_REFRESH_SECRET', 32),
     accessTokenTtl: optional('ACCESS_TOKEN_TTL', '15m'),
     refreshTokenTtl: optional('REFRESH_TOKEN_TTL', '7d'),
+    persistentLoginTtlDays: Number(optional('PERSISTENT_LOGIN_TTL_DAYS', '7')),
     frontendOrigin: optional('FRONTEND_ORIGIN', 'http://localhost:5173'),
     bcryptCost: Number(optional('BCRYPT_COST', '12')),
     logLevel: optional('LOG_LEVEL', 'INFO') as LogLevel,
@@ -76,6 +79,9 @@ export function loadConfig(): AppConfig {
   }
   if (Number.isNaN(config.bcryptCost) || config.bcryptCost < 12) {
     throw new Error('环境变量 BCRYPT_COST 非法（cost 必须 >= 12）')
+  }
+  if (Number.isNaN(config.persistentLoginTtlDays) || config.persistentLoginTtlDays < 1) {
+    throw new Error('环境变量 PERSISTENT_LOGIN_TTL_DAYS 非法（必须 >= 1）')
   }
 
   cached = config

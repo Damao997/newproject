@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>审计日志 · 系统 · 经营分析平台</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; }
+  .shell-side { background: #001529; color: rgba(255,255,255,0.85); display: flex; flex-direction: column; }
+  .shell-side-logo { height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #fff; }
+  .shell-side-logo-mark { width: 32px; height: 32px; background: var(--color-primary); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 16px; }
+  .shell-side-logo-text { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
+  .shell-side-nav { padding: 12px 0; flex: 1; overflow-y: auto; }
+  .shell-nav-group-title { padding: 12px 28px 8px; color: rgba(255,255,255,0.35); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .shell-nav-item { display: flex; align-items: center; gap: 12px; padding: 0 20px; height: 40px; color: rgba(255,255,255,0.75); cursor: pointer; transition: all 0.2s; border-left: 3px solid transparent; font-size: 14px; text-decoration: none; }
+  .shell-nav-item:hover { color: #fff; background: rgba(255,255,255,0.04); }
+  .shell-nav-item.is-active { background: var(--color-primary); color: #fff; border-left-color: #fff; }
+  .shell-nav-item.is-active .shell-nav-ic { color: #fff; }
+  .shell-nav-ic { width: 18px; flex-shrink: 0; color: rgba(255,255,255,0.55); }
+  .shell-nav-item:hover .shell-nav-ic { color: #fff; }
+
+  .shell-header { background: #fff; border-bottom: 1px solid var(--antd-gray-3); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .shell-header-l { display: flex; align-items: center; gap: 16px; }
+  .shell-header-r { display: flex; align-items: center; gap: 16px; }
+  .period-pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; background: var(--antd-gray-2); border-radius: var(--radius-medium); color: var(--color-foreground); font-size: 13px; cursor: pointer; }
+  .period-pill:hover { background: var(--antd-gray-3); }
+  .user-chip { display: flex; align-items: center; gap: 10px; padding: 4px 10px 4px 4px; border-radius: 20px; cursor: pointer; }
+  .user-chip:hover { background: var(--antd-gray-2); }
+  .user-chip-name { font-size: 13px; font-weight: 500; }
+  .user-chip-role { font-size: 11px; color: var(--color-text-tertiary); }
+
+  /* 筛选行 */
+  .filter-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 16px 20px;
+    background: var(--color-card);
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-large);
+    margin-bottom: var(--antd-space-4);
+  }
+  .filter-row .filter-label { color: var(--color-text-secondary); font-size: 13px; }
+  .filter-row .filter-act { margin-left: auto; display: flex; gap: 8px; }
+
+  /* 时间线 + 详情 */
+  .audit-layout { display: grid; grid-template-columns: 1fr 360px; gap: 16px; }
+
+  .panel-card { background: var(--color-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-large); overflow: hidden; }
+  .panel-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px; border-bottom: 1px solid var(--color-row-divider); }
+  .panel-head h3 { font-size: 15px; font-weight: 600; }
+  .panel-head .panel-meta { color: var(--color-text-tertiary); font-size: 12px; }
+  .panel-body { padding: 20px 24px; }
+
+  /* 垂直时间线 */
+  .tl { position: relative; }
+  .tl::before {
+    content: "";
+    position: absolute;
+    left: 18px; top: 0; bottom: 0;
+    width: 2px;
+    background: var(--antd-gray-3);
+  }
+  .tl-item { position: relative; padding: 0 0 18px 56px; }
+  .tl-item:last-child { padding-bottom: 0; }
+  .tl-dot {
+    position: absolute;
+    left: 6px; top: 4px;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: var(--color-card);
+    border: 2px solid var(--color-border);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1;
+  }
+  .tl-dot::after {
+    content: "";
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--color-text-tertiary);
+  }
+  .tl-item.login .tl-dot { border-color: var(--antd-state-success); }
+  .tl-item.login .tl-dot::after { background: var(--antd-state-success); }
+  .tl-item.data  .tl-dot { border-color: var(--color-primary); }
+  .tl-item.data  .tl-dot::after { background: var(--color-primary); }
+  .tl-item.perm  .tl-dot { border-color: var(--antd-orange-500); }
+  .tl-item.perm  .tl-dot::after { background: var(--antd-orange-500); }
+  .tl-item.sys   .tl-dot { border-color: var(--antd-state-warning); }
+  .tl-item.sys   .tl-dot::after { background: var(--antd-state-warning); }
+  .tl-head {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 6px;
+  }
+  .tl-title { font-size: 14px; font-weight: 600; color: var(--color-foreground); }
+  .tl-time { color: var(--color-text-tertiary); font-size: 12px; font-variant-numeric: tabular-nums; margin-left: auto; }
+  .tl-body { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--color-text-secondary); }
+  .tl-user { color: var(--color-foreground); font-weight: 500; }
+  .tl-action { margin-left: auto; }
+
+  /* 详情抽屉 */
+  .drawer-card {
+    background: var(--color-card);
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-large);
+    box-shadow: var(--antd-shadow-sm);
+    padding: 20px;
+    position: sticky; top: 76px;
+  }
+  .drawer-card .drawer-title { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+  .drawer-card .drawer-meta { color: var(--color-text-tertiary); font-size: 12px; margin-bottom: 16px; }
+  .drawer-card .drawer-section { margin-bottom: 16px; }
+  .drawer-card .drawer-section h4 { font-size: 12px; color: var(--color-text-tertiary); font-weight: 500; margin-bottom: 8px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .drawer-card .kv-row { display: flex; gap: 8px; padding: 4px 0; font-size: 13px; }
+  .drawer-card .kv-key { color: var(--color-text-secondary); min-width: 80px; }
+  .drawer-card .kv-val { color: var(--color-foreground); font-family: var(--antd-font-family-mono); }
+  .drawer-empty {
+    color: var(--color-text-tertiary);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .drawer-empty svg { color: var(--antd-brand-300); margin-bottom: 8px; }
+
+  .antd-table.antd-table-zebra tbody tr:nth-child(even) td { background: var(--color-table-zebra); }
+  .antd-table.antd-table-zebra tbody tr:hover td { background: var(--color-table-hover); }
+</style>
+</head>
+<body>
+<div class="antd-page">
+  <aside class="shell-side" style="grid-column: 1;">
+    <div class="shell-side-logo">
+      <div class="shell-side-logo-mark">J</div>
+      <div class="shell-side-logo-text">经营分析平台</div>
+    </div>
+    <nav class="shell-side-nav">
+      <div class="shell-nav-group-title">主数据</div>
+      <a class="shell-nav-item" href="dashboard.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        首页看板
+      </a>
+      <a class="shell-nav-item" href="indicators-operating.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+        财务指标
+      </a>
+      <a class="shell-nav-item" href="transactions-overview.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+        往来分析
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7-4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        存货管理
+      </a>
+      <a class="shell-nav-item" href="reports-list.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+        分析报告
+      </a>
+      <div class="shell-nav-group-title">业务工具</div>
+      <a class="shell-nav-item" href="enterprise-lookup.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        企业信息查询
+      </a>
+      <div class="shell-nav-group-title">数据管理</div>
+      <a class="shell-nav-item" href="data-import.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        数据导入
+      </a>
+      <a class="shell-nav-item" href="data-reclassify.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h12"/></svg>
+        重分类管理
+      </a>
+      <a class="shell-nav-item" href="data-dimensions.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        维度管理
+      </a>
+      <div class="shell-nav-group-title">系统</div>
+      <a class="shell-nav-item" href="admin-users.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><circle cx="17" cy="7" r="3"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
+        用户管理
+      </a>
+      <a class="shell-nav-item is-active" href="admin-roles.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+        角色权限
+      </a>
+    </nav>
+  </aside>
+
+  <main class="antd-content">
+    <header class="shell-header">
+      <div class="shell-header-l">
+        <div class="antd-breadcrumb">
+          <span>首页</span><span class="sep">/</span>
+          <a href="admin-users.html">系统</a><span class="sep">/</span>
+          <a href="admin-roles.html">角色权限</a><span class="sep">/</span>
+          <span class="current">审计日志</span>
+        </div>
+      </div>
+      <div class="shell-header-r">
+        <div class="antd-select" style="min-width: 160px;">浙江壹品慧生活集团</div>
+        <div class="period-pill">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          2026-08-27
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <button class="antd-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          刷新
+        </button>
+        <div class="user-chip">
+          <div class="antd-avatar" style="background: var(--antd-brand-100); color: var(--color-primary);">张</div>
+          <div>
+            <div class="user-chip-name">张伟</div>
+            <div class="user-chip-role">财务总监</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="antd-content-body">
+      <div class="antd-page-head">
+        <div>
+          <div class="antd-page-head-title">审计日志</div>
+          <div class="antd-page-head-desc">记录用户登录、数据操作、权限变更、系统事件等行为</div>
+        </div>
+        <div class="antd-page-head-actions">
+          <button class="antd-btn">导出日志</button>
+          <button class="antd-btn antd-btn-primary">高级搜索</button>
+        </div>
+      </div>
+
+      <!-- 筛选行 -->
+      <div class="filter-row">
+        <span class="filter-label">角色</span>
+        <div class="antd-select" style="min-width: 140px;">全部角色</div>
+        <span class="filter-label">模块</span>
+        <div class="antd-select" style="min-width: 140px;">全部模块</div>
+        <span class="filter-label">用户</span>
+        <input class="antd-input" placeholder="按姓名/工号搜索" style="width: 180px;" />
+        <span class="filter-label">类型</span>
+        <div class="antd-select" style="min-width: 120px;">全部类型</div>
+        <span class="filter-label">时间</span>
+        <div class="antd-select" style="min-width: 220px;">2026-08-27 00:00 ~ 23:59</div>
+        <div class="filter-act">
+          <button class="antd-btn">重置</button>
+          <button class="antd-btn antd-btn-primary">查询</button>
+        </div>
+      </div>
+
+      <div class="audit-layout">
+        <!-- 时间线 -->
+        <div class="panel-card">
+          <div class="panel-head">
+            <div>
+              <h3>时间线流 · 今日 12 条</h3>
+              <div class="panel-meta">登录 / 数据 / 权限 / 系统 · 时间倒序</div>
+            </div>
+            <div class="antd-flex">
+              <span class="antd-pill is-green">登录 3</span>
+              <span class="antd-pill is-blue">数据 4</span>
+              <span class="antd-pill is-orange">权限 2</span>
+              <span class="antd-pill is-gray">系统 3</span>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="tl">
+              <div class="tl-item data">
+                <div class="tl-dot"></div>
+                <div class="tl-head">
+                  <span class="tl-title">数据导入</span>
+                  <span class="antd-pill is-blue">数据</span>
+                  <span class="tl-time">14:23:08</span>
+                </div>
+                <div class="tl-body">
+                  <span>导入 8 月经营数据（1,248 条） · 来源：ERP 凭证同步</span>
+                  <span class="antd-avatar antd-avatar-sm" style="background: var(--antd-brand-100); color: var(--color-primary);">王</span>
+                  <span class="tl-user">王芳</span>
+                  <span class="tl-action"><button class="antd-btn antd-btn-sm">详情</button></span>
+                </div>
+              </div>
+              <div class="tl-item data">
+                <div class="tl-dot"></div>
+                <div class="tl-head">
+                  <span class="tl-title">科目重分类</span>
+                  <span class="antd-pill is-blue">数据</span>
+                  <span class="tl-time">13:08:42</span>
+                </div>
+                <div class="tl-body">
+                  <span>管理费用-办公费 ¥12,500 → 管理费用-差旅费（已生效）</span>
+                  <span class="antd-avatar antd-avatar-sm" style="background: var(--antd-brand-100); color: var(--color-primary);">王</span>
+                  <span class="tl-user">王芳</span>
+                  <span class="tl-action"><button class="antd-btn antd-btn-sm">详情</button></span>
+                </div>
+              </div>
+              <div class="tl-item perm">
+                <div class="tl-dot"></div>
+                <div class="tl-head">
+                  <span class="tl-title">角色权限变更</span>
+                  <span class="antd-pill is-orange">权限</span>
+                  <span class="tl-time">11:42:15</span>
+                </div>
+                <div class="tl-body">
+                  <span>财务经理「存货」模块由「仅查看」改为「查看+编辑」</span>
+                  <span class="antd-avatar antd-avatar-sm" style="background: var(--antd-state-success-bg); color: var(--antd-state-success);">陈</span>
+                  <span class="tl-user">陈勇</span>
+                  <span class="tl-action"><button class="antd-btn antd-btn-sm">详情</button></span>
+                </div>
+              </div>
+              <div class="tl-item data">
+                <div class="tl-dot"></div>
+                <div class="tl-head">
+                  <span class="tl-title">跨公司重分类</span>
+                  <span class="antd-pill is-blue">数据</span>
+                  <span class="tl-time">11:08:32</span>
+                </div>
+                <div class="tl-body">
+                  <span>应收账款-A公司 ¥86,000 → 应收账款-B公司（待复核）</span>
+                  <span class="antd-avatar antd-avatar-sm" style="background: #f9f0ff; color: #722ed1;">李</span>
+                  <span class="tl-user">李娜</span>
+                  <span class="tl-action"><button class="antd-btn antd-btn-sm">详情</button></span>
+                </div>
+              </div>
+              <div class="tl-item login">
+                <div class="tl-dot"></div>
+                <div class="tl-head">
+                  <span class="tl-title">用户登录</span>
+                  <span class="antd-pill is-green">登录</span>
+                  <span class="tl-time">10:55:01</span>
+                </div>
+                <div class="tl-body">
+                  <span>通过 SSO 单点登录 · 浏览器 Chrome 128 · IP 10.20.3.45</span>
+                  <span class="antd-avatar antd-avatar-sm" style="background: var(--antd-brand-100); color: var(--color-primary);">张</span>
+                  <span class="tl-user">张伟</span>
+                  <span class="tl-action"><button class="antd-btn antd-btn-sm">详情</button></span>
+                </div>
+              </div>
+              <div class="tl-item sys">
+                <div class="tl-dot"></div>
+                <div class="tl-head">
+                  <span class="tl-title">系统告警</span>
+                  <span class="antd-pill is-gray">系统</span>
+                  <span class="tl-time">10:32:18</span>
+                </div>
+                <div class="tl-body">
+                  <span>A 公司科目映射缺失 · 影响 1 个科目 · 已自动告警</span>
+                  <span class="antd-avatar antd-avatar-sm" style="background: var(--antd-gray-2); color: var(--color-text-secondary);">系</span>
+                  <span class="tl-user">系统</span>
+                  <span class="tl-action"><button class="antd-btn antd-btn-sm">详情</button></span>
+                </div>
+              </div>
+              <div class="tl-item data">
+                <div class="tl-dot"></div>
+                <div class="tl-head">
+                  <span class="tl-title">预算调整</span>
+                  <span class="antd-pill is-blue">数据</span>
+                  <span class="tl-time">09:48:55</span>
+                </div>
+                <div class="tl-body">
+                  <span>销售费用-广告 ¥200,000 → ¥260,000（审批中）</span>
+                  <span class="antd-avatar antd-avatar-sm" style="background: var(--antd-state-success-bg); color: var(--antd-state-success);">陈</span>
+                  <span class="tl-user">陈勇</span>
+                  <span class="tl-action"><button class="antd-btn antd-btn-sm">详情</button></span>
+                </div>
+              </div>
+              <div class="tl-item login">
+                <div class="tl-dot"></div>
+                <div class="tl-head">
+                  <span class="tl-title">用户登录</span>
+                  <span class="antd-pill is-green">登录</span>
+                  <span class="tl-time">09:15:32</span>
+                </div>
+                <div class="tl-body">
+                  <span>通过 SSO 单点登录 · 浏览器 Edge 128 · IP 10.20.3.62</span>
+                  <span class="antd-avatar antd-avatar-sm" style="background: var(--antd-state-success-bg); color: var(--antd-state-success);">陈</span>
+                  <span class="tl-user">陈勇</span>
+                  <span class="tl-action"><button class="antd-btn antd-btn-sm">详情</button></span>
+                </div>
+              </div>
+              <div class="tl-item perm">
+                <div class="tl-dot"></div>
+                <div class="tl-head">
+                  <span class="tl-title">用户角色调整</span>
+                  <span class="antd-pill is-orange">权限</span>
+                  <span class="tl-time">08:50:14</span>
+                </div>
+                <div class="tl-body">
+                  <span>赵敏（销售员）→「业务经理」 · 影响 12 个模块</span>
+                  <span class="antd-avatar antd-avatar-sm" style="background: var(--antd-brand-100); color: var(--color-primary);">张</span>
+                  <span class="tl-user">张伟</span>
+                  <span class="tl-action"><button class="antd-btn antd-btn-sm">详情</button></span>
+                </div>
+              </div>
+              <div class="tl-item sys">
+                <div class="tl-dot"></div>
+                <div class="tl-head">
+                  <span class="tl-title">数据同步</span>
+                  <span class="antd-pill is-gray">系统</span>
+                  <span class="tl-time">08:30:00</span>
+                </div>
+                <div class="tl-body">
+                  <span>每日定时同步任务 · 8 个主体 · 成功 7 · 失败 1（A 公司）</span>
+                  <span class="antd-avatar antd-avatar-sm" style="background: var(--antd-gray-2); color: var(--color-text-secondary);">系</span>
+                  <span class="tl-user">系统</span>
+                  <span class="tl-action"><button class="antd-btn antd-btn-sm">详情</button></span>
+                </div>
+              </div>
+              <div class="tl-item login">
+                <div class="tl-dot"></div>
+                <div class="tl-head">
+                  <span class="tl-title">用户登录</span>
+                  <span class="antd-pill is-green">登录</span>
+                  <span class="tl-time">08:12:48</span>
+                </div>
+                <div class="tl-body">
+                  <span>通过 SSO 单点登录 · 浏览器 Chrome 128 · IP 10.20.3.78</span>
+                  <span class="antd-avatar antd-avatar-sm" style="background: #f9f0ff; color: #722ed1;">李</span>
+                  <span class="tl-user">李娜</span>
+                  <span class="tl-action"><button class="antd-btn antd-btn-sm">详情</button></span>
+                </div>
+              </div>
+              <div class="tl-item sys">
+                <div class="tl-dot"></div>
+                <div class="tl-head">
+                  <span class="tl-title">系统启动</span>
+                  <span class="antd-pill is-gray">系统</span>
+                  <span class="tl-time">00:00:01</span>
+                </div>
+                <div class="tl-body">
+                  <span>系统正常启动 · 加载 8 个主体 · 配置 3 个汇总主体</span>
+                  <span class="antd-avatar antd-avatar-sm" style="background: var(--antd-gray-2); color: var(--color-text-secondary);">系</span>
+                  <span class="tl-user">系统</span>
+                  <span class="tl-action"><button class="antd-btn antd-btn-sm">详情</button></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右侧详情抽屉占位 -->
+        <div class="drawer-card">
+          <div class="drawer-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+            审计详情
+          </div>
+          <div class="drawer-meta">点击左侧时间线条目展开详情</div>
+          <div class="drawer-empty">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            <div>从时间线中选择一条审计记录以查看详细操作：</div>
+            <ul style="margin: 12px 0 0 16px; padding: 0; line-height: 1.9;">
+              <li>用户身份 / IP / 设备指纹</li>
+              <li>操作模块 / 动作类型</li>
+              <li>变更前后内容（Diff）</li>
+              <li>关联业务单据 / 凭证</li>
+              <li>审批流与状态轨迹</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

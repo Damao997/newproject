@@ -1,4 +1,4 @@
-﻿import { useExpenseAnalysis } from '@/hooks/api-queries'
+import { useExpenseAnalysis } from '@/hooks/api-queries'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { TipLabel } from '@/components/ui/tip-label'
 import { totalMetrics } from './budget-total'
@@ -46,7 +46,7 @@ const TD_CLS = 'px-3 py-2 text-right font-num text-sm text-foreground'
 type MetricOf = Omit<ExpenseAnalysisRow, 'code' | 'name'>
 
 /**
- * 运营费用分析内容（综合分析卡「运营费用」页，单期间）：按映射配置（看板管理 > 运营费用映射）聚合的运营费用科目，
+ * 运营费用分析内容（综合分析卡「运营费用」页，单期间）：按映射配置（映射管理 > 运营费用映射）聚合的运营费用科目，
  * 同时展示月度完成情况（月度预算/本月金额/使用率/预警/同期金额/同比）与
  * 财年累计完成情况（年度预算/累计金额/使用率/预警/同期累计金额/财年同比）。
  * 使用率以橙色进度条展示；预警按费用类红绿灯：使用率 <75 绿 / 75-100 黄 / >100 红，

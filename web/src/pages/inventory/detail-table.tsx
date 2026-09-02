@@ -94,10 +94,6 @@ interface DetailTableProps {
   /** 当前钻取品类显示名（主文件从 overview/明细行解析） */
   categoryName: string
   canAnalyze: boolean
-  /** 按公司汇总行「分析」禁用态：存货根科目静态树未就绪 */
-  companyAnalyzeDisabled: boolean
-  /** 按公司汇总行「分析」：公司级分析（存货根科目），主文件提供上下文 */
-  onAnalyzeCompany: (row: ViewRow) => void
   /** 行级「分析」抽屉打开（公司×品类明细模式） */
   onAnalyze: (target: AnalysisTarget) => void
 }
@@ -116,8 +112,6 @@ export function DetailTable({
   categoryCode,
   categoryName,
   canAnalyze,
-  companyAnalyzeDisabled,
-  onAnalyzeCompany,
   onAnalyze,
 }: DetailTableProps) {
   const setInventory = usePageStore((s) => s.setInventory)
@@ -422,7 +416,8 @@ export function DetailTable({
                     <SortableTh label="较年初" sortKey="vsYearStart" sort={sort} onSort={cycleSort} />
                     <SortableTh label="同期金额" sortKey="samePeriod" sort={sort} onSort={cycleSort} />
                     <SortableTh label="同比" sortKey="yoy" sort={sort} onSort={cycleSort} />
-                    {canAnalyze && detailDim !== 'category' && <th className="px-2 py-2 font-medium">操作</th>}
+                    {/* 操作列仅公司×品类明细维度提供（按公司汇总的公司级分析依赖存货根科目静态树，未就绪前不渲染占位按钮） */}
+                    {canAnalyze && detailDim === 'detail' && <th className="px-2 py-2 font-medium">操作</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -452,20 +447,12 @@ export function DetailTable({
                           <span className="font-num text-muted-foreground">-</span>
                         )}
                       </td>
-                      {canAnalyze && detailDim !== 'category' && (
+                      {canAnalyze && detailDim === 'detail' && (
                         <td className="px-2 py-2 text-center">
-                          {detailDim === 'company' ? (
-                            // 按公司汇总：公司级分析（存货根科目）；静态树未就绪时禁用
-                            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" disabled={companyAnalyzeDisabled} onClick={() => onAnalyzeCompany(row)}>
-                              <FileText className="mr-1 h-3.5 w-3.5" />
-                              分析
-                            </Button>
-                          ) : (
-                            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => handleAnalyze(row)}>
-                              <FileText className="mr-1 h-3.5 w-3.5" />
-                              分析
-                            </Button>
-                          )}
+                          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => handleAnalyze(row)}>
+                            <FileText className="mr-1 h-3.5 w-3.5" />
+                            分析
+                          </Button>
                         </td>
                       )}
                     </tr>
@@ -483,7 +470,7 @@ export function DetailTable({
                     <td className="px-2 py-2 text-right"><ChangeRate current={totals.current} base={totals.yearStart} /></td>
                     <td className="px-2 py-2 text-right font-num">{formatMoneyWan(totals.samePeriod)}</td>
                     <td className="px-2 py-2 text-right"><ChangeRate current={totals.current} base={totals.samePeriod} /></td>
-                    {canAnalyze && detailDim !== 'category' && <td className="px-2 py-2" />}
+                    {canAnalyze && detailDim === 'detail' && <td className="px-2 py-2" />}
                   </tr>
                 </tfoot>
               </table>

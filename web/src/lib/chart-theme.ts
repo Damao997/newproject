@@ -40,6 +40,12 @@ export const SIDEBAR_PRESETS: Record<
     primaryHover: '#374151',
     chart1: '#7A9BF2',
   },
+  antd: {
+    label: '深蓝',
+    primary: '#1677ff',
+    primaryHover: '#4096ff',
+    chart1: '#1677ff',
+  },
 }
 
 /** 按侧边栏风格返回图表序列色：首位替换为风格主色（chart1），其余 12 色保持和谐化多色不变 */
@@ -66,29 +72,29 @@ export const CHART_SERIES = [
   '#6B7F99', // --chart-13 蓝灰
 ]
 
-/** 图表框架色（文字/坐标轴/网格/浮层），对应暖中性令牌 */
+/** 图表框架色（文字/坐标轴/网格/浮层），对应中性令牌（antd B 端规范） */
 export const CHART_INK = {
-  /** 主文字，对应 --foreground */
-  text: '#1C1917',
-  /** 次级文字，对应 --muted-foreground */
-  sub: '#7C7069',
-  /** 坐标轴刻度文字 */
-  axis: '#A8A29A',
-  /** 分割线，对应 --border */
-  grid: '#E9E2DB',
+  /** 主文字，对应 --foreground（#1F1F1F，antd colorText） */
+  text: '#1F1F1F',
+  /** 次级文字，对应 --muted-foreground（#666666） */
+  sub: '#666666',
+  /** 坐标轴刻度文字（antd colorTextTertiary #8C8C8C） */
+  axis: '#8C8C8C',
+  /** 分割线，对应 --border（#D9D9D9，antd colorBorder） */
+  grid: '#D9D9D9',
   /** 卡片/浮层底色，对应 --card，也用作数据点描边 */
   surface: '#FFFFFF',
   /** 浮层底色，对应 --popover */
   tooltipBg: '#FFFFFF',
   /** 浮层边框，对应 --border */
-  tooltipBorder: '#E9E2DB',
+  tooltipBorder: '#D9D9D9',
 }
 
 /**
- * 暗色图表框架色已移除：主页面恒白，ECharts 始终使用亮色框架。
+ * 暗色图表框架色已移除：页面浅灰、组件恒白，ECharts 始终使用亮色框架。
  */
 
-/** 图表框架色：主页面恒白，始终使用亮色框架 */
+/** 图表框架色：页面浅灰、组件恒白，始终使用亮色框架 */
 export function getChartInk() {
   return CHART_INK
 }
@@ -103,9 +109,9 @@ export const tooltipShell = (ink = CHART_INK) => ({
   borderWidth: 1,
   padding: [12, 16] as [number, number],
   textStyle: { color: ink.text, fontSize: 13 },
-  // 对齐 antd 浮层三层暖褐阴影（boxShadowSecondary），tooltip 与 antd 弹层质感统一
+  // 对齐 antd 浮层冷灰阴影（boxShadowSecondary），tooltip 与 antd 弹层质感统一
   shadowBlur: 12,
-  shadowColor: 'rgba(28, 20, 12, 0.08)',
+  shadowColor: 'rgba(0, 21, 41, 0.08)',
   shadowOffsetY: 4,
 })
 
@@ -133,7 +139,7 @@ export const THEME_HEX = {
   foreground: CHART_INK.text,
   mutedForeground: CHART_INK.sub,
   border: CHART_INK.grid,
-  borderSubtle: '#F2ECE6',
-  muted: '#F7F3EF',
+  borderSubtle: '#F0F0F0',
+  muted: '#F5F5F5',
   accent: '#FDF4EC',
 }

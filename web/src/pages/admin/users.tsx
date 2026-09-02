@@ -1,415 +1,484 @@
 import { useMemo, useState } from 'react'
-import { Card, CardContent } from '@/components/ui/card'
+import { Download, Loader2, MoreHorizontal, Plus, RefreshCw, Search } from 'lucide-react'
+import { PageContainer } from '@/components/layout/page-container'
+import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { PageContainer } from '@/components/layout/page-container'
-import { useStickyHeader } from '@/hooks/useStickyHeader'
+import { Switch } from '@/components/ui/switch'
+import { Pill } from '@/components/ui/pill'
 import { FlashMessage } from '@/components/ui/flash-message'
-import { useConfirm } from '@/components/ui/confirm-dialog'
-import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
+import { EmptyState } from '@/components/ui/empty-state'
 import { Pagination } from '@/components/data-table/pagination'
-import { usePermission } from '@/hooks/usePermission'
-import { useUsers, useRoles, useUpdateUser, useDisableUser, usePurgeUser, type RoleItem } from '@/hooks/api-queries'
-import { UserDialog, ResetPasswordDialog } from './dialogs'
-import { exportToExcel } from '@/lib/export'
-import { PAGINATION, ROLE_NAMES } from '@/lib/constants'
-import {
-  Download,
-  Plus,
-  Search,
-  MoreHorizontal,
-  Edit,
-  Key,
-  Loader2,
-  UserCheck,
-  UserX,
-  Users,
-  ShieldAlert,
-} from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import type { User, UserRole } from '@/types'
+import { useConfirm } from '@/components/ui/confirm-dialog'
+import { cn } from '@/lib/utils'
+import {
+  useUsers,
+  useRoles,
+  useDisableUser,
+  usePurgeUser,
+  useUpdateUser,
+  type RoleItem,
+} from '@/hooks/api-queries'
+import { usePermission } from '@/hooks/usePermission'
+import { api } from '@/lib/api'
+import { downloadBlob } from '@/lib/export'
+import { UserDialog, ResetPasswordDialog } from './dialogs'
+import type { User } from '@/types'
 
-const USER_PAGE_SIZE = PAGINATION.DEFAULT_PAGE_SIZE
-/** 用户列表一次性拉取上限（前端筛选/分页），超出时展示截断提示 */
-const USER_FETCH_LIMIT = 500
+/** 用户管理：账号列表、角色分配、启停/删除/密码/导出（数据全部来自真实接口） */
 
-/** 用户管理：用户增删改查、角色分配与启用/停用状态管理。 */
+const PAGE_SIZE = 10
+
+/** 头像渐变色板（按 id 哈希取色，避免依赖 mock 字段） */
+const AVATAR_GRADIENTS = [
+  'linear-gradient(135deg, #1677ff, #4096ff)',
+  'linear-gradient(135deg, #52c41a, #95de64)',
+  'linear-gradient(135deg, #722ed1, #b37feb)',
+  'linear-gradient(135deg, #fa8c16, #ffc069)',
+  'linear-gradient(135deg, #13c2c2, #5cdbd3)',
+  'linear-gradient(135deg, #eb2f96, #ff85c0)',
+  'linear-gradient(135deg, #2f54eb, #85a5ff)',
+]
+
+/** 角色编码 → 标签色调（与设计稿语义一致：超管红 / 管理员橙 / 财务蓝 / 其余灰） */
+const ROLE_TONES: Record<string, 'red' | 'orange' | 'blue' | 'gray'> = {
+  superadmin: 'red',
+  admin: 'orange',
+  finance_manager: 'blue',
+  department_manager: 'gray',
+  viewer: 'gray',
+  finance_analyst_it: 'gray',
+}
+
+function formatTime(value?: string | null): string {
+  if (!value) return '—'
+  const d = new Date(value)
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('zh-CN')
+}
+
+function UserAvatar({ user }: { user: User }) {
+  const idx = [...user.id].reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % AVATAR_GRADIENTS.length
+  const letter = (user.name || user.username).slice(0, 1)
+  return (
+    <div
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-medium text-white"
+      style={{ background: AVATAR_GRADIENTS[idx] }}
+    >
+      {letter}
+    </div>
+  )
+}
+
+function KpiCard({ label, value, sub, dotClass, subClass }: { label: string; value: number; sub: string; dotClass: string; subClass?: string }) {
+  return (
+    <div className="rounded-card border border-border bg-card px-5 py-4">
+      <div className="text-[13px] text-muted-foreground">
+        <span className={cn('mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle', dotClass)} />
+        {label}
+      </div>
+      <div className="mt-1 text-[24px] font-semibold tabular-nums">{value}</div>
+      <div className={cn('mt-1 text-xs', subClass ?? 'text-muted-foreground')}>{sub}</div>
+    </div>
+  )
+}
+
 export default function UsersPage() {
-  const { can, role: currentRole } = usePermission()
-  // 吸顶测量：标题区 + 筛选卡高度实时测量，驱动筛选卡/表格容器吸顶偏移
-  const { headerRef, filterRef, headerHeight, filterHeight } = useStickyHeader()
-  const stickyTop = headerHeight + filterHeight
-  const canCreateUser = can('admin:users', 'create')
-  const canUpdateUser = can('admin:users', 'update')
-  const canResetPassword = can('admin:users', 'reset-password')
-  const canDeleteUser = can('admin:users', 'delete')
-  const canPurgeUser = can('admin:users', 'purge')
-  const canExportUser = can('admin:users', 'export')
-  const hasUserActions = canUpdateUser || canResetPassword || canDeleteUser || canPurgeUser
+  const { can } = usePermission()
+  const canCreate = can('admin:users', 'create')
+  const canUpdate = can('admin:users', 'update')
+  const canDelete = can('admin:users', 'delete')
+  const canResetPwd = can('admin:users', 'reset-password')
+  const canExport = can('admin:users', 'export')
+  // 彻底删除：admin:users:purge 为高危码，静态矩阵下仅 superadmin 持有
+  const canPurge = can('admin:users', 'purge')
 
-  const [searchQuery, setSearchQuery] = useState('')
+  const { data: rolesData } = useRoles()
+  const roles = (rolesData ?? []) as RoleItem[]
+  const roleNameOf = useMemo(() => new Map(roles.map((r) => [r.code, r.name])), [roles])
+
+  const usersQuery = useUsers({ page: 1, pageSize: 500 })
+  const users = (usersQuery.data?.items ?? []) as User[]
+  const totalFromServer = usersQuery.data?.total ?? 0
+
+  // ---- 筛选 / 分页（拉取全量后客户端过滤，保证筛选与计数一致） ----
   const [roleFilter, setRoleFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [searchValue, setSearchValue] = useState('')
   const [page, setPage] = useState(1)
 
-  // 弹窗状态
+  const roleChips = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const u of users) counts.set(u.role, (counts.get(u.role) ?? 0) + 1)
+    const known = roles.map((r) => ({ code: r.code, name: r.name, count: counts.get(r.code) ?? 0 }))
+    const knownCodes = new Set(known.map((r) => r.code))
+    const extra = [...counts.keys()].filter((c) => !knownCodes.has(c)).map((c) => ({ code: c, name: c, count: counts.get(c) ?? 0 }))
+    return [...known, ...extra]
+  }, [users, roles])
+
+  const filtered = useMemo(() => {
+    const kw = searchValue.trim().toLowerCase()
+    return users.filter((u) => {
+      if (roleFilter !== 'all' && u.role !== roleFilter) return false
+      if (statusFilter !== 'all' && u.status !== statusFilter) return false
+      if (kw && !`${u.name} ${u.username} ${u.dataScope}`.toLowerCase().includes(kw)) return false
+      return true
+    })
+  }, [users, roleFilter, statusFilter, searchValue])
+
+  const total = filtered.length
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const safePage = Math.min(page, totalPages)
+  const paged = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
+
+  const changeFilter = <T,>(setter: (v: T) => void) => (v: T) => { setter(v); setPage(1) }
+  const handleRoleChip = changeFilter<string>(setRoleFilter)
+  const handleStatusFilter = changeFilter<string>(setStatusFilter)
+  const handleSearch = changeFilter<string>(setSearchValue)
+  const resetFilters = () => { setRoleFilter('all'); setStatusFilter('all'); setSearchValue(''); setPage(1) }
+
+  // ---- KPI（由当前查询结果派生，无 mock） ----
+  const kpis = useMemo(() => {
+    const active = users.filter((u) => u.status === 'active').length
+    const inactive = users.length - active
+    const mustChange = users.filter((u) => u.mustChangePassword).length
+    return [
+      { label: '用户总数', value: totalFromServer, sub: '系统账号合计', dotClass: 'bg-[#1677ff]' },
+      { label: '活跃用户', value: active, sub: '当前拉取范围', dotClass: 'bg-[#52c41a]', subClass: 'text-[#52c41a]' },
+      { label: '已停用', value: inactive, sub: '当前拉取范围', dotClass: 'bg-[#ff4d4f]' },
+      { label: '待改密', value: mustChange, sub: '首次登录/重置后须修改', dotClass: 'bg-[#fa8c16]' },
+    ]
+  }, [users, totalFromServer])
+
+  // ---- 操作与对话框状态 ----
   const [userDialog, setUserDialog] = useState<{ open: boolean; mode: 'create' | 'edit'; user: User | null }>({ open: false, mode: 'create', user: null })
-  const [resetUser, setResetUser] = useState<User | null>(null)
-
-  // 操作反馈（成功/失败，自动消失）
-  const [flash, setFlash] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
-  // 导出 loading（防重复提交）
+  const [resetTarget, setResetTarget] = useState<User | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [actionNotice, setActionNotice] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
-
-  // 确认对话框：停用 danger 红色；彻底删除 danger + 输入用户名防呆
+  const [exportError, setExportError] = useState<string | null>(null)
   const { confirm, element: confirmElement } = useConfirm()
 
-  // 真实数据（用户量小，取较大页在前端做筛选/分页，保留原交互）
-  const { data: usersData } = useUsers({ page: 1, pageSize: USER_FETCH_LIMIT })
-  const { data: rolesData } = useRoles()
-  const updateUser = useUpdateUser()
   const disableUser = useDisableUser()
   const purgeUser = usePurgeUser()
+  const updateUser = useUpdateUser()
 
-  const allUsers = useMemo(() => (usersData?.items ?? []) as User[], [usersData])
-  const roles = useMemo(() => (rolesData ?? []) as RoleItem[], [rolesData])
-  const usersTruncated = (usersData?.total ?? 0) > USER_FETCH_LIMIT
+  const toErrorMessage = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback)
 
-  // 防提权（前端门禁，后端子集规则兜底）：非 superadmin 不可分配 superadmin 角色
-  const assignableRoles = useMemo(
-    () => roles.filter((r) => currentRole === 'superadmin' || r.code !== 'superadmin'),
-    [roles, currentRole],
-  )
-
-  // 角色名称：优先用后端角色列表映射（覆盖自定义/克隆角色），缺失时回退预置常量
-  const roleNameMap = useMemo(() => new Map(roles.map((r) => [r.code, r.name])), [roles])
-  const getRoleName = (role: UserRole) => roleNameMap.get(role) ?? ROLE_NAMES[role] ?? role
-
-  const filteredUsers = useMemo(
-    () =>
-      allUsers.filter((user) => {
-        if (roleFilter !== 'all' && user.role !== roleFilter) return false
-        if (statusFilter !== 'all' && user.status !== statusFilter) return false
-        if (searchQuery) {
-          const q = searchQuery.toLowerCase()
-          if (!user.username.toLowerCase().includes(q) && !user.name.toLowerCase().includes(q)) return false
-        }
-        return true
-      }),
-    [allUsers, roleFilter, statusFilter, searchQuery],
-  )
-
-  const pagedUsers = filteredUsers.slice((page - 1) * USER_PAGE_SIZE, page * USER_PAGE_SIZE)
-  const resetPage = () => setPage(1)
-
-  const stats = {
-    total: allUsers.length,
-    active: allUsers.filter((u) => u.status === 'active').length,
-    inactive: allUsers.filter((u) => u.status === 'inactive').length,
-  }
-
-  const alertError = (fallback: string) => (e: unknown) => setFlash({ type: 'error', text: e instanceof Error ? e.message : fallback })
-
-  /** 停用：走专用 DELETE 接口（后端会同步吊销刷新令牌），需二次确认 */
-  const handleDisableUser = async (u: User) => {
+  /** 停用：二次确认 → DELETE（软删除，会话失效） */
+  const handleDisable = async (user: User) => {
     const ok = await confirm({
       title: '停用用户',
-      description: `确认停用用户「${u.name}」？停用后其登录会话将失效。`,
-      confirmText: '停用',
+      description: `确认停用用户「${user.name}」？停用后其登录会话将失效。`,
       danger: true,
+      confirmText: '停用',
     })
     if (!ok) return
-    disableUser.mutate(u.id, {
-      onSuccess: () => setFlash({ type: 'success', text: `已停用用户「${u.name}」` }),
-      onError: alertError('停用失败'),
+    setActionError(null)
+    disableUser.mutate(user.id, {
+      onSuccess: () => setActionNotice(`已停用「${user.name}」`),
+      onError: (e) => setActionError(toErrorMessage(e, '停用失败')),
     })
   }
 
-  /** 启用：恢复账号状态 */
-  const handleEnableUser = (u: User) => {
-    updateUser.mutate({ id: u.id, data: { status: 'active' } }, {
-      onSuccess: () => setFlash({ type: 'success', text: `已启用用户「${u.name}」` }),
-      onError: alertError('启用失败'),
-    })
+  /** 启用：走用户更新接口（PUT users/:id { status: 'active' }） */
+  const handleEnable = (user: User) => {
+    setActionError(null)
+    updateUser.mutate(
+      { id: user.id, data: { status: 'active' } },
+      {
+        onSuccess: () => setActionNotice(`已启用「${user.name}」`),
+        onError: (e) => setActionError(toErrorMessage(e, '启用失败')),
+      },
+    )
   }
 
-  const handlePurgeUser = async (u: User) => {
+  /** 彻底删除：仅 superadmin、需先停用；输入用户名防呆确认后物理删除 */
+  const handlePurge = async (user: User) => {
     const ok = await confirm({
       title: '彻底删除用户',
-      description: `将物理删除用户「${u.name}」（${u.username}），此操作不可恢复！请输入用户名确认。`,
-      confirmText: '彻底删除',
+      description: `将物理删除用户「${user.name}」（${user.username}），该操作不可恢复。`,
       danger: true,
-      requireInput: u.username,
+      confirmText: '彻底删除',
+      requireInput: user.username,
     })
     if (!ok) return
-    purgeUser.mutate(u.id, {
-      onSuccess: () => setFlash({ type: 'success', text: `已彻底删除用户「${u.name}」` }),
-      onError: alertError('彻底删除失败'),
+    setActionError(null)
+    purgeUser.mutate(user.id, {
+      onSuccess: () => setActionNotice(`已彻底删除「${user.name}」`),
+      onError: (e) => setActionError(toErrorMessage(e, '删除失败')),
     })
   }
 
-  const userColumns: DataTableColumn<User>[] = [
-    { key: 'username', header: '用户名', cellClassName: 'font-medium' },
-    { key: 'name', header: '姓名' },
-    { key: 'role', header: '角色', render: (u) => <Badge variant="outline">{getRoleName(u.role)}</Badge> },
-    {
-      key: 'dataScope', header: '数据范围', render: (u) => {
-        if (u.dataScope === '*' || u.dataScope === '全部') return '全部'
-        const codes = (u.dataScopeCodes && u.dataScopeCodes.length > 0) ? u.dataScopeCodes : u.dataScope.split(',').filter(Boolean)
-        if (codes.length <= 2) return u.dataScope
-        // 多编码时仅展示前 2 个 + 计数，完整列表放 title 提示
-        return (
-          <span title={codes.join('、')} className="inline-flex items-center gap-1">
-            {codes.slice(0, 2).join(',')}
-            <Badge variant="secondary">+{codes.length - 2}</Badge>
-          </span>
-        )
-      },
-    },
-    {
-      key: 'status', header: '状态', render: (u) => (
-        <Badge variant={u.status === 'active' ? 'success' : 'secondary'}>
-          {u.status === 'active' ? '启用' : '停用'}
-        </Badge>
-      ),
-    },
-    {
-      key: 'lastLoginAt', header: '最近登录', cellClassName: 'text-muted-foreground',
-      render: (u) => (u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString('zh-CN') : '-'),
-    },
-    {
-      key: 'actions', header: '操作', render: (u) =>
-        hasUserActions ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" aria-label={`操作 ${u.name}`}>
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {canUpdateUser && (
-                <DropdownMenuItem onClick={() => setUserDialog({ open: true, mode: 'edit', user: u })}>
-                  <Edit className="mr-2 h-4 w-4" />
-                  编辑用户
-                </DropdownMenuItem>
-              )}
-              {canResetPassword && (
-                <DropdownMenuItem onClick={() => setResetUser(u)}>
-                  <Key className="mr-2 h-4 w-4" />
-                  重置密码
-                </DropdownMenuItem>
-              )}
-              {/* 停用走 DELETE（admin:users:delete），启用走 PUT（admin:users:update），门禁分开 */}
-              {u.status === 'active' && canDeleteUser && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => handleDisableUser(u)}>
-                    <UserX className="mr-2 h-4 w-4" />
-                    停用
-                  </DropdownMenuItem>
-                </>
-              )}
-              {u.status === 'inactive' && canUpdateUser && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => handleEnableUser(u)}>
-                    <UserCheck className="mr-2 h-4 w-4" />
-                    启用
-                  </DropdownMenuItem>
-                </>
-              )}
-              {canPurgeUser && u.status === 'inactive' && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handlePurgeUser(u)}>
-                    <ShieldAlert className="mr-2 h-4 w-4" />
-                    彻底删除
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : (
-          <span className="text-muted-foreground">-</span>
-        ),
-    },
-  ]
+  /** 状态开关：停用走确认，启用直接执行（与行内菜单一致） */
+  const handleToggleStatus = (user: User) => {
+    if (user.status === 'active') {
+      if (canDelete) void handleDisable(user)
+    } else if (canUpdate) {
+      handleEnable(user)
+    }
+  }
 
-  const handleExportUsers = async () => {
-    if (exporting) return
+  /** 导出名单：api.exportUsers + downloadBlob（后端返回 xlsx 流） */
+  const handleExport = async () => {
     setExporting(true)
-    setFlash(null)
+    setExportError(null)
     try {
-      await exportToExcel({
-        filename: `用户列表_${new Date().toISOString().slice(0, 10)}.xlsx`,
-        sheetName: '用户列表',
-        columns: [
-          { header: '用户名', key: 'username', width: 16 },
-          { header: '姓名', key: 'name', width: 14 },
-          { header: '角色', key: 'role', width: 18 },
-          { header: '数据范围', key: 'dataScope', width: 14 },
-          { header: '状态', key: 'status', width: 10 },
-        ],
-        rows: filteredUsers.map((u) => ({
-          username: u.username,
-          name: u.name,
-          role: getRoleName(u.role),
-          dataScope: u.dataScope === '*' ? '全部' : u.dataScope,
-          status: u.status === 'active' ? '启用' : '停用',
-        })),
-      })
-      setFlash({ type: 'success', text: `已导出 ${filteredUsers.length} 个用户` })
+      const blob = await api.exportUsers()
+      await downloadBlob(blob, '用户列表.xlsx')
     } catch (e) {
-      setFlash({ type: 'error', text: e instanceof Error ? e.message : '导出失败，请稍后重试' })
+      setExportError(toErrorMessage(e, '导出失败，请稍后重试'))
     } finally {
       setExporting(false)
     }
   }
 
+  const roleOptions = useMemo(() => roles.map((r) => ({ code: r.code, name: r.name })), [roles])
+
   return (
-    <PageContainer title="用户管理" stickyHeader headerRef={headerRef}>
-      {/* 统计卡片 */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 animate-fade-in">
-        <Card className="border border-border">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">总用户数</p>
-                <p className="text-2xl font-bold">{stats.total}</p>
-              </div>
-              <Users className="h-8 w-8 text-muted-foreground" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border border-border">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">已启用</p>
-                <p className="text-2xl font-bold text-success-strong">{stats.active}</p>
-              </div>
-              <UserCheck className="h-8 w-8 text-success-strong" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border border-border">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">已停用</p>
-                <p className="text-2xl font-bold text-destructive">{stats.inactive}</p>
-              </div>
-              <UserX className="h-8 w-8 text-destructive" />
-            </div>
-          </CardContent>
-        </Card>
+    <PageContainer
+      title="用户管理"
+      description="管理平台所有用户账号、角色分配与权限控制"
+      actions={
+        <>
+          {canExport && (
+            <Button variant="outline" size="sm" disabled={exporting} onClick={() => void handleExport()}>
+              {exporting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1.5 h-3.5 w-3.5" />}
+              导出名单
+            </Button>
+          )}
+          {canCreate && (
+            <Button size="sm" onClick={() => setUserDialog({ open: true, mode: 'create', user: null })}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              新增用户
+            </Button>
+          )}
+        </>
+      }
+    >
+      {/* KPI 紧凑条：4 卡片（当前查询结果派生） */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {kpis.map((c) => (
+          <KpiCard key={c.label} label={c.label} value={c.value} sub={c.sub} dotClass={c.dotClass} subClass={c.subClass} />
+        ))}
       </div>
 
-      {/* 操作反馈条（成功/失败，自动消失） */}
-      {flash && (
-        <FlashMessage type={flash.type} autoHideMs={4000} onAutoHide={() => setFlash(null)}>
-          {flash.text}
-        </FlashMessage>
-      )}
-
-      {/* 用户列表（筛选卡 + 表格卡，筛选卡/表格容器吸顶） */}
-      <Card className="animate-fade-in rounded-card border border-border">
-        <div className="flex items-center justify-between border-b px-4 py-2.5">
+      {/* 用户列表 */}
+      <Card className="rounded-card p-0">
+        <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
           <h3 className="text-base font-semibold tracking-tight">用户列表</h3>
-          <div className="flex items-center space-x-2">
-            {canExportUser && (
-              <Button variant="outline" size="sm" onClick={handleExportUsers} disabled={exporting}>
-                {exporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-                {exporting ? '导出中…' : '导出'}
-              </Button>
-            )}
-            {canCreateUser && (
-              <Button size="sm" onClick={() => setUserDialog({ open: true, mode: 'create', user: null })}>
-                <Plus className="mr-2 h-4 w-4" />
-                新增用户
-              </Button>
-            )}
-          </div>
+          <span className="text-xs text-muted-foreground">共 {totalFromServer} 条记录</span>
         </div>
 
-        {/* 控制层：筛选工具条（筛选卡，吸顶） */}
-        <Card ref={filterRef} className="sticky z-10 m-4 rounded-card" style={{ top: headerHeight }}>
-        <div className="flex flex-col space-y-2 sm:flex-row sm:items-center sm:space-x-2 sm:space-y-0">
-            <Select value={roleFilter} onValueChange={(v) => { setRoleFilter(v); resetPage() }}>
-              <SelectTrigger className="w-full sm:w-[180px]">
-                <SelectValue placeholder="选择角色" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部角色</SelectItem>
-                {roles.map((role) => (
-                  <SelectItem key={role.code} value={role.code}>{role.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <div className="space-y-3 p-5">
+          {/* 角色 chips（角色清单 + 当前计数） */}
+          <div className="flex flex-wrap gap-2">
+            {[{ code: 'all', name: '全部角色', count: totalFromServer }, ...roleChips].map((c) => (
+              <button
+                type="button"
+                key={c.code}
+                onClick={() => handleRoleChip(c.code)}
+                className={cn(
+                  'h-7 rounded-pill border px-3 text-xs transition-colors',
+                  c.code === roleFilter
+                    ? 'border-primary bg-[#e6f4ff] text-primary'
+                    : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground',
+                )}
+              >
+                {c.name} ({c.count})
+              </button>
+            ))}
+          </div>
 
-            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); resetPage() }}>
-              <SelectTrigger className="w-full sm:w-[180px]">
-                <SelectValue placeholder="选择状态" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部状态</SelectItem>
-                <SelectItem value="active">启用</SelectItem>
-                <SelectItem value="inactive">停用</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <div className="relative flex-1">
-              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+          {/* 筛选行 */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="relative min-w-[220px] flex-1 sm:max-w-[280px]">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="搜索用户名或姓名..."
-                value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); resetPage() }}
-                className="pl-8"
+                value={searchValue}
+                onChange={(e) => handleSearch(e.target.value)}
+                placeholder="姓名 / 账号 / 数据范围"
+                className="h-8 pl-8 text-[13px]"
               />
             </div>
-          </div>
-        </Card>
-
-          {/* 展示层：用户表格（表格容器吸顶） */}
-          <div className="min-h-[360px] px-4 pb-4">
-            {usersTruncated && (
-              <p className="mb-2 text-sm text-warning-strong">
-                用户总数超过 {USER_FETCH_LIMIT}，当前仅展示前 {USER_FETCH_LIMIT} 条，请用搜索缩小范围
-              </p>
-            )}
-            <div className="sticky rounded-card bg-background" style={{ top: stickyTop }}>
-              <DataTable columns={userColumns} data={pagedUsers} rowKey={(u) => u.id} emptyText="暂无用户" maxHeight={`calc(100dvh - ${stickyTop}px - 24px)`} />
+            <div className="relative inline-flex h-8 min-w-[110px] items-center rounded-md border border-border bg-card px-2.5 text-[13px] text-foreground">
+              <select
+                value={statusFilter}
+                onChange={(e) => handleStatusFilter(e.target.value)}
+                className="absolute inset-0 cursor-pointer appearance-none bg-transparent pl-1 pr-6 text-[13px] text-foreground outline-none"
+              >
+                <option value="all">状态</option>
+                <option value="active">启用</option>
+                <option value="inactive">已停用</option>
+              </select>
+              <span className="pointer-events-none ml-auto text-muted-foreground">▾</span>
+            </div>
+            <div className="ml-auto">
+              <Button variant="outline" size="sm" onClick={resetFilters}>
+                <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                重置
+              </Button>
             </div>
           </div>
 
-          <div className="border-t px-4 py-2.5">
-            <Pagination page={page} pageSize={USER_PAGE_SIZE} total={filteredUsers.length} onPageChange={setPage} />
+          {actionNotice && <FlashMessage type="success" onAutoHide={() => setActionNotice(null)}>{actionNotice}</FlashMessage>}
+          {actionError && <FlashMessage type="error">{actionError}</FlashMessage>}
+          {exportError && <FlashMessage type="error">{exportError}</FlashMessage>}
+          {usersQuery.isError && (
+            <FlashMessage type="error">
+              用户列表加载失败：{usersQuery.error instanceof Error ? usersQuery.error.message : '请稍后重试'}
+              <Button variant="link" size="sm" className="ml-2 h-auto p-0" onClick={() => usersQuery.refetch?.()}>重试</Button>
+            </FlashMessage>
+          )}
+
+          {/* 用户表 */}
+          <div className="overflow-x-auto rounded-card border border-border bg-background">
+            <table className="w-full border-collapse text-[13px]">
+              <thead>
+                <tr className="border-b border-border bg-muted/70">
+                  <th scope="col" className="px-3 py-2.5 text-left text-xs font-medium text-foreground">用户</th>
+                  <th scope="col" className="px-3 py-2.5 text-left text-xs font-medium text-foreground">角色</th>
+                  <th scope="col" className="px-3 py-2.5 text-left text-xs font-medium text-foreground">数据范围</th>
+                  <th scope="col" className="px-3 py-2.5 text-left text-xs font-medium text-foreground">最近登录</th>
+                  <th scope="col" className="px-3 py-2.5 text-left text-xs font-medium text-foreground">状态</th>
+                  <th scope="col" className="w-[70px] px-3 py-2.5 text-left text-xs font-medium text-foreground">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {usersQuery.isLoading && (
+                  <tr>
+                    <td colSpan={6} className="px-3 py-10 text-center text-sm text-muted-foreground">
+                      <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+                      正在加载用户...
+                    </td>
+                  </tr>
+                )}
+                {!usersQuery.isLoading && paged.length === 0 && (
+                  <tr>
+                    <td colSpan={6}>
+                      <EmptyState compact title="暂无用户" description={total > 0 ? '当前筛选条件下无匹配用户，请调整筛选' : undefined} />
+                    </td>
+                  </tr>
+                )}
+                {paged.map((user) => {
+                  const isActive = user.status === 'active'
+                  return (
+                    <tr key={user.id} className="border-b border-border transition-colors hover:bg-[#e6f4ff]/40">
+                      <td className="px-3 py-3.5 align-middle">
+                        <div className="flex items-center gap-2.5">
+                          <UserAvatar user={user} />
+                          <div>
+                            <div className="text-sm font-medium leading-tight text-foreground">{user.name || user.username}</div>
+                            <div className="mt-0.5 text-xs text-muted-foreground">{user.username}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3.5 align-middle">
+                        <Pill tone={ROLE_TONES[user.role] ?? 'gray'}>{roleNameOf.get(user.role) ?? user.role}</Pill>
+                      </td>
+                      <td className="max-w-[200px] truncate px-3 py-3.5 align-middle text-[13px] text-foreground" title={user.dataScope}>
+                        {user.dataScope || '—'}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3.5 align-middle text-[13px] text-foreground tabular-nums">
+                        {formatTime(user.lastLoginAt)}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3.5 align-middle">
+                        <div className="flex items-center gap-1.5">
+                          <Switch
+                            checked={isActive}
+                            size="small"
+                            disabled={!(isActive ? canDelete : canUpdate)}
+                            onCheckedChange={() => handleToggleStatus(user)}
+                          />
+                          <span className={cn('text-xs', isActive ? 'text-[#52c41a]' : 'text-muted-foreground')}>
+                            {isActive ? '启用' : '已停用'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3.5 align-middle">
+                        {(canUpdate || canResetPwd || canDelete || canPurge) && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-7 w-7 px-0" aria-label={`操作 ${user.name || user.username}`}>
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {canUpdate && (
+                                <DropdownMenuItem onClick={() => setUserDialog({ open: true, mode: 'edit', user })}>
+                                  编辑
+                                </DropdownMenuItem>
+                              )}
+                              {canResetPwd && (
+                                <DropdownMenuItem onClick={() => setResetTarget(user)}>
+                                  重置密码
+                                </DropdownMenuItem>
+                              )}
+                              {isActive && canDelete && (
+                                <DropdownMenuItem className="text-destructive" onClick={() => void handleDisable(user)}>
+                                  停用
+                                </DropdownMenuItem>
+                              )}
+                              {!isActive && canUpdate && (
+                                <DropdownMenuItem onClick={() => handleEnable(user)}>
+                                  启用
+                                </DropdownMenuItem>
+                              )}
+                              {canPurge && (
+                                <DropdownMenuItem
+                                  className="text-destructive"
+                                  disabled={isActive}
+                                  title={isActive ? '需先停用该用户' : undefined}
+                                  onClick={() => void handlePurge(user)}
+                                >
+                                  彻底删除
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
+
+          {/* 分页 */}
+          <Pagination page={safePage} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
+        </div>
       </Card>
 
-      {/* 弹窗 */}
+      {/* 新增/编辑用户（角色分配与数据范围在对话框内配置） */}
       <UserDialog
         open={userDialog.open}
         mode={userDialog.mode}
         user={userDialog.user}
-        roles={assignableRoles.map((r) => ({ code: r.code, name: r.name }))}
+        roles={roleOptions}
         onClose={() => setUserDialog((s) => ({ ...s, open: false }))}
-        onSaved={(name) => setFlash({ type: 'success', text: `已保存用户「${name}」` })}
+        onSaved={(name) => {
+          setActionError(null)
+          setActionNotice(userDialog.mode === 'create' ? `已创建用户「${name}」` : `已保存「${name}」的修改`)
+        }}
       />
+
+      {/* 重置密码 */}
       <ResetPasswordDialog
-        open={!!resetUser}
-        user={resetUser}
-        onClose={() => setResetUser(null)}
-        onSuccess={() => setFlash({ type: 'success', text: '密码已重置，首次登录须修改' })}
+        open={resetTarget !== null}
+        user={resetTarget}
+        onClose={() => setResetTarget(null)}
+        onSuccess={() => {
+          setActionError(null)
+          setActionNotice(`已重置「${resetTarget?.name ?? resetTarget?.username ?? ''}」的密码，其下次登录须修改密码`)
+        }}
       />
+
       {confirmElement}
     </PageContainer>
   )

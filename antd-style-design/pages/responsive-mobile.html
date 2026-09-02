@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>响应式断点与移动端预览 · AntD 风格</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+/* =========================================================
+   响应式断点说明（仅本页内联，不污染 colors_and_type.css）
+   - mobile-portrait : <= 480px   iPhone SE / 12 mini
+   - mobile-landscape: 481-768px  iPhone 12 横屏 / 小平板
+   - tablet          : 769-1024px iPad
+   - desktop         : 1025-1440px 主流笔电
+   - wide            : >= 1441px  外接显示器
+   优先：移动端优先（mobile-first），断点用 min-width 升序。
+   ========================================================= */
+:root { --bp-1: 480px; --bp-2: 768px; --bp-3: 1024px; --bp-4: 1440px; }
+
+/* ============== 1. 文档壳（自包含） ============== */
+.doc-shell { max-width: 1440px; margin: 0 auto; padding: 32px 32px 64px; }
+.doc-h1 { font-size: 24px; font-weight: 600; margin: 0 0 8px; color: var(--antd-text-1, #1f1f1f); }
+.doc-h2 { font-size: 18px; font-weight: 600; margin: 32px 0 12px; padding-left: 12px; border-left: 3px solid #fa8c16; }
+.doc-h3 { font-size: 14px; font-weight: 600; margin: 16px 0 8px; color: #5b5b5b; }
+.doc-p  { font-size: 13px; line-height: 1.7; color: #595959; margin: 0 0 8px; }
+.doc-meta { font-size: 12px; color: #8c8c8c; }
+.doc-grid { display: grid; gap: 16px; }
+.doc-grid-2 { grid-template-columns: 1fr 1fr; }
+.doc-grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+.doc-grid-4 { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 768px) {
+  .doc-shell { padding: 16px; }
+  .doc-grid-2, .doc-grid-3, .doc-grid-4 { grid-template-columns: 1fr; }
+  .doc-h1 { font-size: 20px; }
+}
+.doc-card { background: #fff; border: 1px solid #f0f0f0; border-radius: 8px; padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.03); }
+.doc-card-dark { background: #1f1f1f; color: #d9d9d9; border-color: #303030; }
+.doc-card-dark .doc-h3 { color: #d9d9d9; }
+.doc-card-dark .doc-p  { color: #8c8c8c; }
+.doc-red-card { background: #fff1f0; border: 1px solid #ffccc7; border-radius: 6px; padding: 12px 16px; }
+.doc-green-card { background: #f6ffed; border: 1px solid #b7eb8f; border-radius: 6px; padding: 12px 16px; }
+.doc-orange-card { background: #fff7e6; border: 1px solid #ffd591; border-radius: 6px; padding: 12px 16px; }
+.doc-blue-card { background: #e6f4ff; border: 1px solid #91caff; border-radius: 6px; padding: 12px 16px; }
+.doc-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.doc-table th, .doc-table td { border: 1px solid #f0f0f0; padding: 8px 10px; text-align: left; }
+.doc-table th { background: #fafafa; font-weight: 600; }
+.doc-table td code { background: #f5f5f5; padding: 1px 4px; border-radius: 3px; font-size: 11px; }
+.doc-tag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 3px; margin-right: 4px; }
+.doc-tag-blue   { background: #e6f4ff; color: #0958d9; }
+.doc-tag-orange { background: #fff7e6; color: #d46b08; }
+.doc-tag-green  { background: #f6ffed; color: #389e0d; }
+.doc-tag-red    { background: #fff1f0; color: #cf1322; }
+.doc-tag-grey   { background: #fafafa; color: #595959; border: 1px solid #d9d9d9; }
+
+/* ============== 2. 断点表 + 策略条 ============== */
+.bp-bar { display: flex; align-items: stretch; border-radius: 6px; overflow: hidden; margin: 12px 0; border: 1px solid #f0f0f0; }
+.bp-seg { flex: 1; padding: 10px 12px; font-size: 12px; border-right: 1px solid #fff; color: #fff; }
+.bp-seg:last-child { border-right: 0; }
+.bp-mobile  { background: #ff7875; }
+.bp-mob-l   { background: #ffa940; }
+.bp-tablet  { background: #1677ff; }
+.bp-desktop { background: #13c2c2; }
+.bp-wide    { background: #722ed1; }
+.bp-legend { display: flex; gap: 16px; font-size: 11px; color: #8c8c8c; flex-wrap: wrap; margin-top: 6px; }
+
+/* ============== 3. 设备预览窗（关键页 390px 适配示意） ============== */
+.device-row { display: grid; grid-template-columns: 360px 420px 600px; gap: 24px; align-items: start; margin-top: 12px; }
+@media (max-width: 1024px) { .device-row { grid-template-columns: 1fr; } }
+.device-frame { background: #141414; border-radius: 28px; padding: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.15); }
+.device-notch { width: 80px; height: 18px; background: #141414; border-radius: 0 0 12px 12px; margin: -10px auto 6px; }
+.device-screen { background: #f5f5f5; border-radius: 18px; overflow: hidden; position: relative; }
+.device-screen-390 { width: 320px; height: 568px; }  /* 缩放到 80% */
+.device-screen-768 { width: 380px; height: 580px; }
+.device-screen-1024{ width: 540px; height: 640px; }
+.device-label { font-size: 11px; color: #8c8c8c; margin-top: 6px; text-align: center; }
+.device-spec  { font-size: 10px; color: #bfbfbf; text-align: center; margin-top: 2px; font-family: ui-monospace, monospace; }
+
+/* 缩放比例提示 */
+.zoom-scale { position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,.65); color: #fff; font-size: 10px; padding: 2px 6px; border-radius: 3px; font-family: ui-monospace, monospace; }
+
+/* 顶部状态栏 */
+.m-statusbar { background: #fff; height: 24px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; font-size: 10px; color: #1f1f1f; border-bottom: 1px solid #f0f0f0; }
+.m-statusbar .m-status-icons { display: flex; gap: 4px; align-items: center; }
+.m-statusbar .m-status-icons::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #1f1f1f; }
+.m-statusbar .m-status-icons::after  { content: ""; display: inline-block; width: 14px; height: 8px; border: 1.5px solid #1f1f1f; border-radius: 2px; position: relative; }
+.m-statusbar .m-status-icons span:first-child { font-weight: 600; }
+.m-statusbar .m-status-icons .m-batt { font-size: 9px; }
+
+/* 顶部 app bar */
+.m-appbar { background: #fff; padding: 8px 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #f0f0f0; height: 40px; }
+.m-back   { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; font-size: 16px; color: #1f1f1f; }
+.m-title  { font-size: 14px; font-weight: 600; color: #1f1f1f; flex: 1; }
+.m-action { font-size: 14px; color: #1677ff; }
+
+/* 抽屉/侧栏触发按钮 */
+.m-menu-btn { width: 24px; height: 24px; display: flex; flex-direction: column; gap: 3px; padding: 6px 4px; }
+.m-menu-btn span { display: block; height: 1.5px; background: #1f1f1f; border-radius: 1px; }
+.m-menu-btn span:nth-child(2) { width: 75%; }
+
+/* 主体内容（经营分析 · 关键指标 390 适配示意） */
+.m-body { padding: 12px; height: calc(100% - 64px); overflow: auto; }
+.m-period-switch { display: flex; align-items: center; justify-content: space-between; background: #fff; border-radius: 6px; padding: 8px 10px; font-size: 12px; margin-bottom: 8px; }
+.m-period-switch strong { color: #fa8c16; font-size: 13px; }
+.m-period-switch .m-period-arrow { color: #8c8c8c; }
+
+.m-kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.m-kpi { background: #fff; border-radius: 6px; padding: 10px 10px 8px; border-left: 3px solid #1677ff; }
+.m-kpi.is-orange { border-left-color: #fa8c16; }
+.m-kpi.is-cyan   { border-left-color: #13c2c2; }
+.m-kpi.is-purple { border-left-color: #722ed1; }
+.m-kpi-label { font-size: 10px; color: #8c8c8c; }
+.m-kpi-value { font-size: 18px; font-weight: 600; color: #1f1f1f; margin: 2px 0; font-family: ui-monospace, "Microsoft YaHei", monospace; font-variant-numeric: tabular-nums; }
+.m-kpi-delta { font-size: 10px; }
+.m-kpi-delta.up { color: #cf1322; }
+.m-kpi-delta.down { color: #389e0d; }
+
+.m-card { background: #fff; border-radius: 6px; padding: 10px; margin-bottom: 8px; }
+.m-card-title { font-size: 12px; font-weight: 600; color: #1f1f1f; display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.m-card-title .m-more { font-size: 10px; color: #8c8c8c; }
+.m-bars { display: flex; align-items: flex-end; gap: 4px; height: 64px; }
+.m-bar  { flex: 1; background: linear-gradient(180deg, #69b1ff 0%, #1677ff 100%); border-radius: 2px 2px 0 0; position: relative; }
+.m-bar.is-compare { background: repeating-linear-gradient(45deg, #d9d9d9 0 4px, #bfbfbf 4px 6px); }
+.m-bar.is-orange { background: linear-gradient(180deg, #ffc069 0%, #fa8c16 100%); }
+
+.m-table { background: #fff; border-radius: 6px; padding: 6px 10px; }
+.m-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 11px; border-bottom: 1px solid #f5f5f5; }
+.m-row:last-child { border-bottom: 0; }
+.m-row .m-row-name { color: #595959; }
+.m-row .m-row-val  { color: #1f1f1f; font-weight: 500; font-family: ui-monospace, monospace; }
+.m-row .m-row-val.is-up { color: #cf1322; }
+.m-row .m-row-val.is-down { color: #389e0d; }
+
+/* 底部 tab bar（移动端核心导航） */
+.m-tabbar { position: absolute; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid #f0f0f0; display: flex; height: 44px; }
+.m-tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 9px; color: #8c8c8c; gap: 1px; }
+.m-tab .m-tab-icon { width: 16px; height: 16px; background: #d9d9d9; border-radius: 3px; }
+.m-tab.active { color: #fa8c16; }
+.m-tab.active .m-tab-icon { background: #fa8c16; }
+
+/* 平板：上下分栏 + 侧栏常驻 */
+.t-shell { display: grid; grid-template-columns: 80px 1fr; height: 100%; background: #f5f5f5; }
+.t-side  { background: #001529; color: #fff; padding: 8px 0; }
+.t-side-item { display: flex; flex-direction: column; align-items: center; padding: 10px 4px; font-size: 9px; color: rgba(255,255,255,.65); gap: 3px; }
+.t-side-item.active { color: #fff; background: #1677ff; }
+.t-side-item .t-side-icon { width: 18px; height: 18px; background: rgba(255,255,255,.3); border-radius: 3px; }
+.t-side-item.active .t-side-icon { background: #fff; }
+.t-main { padding: 10px; overflow: auto; }
+
+/* 桌面：左 240 侧栏 + 顶 56 顶栏 + 内容 */
+.d-shell { display: grid; grid-template-columns: 160px 1fr; grid-template-rows: 40px 1fr; height: 100%; background: #f5f5f5; }
+.d-side  { grid-row: 1 / 3; background: #001529; color: #fff; padding: 6px 0; }
+.d-side-item { padding: 8px 12px; font-size: 11px; color: rgba(255,255,255,.65); }
+.d-side-item.active { background: #1677ff; color: #fff; }
+.d-top   { background: #fff; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; padding: 0 12px; font-size: 11px; gap: 8px; }
+.d-top .d-breadcrumb { color: #8c8c8c; }
+.d-top .d-period { margin-left: auto; background: #fff7e6; color: #d46b08; padding: 2px 8px; border-radius: 3px; font-weight: 500; }
+.d-main  { padding: 12px; overflow: auto; }
+.d-kpi   { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 8px; }
+.d-kpi-card { background: #fff; padding: 8px 10px; border-radius: 4px; border-left: 3px solid #1677ff; font-size: 10px; }
+.d-kpi-card .d-kpi-v { font-size: 16px; font-weight: 600; font-family: ui-monospace, monospace; }
+.d-table { background: #fff; border-radius: 4px; padding: 8px; font-size: 10px; }
+
+/* 缩放尺 */
+.zoom-ruler { display: flex; align-items: center; gap: 0; height: 24px; background: #1f1f1f; color: #d9d9d9; font-family: ui-monospace, monospace; font-size: 10px; margin: 6px 0 0; border-radius: 3px; overflow: hidden; }
+.zoom-tick { flex: 1; text-align: center; border-right: 1px solid #303030; padding: 4px 0; position: relative; }
+.zoom-tick:last-child { border-right: 0; }
+.zoom-tick.major { background: #303030; color: #fff; font-weight: 600; }
+.zoom-tick::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: #595959; }
+
+/* 关键页面适配清单 */
+.adapt-table th { background: #fafafa; }
+.adapt-table .col-route { font-family: ui-monospace, monospace; color: #1677ff; }
+.adapt-table .col-status .ok { color: #389e0d; }
+.adapt-table .col-status .warn { color: #d46b08; }
+.adapt-table .col-status .no  { color: #cf1322; }
+
+/* 折叠优先级提示 */
+.priority-grid { display: grid; grid-template-columns: 80px 1fr; gap: 8px; align-items: center; margin: 8px 0; font-size: 12px; }
+.priority-pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; text-align: center; }
+.priority-pill.p0 { background: #fff1f0; color: #cf1322; border: 1px solid #ffa39e; }
+.priority-pill.p1 { background: #fff7e6; color: #d46b08; border: 1px solid #ffd591; }
+.priority-pill.p2 { background: #e6f4ff; color: #0958d9; border: 1px solid #91caff; }
+.priority-pill.p3 { background: #fafafa; color: #595959; border: 1px solid #d9d9d9; }
+
+</style>
+</head>
+<body>
+<div class="doc-shell">
+
+<h1 class="doc-h1">响应式断点与移动端预览</h1>
+<p class="doc-meta">v1.0 · 2026-08-27 · AntD 风格 · 移动端优先（mobile-first）</p>
+<p class="doc-p">本文档定义全站响应式策略、5 档断点、设备壳预览、关键页面 390px 适配示意，以及"小尺寸预览"在画板上的缩放尺。真实代码未改动，本页为设计稿样板。</p>
+
+<!-- ========== §1 5 档断点 ========== -->
+<h2 class="doc-h2">§1 5 档断点与策略</h2>
+<table class="doc-table">
+  <thead>
+    <tr><th>断点</th><th>区间</th><th>设备</th><th>布局策略</th><th>侧栏</th><th>字号基数</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>mobile-portrait</code></td><td><code>≤ 480px</code></td>
+      <td>iPhone SE / 12 mini / 安卓小屏</td>
+      <td>单列 · 卡片堆叠 · 底部 tab bar</td>
+      <td>抽屉式（默认收起）</td>
+      <td>12px</td>
+    </tr>
+    <tr>
+      <td><code>mobile-landscape</code></td><td><code>481 – 768px</code></td>
+      <td>iPhone 12 横屏 / 小平板</td>
+      <td>2 列 KPI · 主体仍堆叠</td>
+      <td>抽屉式</td>
+      <td>13px</td>
+    </tr>
+    <tr>
+      <td><code>tablet</code></td><td><code>769 – 1024px</code></td>
+      <td>iPad / iPad mini / 安卓平板</td>
+      <td>2-3 列 · 侧栏常驻 80px 图标态</td>
+      <td>常驻（图标态）</td>
+      <td>13px</td>
+    </tr>
+    <tr>
+      <td><code>desktop</code></td><td><code>1025 – 1440px</code></td>
+      <td>主流笔电 / 小显示器</td>
+      <td>4 列 KPI · 表格 + 详情并排</td>
+      <td>常驻 240px 展开态</td>
+      <td>14px</td>
+    </tr>
+    <tr>
+      <td><code>wide</code></td><td><code>≥ 1441px</code></td>
+      <td>外接显示器 / 大屏</td>
+      <td>居中 max-w-7xl · 4-6 列</td>
+      <td>常驻 240px</td>
+      <td>14px</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="bp-bar">
+  <div class="bp-seg bp-mobile">mobile-portrait<br/>≤ 480</div>
+  <div class="bp-seg bp-mob-l">mobile-landscape<br/>481–768</div>
+  <div class="bp-seg bp-tablet">tablet<br/>769–1024</div>
+  <div class="bp-seg bp-desktop">desktop<br/>1025–1440</div>
+  <div class="bp-seg bp-wide">wide<br/>≥ 1441</div>
+</div>
+<div class="bp-legend">
+  <span>移动端单列</span><span>·</span>
+  <span>平板双列 + 图标侧栏</span><span>·</span>
+  <span>桌面 4 列 + 完整侧栏</span>
+</div>
+
+<!-- ========== §2 设备壳预览：iPhone SE (390 缩放 80%) + iPad + Desktop ========== -->
+<h2 class="doc-h2">§2 设备壳预览 · 关键页 390px 适配</h2>
+<p class="doc-p">以「经营分析 · 关键指标」为例，演示同一信息架构在三种尺寸下的密度差异。预览窗按 80% 缩放呈现（角标显示实际像素）。</p>
+
+<div class="device-row">
+
+  <!-- iPhone SE 390 × 844（缩放到 80% = 312 × 675 实际屏，去掉圆角 20px） -->
+  <div>
+    <div class="device-frame" style="width: 340px;">
+      <div class="device-notch"></div>
+      <div class="device-screen device-screen-390" style="height: 580px;">
+        <div class="zoom-scale">80% · 390×844</div>
+        <div class="m-statusbar">
+          <div class="m-status-icons"><span>9:41</span></div>
+          <div class="m-status-icons"><span class="m-batt">100</span></div>
+        </div>
+        <div class="m-appbar">
+          <span class="m-menu-btn"><span></span><span></span><span></span></span>
+          <span class="m-title">关键指标</span>
+          <span class="m-action">⋯</span>
+        </div>
+        <div class="m-body">
+          <div class="m-period-switch">
+            <span>财年</span>
+            <strong>FY2026 Q2</strong>
+            <span class="m-period-arrow">▾</span>
+          </div>
+          <div class="m-kpi-grid">
+            <div class="m-kpi"><div class="m-kpi-label">营业收入</div><div class="m-kpi-value">1,284.6</div><div class="m-kpi-delta up">▲ 12.4%</div></div>
+            <div class="m-kpi is-orange"><div class="m-kpi-label">净利润</div><div class="m-kpi-value">186.2</div><div class="m-kpi-delta up">▲ 8.1%</div></div>
+            <div class="m-kpi is-cyan"><div class="m-kpi-label">毛利率</div><div class="m-kpi-value">23.5%</div><div class="m-kpi-delta down">▼ 0.6%</div></div>
+            <div class="m-kpi is-purple"><div class="m-kpi-label">应收周转</div><div class="m-kpi-value">42d</div><div class="m-kpi-delta down">▼ 3d</div></div>
+          </div>
+          <div class="m-card">
+            <div class="m-card-title">近 6 月营收 <span class="m-more">详情 ›</span></div>
+            <div class="m-bars">
+              <div class="m-bar is-compare" style="height: 30%"></div>
+              <div class="m-bar is-compare" style="height: 38%"></div>
+              <div class="m-bar" style="height: 45%"></div>
+              <div class="m-bar" style="height: 52%"></div>
+              <div class="m-bar" style="height: 48%"></div>
+              <div class="m-bar is-orange" style="height: 64%"></div>
+            </div>
+          </div>
+          <div class="m-table">
+            <div class="m-row"><span class="m-row-name">A 类客户</span><span class="m-row-val is-up">+128.4</span></div>
+            <div class="m-row"><span class="m-row-name">B 类客户</span><span class="m-row-val is-down">-26.0</span></div>
+            <div class="m-row"><span class="m-row-name">C 类客户</span><span class="m-row-val is-up">+58.2</span></div>
+          </div>
+        </div>
+        <div class="m-tabbar">
+          <div class="m-tab active"><div class="m-tab-icon"></div>看板</div>
+          <div class="m-tab"><div class="m-tab-icon"></div>往来</div>
+          <div class="m-tab"><div class="m-tab-icon"></div>数据</div>
+          <div class="m-tab"><div class="m-tab-icon"></div>我的</div>
+        </div>
+      </div>
+    </div>
+    <div class="device-label">iPhone SE · 3rd gen</div>
+    <div class="device-spec">390 × 844 pt · 2x</div>
+  </div>
+
+  <!-- iPad mini 768 × 1024（缩放到 70% ≈ 537 × 717） -->
+  <div>
+    <div class="device-frame" style="width: 400px;">
+      <div class="device-screen device-screen-768">
+        <div class="zoom-scale">70% · 768×1024</div>
+        <div class="t-shell">
+          <div class="t-side">
+            <div class="t-side-item active"><div class="t-side-icon"></div>看板</div>
+            <div class="t-side-item"><div class="t-side-icon"></div>指标</div>
+            <div class="t-side-item"><div class="t-side-icon"></div>往来</div>
+            <div class="t-side-item"><div class="t-side-icon"></div>数据</div>
+            <div class="t-side-item"><div class="t-side-icon"></div>权限</div>
+          </div>
+          <div class="t-main">
+            <div style="background:#fff;padding:8px 10px;border-radius:4px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+              <strong style="font-size:12px;">关键指标 · FY2026 Q2</strong>
+              <span style="font-size:10px;color:#1677ff;">导出 ▾</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px;">
+              <div class="m-kpi"><div class="m-kpi-label">营收</div><div class="m-kpi-value">1,284.6</div></div>
+              <div class="m-kpi is-orange"><div class="m-kpi-label">净利</div><div class="m-kpi-value">186.2</div></div>
+              <div class="m-kpi is-cyan"><div class="m-kpi-label">毛利</div><div class="m-kpi-value">23.5%</div></div>
+            </div>
+            <div class="m-card"><div class="m-card-title">营收趋势</div><div class="m-bars" style="height:80px;">
+              <div class="m-bar" style="height:30%"></div><div class="m-bar" style="height:45%"></div>
+              <div class="m-bar" style="height:38%"></div><div class="m-bar" style="height:60%"></div>
+              <div class="m-bar" style="height:55%"></div><div class="m-bar is-orange" style="height:75%"></div>
+            </div></div>
+            <div class="m-table">
+              <div class="m-row"><span class="m-row-name">A 类</span><span class="m-row-val">128.4</span></div>
+              <div class="m-row"><span class="m-row-name">B 类</span><span class="m-row-val">-26.0</span></div>
+              <div class="m-row"><span class="m-row-name">C 类</span><span class="m-row-val">58.2</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="device-label">iPad mini</div>
+    <div class="device-spec">768 × 1024 pt · 2x</div>
+  </div>
+
+  <!-- Desktop 1440 -->
+  <div>
+    <div class="device-frame" style="width: 620px; background:#f5f5f5;border:1px solid #d9d9d9;border-radius:8px;padding:0;">
+      <div class="device-screen" style="background:#f5f5f5;border-radius:0;height:640px;width:600px;">
+        <div class="zoom-scale">100% · 1440</div>
+        <div class="d-shell">
+          <div class="d-side">
+            <div style="padding:10px 12px;font-weight:600;font-size:12px;border-bottom:1px solid rgba(255,255,255,.08);">壹品慧</div>
+            <div class="d-side-item active">看板</div>
+            <div class="d-side-item">经营指标</div>
+            <div class="d-side-item">交易往来</div>
+            <div class="d-side-item">存货</div>
+            <div class="d-side-item">报告</div>
+            <div class="d-side-item">数据管理</div>
+            <div class="d-side-item">权限</div>
+          </div>
+          <div class="d-top">
+            <span class="d-breadcrumb">看板 / 关键指标</span>
+            <span class="d-period">FY2026 Q2 ▾</span>
+          </div>
+          <div class="d-main">
+            <div class="d-kpi">
+              <div class="d-kpi-card"><div>营业收入</div><div class="d-kpi-v">1,284.6</div><div style="color:#cf1322;font-size:9px;">▲ 12.4%</div></div>
+              <div class="d-kpi-card" style="border-left-color:#fa8c16;"><div>净利润</div><div class="d-kpi-v">186.2</div><div style="color:#cf1322;font-size:9px;">▲ 8.1%</div></div>
+              <div class="d-kpi-card" style="border-left-color:#13c2c2;"><div>毛利率</div><div class="d-kpi-v">23.5%</div><div style="color:#389e0d;font-size:9px;">▼ 0.6%</div></div>
+              <div class="d-kpi-card" style="border-left-color:#722ed1;"><div>应收周转</div><div class="d-kpi-v">42d</div><div style="color:#389e0d;font-size:9px;">▼ 3d</div></div>
+            </div>
+            <div class="d-table">
+              <table class="doc-table" style="font-size:9px;">
+                <thead><tr><th>客户分群</th><th>本期</th><th>同期</th><th>同比</th><th>趋势</th></tr></thead>
+                <tbody>
+                  <tr><td>A 类</td><td>128.4</td><td>96.0</td><td style="color:#cf1322;">+33.8%</td><td>▁▂▃▅▆█</td></tr>
+                  <tr><td>B 类</td><td>-26.0</td><td>18.5</td><td style="color:#389e0d;">-240%</td><td>█▆▅▃▂▁</td></tr>
+                  <tr><td>C 类</td><td>58.2</td><td>40.0</td><td style="color:#cf1322;">+45.5%</td><td>▁▂▂▃▅▆</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="device-label">Desktop · 1440</div>
+    <div class="device-spec">1440 × 900 px</div>
+  </div>
+
+</div>
+
+<!-- ========== §3 缩放尺 ========== -->
+<h2 class="doc-h2">§3 画板小尺寸预览 · 缩放尺</h2>
+<p class="doc-p">在画板上导出 390 / 768 / 1024 / 1440 4 档预览时，按以下缩放比例呈现：</p>
+
+<div class="zoom-ruler">
+  <div class="zoom-tick">390</div>
+  <div class="zoom-tick major">80%</div>
+  <div class="zoom-tick">→</div>
+  <div class="zoom-tick">768</div>
+  <div class="zoom-tick major">70%</div>
+  <div class="zoom-tick">→</div>
+  <div class="zoom-tick">1024</div>
+  <div class="zoom-tick major">60%</div>
+  <div class="zoom-tick">→</div>
+  <div class="zoom-tick major">1440</div>
+  <div class="zoom-tick major">50%</div>
+  <div class="zoom-tick">画板</div>
+</div>
+
+<div class="doc-grid doc-grid-2">
+  <div class="doc-card">
+    <h3 class="doc-h3">缩放档位（推荐）</h3>
+    <table class="doc-table">
+      <thead><tr><th>断点</th><th>画板呈现宽</th><th>缩放比</th><th>角标</th></tr></thead>
+      <tbody>
+        <tr><td>390 (iPhone SE)</td><td>312 px</td><td>80%</td><td><code>80% · 390×844</code></td></tr>
+        <tr><td>768 (iPad mini)</td><td>538 px</td><td>70%</td><td><code>70% · 768×1024</code></td></tr>
+        <tr><td>1024 (iPad)</td><td>614 px</td><td>60%</td><td><code>60% · 1024×768</code></td></tr>
+        <tr><td>1440 (Desktop)</td><td>720 px</td><td>50%</td><td><code>50% · 1440</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="doc-card">
+    <h3 class="doc-h3">画板栅格</h3>
+    <p class="doc-p">所有画板按 8 px 基准对齐。设备壳外框 10 px padding + 18 px 圆角（移动端），保证视觉呼吸。</p>
+    <ul style="font-size:12px;color:#595959;line-height:1.8;margin:0;padding-left:18px;">
+      <li>移动端：上下安全区 24 / 12 px，水平 12 px 边距</li>
+      <li>平板：水平 16 px 边距，2 列间距 16 px</li>
+      <li>桌面：内容最大宽 1440 px，水平 32 px 边距</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ========== §4 关键页面适配清单 ========== -->
+<h2 class="doc-h2">§4 关键页面移动端适配清单</h2>
+<table class="doc-table adapt-table">
+  <thead>
+    <tr><th style="width:50px;">#</th><th>路由</th><th>390 适配</th><th>优先级</th><th>说明</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td class="col-route">/login</td><td class="col-status"><span class="ok">●</span> OK</td><td><span class="priority-pill p0">P0</span></td><td>登录页天然适合小屏；改为上下结构</td></tr>
+    <tr><td>2</td><td class="col-route">/dashboard</td><td class="col-status"><span class="ok">●</span> OK</td><td><span class="priority-pill p0">P0</span></td><td>KPI 2 列 + 图表单列堆叠</td></tr>
+    <tr><td>3</td><td class="col-route">/dashboard/indicators</td><td class="col-status"><span class="ok">●</span> OK</td><td><span class="priority-pill p0">P0</span></td><td>静态指标卡 1 列堆叠</td></tr>
+    <tr><td>4</td><td class="col-route">/dashboard/transactions</td><td class="col-status"><span class="warn">●</span> 改造</td><td><span class="priority-pill p0">P0</span></td><td>表格 → 卡片列表，横向滑动</td></tr>
+    <tr><td>5</td><td class="col-route">/dashboard/import</td><td class="col-status"><span class="ok">●</span> OK</td><td><span class="priority-pill p1">P1</span></td><td>拖拽区单列 + 步骤条纵向</td></tr>
+    <tr><td>6</td><td class="col-route">/dashboard/reports</td><td class="col-status"><span class="warn">●</span> 改造</td><td><span class="priority-pill p1">P1</span></td><td>报告列表 → 卡片网格</td></tr>
+    <tr><td>7</td><td class="col-route">/admin/users</td><td class="col-status"><span class="warn">●</span> 改造</td><td><span class="priority-pill p1">P1</span></td><td>表格 → 卡片 + 浮动操作</td></tr>
+    <tr><td>8</td><td class="col-route">/admin/lookup</td><td class="col-status"><span class="ok">●</span> OK</td><td><span class="priority-pill p2">P2</span></td><td>查询表单单列即可</td></tr>
+    <tr><td>9</td><td class="col-route">/dashboard/analysis/*</td><td class="col-status"><span class="warn">●</span> 改造</td><td><span class="priority-pill p0">P0</span></td><td>7 下钻子页，图表全屏堆叠</td></tr>
+    <tr><td>10</td><td class="col-route">/dashboard/inventory</td><td class="col-status"><span class="warn">●</span> 改造</td><td><span class="priority-pill p1">P1</span></td><td>表格 → 卡片 + 库龄条</td></tr>
+    <tr><td>11</td><td class="col-route">/reports/:id/edit</td><td class="col-status"><span class="no">●</span> 桌面优先</td><td><span class="priority-pill p2">P2</span></td><td>编辑器仅做 ≥ 768 适配，移动端提示"建议桌面打开"</td></tr>
+    <tr><td>12</td><td class="col-route">/dashboard/data/*</td><td class="col-status"><span class="warn">●</span> 改造</td><td><span class="priority-pill p1">P1</span></td><td>维度树 → 顶部 tab 切换，表格 → 卡片</td></tr>
+    <tr><td>13</td><td class="col-route">/admin/roles</td><td class="col-status"><span class="no">●</span> 桌面优先</td><td><span class="priority-pill p2">P2</span></td><td>权限矩阵仅做 ≥ 768，移动端只读</td></tr>
+    <tr><td>14</td><td class="col-route">/admin/audit-logs</td><td class="col-status"><span class="ok">●</span> OK</td><td><span class="priority-pill p1">P1</span></td><td>时间线卡片单列</td></tr>
+  </tbody>
+</table>
+
+<!-- ========== §5 改造优先级 ========== -->
+<h2 class="doc-h2">§5 改造优先级与排期</h2>
+<div class="priority-grid">
+  <span class="priority-pill p0">P0</span>
+  <span>登录 / 看板 / 经营分析 7 下钻 / 财务指标 / 往来分析 5 下钻 · 上线必做 · 2 周</span>
+</div>
+<div class="priority-grid">
+  <span class="priority-pill p1">P1</span>
+  <span>数据导入 / 报告列表 / 用户管理 / 存货 / 看板管理 / 审计日志 · 上线后 1 月</span>
+</div>
+<div class="priority-grid">
+  <span class="priority-pill p2">P2</span>
+  <span>企业信息查询 / 报告编辑器 / 角色管理 · 桌面优先，移动端只读或轻适配</span>
+</div>
+<div class="priority-grid">
+  <span class="priority-pill p3">P3</span>
+  <span>空 / 加载 / 错误 6 态合集（见 state-collection.html）· 全站通用 · 与本页同步上线</span>
+</div>
+
+<!-- ========== §6 设计 Token 引用 ========== -->
+<h2 class="doc-h2">§6 引用与依赖</h2>
+<div class="doc-grid doc-grid-2">
+  <div class="doc-orange-card">
+    <h3 class="doc-h3" style="color:#d46b08;">移动端专属（仅移动端加载）</h3>
+    <ul style="font-size:12px;line-height:1.8;margin:0;padding-left:18px;color:#874d00;">
+      <li>底部 tab bar 高度 44 px（iOS HIG 49 / Material 56，取中）</li>
+      <li>安全区：env(safe-area-inset-bottom) 兼容刘海</li>
+      <li>手势：左右滑动切换 tab、卡片左滑出操作</li>
+      <li>状态栏：仅 webkit 前缀 + 高度 24 px 仿真</li>
+    </ul>
+  </div>
+  <div class="doc-blue-card">
+    <h3 class="doc-h3" style="color:#0958d9;">复用 Desktop Token</h3>
+    <ul style="font-size:12px;line-height:1.8;margin:0;padding-left:18px;color:#003eb3;">
+      <li><code>var(--antd-color-primary)</code> 主色（蓝）</li>
+      <li><code>var(--antd-orange)</code> 强调（橙）</li>
+      <li><code>var(--antd-radius-md)</code> 6 px 圆角</li>
+      <li><code>var(--antd-font-size-sm)</code> 13 px 正文</li>
+      <li>数字 <code>font-variant-numeric: tabular-nums</code></li>
+    </ul>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

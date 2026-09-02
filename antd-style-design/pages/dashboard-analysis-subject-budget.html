@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>科目预算执行 · 财年经营数据分析平台</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; }
+
+  /* shell side */
+  .shell-side { background: #001529; color: rgba(255, 255, 255, 0.85); display: flex; flex-direction: column; }
+  .shell-side-logo { height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); color: #fff; }
+  .shell-side-logo-mark { width: 32px; height: 32px; background: var(--color-primary); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 16px; }
+  .shell-side-logo-text { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
+  .shell-side-nav { padding: 12px 0; flex: 1; overflow-y: auto; }
+  .shell-nav-group-title { padding: 12px 28px 8px; color: rgba(255, 255, 255, 0.35); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .shell-nav-item { display: flex; align-items: center; gap: 12px; padding: 0 20px; height: 40px; color: rgba(255, 255, 255, 0.75); cursor: pointer; transition: all 0.2s; border-left: 3px solid transparent; font-size: 14px; text-decoration: none; }
+  .shell-nav-item:hover { color: #fff; background: rgba(255, 255, 255, 0.04); }
+  .shell-nav-item.is-active { background: var(--color-primary); color: #fff; border-left-color: #fff; }
+  .shell-nav-ic { width: 18px; flex-shrink: 0; color: rgba(255, 255, 255, 0.55); }
+  .shell-nav-item:hover .shell-nav-ic { color: #fff; }
+
+  .shell-header { background: #fff; border-bottom: 1px solid var(--antd-gray-3); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .shell-header-r { display: flex; align-items: center; gap: 16px; }
+  .period-pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; background: var(--antd-gray-2); border-radius: var(--radius-medium); color: var(--color-foreground); font-size: 13px; cursor: pointer; }
+  .period-pill:hover { background: var(--antd-gray-3); }
+  .user-chip { display: flex; align-items: center; gap: 10px; padding: 4px 10px 4px 4px; border-radius: 20px; cursor: pointer; }
+  .user-chip:hover { background: var(--antd-gray-2); }
+  .user-chip-name { font-size: 13px; font-weight: 500; }
+  .user-chip-role { font-size: 11px; color: var(--color-text-tertiary); }
+
+  /* 业务独有 */
+  .subj-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .table-card { background: #fff; border: 1px solid var(--antd-gray-3); border-radius: var(--radius-large); padding: 20px; }
+  .table-card h3 { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
+
+  /* 树形表（最多 3 级） */
+  .tree-table { width: 100%; border-collapse: collapse; }
+  .tree-table th {
+    text-align: left; padding: 8px 12px; font-weight: 500;
+    color: var(--color-foreground); background: var(--antd-gray-2);
+    border-bottom: 1px solid var(--antd-gray-3);
+    font-size: 12px; white-space: nowrap;
+  }
+  .tree-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--antd-gray-3);
+    font-size: 13px;
+    vertical-align: middle;
+  }
+  .tree-table tr:hover td { background: var(--antd-brand-50); }
+  .tree-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .tree-table .lvl-0 { padding-left: 12px; color: var(--color-foreground); font-weight: 600; }
+  .tree-table .lvl-1 { padding-left: 32px; color: var(--color-foreground); font-weight: 500; }
+  .tree-table .lvl-2 { padding-left: 52px; color: var(--color-text-secondary); }
+  .tree-toggle { display: inline-block; width: 14px; color: var(--color-text-tertiary); margin-right: 4px; font-family: var(--antd-font-family-mono); }
+
+  /* 进度条风格进度列（用 .antd-progress 风格内联） */
+  .cell-progress { display: flex; align-items: center; gap: 8px; }
+  .cell-progress .track { width: 80px; height: 6px; background: var(--antd-gray-3); border-radius: 3px; overflow: hidden; }
+  .cell-progress .bar { height: 100%; background: var(--color-primary); border-radius: 3px; }
+  .cell-progress .bar.is-warn { background: var(--antd-state-warning); }
+  .cell-progress .bar.is-good { background: var(--antd-state-success); }
+  .cell-progress .bar.is-over { background: var(--antd-state-error); }
+  .cell-progress .pct { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--color-text-secondary); min-width: 40px; }
+</style>
+</head>
+<body>
+<div class="antd-page">
+  <aside class="shell-side" style="grid-column: 1;">
+    <div class="shell-side-logo">
+      <div class="shell-side-logo-mark">J</div>
+      <div class="shell-side-logo-text">经营分析平台</div>
+    </div>
+    <nav class="shell-side-nav">
+      <div class="shell-nav-group-title">主数据</div>
+      <a class="shell-nav-item is-active" href="dashboard.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        首页看板
+      </a>
+      <a class="shell-nav-item" href="indicators-operating.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+        财务指标
+      </a>
+      <a class="shell-nav-item" href="transactions-overview.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+        往来分析
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        存货管理
+      </a>
+      <a class="shell-nav-item" href="reports-list.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+        分析报告
+      </a>
+      <div class="shell-nav-group-title">业务工具</div>
+      <a class="shell-nav-item" href="enterprise-lookup.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        企业信息查询
+      </a>
+      <div class="shell-nav-group-title">数据管理</div>
+      <a class="shell-nav-item" href="data-import.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        数据导入
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h12"/></svg>
+        重分类管理
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        维度管理
+      </a>
+      <div class="shell-nav-group-title">系统</div>
+      <a class="shell-nav-item" href="admin-users.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><circle cx="17" cy="7" r="3"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
+        用户管理
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+        角色权限
+      </a>
+    </nav>
+  </aside>
+
+  <main class="antd-content">
+    <header class="shell-header">
+      <div class="antd-breadcrumb">
+        <span>首页</span><span class="sep">/</span><span>经营分析</span><span class="sep">/</span><span class="current">科目预算</span>
+      </div>
+      <div class="shell-header-r">
+        <div class="antd-select" style="min-width: 160px;">浙江壹品慧生活集团</div>
+        <div class="period-pill">2026 财年 · 8月 ⌄</div>
+        <button class="antd-btn">刷新</button>
+        <div class="user-chip">
+          <div class="antd-avatar" style="background: var(--antd-brand-100); color: var(--color-primary);">张</div>
+          <div>
+            <div class="user-chip-name">张伟</div>
+            <div class="user-chip-role">财务总监</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="antd-content-body">
+      <!-- PageHead -->
+      <div class="antd-page-head">
+        <div>
+          <div class="antd-page-head-title">科目预算执行</div>
+          <div class="antd-page-head-desc">3 级科目树 · 预算/执行/剩余 · 进度可视化</div>
+        </div>
+        <div class="antd-page-head-actions">
+          <div class="antd-segmented">
+            <div class="antd-segmented-item is-active">费用</div>
+            <div class="antd-segmented-item">收入</div>
+            <div class="antd-segmented-item">资本</div>
+          </div>
+          <button class="antd-btn">导出</button>
+        </div>
+      </div>
+
+      <!-- 3 个 stat-tile：预算总额 / 已执行 / 剩余 -->
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--antd-space-4); margin-bottom: var(--antd-space-5);">
+        <div class="antd-stat-tile is-cyan">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">预算总额</span>
+            <span class="antd-stat-tile-icon">预</span>
+          </div>
+          <div class="antd-stat-tile-value">2,460.0<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-flat">财年口径</span>
+            <span class="antd-text-tertiary antd-fs-sm">已锁版</span>
+          </div>
+        </div>
+        <div class="antd-stat-tile is-violet">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">已执行</span>
+            <span class="antd-stat-tile-icon">执</span>
+          </div>
+          <div class="antd-stat-tile-value">1,653.2<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-flat">67.2% 进度</span>
+            <span class="antd-text-tertiary antd-fs-sm">截至 8月</span>
+          </div>
+        </div>
+        <div class="antd-stat-tile is-orange antd-emphasis-warm-strong">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">剩余</span>
+            <span class="antd-stat-tile-icon">余</span>
+          </div>
+          <div class="antd-stat-tile-value" style="color: var(--antd-orange-600);">806.8<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-down">↑ 4 个月</span>
+            <span class="antd-text-tertiary antd-fs-sm">预算期</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 左 科目树表 + 右 预算进度 -->
+      <div class="subj-grid">
+        <div class="table-card" style="margin-bottom: 0;">
+          <h3>科目树 <span class="antd-overline" style="margin-left: 8px;">最多 3 级缩进</span></h3>
+          <table class="tree-table">
+            <thead>
+              <tr>
+                <th>科目</th>
+                <th class="num">预算</th>
+                <th class="num">已用</th>
+                <th class="num">剩余</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- L0 主科目 -->
+              <tr>
+                <td class="lvl-0"><span class="tree-toggle">▾</span>销售费用</td>
+                <td class="num antd-fw-600">820.0</td>
+                <td class="num">586.4</td>
+                <td class="num">233.6</td>
+              </tr>
+              <!-- L1 -->
+              <tr>
+                <td class="lvl-1"><span class="tree-toggle">▾</span>人员成本</td>
+                <td class="num">420.0</td>
+                <td class="num">312.0</td>
+                <td class="num">108.0</td>
+              </tr>
+              <!-- L2 -->
+              <tr><td class="lvl-2"><span class="tree-toggle">·</span>基本工资</td><td class="num">240.0</td><td class="num">186.0</td><td class="num">54.0</td></tr>
+              <tr><td class="lvl-2"><span class="tree-toggle">·</span>绩效奖金</td><td class="num">120.0</td><td class="num">86.0</td><td class="num">34.0</td></tr>
+              <tr><td class="lvl-2"><span class="tree-toggle">·</span>社保公积金</td><td class="num">60.0</td><td class="num">40.0</td><td class="num">20.0</td></tr>
+              <tr>
+                <td class="lvl-1"><span class="tree-toggle">▾</span>营销推广</td>
+                <td class="num">280.0</td>
+                <td class="num">196.0</td>
+                <td class="num">84.0</td>
+              </tr>
+              <tr><td class="lvl-2"><span class="tree-toggle">·</span>广告投放</td><td class="num">160.0</td><td class="num">120.0</td><td class="num">40.0</td></tr>
+              <tr><td class="lvl-2"><span class="tree-toggle">·</span>促销活动</td><td class="num">80.0</td><td class="num">52.0</td><td class="num">28.0</td></tr>
+              <tr><td class="lvl-2"><span class="tree-toggle">·</span>会员补贴</td><td class="num">40.0</td><td class="num">24.0</td><td class="num">16.0</td></tr>
+              <tr>
+                <td class="lvl-1"><span class="tree-toggle">▾</span>差旅招待</td>
+                <td class="num">120.0</td>
+                <td class="num">78.4</td>
+                <td class="num">41.6</td>
+              </tr>
+              <tr><td class="lvl-2"><span class="tree-toggle">·</span>差旅</td><td class="num">72.0</td><td class="num">48.0</td><td class="num">24.0</td></tr>
+              <tr><td class="lvl-2"><span class="tree-toggle">·</span>业务招待</td><td class="num">48.0</td><td class="num">30.4</td><td class="num">17.6</td></tr>
+
+              <!-- L0 -->
+              <tr>
+                <td class="lvl-0"><span class="tree-toggle">▾</span>管理费用</td>
+                <td class="num antd-fw-600">640.0</td>
+                <td class="num">432.6</td>
+                <td class="num">207.4</td>
+              </tr>
+              <tr>
+                <td class="lvl-1"><span class="tree-toggle">▾</span>行政办公</td>
+                <td class="num">320.0</td>
+                <td class="num">218.4</td>
+                <td class="num">101.6</td>
+              </tr>
+              <tr><td class="lvl-2"><span class="tree-toggle">·</span>办公租金</td><td class="num">180.0</td><td class="num">120.0</td><td class="num">60.0</td></tr>
+              <tr><td class="lvl-2"><span class="tree-toggle">·</span>水电网络</td><td class="num">80.0</td><td class="num">58.0</td><td class="num">22.0</td></tr>
+              <tr><td class="lvl-2"><span class="tree-toggle">·</span>办公用品</td><td class="num">60.0</td><td class="num">40.4</td><td class="num">19.6</td></tr>
+              <tr>
+                <td class="lvl-1"><span class="tree-toggle">▾</span>人员成本</td>
+                <td class="num">240.0</td>
+                <td class="num">166.2</td>
+                <td class="num">73.8</td>
+              </tr>
+              <tr><td class="lvl-2"><span class="tree-toggle">·</span>工资</td><td class="num">160.0</td><td class="num">112.0</td><td class="num">48.0</td></tr>
+              <tr><td class="lvl-2"><span class="tree-toggle">·</span>福利</td><td class="num">80.0</td><td class="num">54.2</td><td class="num">25.8</td></tr>
+              <tr>
+                <td class="lvl-1"><span class="tree-toggle">·</span>折旧摊销</td>
+                <td class="num">80.0</td>
+                <td class="num">48.0</td>
+                <td class="num">32.0</td>
+              </tr>
+
+              <!-- L0 -->
+              <tr>
+                <td class="lvl-0"><span class="tree-toggle">▾</span>研发投入</td>
+                <td class="num antd-fw-600">380.0</td>
+                <td class="num">256.0</td>
+                <td class="num">124.0</td>
+              </tr>
+              <tr>
+                <td class="lvl-1"><span class="tree-toggle">▾</span>研发人员</td>
+                <td class="num">220.0</td>
+                <td class="num">156.0</td>
+                <td class="num">64.0</td>
+              </tr>
+              <tr><td class="lvl-2"><span class="tree-toggle">·</span>工资</td><td class="num">160.0</td><td class="num">120.0</td><td class="num">40.0</td></tr>
+              <tr><td class="lvl-2"><span class="tree-toggle">·</span>项目奖金</td><td class="num">60.0</td><td class="num">36.0</td><td class="num">24.0</td></tr>
+              <tr>
+                <td class="lvl-1"><span class="tree-toggle">·</span>设备耗材</td>
+                <td class="num">100.0</td>
+                <td class="num">68.0</td>
+                <td class="num">32.0</td>
+              </tr>
+              <tr>
+                <td class="lvl-1"><span class="tree-toggle">·</span>外部协作</td>
+                <td class="num">60.0</td>
+                <td class="num">32.0</td>
+                <td class="num">28.0</td>
+              </tr>
+
+              <!-- L0 -->
+              <tr>
+                <td class="lvl-0"><span class="tree-toggle">·</span>财务费用</td>
+                <td class="num antd-fw-600">120.0</td>
+                <td class="num">86.2</td>
+                <td class="num">33.8</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="table-card" style="margin-bottom: 0;">
+          <h3>预算进度 <span class="antd-overline" style="margin-left: 8px;">科目 / 预算 / 已用 / 剩余 / 进度 / 同比</span></h3>
+          <table class="antd-table antd-table-zebra antd-table-density-compact">
+            <thead>
+              <tr>
+                <th>科目</th>
+                <th class="num">预算</th>
+                <th class="num">已用</th>
+                <th class="num">剩余</th>
+                <th>进度</th>
+                <th class="num">同比</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>销售费用</td>
+                <td class="num">820.0</td>
+                <td class="num">586.4</td>
+                <td class="num">233.6</td>
+                <td>
+                  <div class="cell-progress">
+                    <div class="track"><div class="bar" style="width:71.5%;"></div></div>
+                    <span class="pct">71.5%</span>
+                  </div>
+                </td>
+                <td class="num antd-text-success">↑ 4.8%</td>
+              </tr>
+              <tr>
+                <td>· 营销推广</td>
+                <td class="num">280.0</td>
+                <td class="num">196.0</td>
+                <td class="num">84.0</td>
+                <td>
+                  <div class="cell-progress">
+                    <div class="track"><div class="bar is-good" style="width:70%;"></div></div>
+                    <span class="pct">70.0%</span>
+                  </div>
+                </td>
+                <td class="num antd-text-success">↑ 6.2%</td>
+              </tr>
+              <tr>
+                <td>· 人员成本</td>
+                <td class="num">420.0</td>
+                <td class="num">312.0</td>
+                <td class="num">108.0</td>
+                <td>
+                  <div class="cell-progress">
+                    <div class="track"><div class="bar" style="width:74.3%;"></div></div>
+                    <span class="pct">74.3%</span>
+                  </div>
+                </td>
+                <td class="num antd-text-success">↑ 3.5%</td>
+              </tr>
+              <tr>
+                <td>· 差旅招待</td>
+                <td class="num">120.0</td>
+                <td class="num">78.4</td>
+                <td class="num">41.6</td>
+                <td>
+                  <div class="cell-progress">
+                    <div class="track"><div class="bar is-warn" style="width:65.3%;"></div></div>
+                    <span class="pct">65.3%</span>
+                  </div>
+                </td>
+                <td class="num antd-text-error">↓ 1.2%</td>
+              </tr>
+              <tr>
+                <td>管理费用</td>
+                <td class="num">640.0</td>
+                <td class="num">432.6</td>
+                <td class="num">207.4</td>
+                <td>
+                  <div class="cell-progress">
+                    <div class="track"><div class="bar" style="width:67.6%;"></div></div>
+                    <span class="pct">67.6%</span>
+                  </div>
+                </td>
+                <td class="num">→ 0.0%</td>
+              </tr>
+              <tr>
+                <td>· 行政办公</td>
+                <td class="num">320.0</td>
+                <td class="num">218.4</td>
+                <td class="num">101.6</td>
+                <td>
+                  <div class="cell-progress">
+                    <div class="track"><div class="bar" style="width:68.3%;"></div></div>
+                    <span class="pct">68.3%</span>
+                  </div>
+                </td>
+                <td class="num antd-text-success">↑ 1.5%</td>
+              </tr>
+              <tr>
+                <td>· 人员成本</td>
+                <td class="num">240.0</td>
+                <td class="num">166.2</td>
+                <td class="num">73.8</td>
+                <td>
+                  <div class="cell-progress">
+                    <div class="track"><div class="bar" style="width:69.3%;"></div></div>
+                    <span class="pct">69.3%</span>
+                  </div>
+                </td>
+                <td class="num antd-text-success">↑ 2.0%</td>
+              </tr>
+              <tr>
+                <td>· 折旧摊销</td>
+                <td class="num">80.0</td>
+                <td class="num">48.0</td>
+                <td class="num">32.0</td>
+                <td>
+                  <div class="cell-progress">
+                    <div class="track"><div class="bar is-good" style="width:60%;"></div></div>
+                    <span class="pct">60.0%</span>
+                  </div>
+                </td>
+                <td class="num antd-text-error">↓ 2.0%</td>
+              </tr>
+              <tr>
+                <td>研发投入</td>
+                <td class="num">380.0</td>
+                <td class="num">256.0</td>
+                <td class="num">124.0</td>
+                <td>
+                  <div class="cell-progress">
+                    <div class="track"><div class="bar is-good" style="width:67.4%;"></div></div>
+                    <span class="pct">67.4%</span>
+                  </div>
+                </td>
+                <td class="num antd-text-success">↑ 6.3%</td>
+              </tr>
+              <tr>
+                <td>· 研发人员</td>
+                <td class="num">220.0</td>
+                <td class="num">156.0</td>
+                <td class="num">64.0</td>
+                <td>
+                  <div class="cell-progress">
+                    <div class="track"><div class="bar is-good" style="width:70.9%;"></div></div>
+                    <span class="pct">70.9%</span>
+                  </div>
+                </td>
+                <td class="num antd-text-success">↑ 5.0%</td>
+              </tr>
+              <tr>
+                <td>· 设备耗材</td>
+                <td class="num">100.0</td>
+                <td class="num">68.0</td>
+                <td class="num">32.0</td>
+                <td>
+                  <div class="cell-progress">
+                    <div class="track"><div class="bar" style="width:68%;"></div></div>
+                    <span class="pct">68.0%</span>
+                  </div>
+                </td>
+                <td class="num antd-text-success">↑ 8.1%</td>
+              </tr>
+              <tr>
+                <td>· 外部协作</td>
+                <td class="num">60.0</td>
+                <td class="num">32.0</td>
+                <td class="num">28.0</td>
+                <td>
+                  <div class="cell-progress">
+                    <div class="track"><div class="bar is-good" style="width:53.3%;"></div></div>
+                    <span class="pct">53.3%</span>
+                  </div>
+                </td>
+                <td class="num antd-text-success">↑ 12.4%</td>
+              </tr>
+              <tr>
+                <td>财务费用</td>
+                <td class="num">120.0</td>
+                <td class="num">86.2</td>
+                <td class="num">33.8</td>
+                <td>
+                  <div class="cell-progress">
+                    <div class="track"><div class="bar is-warn" style="width:71.8%;"></div></div>
+                    <span class="pct">71.8%</span>
+                  </div>
+                </td>
+                <td class="num antd-text-error">↓ 4.5%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

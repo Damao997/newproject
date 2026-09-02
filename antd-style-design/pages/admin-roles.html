@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>角色管理 · 系统 · 经营分析平台</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; }
+  .shell-side { background: #001529; color: rgba(255,255,255,0.85); display: flex; flex-direction: column; }
+  .shell-side-logo { height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #fff; }
+  .shell-side-logo-mark { width: 32px; height: 32px; background: var(--color-primary); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 16px; }
+  .shell-side-logo-text { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
+  .shell-side-nav { padding: 12px 0; flex: 1; overflow-y: auto; }
+  .shell-nav-group-title { padding: 12px 28px 8px; color: rgba(255,255,255,0.35); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .shell-nav-item { display: flex; align-items: center; gap: 12px; padding: 0 20px; height: 40px; color: rgba(255,255,255,0.75); cursor: pointer; transition: all 0.2s; border-left: 3px solid transparent; font-size: 14px; text-decoration: none; }
+  .shell-nav-item:hover { color: #fff; background: rgba(255,255,255,0.04); }
+  .shell-nav-item.is-active { background: var(--color-primary); color: #fff; border-left-color: #fff; }
+  .shell-nav-item.is-active .shell-nav-ic { color: #fff; }
+  .shell-nav-ic { width: 18px; flex-shrink: 0; color: rgba(255,255,255,0.55); }
+  .shell-nav-item:hover .shell-nav-ic { color: #fff; }
+
+  .shell-header { background: #fff; border-bottom: 1px solid var(--antd-gray-3); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .shell-header-l { display: flex; align-items: center; gap: 16px; }
+  .shell-header-r { display: flex; align-items: center; gap: 16px; }
+  .period-pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; background: var(--antd-gray-2); border-radius: var(--radius-medium); color: var(--color-foreground); font-size: 13px; cursor: pointer; }
+  .period-pill:hover { background: var(--antd-gray-3); }
+  .user-chip { display: flex; align-items: center; gap: 10px; padding: 4px 10px 4px 4px; border-radius: 20px; cursor: pointer; }
+  .user-chip:hover { background: var(--antd-gray-2); }
+  .user-chip-name { font-size: 13px; font-weight: 500; }
+  .user-chip-role { font-size: 11px; color: var(--color-text-tertiary); }
+
+  /* 权限矩阵 */
+  .antd-permission-matrix {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13px;
+  }
+  .antd-permission-matrix th,
+  .antd-permission-matrix td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--color-row-divider);
+    border-right: 1px solid var(--color-row-divider);
+    text-align: center;
+  }
+  .antd-permission-matrix th:last-child,
+  .antd-permission-matrix td:last-child { border-right: none; }
+  .antd-permission-matrix thead th {
+    background: var(--antd-gray-2);
+    color: var(--color-foreground);
+    font-weight: 600;
+    font-size: 12px;
+  }
+  .antd-permission-matrix .pm-role {
+    position: sticky; left: 0; z-index: 1;
+    background: var(--antd-gray-2);
+    text-align: left;
+    min-width: 160px;
+    max-width: 200px;
+    font-weight: 500;
+  }
+  .antd-permission-matrix tbody tr:nth-child(even) .pm-role { background: var(--color-table-zebra); }
+  .antd-permission-matrix tbody tr:hover .pm-role { background: var(--color-table-hover); }
+  .antd-permission-matrix .pm-role .role-name { display: flex; align-items: center; gap: 8px; }
+  .antd-permission-matrix .pm-role .role-cnt { font-size: 11px; color: var(--color-text-tertiary); }
+  .pm-cell { display: inline-flex; align-items: center; justify-content: center; }
+
+  /* 资源树 */
+  .res-tree { padding: 14px 18px; }
+  .res-tree ul { list-style: none; padding: 0; margin: 0; }
+  .res-tree li { padding: 6px 0; }
+  .res-tree .res-lv-1 { font-weight: 500; }
+  .res-tree .res-lv-2 { padding-left: 22px; }
+  .res-tree .res-lv-3 { padding-left: 44px; color: var(--color-text-secondary); }
+  .res-tree .res-row { display: inline-flex; align-items: center; gap: 8px; }
+  .res-tree .res-caret { width: 12px; color: var(--color-text-tertiary); }
+  .res-tree .res-ic { color: var(--antd-brand-400); width: 14px; }
+
+  .panel-card { background: var(--color-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-large); overflow: hidden; margin-bottom: var(--antd-space-4); }
+  .panel-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px; border-bottom: 1px solid var(--color-row-divider); }
+  .panel-head h3 { font-size: 15px; font-weight: 600; }
+  .panel-head .panel-meta { color: var(--color-text-tertiary); font-size: 12px; }
+  .panel-body { padding: 0; }
+
+  .antd-checkbox.is-indeterminate .antd-checkbox-square {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+  }
+  .antd-checkbox.is-indeterminate .antd-checkbox-square::after {
+    content: "";
+    width: 8px;
+    height: 2px;
+    background: #fff;
+    border: none;
+    transform: none;
+    margin: 0;
+  }
+  .antd-checkbox.is-empty .antd-checkbox-square { background: var(--antd-gray-2); }
+
+  /* 折叠/展开状态 */
+  .res-toggle { transition: transform 0.2s; }
+  .res-toggle.is-open { transform: rotate(90deg); }
+</style>
+</head>
+<body>
+<div class="antd-page">
+  <aside class="shell-side" style="grid-column: 1;">
+    <div class="shell-side-logo">
+      <div class="shell-side-logo-mark">J</div>
+      <div class="shell-side-logo-text">经营分析平台</div>
+    </div>
+    <nav class="shell-side-nav">
+      <div class="shell-nav-group-title">主数据</div>
+      <a class="shell-nav-item" href="dashboard.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        首页看板
+      </a>
+      <a class="shell-nav-item" href="indicators-operating.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+        财务指标
+      </a>
+      <a class="shell-nav-item" href="transactions-overview.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+        往来分析
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7-4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        存货管理
+      </a>
+      <a class="shell-nav-item" href="reports-list.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+        分析报告
+      </a>
+      <div class="shell-nav-group-title">业务工具</div>
+      <a class="shell-nav-item" href="enterprise-lookup.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        企业信息查询
+      </a>
+      <div class="shell-nav-group-title">数据管理</div>
+      <a class="shell-nav-item" href="data-import.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        数据导入
+      </a>
+      <a class="shell-nav-item" href="data-reclassify.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h12"/></svg>
+        重分类管理
+      </a>
+      <a class="shell-nav-item" href="data-dimensions.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        维度管理
+      </a>
+      <div class="shell-nav-group-title">系统</div>
+      <a class="shell-nav-item" href="admin-users.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><circle cx="17" cy="7" r="3"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
+        用户管理
+      </a>
+      <a class="shell-nav-item is-active" href="admin-roles.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+        角色权限
+      </a>
+    </nav>
+  </aside>
+
+  <main class="antd-content">
+    <header class="shell-header">
+      <div class="shell-header-l">
+        <div class="antd-breadcrumb">
+          <span>首页</span><span class="sep">/</span>
+          <a href="admin-users.html">系统</a><span class="sep">/</span>
+          <span class="current">角色管理</span>
+        </div>
+      </div>
+      <div class="shell-header-r">
+        <div class="antd-select" style="min-width: 160px;">浙江壹品慧生活集团</div>
+        <div class="period-pill">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          2026 财年
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <button class="antd-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          刷新
+        </button>
+        <div class="user-chip">
+          <div class="antd-avatar" style="background: var(--antd-brand-100); color: var(--color-primary);">张</div>
+          <div>
+            <div class="user-chip-name">张伟</div>
+            <div class="user-chip-role">财务总监</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="antd-content-body">
+      <div class="antd-page-head">
+        <div>
+          <div class="antd-page-head-title">角色管理</div>
+          <div class="antd-page-head-desc">配置角色 × 模块权限矩阵，勾选资源树分配细粒度权限</div>
+        </div>
+        <div class="antd-page-head-actions">
+          <button class="antd-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            克隆角色
+          </button>
+          <button class="antd-btn">导出权限</button>
+          <button class="antd-btn antd-btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            新建角色
+          </button>
+        </div>
+      </div>
+
+      <!-- 角色 × 模块权限矩阵 -->
+      <div class="panel-card">
+        <div class="panel-head">
+          <div>
+            <h3>角色 × 模块权限矩阵</h3>
+            <div class="panel-meta">行=角色（5） · 列=模块（8） · 点击单元格切换权限</div>
+          </div>
+          <div class="antd-flex">
+            <span class="antd-pill is-blue">全选</span>
+            <span class="antd-pill is-orange">半选</span>
+            <span class="antd-pill is-gray">无</span>
+          </div>
+        </div>
+        <div style="overflow-x: auto;">
+          <table class="antd-permission-matrix">
+            <thead>
+              <tr>
+                <th class="pm-role">角色</th>
+                <th>首页</th>
+                <th>经营分析</th>
+                <th>财务指标</th>
+                <th>往来分析</th>
+                <th>存货</th>
+                <th>报告</th>
+                <th>数据</th>
+                <th>系统</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="pm-role">
+                  <div class="role-name">
+                    <span class="antd-avatar antd-avatar-sm" style="background: var(--antd-brand-100); color: var(--color-primary);">财总</span>
+                    财务总监
+                  </div>
+                  <div class="role-cnt">3 人</div>
+                </td>
+                <td><span class="pm-cell antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-indeterminate"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-indeterminate"><span class="antd-checkbox-square"></span></span></td>
+              </tr>
+              <tr>
+                <td class="pm-role">
+                  <div class="role-name">
+                    <span class="antd-avatar antd-avatar-sm" style="background: var(--antd-state-success-bg); color: var(--antd-state-success);">财经</span>
+                    财务经理
+                  </div>
+                  <div class="role-cnt">5 人</div>
+                </td>
+                <td><span class="pm-cell antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-indeterminate"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-empty"><span class="antd-checkbox-square"></span></span></td>
+              </tr>
+              <tr>
+                <td class="pm-role">
+                  <div class="role-name">
+                    <span class="antd-avatar antd-avatar-sm" style="background: var(--antd-orange-bg); color: var(--antd-orange-500);">业务</span>
+                    业务经理
+                  </div>
+                  <div class="role-cnt">8 人</div>
+                </td>
+                <td><span class="pm-cell antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-indeterminate"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-indeterminate"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-empty"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-empty"><span class="antd-checkbox-square"></span></span></td>
+              </tr>
+              <tr>
+                <td class="pm-role">
+                  <div class="role-name">
+                    <span class="antd-avatar antd-avatar-sm" style="background: #f9f0ff; color: #722ed1;">销售</span>
+                    销售员
+                  </div>
+                  <div class="role-cnt">24 人</div>
+                </td>
+                <td><span class="pm-cell antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-indeterminate"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-empty"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-indeterminate"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-empty"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-empty"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-empty"><span class="antd-checkbox-square"></span></span></td>
+              </tr>
+              <tr>
+                <td class="pm-role">
+                  <div class="role-name">
+                    <span class="antd-avatar antd-avatar-sm" style="background: var(--antd-gray-2); color: var(--color-text-secondary);">只读</span>
+                    只读用户
+                  </div>
+                  <div class="role-cnt">12 人</div>
+                </td>
+                <td><span class="pm-cell antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-empty"><span class="antd-checkbox-square"></span></span></td>
+                <td><span class="pm-cell antd-checkbox is-empty"><span class="antd-checkbox-square"></span></span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 资源树勾选区 -->
+      <div class="panel-card">
+        <div class="panel-head">
+          <div>
+            <h3>资源树勾选区 · 当前角色：财务经理</h3>
+            <div class="panel-meta">共 28 个资源节点 · 已勾选 18 · 半选 3</div>
+          </div>
+          <div class="antd-flex">
+            <button class="antd-btn antd-btn-sm">展开全部</button>
+            <button class="antd-btn antd-btn-sm">折叠</button>
+            <button class="antd-btn antd-btn-sm antd-btn-primary">保存</button>
+          </div>
+        </div>
+        <div class="res-tree">
+          <ul>
+            <li class="res-lv-1">
+              <div class="res-row">
+                <svg class="res-caret res-toggle is-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                <span class="antd-checkbox is-indeterminate"><span class="antd-checkbox-square"></span></span>
+                <svg class="res-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+                <span>经营分析</span>
+                <span class="antd-pill is-blue antd-fs-sm">12 资源</span>
+              </div>
+              <ul>
+                <li class="res-lv-2">
+                  <div class="res-row">
+                    <svg class="res-caret res-toggle is-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                    <span class="antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span>
+                    收入分析
+                  </div>
+                  <ul>
+                    <li class="res-lv-3"><div class="res-row"><span class="antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span>· 收入趋势</div></li>
+                    <li class="res-lv-3"><div class="res-row"><span class="antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span>· 收入结构</div></li>
+                    <li class="res-lv-3"><div class="res-row"><span class="antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span>· 收入排行</div></li>
+                  </ul>
+                </li>
+                <li class="res-lv-2">
+                  <div class="res-row">
+                    <svg class="res-caret res-toggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                    <span class="antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span>
+                    毛利分析
+                  </div>
+                </li>
+                <li class="res-lv-2">
+                  <div class="res-row">
+                    <svg class="res-caret res-toggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                    <span class="antd-checkbox is-indeterminate"><span class="antd-checkbox-square"></span></span>
+                    费用分析
+                  </div>
+                </li>
+              </ul>
+            </li>
+            <li class="res-lv-1">
+              <div class="res-row">
+                <svg class="res-caret res-toggle is-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                <span class="antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span>
+                <svg class="res-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+                <span>财务指标</span>
+                <span class="antd-pill is-blue antd-fs-sm">8 资源</span>
+              </div>
+              <ul>
+                <li class="res-lv-2"><div class="res-row"><span class="antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span>· 利润表</div></li>
+                <li class="res-lv-2"><div class="res-row"><span class="antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span>· 资产负债表</div></li>
+                <li class="res-lv-2"><div class="res-row"><span class="antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span>· 现金流量表</div></li>
+              </ul>
+            </li>
+            <li class="res-lv-1">
+              <div class="res-row">
+                <svg class="res-caret res-toggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                <span class="antd-checkbox is-checked"><span class="antd-checkbox-square"></span></span>
+                <svg class="res-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                <span>报告</span>
+                <span class="antd-pill is-blue antd-fs-sm">5 资源</span>
+              </div>
+            </li>
+            <li class="res-lv-1">
+              <div class="res-row">
+                <svg class="res-caret res-toggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                <span class="antd-checkbox is-empty"><span class="antd-checkbox-square"></span></span>
+                <svg class="res-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+                <span>数据管理</span>
+                <span class="antd-pill is-gray antd-fs-sm">3 资源</span>
+              </div>
+            </li>
+            <li class="res-lv-1">
+              <div class="res-row">
+                <svg class="res-caret res-toggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                <span class="antd-checkbox is-empty"><span class="antd-checkbox-square"></span></span>
+                <svg class="res-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+                <span>系统</span>
+                <span class="antd-pill is-gray antd-fs-sm">2 资源</span>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

@@ -158,6 +158,10 @@ export const AUDIT_MODULE_LABELS: Record<string, string> = {
   permission: '越权拦截',
   data: '数据管理',
   ai: 'AI 模块',
+  indicators: '财务指标',
+  reports: '分析报告',
+  transactions: '往来分析',
+  tools: '其他工具',
 }
 
 /** 审计日志操作类型→中文名（未收录码回退显示原文） */
@@ -165,10 +169,15 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   login: '登录',
   login_failed: '登录失败',
   logout: '登出',
+  auto_login: '自动登录（刷新续期）',
   create: '新增',
   update: '更新',
   delete: '删除',
   export: '导出',
+  import: '导入',
+  reclassify: '科目重分类',
+  metric_change: '指标公式变更',
+  consolidation: '合并重分类',
   user_create: '创建用户',
   user_disable: '停用用户',
   user_purge: '彻底删除用户',
@@ -177,6 +186,101 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   denied: '越权拦截',
   rule_change: '公式规则变更',
   import_rollback: '批次回滚',
+  analysis_create: '新增汇总分析',
+  analysis_update: '更新汇总分析',
+  analysis_delete: '删除汇总分析',
+  analysis_restore: '恢复汇总分析',
+  report_create: '新建报告',
+  report_update: '更新报告',
+  report_archive: '归档报告',
+  report_export: '导出报告',
+  report_generate_sections: '生成报告章节',
+  report_set_sections: '保存报告章节',
+  report_save_version: '保存报告版本',
+  report_rollback_version: '回滚报告版本',
+  enterprise_search: '工商信息查询',
+  polish: 'AI 润色',
+  analyze: 'AI 分析',
+  overview: 'AI 概述',
+  formula_gen: 'AI 公式生成',
+  report_summary: 'AI 报告摘要',
+  prompt_injection_blocked: '提示词注入拦截',
+}
+
+/** 审计资源码→中文（与后端 requirePermission 资源码对齐，denied/permission_change 翻译用） */
+export const AUDIT_RESOURCE_LABELS: Record<string, string> = {
+  dashboard: '首页看板',
+  indicators: '财务指标',
+  transactions: '往来分析',
+  inventory: '存货管理',
+  reports: '分析报告',
+  tools: '其他工具',
+  data: '数据管理',
+  admin: '权限管理',
+}
+
+/** 审计权限操作码→中文（denied 记录中 resource:action 翻译用） */
+export const AUDIT_PERM_ACTION_LABELS: Record<string, string> = {
+  view: '查看',
+  create: '新增',
+  update: '更新',
+  delete: '删除',
+  export: '导出',
+  import: '导入',
+}
+
+/** 审计 detail 实体码→中文（data 模块 entity 字段） */
+export const AUDIT_ENTITY_LABELS: Record<string, string> = {
+  company: '公司',
+  subject: '科目',
+  aggregation_map: '汇总主体映射',
+  expense_subject_mapping: '运营费用映射',
+  product_category: '产品品类',
+  key_metrics_product: '关键指标产品',
+  subject_budget_config: '科目预算配置',
+  budget_ratio_config: '月度预算比例',
+}
+
+/** 审计导入模板类型→中文 */
+export const AUDIT_TEMPLATE_LABELS: Record<string, string> = {
+  operating: '经营数据',
+  static: '静态数据',
+  cashflow: '现金流',
+  budget: '年度预算',
+  transaction: '往来数据',
+  inventory: '存货数据',
+}
+
+/** 审计 detail 通用键→中文（未识别结构回退为键值对展示时使用） */
+export const AUDIT_DETAIL_KEY_LABELS: Record<string, string> = {
+  username: '用户',
+  role: '角色',
+  roles: '角色',
+  before: '变更前',
+  after: '变更后',
+  added: '新增',
+  removed: '移除',
+  rowCount: '数据行数',
+  errorCount: '错误行数',
+  detailCount: '明细行数',
+  templateType: '模板类型',
+  valueUnit: '数值单位',
+  entity: '对象',
+  status: '状态',
+  fields: '字段',
+  keyword: '关键词',
+  version: '版本',
+  versionNo: '版本号',
+  toVersion: '回滚至版本',
+  from: '来源',
+  style: '润色风格',
+  pipeline: 'AI 管道',
+  reason: '原因',
+  leaks: '脱敏拦截',
+  statusTo: '目标状态',
+  resource: '资源',
+  action: '操作',
+  anyOf: '所需权限之一',
 }
 
 /** 达成率红绿灯阈值（与 kpi-card 分级语义联动；后端口径变更时先改此处） */

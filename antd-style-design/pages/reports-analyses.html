@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>单项分析报告 · 经营数据分析平台</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; }
+  .shell-side { background: #001529; color: rgba(255, 255, 255, 0.85); display: flex; flex-direction: column; }
+  .shell-side-logo { height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); color: #fff; }
+  .shell-side-logo-mark { width: 32px; height: 32px; background: var(--color-primary); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 16px; }
+  .shell-side-logo-text { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
+  .shell-side-nav { padding: 12px 0; flex: 1; overflow-y: auto; }
+  .shell-nav-group-title { padding: 12px 28px 8px; color: rgba(255, 255, 255, 0.35); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .shell-nav-item { display: flex; align-items: center; gap: 12px; padding: 0 20px; height: 40px; color: rgba(255, 255, 255, 0.75); cursor: pointer; transition: all 0.2s; border-left: 3px solid transparent; font-size: 14px; text-decoration: none; }
+  .shell-nav-item:hover { color: #fff; background: rgba(255, 255, 255, 0.04); }
+  .shell-nav-item.is-active { background: var(--color-primary); color: #fff; border-left-color: #fff; }
+  .shell-nav-ic { width: 18px; flex-shrink: 0; color: rgba(255, 255, 255, 0.55); }
+  .shell-nav-item:hover .shell-nav-ic { color: #fff; }
+  .shell-header { background: #fff; border-bottom: 1px solid var(--antd-gray-3); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .shell-header-l { display: flex; align-items: center; gap: 16px; }
+  .shell-header-r { display: flex; align-items: center; gap: 16px; }
+  .period-pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; background: var(--antd-gray-2); border-radius: var(--radius-medium); color: var(--color-foreground); font-size: 13px; cursor: pointer; }
+  .user-chip { display: flex; align-items: center; gap: 10px; padding: 4px 10px 4px 4px; border-radius: 20px; cursor: pointer; }
+  .user-chip-name { font-size: 13px; font-weight: 500; }
+  .user-chip-role { font-size: 11px; color: var(--color-text-tertiary); }
+
+  .filter-bar { background: #fff; border: 1px solid var(--antd-gray-3); border-radius: var(--radius-large); padding: 14px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .filter-bar-l { display: flex; align-items: center; gap: 12px; flex: 1; flex-wrap: wrap; }
+  .filter-bar-r { display: flex; align-items: center; gap: 8px; }
+
+  .report-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px; }
+  .report-card { background: #fff; border: 1px solid var(--antd-gray-3); border-radius: var(--radius-large); padding: 20px; transition: all 0.2s; cursor: pointer; display: flex; flex-direction: column; gap: 12px; position: relative; }
+  .report-card:hover { border-color: var(--color-primary); box-shadow: 0 4px 12px rgba(22, 119, 255, 0.08); transform: translateY(-1px); }
+  .report-card-head { display: flex; align-items: center; justify-content: space-between; }
+  .report-card-pill { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; font-size: 12px; border-radius: var(--antd-radius-full); font-weight: 500; }
+  .report-card-pill.is-biz { background: var(--antd-brand-50); color: var(--color-primary); border: 1px solid var(--antd-brand-100); }
+  .report-card-pill.is-finance { background: var(--antd-state-success-bg); color: var(--antd-state-success); border: 1px solid var(--antd-state-success-border); }
+  .report-card-pill.is-tx { background: var(--antd-orange-bg); color: var(--antd-orange-600); border: 1px solid var(--antd-orange-border); }
+  .report-card-pill.is-cash { background: #e6fffb; color: #13c2c2; border: 1px solid #87e8de; }
+  .report-card-pill.is-tax { background: #f9f0ff; color: #722ed1; border: 1px solid #d3adf7; }
+  .report-card-pill.is-cost { background: #fff7e6; color: #d46b08; border: 1px solid #ffd591; }
+  .report-card-time { font-size: 12px; color: var(--color-text-tertiary); }
+  .report-card-title { font-size: 15px; font-weight: 600; color: var(--color-foreground); line-height: 1.4; margin: 0; }
+  .report-card-desc { font-size: 12px; color: var(--color-text-tertiary); line-height: 1.6; min-height: 38px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .report-card-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 12px; background: var(--antd-gray-1); border-radius: var(--radius-medium); }
+  .report-card-kpi { display: flex; flex-direction: column; gap: 4px; }
+  .report-card-kpi-label { font-size: 11px; color: var(--color-text-tertiary); }
+  .report-card-kpi-value { font-size: 14px; font-weight: 600; color: var(--color-foreground); font-variant-numeric: tabular-nums; }
+  .report-card-actions { display: flex; align-items: center; gap: 8px; margin-top: auto; }
+  .report-card-actions .antd-btn { flex: 1; height: 28px; font-size: 12px; padding: 0 8px; }
+
+  .section { background: #fff; border: 1px solid var(--antd-gray-3); border-radius: var(--radius-large); padding: 20px; }
+  .section h3 { font-size: 16px; font-weight: 600; margin: 0; }
+  .section h3 .badge { font-size: 12px; font-weight: 400; color: var(--color-text-tertiary); margin-left: 8px; }
+  .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+<div class="antd-page">
+  <aside class="shell-side" style="grid-column: 1;">
+    <div class="shell-side-logo">
+      <div class="shell-side-logo-mark">J</div>
+      <div class="shell-side-logo-text">经营分析平台</div>
+    </div>
+    <nav class="shell-side-nav">
+      <div class="shell-nav-group-title">主数据</div>
+      <a class="shell-nav-item" data-dom-id="nav-dashboard" href="dashboard.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        首页看板
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-indicators" href="indicators-operating.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+        财务指标
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-transactions" href="transactions-overview.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+        往来分析
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-inventory" href="inventory.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        存货管理
+      </a>
+      <a class="shell-nav-item is-active" data-dom-id="nav-reports" href="reports-analyses.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+        分析报告
+      </a>
+      <div class="shell-nav-group-title">业务工具</div>
+      <a class="shell-nav-item" data-dom-id="nav-tools" href="enterprise-lookup.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        企业信息查询
+      </a>
+      <div class="shell-nav-group-title">数据管理</div>
+      <a class="shell-nav-item" data-dom-id="nav-data" href="data-import.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        数据导入
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-reclassify" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h12"/></svg>
+        重分类管理
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-dim" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        维度管理
+      </a>
+      <div class="shell-nav-group-title">系统</div>
+      <a class="shell-nav-item" data-dom-id="nav-users" href="admin-users.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><circle cx="17" cy="7" r="3"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
+        用户管理
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-roles" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+        角色权限
+      </a>
+    </nav>
+  </aside>
+
+  <main class="antd-content">
+    <header class="shell-header">
+      <div class="shell-header-l">
+        <div class="antd-breadcrumb">
+          <span>首页</span>
+          <span class="sep">/</span>
+          <span>分析报告</span>
+          <span class="sep">/</span>
+          <span class="current">单项分析报告</span>
+        </div>
+      </div>
+      <div class="shell-header-r">
+        <div class="antd-select" style="min-width: 160px;">浙江壹品慧生活集团</div>
+        <div class="period-pill">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          2026 财年 · 8月
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <button class="antd-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          刷新
+        </button>
+        <div class="user-chip">
+          <div class="antd-avatar" style="background: var(--antd-brand-100); color: var(--color-primary);">张</div>
+          <div>
+            <div class="user-chip-name">张伟</div>
+            <div class="user-chip-role">财务总监</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="antd-content-body">
+      <!-- PageHead -->
+      <div class="antd-page-head">
+        <div>
+          <div class="antd-page-head-title">单项分析报告</div>
+          <div class="antd-page-head-desc">经营 / 财务 / 往来 三大类分析报告 · 共 9 类模板 · 最近生成 32 份</div>
+        </div>
+        <div class="antd-page-head-actions">
+          <button class="antd-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 21l-6-6m6 6v-4.8m0 4.8h-4.8M3 16.2V21m0 0h4.8M3 21l6-6M21 7.8V3m0 0h-4.8M21 3l-6 6M3 7.8V3m0 0h4.8M3 3l6 6"/></svg>
+            订阅管理
+          </button>
+          <button class="antd-btn antd-btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            新建报告
+          </button>
+        </div>
+      </div>
+
+      <!-- 顶部筛选 -->
+      <div class="filter-bar">
+        <div class="filter-bar-l">
+          <div class="antd-segmented">
+            <div class="antd-segmented-item is-active">全部 · 9</div>
+            <div class="antd-segmented-item">经营 · 4</div>
+            <div class="antd-segmented-item">财务 · 3</div>
+            <div class="antd-segmented-item">往来 · 2</div>
+          </div>
+          <div class="antd-select" style="min-width: 180px;">时间: 2026-05 ~ 2026-08</div>
+          <div class="antd-select" style="min-width: 140px;">公司: 全部</div>
+          <div class="antd-select" style="min-width: 120px;">状态: 全部</div>
+        </div>
+        <div class="filter-bar-r">
+          <div class="antd-input" style="width: 220px;">搜索报告名称 / 作者</div>
+        </div>
+      </div>
+
+      <!-- 报告卡片网格 -->
+      <div class="report-grid">
+        <!-- 1. 月度经营分析 -->
+        <div class="report-card">
+          <div class="report-card-head">
+            <span class="report-card-pill is-biz">经营</span>
+            <span class="report-card-time">2026-08-25</span>
+          </div>
+          <h3 class="report-card-title">2026 财年 8 月经营分析</h3>
+          <p class="report-card-desc">本月营业收入 1,284.6 万，同比增长 12.4%；毛利率回升至 36.0%，环比 +1.8 pp。</p>
+          <div class="report-card-kpis">
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">收入</span>
+              <span class="report-card-kpi-value">¥1,284.6万</span>
+            </div>
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">毛利率</span>
+              <span class="report-card-kpi-value">36.0%</span>
+            </div>
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">完成率</span>
+              <span class="report-card-kpi-value">67.2%</span>
+            </div>
+          </div>
+          <div class="report-card-actions">
+            <button class="antd-btn">查看</button>
+            <button class="antd-btn">导出</button>
+            <button class="antd-btn">分享</button>
+          </div>
+        </div>
+
+        <!-- 2. 季度毛利分析 -->
+        <div class="report-card">
+          <div class="report-card-head">
+            <span class="report-card-pill is-biz">经营</span>
+            <span class="report-card-time">2026-08-22</span>
+          </div>
+          <h3 class="report-card-title">Q2 季度毛利结构分析</h3>
+          <p class="report-card-desc">Q2 综合毛利率 35.4%，其中智能家电品类贡献 48%，社区零售下滑至 22%。</p>
+          <div class="report-card-kpis">
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">毛利额</span>
+              <span class="report-card-kpi-value">¥462.3万</span>
+            </div>
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">同比</span>
+              <span class="report-card-kpi-value antd-text-success">+8.7%</span>
+            </div>
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">SKU</span>
+              <span class="report-card-kpi-value">1,284</span>
+            </div>
+          </div>
+          <div class="report-card-actions">
+            <button class="antd-btn">查看</button>
+            <button class="antd-btn">导出</button>
+            <button class="antd-btn">分享</button>
+          </div>
+        </div>
+
+        <!-- 3. 利润表分析 -->
+        <div class="report-card">
+          <div class="report-card-head">
+            <span class="report-card-pill is-finance">财务</span>
+            <span class="report-card-time">2026-08-20</span>
+          </div>
+          <h3 class="report-card-title">8 月利润表分析</h3>
+          <p class="report-card-desc">营业利润 198.6 万，期间费用率 22.3%，较预算低 1.5 pp，所得税费用 32.4 万。</p>
+          <div class="report-card-kpis">
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">营业利润</span>
+              <span class="report-card-kpi-value">¥198.6万</span>
+            </div>
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">净利率</span>
+              <span class="report-card-kpi-value">12.9%</span>
+            </div>
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">所得税</span>
+              <span class="report-card-kpi-value">¥32.4万</span>
+            </div>
+          </div>
+          <div class="report-card-actions">
+            <button class="antd-btn">查看</button>
+            <button class="antd-btn">导出</button>
+            <button class="antd-btn">分享</button>
+          </div>
+        </div>
+
+        <!-- 4. 资产负债分析 -->
+        <div class="report-card">
+          <div class="report-card-head">
+            <span class="report-card-pill is-finance">财务</span>
+            <span class="report-card-time">2026-08-18</span>
+          </div>
+          <h3 class="report-card-title">8 月资产负债结构</h3>
+          <p class="report-card-desc">总资产 8,420 万，资产负债率 42.6%，流动比率 2.18，存货占比 18.4%。</p>
+          <div class="report-card-kpis">
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">总资产</span>
+              <span class="report-card-kpi-value">¥8,420万</span>
+            </div>
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">负债率</span>
+              <span class="report-card-kpi-value">42.6%</span>
+            </div>
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">流动比</span>
+              <span class="report-card-kpi-value">2.18</span>
+            </div>
+          </div>
+          <div class="report-card-actions">
+            <button class="antd-btn">查看</button>
+            <button class="antd-btn">导出</button>
+            <button class="antd-btn">分享</button>
+          </div>
+        </div>
+
+        <!-- 5. 现金流量分析 -->
+        <div class="report-card">
+          <div class="report-card-head">
+            <span class="report-card-pill is-cash">财务</span>
+            <span class="report-card-time">2026-08-15</span>
+          </div>
+          <h3 class="report-card-title">经营活动现金流量专项</h3>
+          <p class="report-card-desc">本月经营现金流净额 168.4 万，收现比 1.08，应收回款表现良好。</p>
+          <div class="report-card-kpis">
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">经营净流</span>
+              <span class="report-card-kpi-value">¥168.4万</span>
+            </div>
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">收现比</span>
+              <span class="report-card-kpi-value">1.08</span>
+            </div>
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">净流比</span>
+              <span class="report-card-kpi-value">0.85</span>
+            </div>
+          </div>
+          <div class="report-card-actions">
+            <button class="antd-btn">查看</button>
+            <button class="antd-btn">导出</button>
+            <button class="antd-btn">分享</button>
+          </div>
+        </div>
+
+        <!-- 6. 应收账款分析 -->
+        <div class="report-card">
+          <div class="report-card-head">
+            <span class="report-card-pill is-tx">往来</span>
+            <span class="report-card-time">2026-08-12</span>
+          </div>
+          <h3 class="report-card-title">应收账款账龄专项</h3>
+          <p class="report-card-desc">应收账款余额 358.2 万，30 天内占 55%，90 天以上占比 8%，需关注长账龄 4 家。</p>
+          <div class="report-card-kpis">
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">应收余额</span>
+              <span class="report-card-kpi-value">¥358.2万</span>
+            </div>
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">30天占比</span>
+              <span class="report-card-kpi-value">55%</span>
+            </div>
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">长账龄</span>
+              <span class="report-card-kpi-value antd-text-error">4 家</span>
+            </div>
+          </div>
+          <div class="report-card-actions">
+            <button class="antd-btn">查看</button>
+            <button class="antd-btn">导出</button>
+            <button class="antd-btn">分享</button>
+          </div>
+        </div>
+
+        <!-- 7. 应付账款分析 -->
+        <div class="report-card">
+          <div class="report-card-head">
+            <span class="report-card-pill is-tx">往来</span>
+            <span class="report-card-time">2026-08-10</span>
+          </div>
+          <h3 class="report-card-title">应付账款与付款节奏</h3>
+          <p class="report-card-desc">应付余额 286.5 万，集中到期 9 月初 86 万，平均账期 42 天，处于行业合理区间。</p>
+          <div class="report-card-kpis">
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">应付余额</span>
+              <span class="report-card-kpi-value">¥286.5万</span>
+            </div>
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">平均账期</span>
+              <span class="report-card-kpi-value">42 天</span>
+            </div>
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">9月到期</span>
+              <span class="report-card-kpi-value">¥86万</span>
+            </div>
+          </div>
+          <div class="report-card-actions">
+            <button class="antd-btn">查看</button>
+            <button class="antd-btn">导出</button>
+            <button class="antd-btn">分享</button>
+          </div>
+        </div>
+
+        <!-- 8. 费用专项 -->
+        <div class="report-card">
+          <div class="report-card-head">
+            <span class="report-card-pill is-cost">经营</span>
+            <span class="report-card-time">2026-08-08</span>
+          </div>
+          <h3 class="report-card-title">三费专项分析</h3>
+          <p class="report-card-desc">销售 / 管理 / 财务费用合计 286.5 万，期间费用率 22.3%，研发占比 8.6%。</p>
+          <div class="report-card-kpis">
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">三费合计</span>
+              <span class="report-card-kpi-value">¥286.5万</span>
+            </div>
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">费率</span>
+              <span class="report-card-kpi-value">22.3%</span>
+            </div>
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">同比</span>
+              <span class="report-card-kpi-value antd-text-success">-1.2 pp</span>
+            </div>
+          </div>
+          <div class="report-card-actions">
+            <button class="antd-btn">查看</button>
+            <button class="antd-btn">导出</button>
+            <button class="antd-btn">分享</button>
+          </div>
+        </div>
+
+        <!-- 9. 税务分析 -->
+        <div class="report-card">
+          <div class="report-card-head">
+            <span class="report-card-pill is-tax">财务</span>
+            <span class="report-card-time">2026-08-05</span>
+          </div>
+          <h3 class="report-card-title">8 月税务专项</h3>
+          <p class="report-card-desc">增值税 56.8 万，企业所得税 32.4 万，附加税 6.8 万，税负率 7.5%。</p>
+          <div class="report-card-kpis">
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">增值税</span>
+              <span class="report-card-kpi-value">¥56.8万</span>
+            </div>
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">所得税</span>
+              <span class="report-card-kpi-value">¥32.4万</span>
+            </div>
+            <div class="report-card-kpi">
+              <span class="report-card-kpi-label">税负率</span>
+              <span class="report-card-kpi-value">7.5%</span>
+            </div>
+          </div>
+          <div class="report-card-actions">
+            <button class="antd-btn">查看</button>
+            <button class="antd-btn">导出</button>
+            <button class="antd-btn">分享</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 近期生成列表 -->
+      <div class="section">
+        <div class="section-head">
+          <h3>近期生成<span class="badge">最近 8 份</span></h3>
+          <a class="antd-card-extra" href="#">查看全部 →</a>
+        </div>
+        <table class="antd-table antd-table-density-compact">
+          <thead>
+            <tr>
+              <th style="width: 130px;">报告类型</th>
+              <th>报告名称</th>
+              <th style="width: 100px;">所属期间</th>
+              <th style="width: 90px;">作者</th>
+              <th style="width: 130px;">生成时间</th>
+              <th style="width: 80px;">状态</th>
+              <th style="width: 140px;">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="antd-tag">经营</span></td>
+              <td>2026 财年 8 月经营分析</td>
+              <td>2026-08</td>
+              <td>张伟</td>
+              <td>2026-08-25 14:23</td>
+              <td><span class="antd-status antd-status-success">已发布</span></td>
+              <td>
+                <a class="antd-text-primary" href="#">查看</a>
+                <span class="antd-text-tertiary">·</span>
+                <a class="antd-text-primary" href="#">下载</a>
+              </td>
+            </tr>
+            <tr>
+              <td><span class="antd-tag">经营</span></td>
+              <td>Q2 季度毛利结构分析</td>
+              <td>2026 Q2</td>
+              <td>王芳</td>
+              <td>2026-08-22 11:48</td>
+              <td><span class="antd-status antd-status-success">已发布</span></td>
+              <td>
+                <a class="antd-text-primary" href="#">查看</a>
+                <span class="antd-text-tertiary">·</span>
+                <a class="antd-text-primary" href="#">下载</a>
+              </td>
+            </tr>
+            <tr>
+              <td><span class="antd-tag-success">财务</span></td>
+              <td>8 月利润表分析</td>
+              <td>2026-08</td>
+              <td>李娜</td>
+              <td>2026-08-20 16:32</td>
+              <td><span class="antd-status antd-status-success">已发布</span></td>
+              <td>
+                <a class="antd-text-primary" href="#">查看</a>
+                <span class="antd-text-tertiary">·</span>
+                <a class="antd-text-primary" href="#">下载</a>
+              </td>
+            </tr>
+            <tr>
+              <td><span class="antd-tag-success">财务</span></td>
+              <td>8 月资产负债结构</td>
+              <td>2026-08</td>
+              <td>陈勇</td>
+              <td>2026-08-18 09:15</td>
+              <td><span class="antd-status antd-status-success">已发布</span></td>
+              <td>
+                <a class="antd-text-primary" href="#">查看</a>
+                <span class="antd-text-tertiary">·</span>
+                <a class="antd-text-primary" href="#">下载</a>
+              </td>
+            </tr>
+            <tr>
+              <td><span class="antd-tag-success">财务</span></td>
+              <td>经营活动现金流量专项</td>
+              <td>2026-08</td>
+              <td>赵敏</td>
+              <td>2026-08-15 10:42</td>
+              <td><span class="antd-status antd-status-success">已发布</span></td>
+              <td>
+                <a class="antd-text-primary" href="#">查看</a>
+                <span class="antd-text-tertiary">·</span>
+                <a class="antd-text-primary" href="#">下载</a>
+              </td>
+            </tr>
+            <tr>
+              <td><span class="antd-tag-warning">往来</span></td>
+              <td>应收账款账龄专项</td>
+              <td>2026-08</td>
+              <td>孙丽</td>
+              <td>2026-08-12 13:55</td>
+              <td><span class="antd-status antd-status-warning">待复核</span></td>
+              <td>
+                <a class="antd-text-primary" href="#">查看</a>
+                <span class="antd-text-tertiary">·</span>
+                <a class="antd-text-primary" href="#">下载</a>
+              </td>
+            </tr>
+            <tr>
+              <td><span class="antd-tag-warning">往来</span></td>
+              <td>应付账款与付款节奏</td>
+              <td>2026-08</td>
+              <td>孙丽</td>
+              <td>2026-08-10 15:18</td>
+              <td><span class="antd-status antd-status-success">已发布</span></td>
+              <td>
+                <a class="antd-text-primary" href="#">查看</a>
+                <span class="antd-text-tertiary">·</span>
+                <a class="antd-text-primary" href="#">下载</a>
+              </td>
+            </tr>
+            <tr>
+              <td><span class="antd-tag-orange">经营</span></td>
+              <td>三费专项分析</td>
+              <td>2026-08</td>
+              <td>王芳</td>
+              <td>2026-08-08 17:05</td>
+              <td><span class="antd-status antd-status-success">已发布</span></td>
+              <td>
+                <a class="antd-text-primary" href="#">查看</a>
+                <span class="antd-text-tertiary">·</span>
+                <a class="antd-text-primary" href="#">下载</a>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

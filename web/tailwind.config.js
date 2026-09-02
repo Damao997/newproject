@@ -23,10 +23,6 @@ export default {
           DEFAULT: "hsl(var(--secondary))",
           foreground: "hsl(var(--secondary-foreground))",
         },
-        destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))",
-        },
         muted: {
           DEFAULT: "hsl(var(--muted))",
           foreground: "hsl(var(--muted-foreground))",
@@ -46,13 +42,51 @@ export default {
         success: {
           DEFAULT: "hsl(var(--success))",
           strong: "hsl(var(--success-strong))",
+          50: "hsl(var(--success-50))",
+          100: "hsl(var(--success-100))",
+          300: "hsl(var(--success-300))",
+          500: "hsl(var(--success-500))",
+          700: "hsl(var(--success-700))",
+          900: "hsl(var(--success-900))",
         },
         warning: {
           DEFAULT: "hsl(var(--warning))",
           strong: "hsl(var(--warning-strong))",
+          50: "hsl(var(--warning-50))",
+          100: "hsl(var(--warning-100))",
+          300: "hsl(var(--warning-300))",
+          500: "hsl(var(--warning-500))",
+          700: "hsl(var(--warning-700))",
+          900: "hsl(var(--warning-900))",
         },
-        info: "hsl(var(--info))",
-        // 侧边栏三风格变量（随 html[data-sidebar] 切换）；--sidebar-bg 可为渐变字符串，由内联 style 承载
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
+          50: "hsl(var(--destructive-50))",
+          100: "hsl(var(--destructive-100))",
+          300: "hsl(var(--destructive-300))",
+          500: "hsl(var(--destructive-500))",
+          700: "hsl(var(--destructive-700))",
+          900: "hsl(var(--destructive-900))",
+        },
+        info: {
+          DEFAULT: "hsl(var(--info))",
+          50: "hsl(var(--info-50))",
+          100: "hsl(var(--info-100))",
+          300: "hsl(var(--info-300))",
+          500: "hsl(var(--info-500))",
+          700: "hsl(var(--info-700))",
+          900: "hsl(var(--info-900))",
+        },
+        neutral: {
+          50: "hsl(var(--neutral-50))",
+          100: "hsl(var(--neutral-100))",
+          300: "hsl(var(--neutral-300))",
+          500: "hsl(var(--neutral-500))",
+          700: "hsl(var(--neutral-700))",
+          900: "hsl(var(--neutral-900))",
+        },
+        // 侧边栏四风格变量（随 html[data-sidebar] 切换）；--sidebar-bg 可为渐变字符串，由内联 style 承载
         sidebar: {
           bg: "hsl(var(--sidebar-bg))",
           fg: "hsl(var(--sidebar-fg))",
@@ -83,14 +117,76 @@ export default {
           12: "hsl(var(--chart-12))",
           13: "hsl(var(--chart-13))",
         },
+        // ===== antd-style 扩展色板（与 globals.css :root 中的 HSL 三元组一一对应）=====
+        // 13 级蓝：1 最浅 → 13 最深；8 = #1677ff，13 = #001529
+        blue: {
+          1: "hsl(var(--blue-1))",
+          2: "hsl(var(--blue-2))",
+          3: "hsl(var(--blue-3))",
+          4: "hsl(var(--blue-4))",
+          5: "hsl(var(--blue-5))",
+          6: "hsl(var(--blue-6))",
+          7: "hsl(var(--blue-7))",
+          8: "hsl(var(--blue-8))",
+          9: "hsl(var(--blue-9))",
+          10: "hsl(var(--blue-10))",
+          11: "hsl(var(--blue-11))",
+          12: "hsl(var(--blue-12))",
+          13: "hsl(var(--blue-13))",
+        },
+        // 9 级橙：500 = --primary（#ff830f）
+        orange: {
+          50: "hsl(var(--orange-50))",
+          100: "hsl(var(--orange-100))",
+          200: "hsl(var(--orange-200))",
+          300: "hsl(var(--orange-300))",
+          400: "hsl(var(--orange-400))",
+          500: "hsl(var(--orange-500))",
+          600: "hsl(var(--orange-600))",
+          700: "hsl(var(--orange-700))",
+          800: "hsl(var(--orange-800))",
+          900: "hsl(var(--orange-900))",
+        },
+        // 10 级中性灰（ink）：1 白 → 10 近黑
+        ink: {
+          1: "hsl(var(--ink-1))",
+          2: "hsl(var(--ink-2))",
+          3: "hsl(var(--ink-3))",
+          4: "hsl(var(--ink-4))",
+          5: "hsl(var(--ink-5))",
+          6: "hsl(var(--ink-6))",
+          7: "hsl(var(--ink-7))",
+          8: "hsl(var(--ink-8))",
+          9: "hsl(var(--ink-9))",
+          10: "hsl(var(--ink-10))",
+        },
+        // 12 级冷灰（cool）：1 最浅 → 12 最深；金融/数据图表的中性灰阶
+        cool: {
+          1: "hsl(var(--cool-1))",
+          2: "hsl(var(--cool-2))",
+          3: "hsl(var(--cool-3))",
+          4: "hsl(var(--cool-4))",
+          5: "hsl(var(--cool-5))",
+          6: "hsl(var(--cool-6))",
+          7: "hsl(var(--cool-7))",
+          8: "hsl(var(--cool-8))",
+          9: "hsl(var(--cool-9))",
+          10: "hsl(var(--cool-10))",
+          11: "hsl(var(--cool-11))",
+          12: "hsl(var(--cool-12))",
+        },
       },
       boxShadow: {
-        // 暖调阴影：以褐黑替代纯黑，与品牌橙更协调
-        sm: "0 1px 3px 0 rgb(28 20 12 / 0.05)",
-        DEFAULT: "0 1px 3px 0 rgb(28 20 12 / 0.06), 0 1px 2px -1px rgb(28 20 12 / 0.06)",
-        md: "0 4px 6px -1px rgb(28 20 12 / 0.08), 0 2px 4px -2px rgb(28 20 12 / 0.06)",
-        lg: "0 12px 24px -8px rgb(28 20 12 / 0.12)",
-        xl: "0 25px 50px -12px rgb(28 20 12 / 0.18)",
+        // antd 冷蓝黑阴影（B 端规范）：与 globals.css --antd-shadow-* 同基调 rgb(0 21 41)，替代旧暖褐黑
+        sm: "0 1px 3px 0 rgb(0 21 41 / 0.05)",
+        DEFAULT: "0 1px 3px 0 rgb(0 21 41 / 0.06), 0 1px 2px -1px rgb(0 21 41 / 0.06)",
+        md: "0 4px 6px -1px rgb(0 21 41 / 0.08), 0 2px 4px -2px rgb(0 21 41 / 0.06)",
+        lg: "0 12px 24px -8px rgb(0 21 41 / 0.12)",
+        xl: "0 25px 50px -12px rgb(0 21 41 / 0.18)",
+        // antd 镜像：与 globals.css --antd-shadow-{1,2,3} 一一对应，用于 Card / Modal / Drawer
+        "antd-1": "var(--antd-shadow-1)",
+        "antd-2": "var(--antd-shadow-2)",
+        "antd-3": "var(--antd-shadow-3)",
       },
       transitionTimingFunction: {
         brand: "cubic-bezier(0.22, 1, 0.36, 1)",
@@ -100,6 +196,10 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
         card: "var(--radius-card)",
+        // antd 镜像：4 / 6 / 8（与 globals.css --antd-radius-{sm,md,lg} 一一对应）
+        "antd-sm": "var(--antd-radius-sm)",
+        "antd-md": "var(--antd-radius-md)",
+        "antd-lg": "var(--antd-radius-lg)",
       },
       fontFamily: {
         // 全局正文统一微软雅黑（非 Windows 环境回退 system-ui）

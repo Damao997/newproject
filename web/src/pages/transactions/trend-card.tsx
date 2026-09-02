@@ -83,6 +83,7 @@ export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] 
       },
       tooltip: {
         trigger: 'axis',
+        order: 'valueDesc',
         ...tooltipShell(ink),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         formatter: (params: any) => {
@@ -92,7 +93,7 @@ export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] 
             if (item.value === null || item.value === undefined) continue
             result += `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin:4px 0">
               <div style="display:flex;align-items:center;gap:8px">
-                <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${item.color}"></span>
+                <span style="display:inline-block;width:8px;height:2px;border-radius:1px;background:${item.color}"></span>
                 ${labelSpan(item.seriesName, ink)}
               </div>
               ${numSpan(formatMoneyWan(item.value))}
@@ -101,20 +102,21 @@ export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] 
           return result
         },
       },
+      // B 端 SaaS 图例：公司名即系列名（类型已在卡头下拉体现，不再重复拼接），小色点 + 紧凑间距
       legend: {
-        data: series.map((s) => `${getDisplayName(s.companyCode, s.companyName)}·${transactionType}`),
+        data: series.map((s) => getDisplayName(s.companyCode, s.companyName)),
         bottom: 0,
         type: 'scroll',
-        itemWidth: 12,
+        icon: 'circle',
+        itemWidth: 8,
         itemHeight: 8,
-        itemGap: 24,
+        itemGap: 20,
+        pageIconSize: 12,
         textStyle: { color: ink.sub, fontSize: 12 },
       },
-      grid: { top: 24, right: 24, bottom: 72, left: 72 },
-      dataZoom: [
-        { type: 'inside' },
-        { type: 'slider', height: 16, bottom: 28 },
-      ],
+      grid: { top: 16, right: 24, bottom: 48, left: 64 },
+      // 仅保留滚轮/触控板缩放，去掉底部 slider 滑块（视觉噪音，B 端默认隐藏）
+      dataZoom: [{ type: 'inside' }],
       xAxis: {
         type: 'category',
         data: periods,
@@ -133,7 +135,8 @@ export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] 
         type: 'value',
         axisLine: { show: false },
         axisTick: { show: false },
-        splitLine: { lineStyle: { color: ink.grid, type: 'dashed' } },
+        // 淡实线网格（--border-subtle），比虚线更贴近 antd B 端图表质感
+        splitLine: { lineStyle: { color: '#F0F0F0' } },
         axisLabel: {
           color: ink.axis,
           fontSize: 11,
@@ -141,15 +144,18 @@ export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] 
         },
       },
       series: series.map((s, i) => ({
-        name: `${getDisplayName(s.companyCode, s.companyName)}·${transactionType}`,
+        name: getDisplayName(s.companyCode, s.companyName),
         type: 'line' as const,
         data: s.points,
-        smooth: 0.4,
+        // B 端克制线型：直线连接 + 悬浮才显点，默认无符号噪音
+        smooth: false,
         connectNulls: false,
-        lineStyle: { color: lineColors[i % lineColors.length], width: 2.5, cap: 'round' as const },
+        showSymbol: false,
         symbol: 'circle',
         symbolSize: 6,
+        lineStyle: { color: lineColors[i % lineColors.length], width: 2, cap: 'round' as const },
         itemStyle: { color: lineColors[i % lineColors.length], borderWidth: 2, borderColor: ink.surface },
+        emphasis: { focus: 'series' as const, lineStyle: { width: 3 } },
       })),
     }
   }, [data, transactionType, getDisplayName, sidebarStyle])

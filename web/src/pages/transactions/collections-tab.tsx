@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -18,12 +18,12 @@ import { FILTER_WIDTH } from '@/components/layout/filter-width'
 import { Pagination } from '@/components/data-table/pagination'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { usePermission } from '@/hooks/usePermission'
-import { useCustomerLedger, useUpdateCustomerExt, useUpdateCollection, useCollectionLogs, useAddCollectionLog, useTransactionPeriods, useAvailablePeriods } from '@/hooks/api-queries'
+import { useCustomerLedger, useUpdateCustomerExt, useUpdateCollection, useCollectionLogs, useAddCollectionLog, useGenerateCollectionSuggestions } from '@/hooks/api-queries'
 import { usePageStore } from '@/stores/pageStateStore'
-import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
+import { usePeriodStore } from '@/stores/periodStore'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
-import { CompanySelect } from '@/components/filters/company-select'
-import { Loader2, Users } from 'lucide-react'
+import { useGlobalCompanyScope } from '@/hooks/use-global-company-scope'
+import { Loader2, Sparkles, Users } from 'lucide-react'
 import { SheetShell } from '@/components/ui/sheet-shell'
 import { Label } from '@/components/ui/label'
 import { FlashMessage } from '@/components/ui/flash-message'
@@ -384,48 +384,96 @@ function SalesmanDrawer({ target, onClose }: { target: LedgerTarget; onClose: ()
   )
 }
 
+// ===== 生成催收建议对话框（从账龄数据批量生成，按 公司×客商×科目 幂等跳过已有未完结计划） =====
+function GenerateSuggestionsDialog({ companyCode, open, onSuccess, onClose }: { companyCode?: string; open: boolean; onSuccess: (message: string) => void; onClose: () => void }) {
+  const [errorMsg, setErrorMsg] = useState('')
+  const generateMutation = useGenerateCollectionSuggestions()
+  const { getDisplayName } = useCompanyDisplayName()
+
+  const handleClose = () => {
+    setErrorMsg('')
+    onClose()
+  }
+
+  const handleGenerate = async () => {
+    setErrorMsg('')
+    try {
+      const result = await generateMutation.mutateAsync(companyCode ? { companyCode } : {})
+      onSuccess(result.created > 0
+        ? `已生成 ${result.created} 条催收建议${result.skipped > 0 ? `，跳过 ${result.skipped} 条（已有未完结计划）` : ''}`
+        : '未生成新建议（匹配的应收均已有未完结催收计划）')
+      onClose()
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : '生成失败')
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>生成催收建议</DialogTitle>
+          <DialogDescription>
+            将根据当前筛选{companyCode ? `公司「${getDisplayName(companyCode, undefined)}」` : '的全部公司'}的应收账龄数据，
+            批量生成催收建议（覆盖逾期 6 个月及以上）；同键已存在未完结计划的公司×客商×科目将自动跳过。
+          </DialogDescription>
+        </DialogHeader>
+        {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
+        <DialogFooter>
+          <Button variant="outline" onClick={handleClose}>取消</Button>
+          <Button disabled={generateMutation.isPending} onClick={handleGenerate}>
+            {generateMutation.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+            生成
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ===== 催收计划 Tab =====
 export function CollectionsTab({ stickyTop = 0 }: { stickyTop?: number }) {
   // 筛选与分页持久化到 pageStateStore（切 tab/切路由/刷新后恢复）；对话框开关为瞬时状态
+  // 公司/期间全局口径读 periodStore（Header CompanyPill / PeriodPill 唯一入口），
+  // pageStateStore 的 collections.company/period 停止读取（类型定义保留，旧键留存无害）
   const setTransactionsTab = usePageStore((s) => s.setTransactionsTab)
   const page = usePageStore((s) => s.transactions.collections.page)
   const pageSize = usePageStore((s) => s.transactions.collections.pageSize)
-  const companyFilter = usePageStore((s) => s.transactions.collections.company)
   const statusFilter = usePageStore((s) => s.transactions.collections.status)
   const keyword = usePageStore((s) => s.transactions.collections.keyword)
   const setPage = useCallback((v: number) => setTransactionsTab('collections', { page: v }), [setTransactionsTab])
   const setPageSize = useCallback((v: number) => setTransactionsTab('collections', { pageSize: v }), [setTransactionsTab])
-  const setCompanyFilter = useCallback((v: string) => setTransactionsTab('collections', { company: v }), [setTransactionsTab])
   const setStatusFilter = useCallback((v: string) => setTransactionsTab('collections', { status: v }), [setTransactionsTab])
   const setKeyword = useCallback((v: string) => setTransactionsTab('collections', { keyword: v }), [setTransactionsTab])
-  // 空串表示跟随最新期间（后端自动取最近一期有数据的期间，与账龄分析页约定一致）
-  const periodFilter = usePageStore((s) => s.transactions.collections.period)
-  const setPeriodFilter = useCallback((v: string) => setTransactionsTab('collections', { period: v }), [setTransactionsTab])
-  // 期间候选按全局财年过滤（与账龄分析页口径一致）
-  const { data: periodsData } = useAvailablePeriods()
-  const fiscalYear = usePeriodStore((s) => s.fiscalYear)
-  const { data: rawPeriods } = useTransactionPeriods()
-  const periods = useMemo(
-    () => filterPeriodsByFiscalYear(rawPeriods ?? [], fiscalYear, periodsData?.fiscalStartMonth ?? 1),
-    [rawPeriods, fiscalYear, periodsData?.fiscalStartMonth],
-  )
-  // 持久化期间校验：已选期间不在候选（如财年切换）时回退跟随最新；候选未加载时跳过（避免冷启动误回退）
+  // 公司/期间全局口径：全局未选期间（null）→ '' 跟随最新期间（后端自动取最近一期有数据的期间，与账龄分析页约定一致）
+  const globalPeriod = usePeriodStore((s) => s.period)
+  const periodFilter = globalPeriod ?? ''
+  // 全局公司集合 → 单公司接口降级（getCustomerLedger 仅支持 companyCode 单公司参数）：
+  // 未选（null/[]）→ undefined（全部公司）；选中多家 → 取第一个 + antd message 提示
+  const { companyCode } = useGlobalCompanyScope('催收计划')
+  // 全局公司/期间变化时回到第一页（跳过首挂载，保留分页恢复能力）
+  const globalCompanyKey = companyCode ?? ''
+  const firstRun = useRef(true)
   useEffect(() => {
-    if (!rawPeriods || rawPeriods.length === 0) return
-    const cur = usePageStore.getState().transactions.collections.period
-    if (cur !== '' && !periods.includes(cur)) setPeriodFilter('')
-  }, [rawPeriods, periods, setPeriodFilter])
+    if (firstRun.current) {
+      firstRun.current = false
+      return
+    }
+    setPage(1)
+  }, [globalCompanyKey, periodFilter, setPage])
   const [updatingRow, setUpdatingRow] = useState<CustomerLedgerItem | null>(null)
   const [logsRow, setLogsRow] = useState<CustomerLedgerItem | null>(null)
   const [billedTarget, setBilledTarget] = useState<LedgerTarget | null>(null)
   const [salesmanTarget, setSalesmanTarget] = useState<LedgerTarget | null>(null)
+  const [generateOpen, setGenerateOpen] = useState(false)
+  const [generateNotice, setGenerateNotice] = useState('')
   const { can } = usePermission()
   const { getDisplayName } = useCompanyDisplayName()
   const navigate = useNavigate()
   const canViewSalesmen = can('transactions:salesmen', 'view')
 
-  const companyCode = companyFilter === 'all' ? undefined : companyFilter
   const canUpdate = can('transactions', 'update')
+  const canGenerate = can('transactions', 'create')
 
   const { data, isLoading } = useCustomerLedger({
     page,
@@ -544,21 +592,9 @@ export function CollectionsTab({ stickyTop = 0 }: { stickyTop?: number }) {
 
   return (
     <div className="space-y-4">
-      {/* 筛选卡：公司 / 客商状态 / 客商关键词（吸顶） */}
+      {/* 筛选卡：客商状态 / 客商关键词（吸顶；公司/期间全局口径在 Header 筛选） */}
       <Card className="sticky z-10 rounded-card p-4" style={{ top: stickyTop }}>
       <FilterBar>
-        <Select value={periodFilter || 'all'} onValueChange={(v) => { setPeriodFilter(v === 'all' ? '' : v); setPage(1) }}>
-          <SelectTrigger className={`h-9 ${FILTER_WIDTH.period}`}>
-            <SelectValue placeholder="期间" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">最新期间</SelectItem>
-            {(periods || []).map((p) => (
-              <SelectItem key={p} value={p}>{p}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <CompanySelect value={companyFilter} onChange={(v) => { setCompanyFilter(v); setPage(1) }} className="h-9" />
         <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v === 'all' ? '' : v); setPage(1) }}>
           <SelectTrigger className={`h-9 ${FILTER_WIDTH.period}`}>
             <SelectValue placeholder="客商状态" />
@@ -577,6 +613,12 @@ export function CollectionsTab({ stickyTop = 0 }: { stickyTop?: number }) {
           value={keyword}
           onChange={(e) => { setKeyword(e.target.value); setPage(1) }}
         />
+        {canGenerate && (
+          <Button variant="outline" size="sm" className={cn(!canViewSalesmen && 'ml-auto')} onClick={() => setGenerateOpen(true)}>
+            <Sparkles className="mr-1 h-4 w-4" />
+            生成催收建议
+          </Button>
+        )}
         {canViewSalesmen && (
           <Button variant="outline" size="sm" className="ml-auto" onClick={() => navigate('/transactions/collections/salesmen')}>
             <Users className="mr-1 h-4 w-4" />
@@ -604,6 +646,10 @@ export function CollectionsTab({ stickyTop = 0 }: { stickyTop?: number }) {
         </div>
       )}
       </Card>
+
+      {generateNotice && (
+        <FlashMessage type="success" autoHideMs={5000} onAutoHide={() => setGenerateNotice('')}>{generateNotice}</FlashMessage>
+      )}
 
       {/* 应收款客商台账（表格卡） */}
       <Card className="rounded-card border border-border overflow-hidden">
@@ -645,6 +691,7 @@ export function CollectionsTab({ stickyTop = 0 }: { stickyTop?: number }) {
       <LogsDialog row={logsRow} canUpdate={canUpdate} onClose={() => setLogsRow(null)} />
       {billedTarget && <BilledAmountDrawer target={billedTarget} onClose={() => setBilledTarget(null)} />}
       {salesmanTarget && <SalesmanDrawer target={salesmanTarget} onClose={() => setSalesmanTarget(null)} />}
+      <GenerateSuggestionsDialog companyCode={companyCode} open={generateOpen} onSuccess={setGenerateNotice} onClose={() => setGenerateOpen(false)} />
     </div>
   )
 }

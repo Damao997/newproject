@@ -1,0 +1,773 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>报告编辑器 · 经营数据分析平台</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; }
+  .shell-side { background: #001529; color: rgba(255, 255, 255, 0.85); display: flex; flex-direction: column; }
+  .shell-side-logo { height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); color: #fff; }
+  .shell-side-logo-mark { width: 32px; height: 32px; background: var(--color-primary); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 16px; }
+  .shell-side-logo-text { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
+  .shell-side-nav { padding: 12px 0; flex: 1; overflow-y: auto; }
+  .shell-nav-group-title { padding: 12px 28px 8px; color: rgba(255, 255, 255, 0.35); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .shell-nav-item { display: flex; align-items: center; gap: 12px; padding: 0 20px; height: 40px; color: rgba(255, 255, 255, 0.75); cursor: pointer; transition: all 0.2s; border-left: 3px solid transparent; font-size: 14px; text-decoration: none; }
+  .shell-nav-item:hover { color: #fff; background: rgba(255, 255, 255, 0.04); }
+  .shell-nav-item.is-active { background: var(--color-primary); color: #fff; border-left-color: #fff; }
+  .shell-nav-ic { width: 18px; flex-shrink: 0; color: rgba(255, 255, 255, 0.55); }
+  .shell-nav-item:hover .shell-nav-ic { color: #fff; }
+  .shell-header { background: #fff; border-bottom: 1px solid var(--antd-gray-3); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .shell-header-l { display: flex; align-items: center; gap: 16px; }
+  .shell-header-r { display: flex; align-items: center; gap: 16px; }
+  .period-pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; background: var(--antd-gray-2); border-radius: var(--radius-medium); color: var(--color-foreground); font-size: 13px; cursor: pointer; }
+  .user-chip { display: flex; align-items: center; gap: 10px; padding: 4px 10px 4px 4px; border-radius: 20px; cursor: pointer; }
+  .user-chip-name { font-size: 13px; font-weight: 500; }
+  .user-chip-role { font-size: 11px; color: var(--color-text-tertiary); }
+
+  /* ─────── 三栏布局 ─────── */
+  .doc-shell {
+    display: grid;
+    grid-template-columns: 240px 1fr 280px;
+    gap: 0;
+    background: var(--antd-gray-2);
+    min-height: calc(100vh - 56px);
+  }
+  .doc-pane {
+    background: #fff;
+    border-right: 1px solid var(--antd-gray-3);
+    overflow-y: auto;
+  }
+  .doc-pane:last-child { border-right: none; border-left: 1px solid var(--antd-gray-3); }
+
+  /* 顶部 PageHead（已改造为文档头） */
+  .antd-page-head { background: #fff; border-bottom: 1px solid var(--antd-gray-3); padding: 16px 24px; margin: 0; }
+
+  /* ─────── 文档工具条（新增） ─────── */
+  .antd-doc-toolbar {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 24px;
+    background: #fff;
+    border-bottom: 1px solid var(--antd-gray-3);
+    flex-wrap: wrap;
+  }
+  .antd-doc-toolbar-input {
+    flex: 1; max-width: 360px;
+    height: 32px; padding: 0 12px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-medium);
+    font-size: 14px; font-weight: 500;
+    color: var(--color-foreground);
+    background: var(--antd-gray-2);
+    transition: all 0.2s;
+    font-family: inherit;
+  }
+  .antd-doc-toolbar-input:focus { outline: none; border-color: var(--color-primary); background: #fff; box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1); }
+  .antd-doc-toolbar-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+
+  /* ─────── 左侧大纲（新增） ─────── */
+  .antd-doc-outline { padding: 16px 0; }
+  .antd-doc-outline-title {
+    padding: 0 20px 10px;
+    font-size: 12px; color: var(--color-text-tertiary);
+    text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500;
+  }
+  .antd-doc-outline-search {
+    margin: 0 16px 12px;
+    height: 28px; padding: 0 10px;
+    border: 1px solid var(--antd-gray-3);
+    border-radius: var(--radius-small);
+    font-size: 12px;
+    background: var(--antd-gray-1);
+    color: var(--color-foreground);
+    width: calc(100% - 32px);
+    font-family: inherit;
+  }
+  .antd-doc-outline-node {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 20px;
+    font-size: 13px;
+    color: var(--color-foreground);
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    transition: all 0.15s;
+    line-height: 1.5;
+  }
+  .antd-doc-outline-node.is-l1 { font-weight: 500; }
+  .antd-doc-outline-node.is-l2 { padding-left: 40px; color: var(--color-text-secondary); font-size: 12px; }
+  .antd-doc-outline-node:hover { background: var(--antd-gray-2); color: var(--color-primary); }
+  .antd-doc-outline-node.is-current { background: var(--antd-brand-50); color: var(--color-primary); border-left-color: var(--color-primary); font-weight: 500; }
+  .antd-doc-outline-toggle {
+    width: 14px; height: 14px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--color-text-tertiary); font-size: 10px;
+    flex-shrink: 0;
+  }
+  .antd-doc-outline-toggle.is-empty { visibility: hidden; }
+  .antd-doc-outline-num { color: var(--color-text-tertiary); font-size: 11px; min-width: 22px; font-variant-numeric: tabular-nums; }
+
+  /* ─────── 中部编辑区 ─────── */
+  .doc-editor { background: var(--antd-gray-2); padding: 24px 32px 80px; min-height: 100%; }
+
+  .ai-bubble {
+    display: flex; align-items: center; gap: 10px;
+    background: linear-gradient(135deg, var(--antd-brand-50) 0%, #fff 100%);
+    border: 1px solid var(--antd-brand-100);
+    border-radius: var(--radius-large);
+    padding: 12px 16px;
+    margin: 0 auto 16px;
+    max-width: 820px;
+    font-size: 13px;
+  }
+  .ai-bubble-ic {
+    width: 28px; height: 28px;
+    background: var(--color-primary);
+    color: #fff;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; flex-shrink: 0;
+  }
+  .ai-bubble-text { color: var(--color-foreground); flex: 1; }
+  .ai-bubble-text strong { color: var(--color-primary); margin-right: 4px; }
+  .ai-bubble-actions { display: flex; gap: 6px; }
+  .ai-bubble-actions button {
+    height: 24px; padding: 0 10px;
+    font-size: 12px;
+    background: #fff;
+    border: 1px solid var(--antd-brand-200);
+    color: var(--color-primary);
+    border-radius: var(--radius-small);
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .ai-bubble-actions button:hover { border-color: var(--color-primary); }
+
+  .editor-toolbar {
+    display: flex; align-items: center; gap: 4px;
+    background: #fff;
+    border: 1px solid var(--antd-gray-3);
+    border-radius: var(--radius-medium);
+    padding: 6px 8px;
+    margin: 0 auto 16px;
+    max-width: 820px;
+    flex-wrap: wrap;
+  }
+  .editor-toolbar-btn {
+    width: 30px; height: 28px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--color-foreground);
+    border-radius: var(--radius-small);
+    cursor: pointer;
+    font-size: 13px; font-weight: 500;
+    font-family: inherit;
+  }
+  .editor-toolbar-btn:hover { background: var(--antd-gray-2); }
+  .editor-toolbar-btn.is-active { background: var(--antd-brand-50); color: var(--color-primary); }
+  .editor-toolbar-btn.is-wider { width: auto; padding: 0 8px; font-size: 12px; }
+  .editor-toolbar-divider { width: 1px; height: 18px; background: var(--antd-gray-3); margin: 0 4px; }
+
+  .editor-paper {
+    background: #fff;
+    border: 1px solid var(--antd-gray-3);
+    border-radius: var(--radius-large);
+    margin: 0 auto;
+    max-width: 820px;
+    padding: 48px 64px 64px;
+    min-height: 800px;
+    position: relative;
+    box-shadow: var(--antd-shadow-sm);
+  }
+  .editor-h1 { font-size: 26px; font-weight: 600; color: var(--color-foreground); margin: 0 0 8px; }
+  .editor-h2 { font-size: 20px; font-weight: 600; color: var(--color-foreground); margin: 32px 0 12px; padding-top: 16px; border-top: 1px dashed var(--antd-gray-3); }
+  .editor-h3 { font-size: 16px; font-weight: 600; color: var(--color-foreground); margin: 24px 0 8px; }
+  .editor-meta { color: var(--color-text-tertiary); font-size: 12px; margin-bottom: 24px; display: flex; gap: 12px; flex-wrap: wrap; }
+  .editor-meta span::before { content: "·"; margin-right: 12px; color: var(--antd-gray-4); }
+  .editor-meta span:first-child::before { content: ""; margin: 0; }
+  .editor-p { font-size: 14px; line-height: 1.85; color: var(--color-foreground); margin: 0 0 12px; }
+  .editor-p.is-selected {
+    background: linear-gradient(90deg, var(--antd-brand-50) 0%, transparent 100%);
+    border-radius: 4px;
+    padding: 4px 8px;
+    margin-left: -8px; margin-right: -8px;
+  }
+
+  .editor-formula {
+    background: var(--antd-gray-1);
+    border: 1px dashed var(--antd-gray-4);
+    border-radius: var(--radius-medium);
+    padding: 16px 20px;
+    margin: 16px 0;
+    text-align: center;
+    font-family: var(--antd-font-family-mono);
+    color: var(--color-foreground);
+    font-size: 15px;
+  }
+  .editor-formula-label { font-size: 11px; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+
+  .editor-chart {
+    background: var(--antd-gray-1);
+    border: 1px solid var(--antd-gray-3);
+    border-radius: var(--radius-medium);
+    padding: 16px;
+    margin: 16px 0;
+  }
+  .editor-chart-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .editor-chart-title { font-size: 13px; font-weight: 500; color: var(--color-foreground); }
+  .editor-chart-area { height: 180px; }
+  .editor-chart-axis { display: flex; gap: 4px; padding: 0 30px; margin-top: 4px; }
+  .editor-chart-axis span { flex: 1; text-align: center; font-size: 11px; color: var(--color-text-tertiary); }
+
+  .editor-list { padding-left: 24px; margin: 12px 0; }
+  .editor-list li { font-size: 14px; line-height: 1.85; color: var(--color-foreground); }
+
+  /* 选中气泡菜单 */
+  .bubble-menu {
+    position: absolute;
+    top: 340px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 4px;
+    background: var(--antd-gray-9);
+    color: #fff;
+    border-radius: var(--radius-medium);
+    padding: 4px 6px;
+    box-shadow: var(--antd-shadow-md);
+    z-index: 5;
+  }
+  .bubble-menu::after {
+    content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+    border: 5px solid transparent; border-top-color: var(--antd-gray-9);
+  }
+  .bubble-menu button {
+    height: 28px; padding: 0 10px;
+    background: transparent;
+    color: #fff;
+    border: 0;
+    border-radius: var(--radius-small);
+    font-size: 12px;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 4px;
+    font-family: inherit;
+  }
+  .bubble-menu button:hover { background: rgba(255, 255, 255, 0.12); }
+  .bubble-menu .ai-dot { width: 6px; height: 6px; border-radius: 50%; background: #91caff; }
+
+  /* ─────── 右侧属性面板 ─────── */
+  .antd-prop-tabs { display: flex; border-bottom: 1px solid var(--antd-gray-3); }
+  .antd-prop-tab { flex: 1; padding: 12px 0; text-align: center; font-size: 13px; color: var(--color-text-secondary); cursor: pointer; position: relative; }
+  .antd-prop-tab.is-active { color: var(--color-primary); font-weight: 500; }
+  .antd-prop-tab.is-active::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--color-primary); }
+  .antd-prop-section { padding: 16px 20px; border-bottom: 1px solid var(--antd-gray-3); }
+  .antd-prop-section:last-child { border-bottom: none; }
+  .antd-prop-section-title { font-size: 12px; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; font-weight: 500; }
+  .antd-prop-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .antd-prop-row:last-child { margin-bottom: 0; }
+  .antd-prop-row label { width: 56px; font-size: 12px; color: var(--color-text-secondary); }
+  .antd-prop-input {
+    flex: 1; height: 28px; padding: 0 8px;
+    border: 1px solid var(--antd-gray-3);
+    border-radius: var(--radius-small);
+    font-size: 12px; color: var(--color-foreground);
+    background: #fff; font-family: inherit;
+  }
+  .antd-prop-chip-group { display: flex; gap: 4px; flex-wrap: wrap; }
+  .antd-prop-chip {
+    height: 24px; padding: 0 8px;
+    background: var(--antd-gray-2);
+    color: var(--color-text-secondary);
+    border-radius: var(--radius-small);
+    font-size: 12px;
+    display: inline-flex; align-items: center;
+    cursor: pointer; border: 1px solid transparent;
+  }
+  .antd-prop-chip.is-active { background: var(--antd-brand-50); color: var(--color-primary); border-color: var(--antd-brand-100); }
+  .antd-prop-color {
+    width: 22px; height: 22px; border-radius: 4px; cursor: pointer; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--antd-gray-3);
+  }
+  .antd-prop-color.is-active { box-shadow: 0 0 0 2px var(--color-primary); }
+
+  /* ─────── 底部版本时间线 ─────── */
+  .version-timeline {
+    background: #fff;
+    border-top: 1px solid var(--antd-gray-3);
+    padding: 16px 32px;
+    position: sticky; bottom: 0; z-index: 4;
+  }
+  .version-timeline-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .version-timeline-title { font-size: 12px; color: var(--color-text-secondary); font-weight: 500; }
+  .version-timeline-actions { display: flex; gap: 8px; }
+  .timeline {
+    display: flex; align-items: flex-start; gap: 0;
+    margin-top: 8px;
+  }
+  .tl-step { flex: 1; display: flex; align-items: flex-start; position: relative; }
+  .tl-step-circle {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: #fff; border: 1px solid var(--color-border);
+    color: var(--color-text-secondary);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 500; flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .tl-step.is-done .tl-step-circle { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+  .tl-step.is-current .tl-step-circle { background: #fff; border-color: var(--color-primary); color: var(--color-primary); box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.1); }
+  .tl-step-body { margin-left: 10px; flex: 1; padding-top: 2px; }
+  .tl-step-title { font-size: 12px; font-weight: 500; color: var(--color-foreground); }
+  .tl-step-desc { font-size: 11px; color: var(--color-text-tertiary); margin-top: 2px; }
+  .tl-step::after {
+    content: ""; position: absolute; left: 28px; right: 0; top: 14px; height: 1px; background: var(--antd-gray-3);
+  }
+  .tl-step.is-done::after { background: var(--color-primary); }
+  .tl-step:last-child::after { display: none; }
+</style>
+</head>
+<body>
+<div class="antd-page">
+  <aside class="shell-side" style="grid-column: 1;">
+    <div class="shell-side-logo">
+      <div class="shell-side-logo-mark">J</div>
+      <div class="shell-side-logo-text">经营分析平台</div>
+    </div>
+    <nav class="shell-side-nav">
+      <div class="shell-nav-group-title">主数据</div>
+      <a class="shell-nav-item" data-dom-id="nav-dashboard" href="dashboard.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        首页看板
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-indicators" href="indicators-operating.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+        财务指标
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-transactions" href="transactions-overview.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+        往来分析
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-inventory" href="inventory.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        存货管理
+      </a>
+      <a class="shell-nav-item is-active" data-dom-id="nav-reports" href="reports-analyses.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+        分析报告
+      </a>
+      <div class="shell-nav-group-title">业务工具</div>
+      <a class="shell-nav-item" data-dom-id="nav-tools" href="enterprise-lookup.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        企业信息查询
+      </a>
+      <div class="shell-nav-group-title">数据管理</div>
+      <a class="shell-nav-item" data-dom-id="nav-data" href="data-import.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        数据导入
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-reclassify" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h12"/></svg>
+        重分类管理
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-dim" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        维度管理
+      </a>
+      <div class="shell-nav-group-title">系统</div>
+      <a class="shell-nav-item" data-dom-id="nav-users" href="admin-users.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><circle cx="17" cy="7" r="3"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
+        用户管理
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-roles" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+        角色权限
+      </a>
+    </nav>
+  </aside>
+
+  <main class="antd-content">
+    <header class="shell-header">
+      <div class="shell-header-l">
+        <div class="antd-breadcrumb">
+          <span>首页</span>
+          <span class="sep">/</span>
+          <span>分析报告</span>
+          <span class="sep">/</span>
+          <span>单项分析报告</span>
+          <span class="sep">/</span>
+          <span class="current">报告编辑器</span>
+        </div>
+      </div>
+      <div class="shell-header-r">
+        <div class="antd-select" style="min-width: 160px;">浙江壹品慧生活集团</div>
+        <div class="period-pill">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          2026 财年 · 8月
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <button class="antd-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          刷新
+        </button>
+        <div class="user-chip">
+          <div class="antd-avatar" style="background: var(--antd-brand-100); color: var(--color-primary);">张</div>
+          <div>
+            <div class="user-chip-name">张伟</div>
+            <div class="user-chip-role">财务总监</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="antd-content-body" style="padding: 0; flex: 1; display: flex; flex-direction: column;">
+      <!-- 文档顶部 PageHead -->
+      <div class="antd-page-head">
+        <div>
+          <div class="antd-page-head-title">报告编辑器</div>
+          <div class="antd-page-head-desc">基于 8 月经营数据自动生成 · 支持 AI 润色与多版本管理</div>
+        </div>
+        <div class="antd-page-head-actions">
+          <button class="antd-btn">预览</button>
+          <button class="antd-btn">保存草稿</button>
+          <button class="antd-btn">发布</button>
+        </div>
+      </div>
+
+      <!-- 顶部工具条 -->
+      <div class="antd-doc-toolbar">
+        <input class="antd-doc-toolbar-input" value="2026 财年 8 月经营分析报告" />
+        <span class="antd-pill is-blue">编辑中</span>
+        <div class="antd-select" style="min-width: 140px;">版本: v2.3 (当前)</div>
+        <div class="antd-doc-toolbar-actions">
+          <button class="antd-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            导出
+          </button>
+          <button class="antd-btn antd-btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            AI 助手
+          </button>
+        </div>
+      </div>
+
+      <!-- 三栏布局 -->
+      <div class="doc-shell">
+        <!-- 左侧大纲 -->
+        <aside class="doc-pane">
+          <div class="antd-doc-outline">
+            <div class="antd-doc-outline-title">章节大纲</div>
+            <input class="antd-doc-outline-search" placeholder="搜索章节…" />
+            <div class="antd-doc-outline-node is-l1">
+              <span class="antd-doc-outline-toggle">▾</span>
+              <span class="antd-doc-outline-num">1</span>
+              <span>报告概览</span>
+            </div>
+            <div class="antd-doc-outline-node is-l2">
+              <span class="antd-doc-outline-toggle is-empty">·</span>
+              <span class="antd-doc-outline-num">1.1</span>
+              <span>核心结论</span>
+            </div>
+            <div class="antd-doc-outline-node is-l2">
+              <span class="antd-doc-outline-toggle is-empty">·</span>
+              <span class="antd-doc-outline-num">1.2</span>
+              <span>数据口径</span>
+            </div>
+            <div class="antd-doc-outline-node is-l1">
+              <span class="antd-doc-outline-toggle">▾</span>
+              <span class="antd-doc-outline-num">2</span>
+              <span>经营分析</span>
+            </div>
+            <div class="antd-doc-outline-node is-l2 is-current">
+              <span class="antd-doc-outline-toggle is-empty">·</span>
+              <span class="antd-doc-outline-num">2.1</span>
+              <span>收入结构</span>
+            </div>
+            <div class="antd-doc-outline-node is-l2">
+              <span class="antd-doc-outline-toggle is-empty">·</span>
+              <span class="antd-doc-outline-num">2.2</span>
+              <span>毛利与费用</span>
+            </div>
+            <div class="antd-doc-outline-node is-l2">
+              <span class="antd-doc-outline-toggle is-empty">·</span>
+              <span class="antd-doc-outline-num">2.3</span>
+              <span>净利润分析</span>
+            </div>
+            <div class="antd-doc-outline-node is-l1">
+              <span class="antd-doc-outline-toggle">▾</span>
+              <span class="antd-doc-outline-num">3</span>
+              <span>往来专题</span>
+            </div>
+            <div class="antd-doc-outline-node is-l2">
+              <span class="antd-doc-outline-toggle is-empty">·</span>
+              <span class="antd-doc-outline-num">3.1</span>
+              <span>应收账龄</span>
+            </div>
+            <div class="antd-doc-outline-node is-l2">
+              <span class="antd-doc-outline-toggle is-empty">·</span>
+              <span class="antd-doc-outline-num">3.2</span>
+              <span>应付节奏</span>
+            </div>
+            <div class="antd-doc-outline-node is-l1">
+              <span class="antd-doc-outline-toggle">▸</span>
+              <span class="antd-doc-outline-num">4</span>
+              <span>附录与说明</span>
+            </div>
+          </div>
+        </aside>
+
+        <!-- 中部编辑区 -->
+        <section class="doc-editor">
+          <div class="ai-bubble">
+            <span class="ai-bubble-ic">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </span>
+            <div class="ai-bubble-text"><strong>AI 帮你润色:</strong>检测到 2 段文字可优化表述 · 1 张图表数据待更新</div>
+            <div class="ai-bubble-actions">
+              <button>立即润色</button>
+              <button>稍后</button>
+            </div>
+          </div>
+
+          <div class="editor-toolbar">
+            <button class="editor-toolbar-btn is-active" title="粗体"><strong>B</strong></button>
+            <button class="editor-toolbar-btn" title="斜体"><em>I</em></button>
+            <button class="editor-toolbar-btn" title="下划线" style="text-decoration: underline;">U</button>
+            <span class="editor-toolbar-divider"></span>
+            <button class="editor-toolbar-btn" title="标题">H</button>
+            <button class="editor-toolbar-btn" title="段落">¶</button>
+            <button class="editor-toolbar-btn" title="列表">≡</button>
+            <span class="editor-toolbar-divider"></span>
+            <button class="editor-toolbar-btn" title="插入公式" style="font-family: var(--antd-font-family-mono);">∑</button>
+            <button class="editor-toolbar-btn" title="插入图表">▤</button>
+            <button class="editor-toolbar-btn" title="插入链接">🔗</button>
+            <span class="editor-toolbar-divider"></span>
+            <button class="editor-toolbar-btn is-wider" title="批注">💬 批注</button>
+          </div>
+
+          <div class="editor-paper">
+            <h1 class="editor-h1">2026 财年 8 月经营分析报告</h1>
+            <div class="editor-meta">
+              <span>所属期间: 2026-08</span>
+              <span>作者: 张伟</span>
+              <span>版本: v2.3</span>
+              <span>最近修改: 2026-08-26 14:23</span>
+            </div>
+
+            <h2 class="editor-h2">1. 报告概览</h2>
+            <p class="editor-p">本月公司经营保持稳健增长，营业收入 1,284.6 万元，同比增长 12.4%；毛利率回升至 36.0%，环比上升 1.8 个百分点。期间费用率 22.3%，较预算低 1.5 pp，反映成本管控成效显著。</p>
+            <p class="editor-p is-selected">分业务看，智能家电品类贡献 48% 的毛利额，环比上升 4.2 pp；社区零售受季节性影响下滑至 22%，需重点关注后续季度回暖节奏。<span class="antd-pill is-orange" style="margin-left: 6px;">AI 建议改写</span></p>
+
+            <!-- 公式占位 -->
+            <div class="editor-formula">
+              <div class="editor-formula-label">公式占位</div>
+              毛利率 = (营业收入 - 营业成本) ÷ 营业收入 × 100%
+            </div>
+
+            <h2 class="editor-h2">2. 经营分析</h2>
+            <h3 class="editor-h3">2.1 收入结构</h3>
+            <p class="editor-p">8 月收入结构持续优化，智能家电 / 工程业务 / 社区零售三大板块呈现"双稳一调"特征。智能家电板块收入 685.2 万元，同比增长 18.6%，延续 Q2 高增长趋势；工程业务受项目交付节奏影响，环比下降 6.4%。</p>
+
+            <!-- 图表占位 -->
+            <div class="editor-chart">
+              <div class="editor-chart-head">
+                <span class="editor-chart-title">近 6 月各业务收入趋势</span>
+                <span class="antd-pill is-blue">图表占位</span>
+              </div>
+              <div class="editor-chart-area">
+                <svg viewBox="0 0 600 180" preserveAspectRatio="none" style="width:100%; height:100%;">
+                  <g stroke="#f0f0f0" stroke-width="1" stroke-dasharray="2 2">
+                    <line x1="30" y1="20" x2="600" y2="20"/>
+                    <line x1="30" y1="60" x2="600" y2="60"/>
+                    <line x1="30" y1="100" x2="600" y2="100"/>
+                    <line x1="30" y1="140" x2="600" y2="140"/>
+                  </g>
+                  <g fill="#bfbfbf" font-size="10">
+                    <text x="2" y="24">800</text>
+                    <text x="2" y="64">500</text>
+                    <text x="2" y="104">200</text>
+                    <text x="2" y="144">0</text>
+                  </g>
+                  <path d="M50,110 L150,100 L250,90 L350,80 L450,75 L550,60" fill="none" stroke="#1677ff" stroke-width="2"/>
+                  <path d="M50,130 L150,125 L250,120 L350,115 L450,120 L550,118" fill="none" stroke="#fa8c16" stroke-width="2"/>
+                  <path d="M50,140 L150,135 L250,130 L350,128 L450,125 L550,122" fill="none" stroke="#52c41a" stroke-width="2"/>
+                </svg>
+              </div>
+              <div class="editor-chart-axis">
+                <span>3月</span><span>4月</span><span>5月</span><span>6月</span><span>7月</span><span>8月</span>
+              </div>
+            </div>
+
+            <h3 class="editor-h3">2.2 毛利与费用</h3>
+            <p class="editor-p">本月毛利额 462.3 万元，毛利率 36.0%，环比上升 1.8 pp。三费合计 286.5 万元，期间费用率 22.3%，较预算低 1.5 pp，研发投入占比 8.6%，符合年度规划。</p>
+
+            <ul class="editor-list">
+              <li>销售费用 98.4 万元，同比下降 2.3%</li>
+              <li>管理费用 112.6 万元，同比持平</li>
+              <li>财务费用 12.6 万元，受汇率影响环比上升 8.4%</li>
+              <li>研发投入 75.5 万元，重点投向智能门锁与净水器新品</li>
+            </ul>
+
+            <h2 class="editor-h2">3. 往来专题</h2>
+            <p class="editor-p">应收账款余额 358.2 万元，30 天以内占比 55%，长账龄 4 家已纳入 Q3 催收重点清单。应付账款余额 286.5 万元，平均账期 42 天，9 月初集中到期 86 万元。</p>
+
+            <!-- 选中气泡菜单 -->
+            <div class="bubble-menu">
+              <button><span class="ai-dot"></span> AI 改写</button>
+              <button><span class="ai-dot"></span> AI 翻译</button>
+              <button><span class="ai-dot"></span> AI 扩写</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 右侧属性面板 -->
+        <aside class="doc-pane">
+          <div class="antd-prop-tabs">
+            <div class="antd-prop-tab is-active">数据源</div>
+            <div class="antd-prop-tab">图表</div>
+            <div class="antd-prop-tab">风格</div>
+          </div>
+
+          <div class="antd-prop-section">
+            <div class="antd-prop-section-title">当前选中块</div>
+            <div class="antd-prop-row">
+              <label>类型</label>
+              <div class="antd-prop-chip is-active">段落</div>
+              <div class="antd-prop-chip">标题</div>
+              <div class="antd-prop-chip">列表</div>
+            </div>
+            <div class="antd-prop-row">
+              <label>字号</label>
+              <div class="antd-prop-chip-group">
+                <div class="antd-prop-chip">12</div>
+                <div class="antd-prop-chip">14</div>
+                <div class="antd-prop-chip is-active">16</div>
+                <div class="antd-prop-chip">18</div>
+                <div class="antd-prop-chip">20</div>
+              </div>
+            </div>
+            <div class="antd-prop-row">
+              <label>对齐</label>
+              <div class="antd-prop-chip-group">
+                <div class="antd-prop-chip is-active">左</div>
+                <div class="antd-prop-chip">居中</div>
+                <div class="antd-prop-chip">右</div>
+                <div class="antd-prop-chip">两端</div>
+              </div>
+            </div>
+            <div class="antd-prop-row">
+              <label>颜色</label>
+              <div class="antd-prop-color is-active" style="background: #262626;"></div>
+              <div class="antd-prop-color" style="background: #1677ff;"></div>
+              <div class="antd-prop-color" style="background: #52c41a;"></div>
+              <div class="antd-prop-color" style="background: #fa8c16;"></div>
+              <div class="antd-prop-color" style="background: #722ed1;"></div>
+              <div class="antd-prop-color" style="background: #ff4d4f;"></div>
+            </div>
+          </div>
+
+          <div class="antd-prop-section">
+            <div class="antd-prop-section-title">绑定数据源</div>
+            <div class="antd-prop-row">
+              <label>数据集</label>
+              <input class="antd-prop-input" value="8 月经营数据" />
+            </div>
+            <div class="antd-prop-row">
+              <label>口径</label>
+              <input class="antd-prop-input" value="合并 / 调整后" />
+            </div>
+            <div class="antd-prop-row">
+              <label>币种</label>
+              <input class="antd-prop-input" value="CNY 人民币" />
+            </div>
+          </div>
+
+          <div class="antd-prop-section">
+            <div class="antd-prop-section-title">图表属性</div>
+            <div class="antd-prop-row">
+              <label>类型</label>
+              <div class="antd-prop-chip is-active">折线</div>
+              <div class="antd-prop-chip">柱状</div>
+              <div class="antd-prop-chip">堆叠</div>
+            </div>
+            <div class="antd-prop-row">
+              <label>粒度</label>
+              <div class="antd-prop-chip is-active">月</div>
+              <div class="antd-prop-chip">季</div>
+              <div class="antd-prop-chip">年</div>
+            </div>
+            <div class="antd-prop-row">
+              <label>显示</label>
+              <div class="antd-prop-chip is-active">图例</div>
+              <div class="antd-prop-chip is-active">数据</div>
+              <div class="antd-prop-chip">网格</div>
+            </div>
+          </div>
+
+          <div class="antd-prop-section">
+            <div class="antd-prop-section-title">风格</div>
+            <div class="antd-prop-row">
+              <label>主题</label>
+              <div class="antd-prop-chip-group">
+                <div class="antd-prop-chip is-active">商务</div>
+                <div class="antd-prop-chip">极简</div>
+                <div class="antd-prop-chip">数据</div>
+              </div>
+            </div>
+            <div class="antd-prop-row">
+              <label>主色</label>
+              <div class="antd-prop-color is-active" style="background: #1677ff;"></div>
+              <div class="antd-prop-color" style="background: #13c2c2;"></div>
+              <div class="antd-prop-color" style="background: #722ed1;"></div>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <!-- 底部版本时间线 -->
+      <div class="version-timeline">
+        <div class="version-timeline-head">
+          <span class="version-timeline-title">版本时间线</span>
+          <div class="version-timeline-actions">
+            <button class="antd-btn antd-btn-sm">对比版本</button>
+            <button class="antd-btn antd-btn-sm">恢复</button>
+            <button class="antd-btn antd-btn-sm antd-btn-primary">新建版本</button>
+          </div>
+        </div>
+        <div class="timeline">
+          <div class="tl-step is-done">
+            <div class="tl-step-circle">1</div>
+            <div class="tl-step-body">
+              <div class="tl-step-title">v1.0 · 初稿</div>
+              <div class="tl-step-desc">2026-08-22 14:18 · 王芳</div>
+            </div>
+          </div>
+          <div class="tl-step is-done">
+            <div class="tl-step-circle">2</div>
+            <div class="tl-step-body">
+              <div class="tl-step-title">v2.0 · 财务复核</div>
+              <div class="tl-step-desc">2026-08-24 11:32 · 李娜</div>
+            </div>
+          </div>
+          <div class="tl-step is-done">
+            <div class="tl-step-circle">3</div>
+            <div class="tl-step-body">
+              <div class="tl-step-title">v2.1 · 调整结构</div>
+              <div class="tl-step-desc">2026-08-25 16:45 · 张伟</div>
+            </div>
+          </div>
+          <div class="tl-step is-done">
+            <div class="tl-step-circle">4</div>
+            <div class="tl-step-body">
+              <div class="tl-step-title">v2.2 · AI 润色</div>
+              <div class="tl-step-desc">2026-08-26 09:20 · AI 助手</div>
+            </div>
+          </div>
+          <div class="tl-step is-current">
+            <div class="tl-step-circle">5</div>
+            <div class="tl-step-body">
+              <div class="tl-step-title">v2.3 · 当前编辑</div>
+              <div class="tl-step-desc">2026-08-26 14:23 · 张伟</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

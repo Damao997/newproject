@@ -1,11 +1,14 @@
 import * as React from "react"
+import { Tooltip } from "antd"
 import { cn } from "@/lib/utils"
 
 interface PageContainerProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'title'> {
   /** 支持传含返回按钮等节点的自定义标题 */
   title?: React.ReactNode
+  /** 页面说明：不常驻显示，hover 主标题时以 Tooltip 展示；多行可用换行 */
+  description?: React.ReactNode
   actions?: React.ReactNode
-  /** 启用后页头（标题/描述/筛选器）随滚动固定在可视区顶部（用于筛选器较多的页面，如看板） */
+  /** 启用后页头（标题/筛选器）随滚动固定在可视区顶部（用于筛选器较多的页面，如看板） */
   stickyHeader?: boolean
   /** stickyHeader 区块的 ref：供页面测量吸顶区高度，用于其下表格表头吸顶对齐 */
   headerRef?: React.Ref<HTMLDivElement>
@@ -14,7 +17,7 @@ interface PageContainerProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 
 }
 
 const PageContainer = React.forwardRef<HTMLDivElement, PageContainerProps>(
-  ({ className, title, actions, stickyHeader, headerRef, actionsFullWidth, children, ...props }, ref) => (
+  ({ className, title, description, actions, stickyHeader, headerRef, actionsFullWidth, children, ...props }, ref) => (
     <div
       ref={ref}
       className={cn("flex flex-col space-y-4", className)}
@@ -31,13 +34,20 @@ const PageContainer = React.forwardRef<HTMLDivElement, PageContainerProps>(
               "sticky top-0 z-20 -mx-4 -mt-6 bg-page px-4 pt-6 pb-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8",
           )}
         >
-          <div className="space-y-2">
-            {title && (
+          {title && (
+            description ? (
+              // 有描述：hover 主标题时以 Tooltip 展示（whitespace-pre-line 保留多行换行）
+              <Tooltip title={<span className="whitespace-pre-line">{description}</span>}>
+                <h1 className="cursor-help text-3xl font-bold tracking-tight">
+                  {title}
+                </h1>
+              </Tooltip>
+            ) : (
               <h1 className="text-3xl font-bold tracking-tight">
                 {title}
               </h1>
-            )}
-          </div>
+            )
+          )}
           {actions && (
             <div className={cn('flex min-w-0 flex-wrap items-center gap-2', actionsFullWidth && 'basis-full')}>
               {actions}

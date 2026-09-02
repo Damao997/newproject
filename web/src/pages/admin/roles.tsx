@@ -1,595 +1,639 @@
-﻿import { useEffect, useMemo, useState } from 'react'
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useMemo, useState } from 'react'
+import { Copy, Edit, Lock, Plus, Search, ShieldCheck, Trash2, UserCog } from 'lucide-react'
 import { PageContainer } from '@/components/layout/page-container'
-import { useStickyHeader } from '@/hooks/useStickyHeader'
-import { usePermission } from '@/hooks/usePermission'
-import { useRoles, useDeleteRole, type RoleItem } from '@/hooks/api-queries'
-import { RoleDialog, PermissionDialog, CloneRoleDialog, BatchPermissionDialog } from './dialogs'
-import { useConfirm } from '@/components/ui/confirm-dialog'
+import { Card } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Pill } from '@/components/ui/pill'
+import { Checkbox } from '@/components/ui/checkbox'
 import { FlashMessage } from '@/components/ui/flash-message'
-import { Skeleton } from '@/components/ui/skeleton'
-import { isHighRiskPermission } from '@/lib/permissions'
-import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { useConfirm } from '@/components/ui/confirm-dialog'
+import { cn } from '@/lib/utils'
 import {
-  Copy,
-  Edit,
-  LayoutGrid,
-  Lock,
-  MoreHorizontal,
-  Plus,
-  Search,
-  Shield,
-  ShieldAlert,
-  Table as TableIcon,
-  UserPlus,
-} from 'lucide-react'
+  useRoles,
+  usePermissions,
+  useDeleteRole,
+  type RoleItem,
+} from '@/hooks/api-queries'
+import { usePermission } from '@/hooks/usePermission'
+import { isHighRiskPermission } from '@/lib/permissions'
+import { PERMISSION_MODULE_LABELS } from '@/lib/constants'
+import { RoleDialog, CloneRoleDialog, PermissionDialog, BatchPermissionDialog } from './dialogs'
 
-type RoleTypeFilter = 'all' | 'system' | 'custom'
-type ViewMode = 'card' | 'table'
+/**
+ * 角色管理：角色列表（卡片/表格双视图）、新建/编辑/删除/克隆、
+ * 角色 × 模块权限矩阵与多角色批量权限（数据全部来自真实接口）
+ */
 
-/** 视图模式持久化键：用户选择写入 localStorage，下次访问恢复 */
-const VIEW_MODE_KEY = 'roles-view-mode'
-/** 表格视图最小屏宽：<768px 自动回退卡片视图（表格小屏体验不佳） */
-const TABLE_VIEW_MIN_WIDTH = '(min-width: 768px)'
+const VIEW_KEY = 'roles-view-mode'
 
-/** 表格视图行模型：排序键均为可直接比较的原始值（名称/编码/类型序/计数/ISO 时间） */
-interface RoleTableRow {
+type CellState = 'on' | 'half' | 'off'
+
+interface PermItem {
   id: string
-  name: string
-  code: string
-  isSystem: boolean
-  typeOrder: number
-  typeLabel: string
-  permCount: number
-  highRiskCount: number
-  userCount: number | null
-  createdAt: string
-  createdAtLabel: string
-  role: RoleItem
+  resource: string
+  action: string
 }
 
-/** 角色管理：角色的创建、编辑、删除、克隆与权限配置（预置角色只读）；卡片/表格双视图。 */
+/** 角色头像色板（按索引循环，保留设计稿卡片视觉） */
+const ROLE_COLORS: Array<{ color: string; bg: string }> = [
+  { color: '#1677ff', bg: '#e6f4ff' },
+  { color: '#52c41a', bg: '#f6ffed' },
+  { color: '#fa8c16', bg: '#fff7e6' },
+  { color: '#722ed1', bg: '#f9f0ff' },
+  { color: '#13c2c2', bg: '#e6fffb' },
+  { color: '#eb2f96', bg: '#fff0f6' },
+]
+
+function RoleAvatar({ role, index, size = 'md' }: { role: RoleItem; index: number; size?: 'md' | 'sm' }) {
+  const palette = ROLE_COLORS[index % ROLE_COLORS.length]
+  const short = role.name.slice(0, 2)
+  return (
+    <span
+      className={cn(
+        'inline-flex shrink-0 items-center justify-center rounded-md font-semibold',
+        size === 'md' ? 'h-9 w-9 text-sm' : 'h-6 w-6 text-[11px]',
+      )}
+      style={{ background: palette.bg, color: palette.color }}
+    >
+      {short}
+    </span>
+  )
+}
+
+function KpiCard({ label, value, dotClass }: { label: string; value: number; dotClass: string }) {
+  return (
+    <div className="rounded-card border border-border bg-card px-5 py-4">
+      <div className="text-[13px] text-muted-foreground">
+        <span className={cn('mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle', dotClass)} />
+        {label}
+      </div>
+      <div className="mt-1 text-[24px] font-semibold tabular-nums">{value}</div>
+    </div>
+  )
+}
+
+/** 角色行操作菜单（表格/卡片共用） */
+function RoleActions({
+  role,
+  canUpdate,
+  canCreate,
+  canDelete,
+  canUpdatePerms,
+  onEdit,
+  onClone,
+  onPerms,
+  onDelete,
+}: {
+  role: RoleItem
+  canUpdate: boolean
+  canCreate: boolean
+  canDelete: boolean
+  canUpdatePerms: boolean
+  onEdit: () => void
+  onClone: () => void
+  onPerms: () => void
+  onDelete: () => void
+}) {
+  if (!canUpdate && !canCreate && !canDelete && !canUpdatePerms) return null
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-7 w-7 px-0" aria-label={`操作 ${role.name}`}>
+          <UserCog className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {canUpdate && <DropdownMenuItem onClick={onEdit}>编辑</DropdownMenuItem>}
+        {canCreate && <DropdownMenuItem onClick={onClone}>克隆</DropdownMenuItem>}
+        {canUpdatePerms && <DropdownMenuItem onClick={onPerms}>权限配置</DropdownMenuItem>}
+        {canDelete && !role.isSystem && (
+          <DropdownMenuItem className="text-destructive" onClick={onDelete}>
+            删除
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 export default function RolesPage() {
-  // 吸顶测量：标题区 + 筛选卡高度实时测量，驱动筛选卡/表格容器吸顶偏移
-  const { headerRef, filterRef, headerHeight, filterHeight } = useStickyHeader()
-  const stickyTop = headerHeight + filterHeight
   const { can } = usePermission()
-  const canCreateRole = can('admin:roles', 'create')
-  const canUpdateRole = can('admin:roles', 'update')
-  const canDeleteRole = can('admin:roles', 'delete')
-  const canManagePermissions = can('admin:permissions', 'update')
-  const hasRowActions = canCreateRole || canUpdateRole || canDeleteRole || canManagePermissions
+  const canCreate = can('admin:roles', 'create')
+  const canUpdate = can('admin:roles', 'update')
+  const canDelete = can('admin:roles', 'delete')
+  const canUpdatePerms = can('admin:permissions', 'update')
 
-  // 弹窗状态
-  const [roleDialog, setRoleDialog] = useState<{ open: boolean; mode: 'create' | 'edit'; role: RoleItem | null }>({ open: false, mode: 'create', role: null })
-  const [permRole, setPermRole] = useState<RoleItem | null>(null)
-  const [cloneRole, setCloneRole] = useState<RoleItem | null>(null)
-  const [batchRoles, setBatchRoles] = useState<RoleItem[] | null>(null)
+  const { data: rolesData, isLoading: rolesLoading, isError: rolesError, refetch } = useRoles()
+  const { data: permsData } = usePermissions()
+  const deleteRole = useDeleteRole()
+  const { confirm, element: confirmElement } = useConfirm()
 
-  // 列表筛选与操作反馈
-  const [searchQuery, setSearchQuery] = useState('')
-  const [typeFilter, setTypeFilter] = useState<RoleTypeFilter>('all')
-  const [flash, setFlash] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const roles = (rolesData ?? []) as RoleItem[]
+  const perms = (permsData ?? []) as PermItem[]
 
-  // 视图模式：默认卡片；用户选择持久化；小屏（<768px）强制卡片
-  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+  // ---- 搜索 / 视图切换 ----
+  const [keyword, setKeyword] = useState('')
+  const [viewMode, setViewMode] = useState<'card' | 'table'>(() => {
     try {
-      return localStorage.getItem(VIEW_MODE_KEY) === 'table' ? 'table' : 'card'
+      return localStorage.getItem(VIEW_KEY) === 'table' ? 'table' : 'card'
     } catch {
       return 'card'
     }
   })
-  const [isLargeScreen, setIsLargeScreen] = useState(
-    () => typeof window.matchMedia === 'function' && window.matchMedia(TABLE_VIEW_MIN_WIDTH).matches,
-  )
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') return
-    const mq = window.matchMedia(TABLE_VIEW_MIN_WIDTH)
-    const onChange = (e: MediaQueryListEvent) => setIsLargeScreen(e.matches)
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
+  // 中大屏才提供卡片/表格视图切换（小屏固定卡片；jsdom 无 matchMedia 时安全降级）
+  const canSwitchView = useMemo(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
+    try {
+      return window.matchMedia('(min-width: 768px)').matches
+    } catch {
+      return false
+    }
   }, [])
-  const effectiveView: ViewMode = isLargeScreen ? viewMode : 'card'
-  const setViewModeSafe = (v: ViewMode) => {
+
+  const handleViewChange = (v: string) => {
+    if (v !== 'card' && v !== 'table') return
     setViewMode(v)
     try {
-      localStorage.setItem(VIEW_MODE_KEY, v)
+      localStorage.setItem(VIEW_KEY, v)
     } catch {
-      /* 隐私模式等场景忽略持久化失败 */
+      // localStorage 不可用时忽略持久化
     }
   }
 
-  // 表格视图行选择（切换视图时清空，避免跨视图脏选）
-  const [selectedKeys, setSelectedKeys] = useState<Set<string | number>>(new Set())
-  useEffect(() => {
-    setSelectedKeys(new Set())
-  }, [effectiveView])
+  const filtered = useMemo(() => {
+    const kw = keyword.trim().toLowerCase()
+    if (!kw) return roles
+    return roles.filter(
+      (r) => r.name.toLowerCase().includes(kw) || r.code.toLowerCase().includes(kw) || (r.description ?? '').toLowerCase().includes(kw),
+    )
+  }, [roles, keyword])
 
-  const { data: rolesData, isLoading } = useRoles()
-  const deleteRole = useDeleteRole()
-  const { confirm, element: confirmElement } = useConfirm()
-
-  const roles = useMemo(() => (rolesData ?? []) as RoleItem[], [rolesData])
-
-  /** 统计卡片：总数 / 系统 / 自定义 / 含高危权限角色数 */
-  const stats = useMemo(() => {
+  // ---- KPI（当前角色清单派生） ----
+  const kpis = useMemo(() => {
     const system = roles.filter((r) => r.isSystem).length
-    return {
-      total: roles.length,
-      system,
-      custom: roles.length - system,
-      highRisk: roles.filter((r) => (r.permissions ?? []).some((p) => isHighRiskPermission(p.resource))).length,
-    }
+    const highRisk = roles.filter((r) => (r.permissions ?? []).some((p) => isHighRiskPermission(p.resource))).length
+    return [
+      { label: '角色总数', value: roles.length, dotClass: 'bg-[#1677ff]' },
+      { label: '系统角色', value: system, dotClass: 'bg-[#52c41a]' },
+      { label: '自定义角色', value: roles.length - system, dotClass: 'bg-[#fa8c16]' },
+      { label: '含高危权限', value: highRisk, dotClass: 'bg-[#ff4d4f]' },
+    ]
   }, [roles])
 
-  const highRiskCount = (role: RoleItem) => (role.permissions ?? []).filter((p) => isHighRiskPermission(p.resource)).length
+  // ---- 表格视图行选择（供批量权限） ----
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const allSelected = filtered.length > 0 && filtered.every((r) => selectedIds.has(r.id))
+  const someSelected = !allSelected && filtered.some((r) => selectedIds.has(r.id))
+  const selectedRoles = filtered.filter((r) => selectedIds.has(r.id))
 
-  const filteredRoles = useMemo(() => {
-    const kw = searchQuery.trim().toLowerCase()
-    return roles.filter((role) => {
-      if (typeFilter === 'system' && !role.isSystem) return false
-      if (typeFilter === 'custom' && role.isSystem) return false
-      if (!kw) return true
-      return (
-        role.name.toLowerCase().includes(kw) ||
-        role.code.toLowerCase().includes(kw) ||
-        (role.description ?? '').toLowerCase().includes(kw)
-      )
+  const toggleRow = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
     })
-  }, [roles, searchQuery, typeFilter])
+  }
+  const toggleAllRows = (checked: boolean | 'indeterminate') => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked === true) filtered.forEach((r) => next.add(r.id))
+      else filtered.forEach((r) => next.delete(r.id))
+      return next
+    })
+  }
 
-  /** 表格视图行模型（排序键可比较：类型用 typeOrder、计数用数值、时间用 ISO 串） */
-  const tableRows = useMemo<RoleTableRow[]>(
-    () =>
-      filteredRoles.map((role) => ({
-        id: role.id,
-        name: role.name,
-        code: role.code,
-        isSystem: role.isSystem,
-        typeOrder: role.isSystem ? 0 : 1,
-        typeLabel: role.isSystem ? '系统' : '自定义',
-        permCount: role.permissions.length,
-        highRiskCount: highRiskCount(role),
-        userCount: role.userCount ?? null,
-        createdAt: role.createdAt ?? '',
-        createdAtLabel: role.createdAt ? new Date(role.createdAt).toLocaleDateString('zh-CN') : '-',
-        role,
-      })),
-    [filteredRoles],
-  )
+  // ---- 权限矩阵派生（角色 × 模块三态） ----
+  const modules = useMemo(() => {
+    const seen: string[] = []
+    for (const p of perms) {
+      const mod = p.resource.split(':')[0]
+      if (!seen.includes(mod)) seen.push(mod)
+    }
+    const knownOrder = Object.keys(PERMISSION_MODULE_LABELS)
+    return seen.sort((a, b) => {
+      const ia = knownOrder.indexOf(a)
+      const ib = knownOrder.indexOf(b)
+      return (ia === -1 ? knownOrder.length : ia) - (ib === -1 ? knownOrder.length : ib)
+    })
+  }, [perms])
 
-  const handleDeleteRole = async (role: RoleItem) => {
+  const permKey = (p: { resource: string; action: string }) => `${p.resource}#${p.action}`
+  const cellState = (role: RoleItem, mod: string): CellState => {
+    const modulePerms = perms.filter((p) => p.resource.split(':')[0] === mod)
+    if (modulePerms.length === 0) return 'off'
+    const owned = new Set((role.permissions ?? []).map(permKey))
+    const checked = modulePerms.filter((p) => owned.has(permKey(p))).length
+    if (checked === 0) return 'off'
+    return checked === modulePerms.length ? 'on' : 'half'
+  }
+
+  // ---- 对话框状态 ----
+  const [roleDialog, setRoleDialog] = useState<{ open: boolean; mode: 'create' | 'edit'; role: RoleItem | null }>({ open: false, mode: 'create', role: null })
+  const [cloneTarget, setCloneTarget] = useState<RoleItem | null>(null)
+  const [permTarget, setPermTarget] = useState<RoleItem | null>(null)
+  const [batchOpen, setBatchOpen] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [actionNotice, setActionNotice] = useState<string | null>(null)
+
+  /** 删除角色：二次确认后调用接口（系统预置角色不提供删除） */
+  const handleDelete = async (role: RoleItem) => {
     const ok = await confirm({
       title: '删除角色',
-      description: `确认删除角色「${role.name}」？删除后不可恢复，该角色仍存在活跃用户时将被拒绝。`,
+      description: `确认删除角色「${role.name}」？删除后不可恢复，其下 ${role.userCount ?? 0} 名用户将失去该角色的权限。`,
       danger: true,
       confirmText: '删除',
     })
     if (!ok) return
+    setActionError(null)
     deleteRole.mutate(role.id, {
-      onSuccess: () => setFlash({ type: 'success', text: `已删除角色「${role.name}」` }),
-      onError: (e) => setFlash({ type: 'error', text: e instanceof Error ? e.message : '删除失败' }),
+      onSuccess: () => setActionNotice(`已删除角色「${role.name}」`),
+      onError: (e) => setActionError(e instanceof Error ? e.message : '删除失败'),
     })
   }
 
-  // ===== 表格视图列定义 =====
-  const tableColumns: DataTableColumn<RoleTableRow>[] = [
-    {
-      key: 'name',
-      header: '角色名称',
-      sortable: true,
-      width: 170,
-      minWidth: 120,
-      render: (row) =>
-        canUpdateRole ? (
-          <button
-            type="button"
-            onClick={() => setRoleDialog({ open: true, mode: 'edit', role: row.role })}
-            className="font-medium text-primary hover:underline"
-          >
-            {row.name}
-          </button>
-        ) : (
-          <span className="font-medium">{row.name}</span>
-        ),
-    },
-    {
-      key: 'code',
-      header: '角色编码',
-      sortable: true,
-      width: 150,
-      minWidth: 110,
-      cellClassName: 'font-mono text-xs text-muted-foreground',
-    },
-    {
-      key: 'typeOrder',
-      header: '类型',
-      sortable: true,
-      align: 'center',
-      width: 80,
-      minWidth: 70,
-      render: (row) => <Badge variant={row.isSystem ? 'secondary' : 'outline'}>{row.typeLabel}</Badge>,
-    },
-    {
-      key: 'permCount',
-      header: '权限数',
-      sortable: true,
-      align: 'right',
-      width: 76,
-      minWidth: 66,
-      cellClassName: 'font-num',
-    },
-    {
-      key: 'userCount',
-      header: '成员数',
-      sortable: true,
-      align: 'right',
-      width: 76,
-      minWidth: 66,
-      cellClassName: 'font-num',
-      render: (row) => row.userCount ?? '-',
-    },
-    {
-      key: 'highRiskCount',
-      header: '高危',
-      sortable: true,
-      align: 'center',
-      width: 70,
-      minWidth: 60,
-      render: (row) =>
-        row.highRiskCount > 0 ? <Badge variant="destructive">高危</Badge> : <span className="text-muted-foreground">-</span>,
-    },
-    {
-      key: 'createdAt',
-      header: '创建时间',
-      sortable: true,
-      width: 100,
-      minWidth: 90,
-      cellClassName: 'text-muted-foreground',
-      render: (row) => row.createdAtLabel,
-    },
-    {
-      key: 'actions',
-      header: '操作',
-      align: 'center',
-      sticky: 'right',
-      width: 190,
-      minWidth: 170,
-      render: (row) => (
-        <div className="flex items-center justify-center gap-0.5">
-          {canUpdateRole && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-xs"
-              onClick={() => setRoleDialog({ open: true, mode: 'edit', role: row.role })}
-            >
-              <Edit className="mr-1 h-3.5 w-3.5" />
-              编辑
-            </Button>
-          )}
-          {canManagePermissions && (
-            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setPermRole(row.role)}>
-              <Shield className="mr-1 h-3.5 w-3.5" />
-              权限
-            </Button>
-          )}
-          {(canCreateRole || (canDeleteRole && !row.role.isSystem)) && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {canCreateRole && (
-                  <DropdownMenuItem onClick={() => setCloneRole(row.role)}>
-                    <Copy className="mr-2 h-4 w-4" />
-                    克隆角色
-                  </DropdownMenuItem>
-                )}
-                {canDeleteRole && !row.role.isSystem && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDeleteRole(row.role)}>
-                      删除角色
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </div>
-      ),
-    },
-  ]
-
-  /** 表格空态：真无角色 / 筛选无匹配 区分提示 */
-  const tableEmpty = (
-    <div className="flex flex-col items-center gap-2 py-6">
-      {roles.length === 0 ? (
-        <>
-          <Shield className="h-8 w-8 text-muted-foreground/50" />
-          <p className="text-sm text-foreground">暂无角色</p>
-          <p className="text-xs text-muted-foreground">点击右上角「新增角色」创建</p>
-        </>
-      ) : (
-        <>
-          <Search className="h-8 w-8 text-muted-foreground/50" />
-          <p className="text-sm text-foreground">无匹配角色</p>
-          <p className="text-xs text-muted-foreground">请调整搜索关键词或类型筛选</p>
-        </>
-      )}
-    </div>
+  const renderActions = (role: RoleItem, index: number) => (
+    <RoleActions
+      role={role}
+      canUpdate={canUpdate}
+      canCreate={canCreate}
+      canDelete={canDelete}
+      canUpdatePerms={canUpdatePerms}
+      onEdit={() => setRoleDialog({ open: true, mode: 'edit', role })}
+      onClone={() => setCloneTarget(role)}
+      onPerms={() => setPermTarget(role)}
+      onDelete={() => void handleDelete(role)}
+      key={`actions-${role.id}-${index}`}
+    />
   )
 
   return (
-    <PageContainer title="角色管理" stickyHeader headerRef={headerRef}>
-      {/* 统计卡片 */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 animate-fade-in">
-        <Card className="border border-border">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">角色总数</p>
-                <p className="mt-1 font-num text-2xl font-bold">{stats.total}</p>
-              </div>
-              <Shield className="h-8 w-8 text-muted-foreground" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border border-border">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">系统角色</p>
-                <p className="mt-1 font-num text-2xl font-bold text-info">{stats.system}</p>
-              </div>
-              <Lock className="h-8 w-8 text-info" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border border-border">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">自定义角色</p>
-                <p className="mt-1 font-num text-2xl font-bold text-primary">{stats.custom}</p>
-              </div>
-              <UserPlus className="h-8 w-8 text-primary" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border border-border">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">含高危权限</p>
-                <p className="mt-1 font-num text-2xl font-bold text-destructive">{stats.highRisk}</p>
-              </div>
-              <ShieldAlert className="h-8 w-8 text-destructive" />
-            </div>
-          </CardContent>
-        </Card>
+    <PageContainer
+      title="角色管理"
+      description="配置角色 × 模块权限矩阵，按角色分配细粒度权限"
+      actions={
+        canCreate ? (
+          <Button size="sm" onClick={() => setRoleDialog({ open: true, mode: 'create', role: null })}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            新建角色
+          </Button>
+        ) : undefined
+      }
+    >
+      {/* KPI：角色清单派生 */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {kpis.map((c) => (
+          <KpiCard key={c.label} label={c.label} value={c.value} dotClass={c.dotClass} />
+        ))}
       </div>
 
-      {/* 操作反馈条（成功/失败，自动消失） */}
-      {flash && (
-        <FlashMessage type={flash.type} autoHideMs={4000} onAutoHide={() => setFlash(null)}>
-          {flash.text}
-        </FlashMessage>
-      )}
-
-      {/* 工具条：搜索 + 类型筛选 + 视图切换（仅中大屏）+ 新增（筛选卡，吸顶） */}
-      <Card ref={filterRef} className="sticky z-10 rounded-card p-4" style={{ top: headerHeight }}>
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
-          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+      {/* 搜索 + 视图切换 */}
+      <div className="flex flex-wrap items-center gap-2.5">
+        <div className="relative min-w-[220px] flex-1 sm:max-w-[320px]">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
             placeholder="搜索角色名称、编码或描述..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-8"
+            className="h-8 pl-8 text-[13px]"
           />
         </div>
-        <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as RoleTypeFilter)}>
-          <SelectTrigger className="w-full sm:w-[160px]">
-            <SelectValue placeholder="类型筛选" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">全部角色</SelectItem>
-            <SelectItem value="system">系统角色</SelectItem>
-            <SelectItem value="custom">自定义角色</SelectItem>
-          </SelectContent>
-        </Select>
-        {isLargeScreen && (
-          <Tabs value={viewMode} onValueChange={(v) => setViewModeSafe(v as ViewMode)}>
-            <TabsList variant="line">
-              <TabsTrigger value="card" className="gap-1 px-3 text-xs">
-                <LayoutGrid className="h-3.5 w-3.5" />
-                卡片
-              </TabsTrigger>
-              <TabsTrigger value="table" className="gap-1 px-3 text-xs">
-                <TableIcon className="h-3.5 w-3.5" />
-                表格
-              </TabsTrigger>
+        {canSwitchView && (
+          <Tabs value={viewMode} onValueChange={handleViewChange}>
+            <TabsList variant="segmented" className="ml-auto">
+              <TabsTrigger value="card" className="text-[13px]">卡片</TabsTrigger>
+              <TabsTrigger value="table" className="text-[13px]">表格</TabsTrigger>
             </TabsList>
           </Tabs>
         )}
-        {canCreateRole && (
-          <Button size="sm" onClick={() => setRoleDialog({ open: true, mode: 'create', role: null })}>
-            <Plus className="mr-2 h-4 w-4" />
-            新增角色
-          </Button>
-        )}
       </div>
-      </Card>
 
-      {effectiveView === 'table' && isLargeScreen ? (
-        /* ===== 表格视图（表格卡：卡头 + 批量操作条 + DataTable，表格容器吸顶） ===== */
-        <Card className="animate-fade-in rounded-card border border-border">
-          <div className="flex items-center justify-between border-b px-4 py-2.5">
-            <h3 className="flex items-center gap-2 text-base font-semibold tracking-tight">
-              <TableIcon className="h-4 w-4" />
-              角色列表
-              <span className="ml-1 text-xs font-normal text-muted-foreground">共 {filteredRoles.length} 个角色</span>
-            </h3>
-            {selectedKeys.size > 0 && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">
-                  已选 <span className="font-num font-medium">{selectedKeys.size}</span> 项
-                </span>
-                <Button variant="outline" size="sm" disabled={!canManagePermissions} onClick={() => setBatchRoles(tableRows.filter((r) => selectedKeys.has(r.id)).map((r) => r.role))}>
-                  <Shield className="mr-1 h-3.5 w-3.5" />
-                  批量分配权限
+      {actionNotice && <FlashMessage type="success" onAutoHide={() => setActionNotice(null)}>{actionNotice}</FlashMessage>}
+      {actionError && <FlashMessage type="error">{actionError}</FlashMessage>}
+      {rolesError && (
+        <FlashMessage type="error">
+          角色列表加载失败，请稍后重试
+          <Button variant="link" size="sm" className="ml-2 h-auto p-0" onClick={() => refetch?.()}>重试</Button>
+        </FlashMessage>
+      )}
+
+      {viewMode === 'table' ? (
+        /* ---- 表格视图：行选择 + 批量权限 ---- */
+        <Card className="rounded-card p-0">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-3.5">
+            <h3 className="text-base font-semibold tracking-tight">角色列表</h3>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">已选择 {selectedRoles.length} 项</span>
+              {canUpdatePerms && (
+                <Button
+                  size="sm"
+                  disabled={selectedRoles.length === 0}
+                  onClick={() => setBatchOpen(true)}
+                >
+                  批量权限
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => setSelectedKeys(new Set())}>
-                  取消选择
-                </Button>
-              </div>
-            )}
-          </div>
-          <div className="p-2">
-            <div className="sticky rounded-card bg-background" style={{ top: stickyTop }}>
-              <DataTable
-                columns={tableColumns}
-                data={tableRows}
-                rowKey={(r) => r.id}
-                caption="角色列表"
-                emptyText={tableEmpty}
-                loading={isLoading && !rolesData}
-                loadingRows={6}
-                maxHeight={`calc(100dvh - ${stickyTop}px - 24px)`}
-                resizable
-                rowSelection={hasRowActions ? { selectedKeys, onSelectionChange: setSelectedKeys, selectAllLabel: '全选当前角色' } : undefined}
-              />
+              )}
             </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-[13px]">
+              <thead>
+                <tr>
+                  <th scope="col" className="w-9 border-b border-border-light bg-[#f5f5f5] px-3 py-2.5">
+                    <Checkbox
+                      size="sm"
+                      aria-label="全选当前角色"
+                      checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+                      onCheckedChange={toggleAllRows}
+                    />
+                  </th>
+                  <th scope="col" className="border-b border-border-light bg-[#f5f5f5] px-3 py-2.5 text-left text-xs font-semibold text-foreground">角色名称</th>
+                  <th scope="col" className="border-b border-border-light bg-[#f5f5f5] px-3 py-2.5 text-left text-xs font-semibold text-foreground">角色编码</th>
+                  <th scope="col" className="border-b border-border-light bg-[#f5f5f5] px-3 py-2.5 text-left text-xs font-semibold text-foreground">类型</th>
+                  <th scope="col" className="border-b border-border-light bg-[#f5f5f5] px-3 py-2.5 text-right text-xs font-semibold text-foreground">权限数</th>
+                  <th scope="col" className="border-b border-border-light bg-[#f5f5f5] px-3 py-2.5 text-right text-xs font-semibold text-foreground">成员数</th>
+                  <th scope="col" className="border-b border-border-light bg-[#f5f5f5] px-3 py-2.5 text-center text-xs font-semibold text-foreground">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rolesLoading && (
+                  <tr>
+                    <td colSpan={7} className="px-3 py-10 text-center text-sm text-muted-foreground">正在加载角色...</td>
+                  </tr>
+                )}
+                {!rolesLoading && filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={7}>
+                      <EmptyState compact title="暂无角色" description={roles.length > 0 ? '当前搜索条件下无匹配角色' : undefined} />
+                    </td>
+                  </tr>
+                )}
+                {filtered.map((role, index) => (
+                  <tr key={role.id} className={cn(index % 2 === 1 && 'bg-[#fafafa]')}>
+                    <td className="border-b border-border-light px-3 py-3 align-middle">
+                      <Checkbox size="sm" aria-label="选择该行" checked={selectedIds.has(role.id)} onCheckedChange={() => toggleRow(role.id)} />
+                    </td>
+                    <td className="border-b border-border-light px-3 py-3 align-middle">
+                      <div className="flex items-center gap-2">
+                        <RoleAvatar role={role} index={index} size="sm" />
+                        <span className="font-medium text-foreground">{role.name}</span>
+                        {role.isSystem && <Lock className="h-3 w-3 text-muted-foreground" aria-label="系统预置" />}
+                      </div>
+                    </td>
+                    <td className="border-b border-border-light px-3 py-3 font-mono text-xs text-muted-foreground">{role.code}</td>
+                    <td className="border-b border-border-light px-3 py-3 align-middle">
+                      {role.isSystem ? <Pill tone="blue">系统预置</Pill> : <Pill tone="gray">自定义</Pill>}
+                    </td>
+                    <td className="border-b border-border-light px-3 py-3 text-right font-num tabular-nums">{(role.permissions ?? []).length}</td>
+                    <td className="border-b border-border-light px-3 py-3 text-right font-num tabular-nums">{role.userCount ?? 0}</td>
+                    <td className="border-b border-border-light px-3 py-3 text-center align-middle">
+                      <div className="flex justify-center">{renderActions(role, index)}</div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </Card>
       ) : (
-        /* ===== 卡片视图（角色卡网格，卡片化形态保持，不套外层卡） ===== */
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 animate-fade-in">
-          {isLoading && !rolesData
-            ? Array.from({ length: 3 }).map((_, i) => (
-                <Card key={i} className="border border-border">
-                  <CardContent className="space-y-3 pt-5">
-                    <Skeleton className="h-5 w-2/3" />
-                    <Skeleton className="h-4 w-full" />
-                    <Skeleton className="h-4 w-1/2" />
-                    <Skeleton className="h-8 w-full" />
-                  </CardContent>
-                </Card>
-              ))
-            : filteredRoles.map((role) => (
-                <Card key={role.id} className="flex flex-col border border-border">
-                  <CardContent className="flex flex-1 flex-col pt-5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h4 className="truncate font-medium">{role.name}</h4>
-                          {role.isSystem && <Badge variant="secondary">系统</Badge>}
-                          {highRiskCount(role) > 0 && <Badge variant="destructive">高危</Badge>}
-                        </div>
-                        <p className="mt-1 font-mono text-xs text-muted-foreground">{role.code}</p>
+        <>
+          {/* ---- 角色 × 模块权限矩阵（点击单元格配置该角色权限） ---- */}
+          <Card className="rounded-card p-0">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-light px-5 py-3.5">
+              <div>
+                <h3 className="text-base font-semibold tracking-tight">角色 × 模块权限矩阵</h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  行=角色（{roles.length}） · 列=模块（{modules.length}）
+                  {canUpdatePerms ? ' · 点击单元格配置权限' : ''}
+                </p>
+              </div>
+              <span className="inline-flex items-center gap-1 rounded-pill bg-[#e6f4ff] px-2 py-0.5 text-xs text-[#1677ff]">
+                <ShieldCheck className="h-3 w-3" />
+                共 {perms.length} 项权限
+              </span>
+            </div>
+
+            {modules.length > 0 && roles.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-[13px]" style={{ minWidth: 640 }}>
+                  <thead>
+                    <tr>
+                      <th className="sticky left-0 z-[1] min-w-[160px] max-w-[200px] border-b border-r border-border-light bg-[#f5f5f5] px-3.5 py-3 text-left text-xs font-semibold text-foreground">
+                        角色
+                      </th>
+                      {modules.map((mod) => (
+                        <th
+                          key={mod}
+                          className="border-b border-r border-border-light bg-[#f5f5f5] px-2 py-3 text-center text-xs font-semibold text-foreground last:border-r-0"
+                        >
+                          {PERMISSION_MODULE_LABELS[mod] ?? mod}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {roles.map((role, index) => {
+                      const isEven = index % 2 === 1
+                      return (
+                        <tr key={role.id} className={cn(isEven ? 'bg-[#fafafa]' : 'bg-white')}>
+                          <th
+                            className={cn(
+                              'sticky left-0 z-[1] min-w-[160px] max-w-[200px] border-b border-r border-border-light px-3.5 py-3 text-left',
+                              isEven ? 'bg-[#fafafa]' : 'bg-[#f5f5f5]',
+                            )}
+                          >
+                            <div className="flex items-center gap-2">
+                              <RoleAvatar role={role} index={index} size="sm" />
+                              <span className="text-sm font-medium text-foreground">{role.name}</span>
+                            </div>
+                            <div className="mt-0.5 pl-8 font-mono text-[11px] text-muted-foreground">{role.code}</div>
+                          </th>
+                          {modules.map((mod) => {
+                            const state = cellState(role, mod)
+                            const clickable = canUpdatePerms
+                            return (
+                              <td
+                                key={mod}
+                                className={cn('border-b border-r border-border-light px-2 py-3 text-center last:border-r-0', clickable && 'cursor-pointer')}
+                                onClick={clickable ? () => setPermTarget(role) : undefined}
+                                title={clickable ? `配置「${role.name}」权限` : undefined}
+                              >
+                                <span className="inline-flex items-center justify-center">
+                                  <Checkbox
+                                    checked={state === 'on' ? true : state === 'half' ? 'indeterminate' : false}
+                                    size="sm"
+                                    className="pointer-events-none"
+                                  />
+                                </span>
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <EmptyState
+                compact
+                className="py-10"
+                title={perms.length === 0 ? '暂无权限清单' : '暂无角色'}
+                description={perms.length === 0 ? '权限清单加载后此处展示角色 × 模块矩阵' : '新建角色后此处展示权限矩阵'}
+              />
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border-light px-5 py-3 text-xs text-muted-foreground">
+              <span>共 {roles.length} 个角色 · {modules.length} 个模块 · 矩阵合计 {roles.length * modules.length} 单元格</span>
+              <span className="inline-flex items-center gap-1">
+                <Lock className="h-3 w-3" />
+                超级管理员角色权限固定，不可修改
+              </span>
+            </div>
+          </Card>
+
+          {/* ---- 角色卡片视图 ---- */}
+          {filtered.length === 0 ? (
+            <EmptyState
+              title={rolesLoading ? '正在加载角色...' : '暂无角色'}
+              description={roles.length > 0 ? '当前搜索条件下无匹配角色，请调整关键字' : undefined}
+            />
+          ) : (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+              {filtered.map((role, index) => {
+                const highRiskCount = (role.permissions ?? []).filter((p) => isHighRiskPermission(p.resource)).length
+                const palette = ROLE_COLORS[index % ROLE_COLORS.length]
+                return (
+                  <div key={role.id} className="rounded-card border border-border-light bg-card p-4 shadow-antd-1">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-md text-sm font-semibold"
+                        style={{ background: palette.bg, color: palette.color }}
+                      >
+                        {role.name.slice(0, 2)}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-foreground">{role.name}</p>
+                        <p className="font-mono text-[11px] text-muted-foreground">{role.code}</p>
                       </div>
-                    </div>
-                    <p className="mt-2 line-clamp-2 min-h-10 text-sm text-muted-foreground">{role.description || '暂无描述'}</p>
-                    {/* 统计行：权限数 / 高危数 / 成员数 */}
-                    <div className="mt-4 flex items-center gap-5 border-t pt-3 text-body text-muted-foreground">
-                      <span>权限 <span className="font-num font-medium text-foreground">{role.permissions.length}</span></span>
-                      <span>高危 <span className="font-num font-medium text-destructive">{highRiskCount(role)}</span></span>
-                      <span>成员 <span className="font-num font-medium text-foreground">{role.userCount ?? '-'}</span></span>
-                    </div>
-                    {/* 操作区：权限/编辑常驻，克隆/删除收进下拉 */}
-                    <div className="mt-4 flex flex-wrap items-center gap-2">
-                      {canManagePermissions && (
-                        <Button variant="outline" size="sm" onClick={() => setPermRole(role)}>
-                          <Shield className="mr-2 h-4 w-4" />
-                          权限
-                        </Button>
-                      )}
-                      {canUpdateRole && (
-                        <Button variant="ghost" size="sm" onClick={() => setRoleDialog({ open: true, mode: 'edit', role })}>
-                          <Edit className="mr-2 h-4 w-4" />
-                          编辑
-                        </Button>
-                      )}
-                      {(canCreateRole || (canDeleteRole && !role.isSystem)) && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="ml-auto">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {canCreateRole && (
-                              <DropdownMenuItem onClick={() => setCloneRole(role)}>
-                                <Copy className="mr-2 h-4 w-4" />
-                                克隆角色
-                              </DropdownMenuItem>
-                            )}
-                            {canDeleteRole && !role.isSystem && (
-                              <>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDeleteRole(role)}>
-                                  删除角色
-                                </DropdownMenuItem>
-                              </>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                      {highRiskCount > 0 ? (
+                        <Pill tone="red">含 {highRiskCount} 高危</Pill>
+                      ) : (
+                        <Pill tone="green">常规</Pill>
                       )}
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
-        </div>
-      )}
-      {effectiveView === 'card' && !isLoading && filteredRoles.length === 0 && (
-        <p className="text-center text-sm text-muted-foreground">无匹配角色</p>
+                    <p className="mt-2 line-clamp-2 min-h-[2.5em] text-[12px] text-muted-foreground">
+                      {role.description ?? '暂无描述'}
+                    </p>
+                    <div className="mt-3 flex items-center justify-between border-t border-border-light pt-2 text-[11px] text-muted-foreground">
+                      <span>权限数 {(role.permissions ?? []).length}</span>
+                      <span>成员 {role.userCount ?? 0}</span>
+                      {role.isSystem ? (
+                        <span className="inline-flex items-center gap-0.5">
+                          <Lock className="h-3 w-3" />
+                          预置
+                        </span>
+                      ) : (
+                        <span>自定义</span>
+                      )}
+                    </div>
+                    {(canUpdate || canCreate || canUpdatePerms || canDelete) && (
+                      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                        {canUpdatePerms && (
+                          <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setPermTarget(role)}>
+                            <ShieldCheck className="mr-1 h-3 w-3" />
+                            权限
+                          </Button>
+                        )}
+                        {canUpdate && (
+                          <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setRoleDialog({ open: true, mode: 'edit', role })}>
+                            <Edit className="mr-1 h-3 w-3" />
+                            编辑
+                          </Button>
+                        )}
+                        {canCreate && (
+                          <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setCloneTarget(role)}>
+                            <Copy className="mr-1 h-3 w-3" />
+                            克隆
+                          </Button>
+                        )}
+                        {canDelete && !role.isSystem && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-xs text-destructive hover:bg-destructive/5"
+                            onClick={() => void handleDelete(role)}
+                          >
+                            <Trash2 className="mr-1 h-3 w-3" />
+                            删除
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </>
       )}
 
-      {/* 弹窗 */}
+      {/* 新增/编辑角色 */}
       <RoleDialog
         open={roleDialog.open}
         mode={roleDialog.mode}
         role={roleDialog.role}
         onClose={() => setRoleDialog((s) => ({ ...s, open: false }))}
-        onSaved={(name) => setFlash({ type: 'success', text: `已保存角色「${name}」` })}
-      />
-      <PermissionDialog
-        open={!!permRole}
-        role={permRole}
-        onClose={() => setPermRole(null)}
-        onSaved={(name) => setFlash({ type: 'success', text: `已保存角色「${name}」的权限` })}
-      />
-      <CloneRoleDialog
-        open={!!cloneRole}
-        role={cloneRole}
-        onClose={() => setCloneRole(null)}
-        onSaved={(name) => setFlash({ type: 'success', text: `已克隆角色「${name}」` })}
-      />
-      <BatchPermissionDialog
-        open={batchRoles !== null && batchRoles.length > 0}
-        roles={batchRoles}
-        onClose={() => setBatchRoles(null)}
-        onSaved={(names) => {
-          setSelectedKeys(new Set())
-          setFlash({ type: 'success', text: `已为 ${names.length} 个角色批量配置权限` })
+        onSaved={(name) => {
+          setActionError(null)
+          setActionNotice(roleDialog.mode === 'create' ? `已创建角色「${name}」` : `已保存角色「${name}」的修改`)
         }}
       />
+
+      {/* 克隆角色 */}
+      <CloneRoleDialog
+        open={cloneTarget !== null}
+        role={cloneTarget}
+        onClose={() => setCloneTarget(null)}
+        onSaved={(name) => {
+          setActionError(null)
+          setActionNotice(`已克隆生成新角色「${name}」，权限随原角色复制`)
+        }}
+      />
+
+      {/* 单角色权限配置 */}
+      <PermissionDialog
+        open={permTarget !== null}
+        role={permTarget}
+        onClose={() => setPermTarget(null)}
+        onSaved={(name) => {
+          setActionError(null)
+          setActionNotice(`已保存角色「${name}」的权限配置`)
+        }}
+      />
+
+      {/* 多角色批量权限 */}
+      <BatchPermissionDialog
+        open={batchOpen}
+        roles={selectedRoles}
+        onClose={() => setBatchOpen(false)}
+        onSaved={(names) => {
+          setActionError(null)
+          setBatchOpen(false)
+          setSelectedIds(new Set())
+          setActionNotice(`已为 ${names.length} 个角色批量应用权限`)
+        }}
+      />
+
       {confirmElement}
     </PageContainer>
   )

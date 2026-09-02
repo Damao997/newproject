@@ -79,5 +79,20 @@ coverage
 .qoder/better-harness
 .qoder/specs
 
+# 数据库备份资料（真实业务数据 + 口令哈希，不入库）
+.qoder/db-backup-*/
+.qoder/local-pre-import-*
+.qoder/
+server/backups/
+
+# 本地 IDE / 调试产物（不入库）
+.trae/
+web/screenshots/
+web/debug-out.txt
+
+# pnpm 本地锁文件（项目使用 npm）
+web/pnpm-lock.yaml
+web/pnpm-workspace.yaml
+
 # Claude internal
 .claude

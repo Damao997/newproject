@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>应收账龄 · 财年经营数据分析平台</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; }
+
+  /* shell side */
+  .shell-side { background: #001529; color: rgba(255, 255, 255, 0.85); display: flex; flex-direction: column; }
+  .shell-side-logo { height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); color: #fff; }
+  .shell-side-logo-mark { width: 32px; height: 32px; background: var(--color-primary); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 16px; }
+  .shell-side-logo-text { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
+  .shell-side-nav { padding: 12px 0; flex: 1; overflow-y: auto; }
+  .shell-nav-group-title { padding: 12px 28px 8px; color: rgba(255, 255, 255, 0.35); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .shell-nav-item { display: flex; align-items: center; gap: 12px; padding: 0 20px; height: 40px; color: rgba(255, 255, 255, 0.75); cursor: pointer; transition: all 0.2s; border-left: 3px solid transparent; font-size: 14px; text-decoration: none; }
+  .shell-nav-item:hover { color: #fff; background: rgba(255, 255, 255, 0.04); }
+  .shell-nav-item.is-active { background: var(--color-primary); color: #fff; border-left-color: #fff; }
+  .shell-nav-ic { width: 18px; flex-shrink: 0; color: rgba(255, 255, 255, 0.55); }
+  .shell-nav-item:hover .shell-nav-ic { color: #fff; }
+
+  .shell-header { background: #fff; border-bottom: 1px solid var(--antd-gray-3); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .shell-header-r { display: flex; align-items: center; gap: 16px; }
+  .period-pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; background: var(--antd-gray-2); border-radius: var(--radius-medium); color: var(--color-foreground); font-size: 13px; cursor: pointer; }
+  .period-pill:hover { background: var(--antd-gray-3); }
+  .user-chip { display: flex; align-items: center; gap: 10px; padding: 4px 10px 4px 4px; border-radius: 20px; cursor: pointer; }
+  .user-chip:hover { background: var(--antd-gray-2); }
+  .user-chip-name { font-size: 13px; font-weight: 500; }
+  .user-chip-role { font-size: 11px; color: var(--color-text-tertiary); }
+
+  /* 业务独有：5 段账龄环 */
+  .aging-card { background: #fff; border: 1px solid var(--antd-gray-3); border-radius: var(--radius-large); padding: 20px; margin-bottom: 16px; }
+  .aging-card h3 { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
+  .aging-grid { display: grid; grid-template-columns: 1fr 1.4fr; gap: 16px; margin-bottom: 16px; }
+  .aging-rings { display: flex; flex-direction: column; gap: 14px; }
+  .aging-row { display: flex; align-items: center; gap: 14px; }
+  .aging-row-meta { flex: 1; }
+  .aging-row-name { font-size: 13px; color: var(--color-foreground); }
+  .aging-row-pct { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+  /* 5 段堆叠环 */
+  .aging-ring-wrap { position: relative; width: 180px; height: 180px; margin: 0 auto 12px; }
+  .aging-ring-wrap svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .aging-ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .aging-ring-center .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--color-foreground); }
+  .aging-ring-center .l { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
+
+  .aging-legend { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+  .aging-legend-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--color-text-secondary); }
+  .aging-legend-row .sw { width: 10px; height: 10px; border-radius: 2px; }
+  .aging-legend-row .name { flex: 1; }
+  .aging-legend-row .val { font-variant-numeric: tabular-nums; color: var(--color-foreground); }
+
+  /* 表格 */
+  .table-card { background: #fff; border: 1px solid var(--antd-gray-3); border-radius: var(--radius-large); padding: 20px; margin-bottom: 16px; }
+  .table-card h3 { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
+
+  .aging-bar-cell { display: flex; gap: 3px; align-items: center; }
+  .aging-bar-cell .seg { height: 8px; min-width: 2px; border-radius: 1px; }
+</style>
+</head>
+<body>
+<div class="antd-page">
+  <aside class="shell-side" style="grid-column: 1;">
+    <div class="shell-side-logo">
+      <div class="shell-side-logo-mark">J</div>
+      <div class="shell-side-logo-text">经营分析平台</div>
+    </div>
+    <nav class="shell-side-nav">
+      <div class="shell-nav-group-title">主数据</div>
+      <a class="shell-nav-item is-active" href="dashboard.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        首页看板
+      </a>
+      <a class="shell-nav-item" href="indicators-operating.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+        财务指标
+      </a>
+      <a class="shell-nav-item" href="transactions-overview.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+        往来分析
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        存货管理
+      </a>
+      <a class="shell-nav-item" href="reports-list.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+        分析报告
+      </a>
+      <div class="shell-nav-group-title">业务工具</div>
+      <a class="shell-nav-item" href="enterprise-lookup.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        企业信息查询
+      </a>
+      <div class="shell-nav-group-title">数据管理</div>
+      <a class="shell-nav-item" href="data-import.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        数据导入
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h12"/></svg>
+        重分类管理
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        维度管理
+      </a>
+      <div class="shell-nav-group-title">系统</div>
+      <a class="shell-nav-item" href="admin-users.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><circle cx="17" cy="7" r="3"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
+        用户管理
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+        角色权限
+      </a>
+    </nav>
+  </aside>
+
+  <main class="antd-content">
+    <header class="shell-header">
+      <div class="antd-breadcrumb">
+        <span>首页</span><span class="sep">/</span><span>经营分析</span><span class="sep">/</span><span class="current">应收账龄</span>
+      </div>
+      <div class="shell-header-r">
+        <div class="antd-select" style="min-width: 160px;">浙江壹品慧生活集团</div>
+        <div class="period-pill">2026 财年 · 8月 ⌄</div>
+        <button class="antd-btn">刷新</button>
+        <div class="user-chip">
+          <div class="antd-avatar" style="background: var(--antd-brand-100); color: var(--color-primary);">张</div>
+          <div>
+            <div class="user-chip-name">张伟</div>
+            <div class="user-chip-role">财务总监</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="antd-content-body">
+      <!-- PageHead -->
+      <div class="antd-page-head">
+        <div>
+          <div class="antd-page-head-title">应收账龄</div>
+          <div class="antd-page-head-desc">客户应收账款账龄结构 · Top10 客户分布</div>
+        </div>
+        <div class="antd-page-head-actions">
+          <div class="antd-segmented">
+            <div class="antd-segmented-item">30天</div>
+            <div class="antd-segmented-item is-active">60天</div>
+            <div class="antd-segmented-item">90天</div>
+          </div>
+          <button class="antd-btn">导出</button>
+        </div>
+      </div>
+
+      <!-- 4 个 stat-tile，90天以上 is-orange 强橙警示 -->
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--antd-space-4); margin-bottom: var(--antd-space-5);">
+        <div class="antd-stat-tile is-cyan">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">应收账款总额</span>
+            <span class="antd-stat-tile-icon">应</span>
+          </div>
+          <div class="antd-stat-tile-value">358.2<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-up">↑ 5.6%</span>
+            <span class="antd-text-tertiary antd-fs-sm">较上月</span>
+          </div>
+        </div>
+        <div class="antd-stat-tile is-green">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">1-30 天</span>
+            <span class="antd-stat-tile-icon">30</span>
+          </div>
+          <div class="antd-stat-tile-value">196.4<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-flat">55% 占比</span>
+            <span class="antd-text-tertiary antd-fs-sm">健康</span>
+          </div>
+        </div>
+        <div class="antd-stat-tile">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">31-90 天</span>
+            <span class="antd-stat-tile-icon">90</span>
+          </div>
+          <div class="antd-stat-tile-value">130.4<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-up">↑ 2.3%</span>
+            <span class="antd-text-tertiary antd-fs-sm">较上月</span>
+          </div>
+        </div>
+        <div class="antd-stat-tile is-orange antd-emphasis-warm-strong">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label"><span class="antd-pill is-red">警示</span>90 天以上</span>
+            <span class="antd-stat-tile-icon">!</span>
+          </div>
+          <div class="antd-stat-tile-value" style="color: var(--antd-orange-600);">31.4<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-up">↑ 12.5%</span>
+            <span class="antd-text-tertiary antd-fs-sm">需催收</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 左 5 段账龄环 + 右 Top10 客户 -->
+      <div class="aging-grid">
+        <div class="aging-card">
+          <h3>账龄结构（5 段）</h3>
+          <div class="aging-ring-wrap">
+            <svg viewBox="0 0 100 100">
+              <!-- 5 段深浅不同蓝色 conic-gradient 用 stroke-dasharray + circle 实现 -->
+              <circle cx="50" cy="50" r="40" fill="none" stroke="#1677ff" stroke-width="20"
+                stroke-dasharray="138.2 251.3" stroke-dashoffset="0"/>
+              <circle cx="50" cy="50" r="40" fill="none" stroke="#4096ff" stroke-width="20"
+                stroke-dasharray="62.8 251.3" stroke-dashoffset="-138.2"/>
+              <circle cx="50" cy="50" r="40" fill="none" stroke="#69b1ff" stroke-width="20"
+                stroke-dasharray="37.7 251.3" stroke-dashoffset="-201"/>
+              <circle cx="50" cy="50" r="40" fill="none" stroke="#91caff" stroke-width="20"
+                stroke-dasharray="25.1 251.3" stroke-dashoffset="-238.7"/>
+              <circle cx="50" cy="50" r="40" fill="none" stroke="#bae0ff" stroke-width="20"
+                stroke-dasharray="15.1 251.3" stroke-dashoffset="-263.8"/>
+              <circle cx="50" cy="50" r="30" fill="#fff"/>
+            </svg>
+            <div class="aging-ring-center">
+              <div class="v">¥358.2万</div>
+              <div class="l">应收账款</div>
+            </div>
+          </div>
+          <div class="aging-legend">
+            <div class="aging-legend-row">
+              <span class="sw" style="background: #1677ff;"></span>
+              <span class="name">0-30 天（健康）</span>
+              <span class="val">¥196.4万 · 54.8%</span>
+            </div>
+            <div class="aging-legend-row">
+              <span class="sw" style="background: #4096ff;"></span>
+              <span class="name">31-60 天</span>
+              <span class="val">¥88.3万 · 24.6%</span>
+            </div>
+            <div class="aging-legend-row">
+              <span class="sw" style="background: #69b1ff;"></span>
+              <span class="name">61-90 天</span>
+              <span class="val">¥42.1万 · 11.8%</span>
+            </div>
+            <div class="aging-legend-row">
+              <span class="sw" style="background: #91caff;"></span>
+              <span class="name">91-180 天</span>
+              <span class="val">¥22.6万 · 6.3%</span>
+            </div>
+            <div class="aging-legend-row">
+              <span class="sw" style="background: #bae0ff;"></span>
+              <span class="name">180+ 天（逾期）</span>
+              <span class="val">¥8.8万 · 2.5%</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="table-card" style="margin-bottom: 0;">
+          <h3>Top10 客户账龄 <span class="antd-overline" style="margin-left: 8px;">单位：万元</span></h3>
+          <table class="antd-table antd-table-zebra antd-table-density-compact">
+            <thead>
+              <tr>
+                <th>客户</th>
+                <th class="num">应收总额</th>
+                <th class="num">1-30</th>
+                <th class="num">31-60</th>
+                <th class="num">61-90</th>
+                <th class="num">91-180</th>
+                <th class="num">180+</th>
+                <th>分布</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>杭州物美百货</td>
+                <td class="num antd-fw-600">82.6</td>
+                <td class="num">48.0</td>
+                <td class="num">22.0</td>
+                <td class="num">10.6</td>
+                <td class="num">2.0</td>
+                <td class="num">0.0</td>
+                <td>
+                  <div class="aging-bar-cell">
+                    <span class="seg" style="width:48px; background: #1677ff;"></span>
+                    <span class="seg" style="width:22px; background: #4096ff;"></span>
+                    <span class="seg" style="width:10px; background: #69b1ff;"></span>
+                    <span class="seg" style="width:2px; background: #91caff;"></span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>宁波新世纪商城</td>
+                <td class="num antd-fw-600">68.2</td>
+                <td class="num">38.6</td>
+                <td class="num">18.0</td>
+                <td class="num">8.0</td>
+                <td class="num">3.6</td>
+                <td class="num">0.0</td>
+                <td>
+                  <div class="aging-bar-cell">
+                    <span class="seg" style="width:38px; background: #1677ff;"></span>
+                    <span class="seg" style="width:18px; background: #4096ff;"></span>
+                    <span class="seg" style="width:8px; background: #69b1ff;"></span>
+                    <span class="seg" style="width:4px; background: #91caff;"></span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>温州大润发</td>
+                <td class="num antd-fw-600">55.4</td>
+                <td class="num">32.0</td>
+                <td class="num">14.2</td>
+                <td class="num">6.0</td>
+                <td class="num">3.2</td>
+                <td class="num">0.0</td>
+                <td>
+                  <div class="aging-bar-cell">
+                    <span class="seg" style="width:32px; background: #1677ff;"></span>
+                    <span class="seg" style="width:14px; background: #4096ff;"></span>
+                    <span class="seg" style="width:6px; background: #69b1ff;"></span>
+                    <span class="seg" style="width:3px; background: #91caff;"></span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>绍兴永辉超市</td>
+                <td class="num antd-fw-600">42.8</td>
+                <td class="num">22.0</td>
+                <td class="num">12.0</td>
+                <td class="num">5.0</td>
+                <td class="num">3.8</td>
+                <td class="num">0.0</td>
+                <td>
+                  <div class="aging-bar-cell">
+                    <span class="seg" style="width:22px; background: #1677ff;"></span>
+                    <span class="seg" style="width:12px; background: #4096ff;"></span>
+                    <span class="seg" style="width:5px; background: #69b1ff;"></span>
+                    <span class="seg" style="width:4px; background: #91caff;"></span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>金华联华</td>
+                <td class="num antd-fw-600">38.6</td>
+                <td class="num">20.0</td>
+                <td class="num">10.0</td>
+                <td class="num">4.6</td>
+                <td class="num">2.0</td>
+                <td class="num">2.0</td>
+                <td>
+                  <div class="aging-bar-cell">
+                    <span class="seg" style="width:20px; background: #1677ff;"></span>
+                    <span class="seg" style="width:10px; background: #4096ff;"></span>
+                    <span class="seg" style="width:4px; background: #69b1ff;"></span>
+                    <span class="seg" style="width:2px; background: #91caff;"></span>
+                    <span class="seg" style="width:2px; background: #bae0ff;"></span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>台州华联</td>
+                <td class="num antd-fw-600">32.4</td>
+                <td class="num">18.0</td>
+                <td class="num">8.6</td>
+                <td class="num">3.6</td>
+                <td class="num">1.6</td>
+                <td class="num">0.6</td>
+                <td>
+                  <div class="aging-bar-cell">
+                    <span class="seg" style="width:18px; background: #1677ff;"></span>
+                    <span class="seg" style="width:8px; background: #4096ff;"></span>
+                    <span class="seg" style="width:3px; background: #69b1ff;"></span>
+                    <span class="seg" style="width:2px; background: #91caff;"></span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>嘉兴沃尔玛</td>
+                <td class="num antd-fw-600">28.0</td>
+                <td class="num">16.0</td>
+                <td class="num">6.6</td>
+                <td class="num">3.4</td>
+                <td class="num">1.0</td>
+                <td class="num">1.0</td>
+                <td>
+                  <div class="aging-bar-cell">
+                    <span class="seg" style="width:16px; background: #1677ff;"></span>
+                    <span class="seg" style="width:6px; background: #4096ff;"></span>
+                    <span class="seg" style="width:3px; background: #69b1ff;"></span>
+                    <span class="seg" style="width:1px; background: #91caff;"></span>
+                    <span class="seg" style="width:1px; background: #bae0ff;"></span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>丽水百货</td>
+                <td class="num antd-fw-600">22.4</td>
+                <td class="num">10.0</td>
+                <td class="num">4.0</td>
+                <td class="num">3.0</td>
+                <td class="num">3.4</td>
+                <td class="num">2.0</td>
+                <td>
+                  <div class="aging-bar-cell">
+                    <span class="seg" style="width:10px; background: #1677ff;"></span>
+                    <span class="seg" style="width:4px; background: #4096ff;"></span>
+                    <span class="seg" style="width:3px; background: #69b1ff;"></span>
+                    <span class="seg" style="width:3px; background: #91caff;"></span>
+                    <span class="seg" style="width:2px; background: #bae0ff;"></span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>衢州物美</td>
+                <td class="num antd-fw-600">18.6</td>
+                <td class="num">8.0</td>
+                <td class="num">4.0</td>
+                <td class="num">2.0</td>
+                <td class="num">2.0</td>
+                <td class="num">2.6</td>
+                <td>
+                  <div class="aging-bar-cell">
+                    <span class="seg" style="width:8px; background: #1677ff;"></span>
+                    <span class="seg" style="width:4px; background: #4096ff;"></span>
+                    <span class="seg" style="width:2px; background: #69b1ff;"></span>
+                    <span class="seg" style="width:2px; background: #91caff;"></span>
+                    <span class="seg" style="width:3px; background: #bae0ff;"></span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>舟山华润</td>
+                <td class="num antd-fw-600">15.2</td>
+                <td class="num">6.0</td>
+                <td class="num">3.0</td>
+                <td class="num">1.0</td>
+                <td class="num">1.6</td>
+                <td class="num">3.6</td>
+                <td>
+                  <div class="aging-bar-cell">
+                    <span class="seg" style="width:6px; background: #1677ff;"></span>
+                    <span class="seg" style="width:3px; background: #4096ff;"></span>
+                    <span class="seg" style="width:1px; background: #69b1ff;"></span>
+                    <span class="seg" style="width:2px; background: #91caff;"></span>
+                    <span class="seg" style="width:4px; background: #bae0ff;"></span>
+                  </div>
+                </td>
+              </tr>
+              <!-- 合计行 is-emphasis-orange -->
+              <tr style="background: linear-gradient(135deg, var(--antd-orange-100) 0%, var(--antd-orange-50) 100%);">
+                <td class="antd-emphasis-orange-strong">合计 · Top10</td>
+                <td class="num antd-emphasis-orange-strong">404.2</td>
+                <td class="num antd-emphasis-orange-strong">218.6</td>
+                <td class="num antd-emphasis-orange-strong">102.4</td>
+                <td class="num antd-emphasis-orange-strong">47.2</td>
+                <td class="num antd-emphasis-orange-strong">24.2</td>
+                <td class="num antd-emphasis-orange-strong">11.8</td>
+                <td><span class="antd-pill is-orange">Top10 占比 113%</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

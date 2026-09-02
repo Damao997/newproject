@@ -548,6 +548,9 @@ export interface AuditLog {
   module: string
   action: string
   detail: string
+  ip?: string | null
+  userAgent?: string | null
+  targetId?: string | null
 }
 
 /** 科目树节点（经营分析 level0-level4 / 静态指标 level0-level1 通用） */
@@ -589,12 +592,33 @@ export interface PaginatedResponse<T> {
 export interface LoginRequest {
   username: string
   password: string
+  /** 7 天内免登录：勾选后服务端签发持久令牌，前端缓存在 localStorage 用于下次自动续登 */
+  rememberMe?: boolean
 }
 
 export interface LoginResponse {
   accessToken: string
   refreshToken: string
   user: User
+  /** 持久令牌明文（仅一次性返回，刷新前必须已落库；DB 只存 SHA-256 哈希） */
+  persistentLoginToken?: string
+  /** 持久令牌有效期（毫秒），前端可据此计算过期时间或展示倒计时 */
+  persistentLoginExpiresInMs?: number
+}
+
+/** 自动登录响应：与 LoginResponse 形态一致 */
+export interface AutoLoginResponse {
+  accessToken: string
+  refreshToken: string
+  user: User
+  /** 本次续登会顺带旋转持久令牌；若客户端存在旧 token，必须用此值替换 */
+  persistentLoginToken?: string
+  persistentLoginExpiresInMs?: number
+}
+
+/** 自动登录请求 */
+export interface AutoLoginRequest {
+  persistentLoginToken: string
 }
 
 export interface FilterParams {
@@ -607,6 +631,10 @@ export interface FilterParams {
   pageSize?: number
   /** 科目类型筛选（data/subjects 接口） */
   type?: string
+  /** 数据导入批次模块筛选（data/imports 接口，即批次 dataType） */
+  templateType?: string
+  /** 数据导入批次生命周期状态筛选（data/imports 接口，draft/active/archived/purged） */
+  status?: string
   /** 是否包含已停用科目（data/subjects 接口，query 串传 'true'） */
   includeInactive?: string
   /** 去除跨公司重分类影响（indicators 接口，按日志快照回溯原始口径） */

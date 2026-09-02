@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -34,8 +34,11 @@ import {
   useTrialCalc,
   useDependencies,
   useAvailablePeriods,
+  useImportFormulas,
+  useGenerateFormula,
+  type FormulaSuggestion,
 } from '@/hooks/api-queries'
-import { Pencil, Sparkles, History, Trash2, MoreHorizontal, Plus, Calculator, Download, Loader2, ShieldAlert, RotateCcw, ArrowRightLeft, ChevronDown, ChevronRight, Filter } from 'lucide-react'
+import { Pencil, Sparkles, History, Trash2, MoreHorizontal, Plus, Calculator, Download, Upload, Loader2, ShieldAlert, RotateCcw, ArrowRightLeft, ChevronDown, ChevronRight, Filter } from 'lucide-react'
 import { Collapsible } from '@/components/ui/collapsible'
 import { FlashMessage } from '@/components/ui/flash-message'
 import { usePageStore } from '@/stores/pageStateStore'
@@ -141,6 +144,50 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
   // 导出公式（JSON）：loading + 结果反馈（成功/失败，自动消失）
   const [formulaExporting, setFormulaExporting] = useState(false)
   const [formulaExportFlash, setFormulaExportFlash] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  // 导入公式（JSON）：选择公式导出文件，后端逐条校验更新，结果反馈
+  const importFormulas = useImportFormulas()
+  const importInputRef = useRef<HTMLInputElement>(null)
+  const [formulaImportFlash, setFormulaImportFlash] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const handleImportFormulas = async (file: File) => {
+    setFormulaImportFlash(null)
+    try {
+      const parsed: unknown = JSON.parse(await file.text())
+      // 兼容两种形态：公式导出的裸数组 / { items: [...] } 包装
+      const rawItems = Array.isArray(parsed) ? parsed : Array.isArray((parsed as { items?: unknown })?.items) ? (parsed as { items: unknown[] }).items : null
+      if (!rawItems) throw new Error('文件格式异常：应为公式导出的 JSON 数组')
+      const items = rawItems
+        .map((it) => ({ code: String((it as { code?: unknown })?.code ?? ''), formula: String((it as { formula?: unknown })?.formula ?? '') }))
+        .filter((it) => it.code && it.formula)
+      if (items.length === 0) throw new Error('文件中没有可导入的公式（需同时含 code 与 formula 字段）')
+      const ok = await confirm({ title: '导入公式', description: `将按编码更新 ${items.length} 条计算类指标公式（后端逐条校验，校验失败的行跳过）。确认导入？`, confirmText: '导入' })
+      if (!ok) return
+      const res = await importFormulas.mutateAsync(items)
+      const failed = res.results.filter((r) => !r.ok)
+      setFormulaImportFlash(
+        failed.length
+          ? { type: 'error', text: `导入完成：成功 ${res.applied} 条，失败 ${failed.length} 条（${failed.slice(0, 3).map((f) => `${f.code}：${f.message ?? '校验失败'}`).join('；')}）` }
+          : { type: 'success', text: `已导入 ${res.applied} 条公式` },
+      )
+    } catch (e) {
+      setFormulaImportFlash({ type: 'error', text: e instanceof Error ? e.message : '导入失败，请检查文件格式' })
+    } finally {
+      if (importInputRef.current) importInputRef.current.value = ''
+    }
+  }
+  // AI 生成公式（编辑对话框内）：自然语言描述 → 建议公式，可一键应用到公式输入框
+  const generateFormula = useGenerateFormula()
+  const [aiDesc, setAiDesc] = useState('')
+  const [aiResult, setAiResult] = useState<FormulaSuggestion | null>(null)
+  const [aiError, setAiError] = useState<string | null>(null)
+  const handleAiFormula = async () => {
+    if (!aiDesc.trim()) return
+    setAiError(null)
+    try {
+      setAiResult(await generateFormula.mutateAsync({ userDescription: aiDesc.trim(), subjectType }))
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : 'AI 生成失败，请稍后重试')
+    }
+  }
   // 公式导出：fetch 接口返回 { code:0, data:[...] }，失败时展示错误信息（不再静默忽略）
   const handleExportFormulas = async () => {
     if (formulaExporting) return
@@ -331,6 +378,9 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
     setSaveError(null)
     setTrialResult(null)
     setShowDeps(false)
+    setAiDesc('')
+    setAiResult(null)
+    setAiError(null)
   }
 
   const saveFormula = async () => {
@@ -610,6 +660,23 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
             </Button>
           )}
           {effectiveUpdate && (
+            <>
+              <Button variant="ghost" size="sm" onClick={() => importInputRef.current?.click()} disabled={importFormulas.isPending}>
+                <Upload className="mr-2 h-4 w-4" /> 导入公式
+              </Button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".json,application/json"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) void handleImportFormulas(f)
+                }}
+              />
+            </>
+          )}
+          {effectiveUpdate && (
             <Button variant="ghost" size="sm" onClick={handleExportFormulas} disabled={formulaExporting}>
               {formulaExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
               {formulaExporting ? '导出中…' : '导出公式'}
@@ -624,6 +691,11 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
       {formulaExportFlash && (
         <FlashMessage type={formulaExportFlash.type} autoHideMs={4000} onAutoHide={() => setFormulaExportFlash(null)} className="mb-2">
           {formulaExportFlash.text}
+        </FlashMessage>
+      )}
+      {formulaImportFlash && (
+        <FlashMessage type={formulaImportFlash.type} autoHideMs={6000} onAutoHide={() => setFormulaImportFlash(null)} className="mb-2">
+          {formulaImportFlash.text}
         </FlashMessage>
       )}
 
@@ -694,6 +766,38 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
               含跨期间引用的公式在“年初/上年年初”列不参与计算。保存时后端校验并检测依赖环；清空输入并保存可移除公式。
             </p>
             {saveError && <p className="text-xs text-destructive">{saveError}</p>}
+          </div>
+
+          {/* AI 生成公式：自然语言描述 → 建议公式（可一键填入，保存前仍走后端校验） */}
+          <div className="space-y-2 rounded-lg border border-dashed p-3">
+            <label className="flex items-center gap-1 text-sm font-medium">
+              <Sparkles className="h-4 w-4 text-primary" /> AI 生成公式
+            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                value={aiDesc}
+                onChange={(e) => setAiDesc(e.target.value)}
+                placeholder="用自然语言描述计算口径，如：毛利率 = 毛利 / 收入"
+                className="min-w-[200px] flex-1"
+                maxLength={200}
+              />
+              <Button variant="outline" size="sm" onClick={handleAiFormula} disabled={generateFormula.isPending || !aiDesc.trim()}>
+                {generateFormula.isPending ? '生成中...' : '生成'}
+              </Button>
+              {aiResult?.suggestedFormula && (
+                <Button variant="secondary" size="sm" onClick={() => setDraftFormula(aiResult.suggestedFormula as string)}>
+                  应用到公式
+                </Button>
+              )}
+            </div>
+            {aiError && <p className="text-xs text-destructive">{aiError}</p>}
+            {aiResult && (
+              <div className="rounded-md bg-muted/50 p-2 text-xs">
+                <p className="break-all font-mono">{aiResult.suggestedFormula ?? '未生成建议公式，请补充描述后重试'}</p>
+                {aiResult.explanation && <p className="mt-1 text-muted-foreground">{aiResult.explanation}</p>}
+                {aiResult.warnings.length > 0 && <p className="mt-1 text-warning-500">警告：{aiResult.warnings.join('；')}</p>}
+              </div>
+            )}
           </div>
 
           {/* 试算 */}

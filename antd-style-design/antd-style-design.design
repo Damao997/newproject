@@ -1,0 +1,907 @@
+{
+  "data": [
+  {
+  "id": "page-login",
+  "title": "登录页",
+  "type": "page",
+  "version": 2,
+  "createdAt": 1787821300000,
+  "canvasData": {
+    "x": 0,
+    "y": 0,
+    "group": 0,
+    "layoutSnapshot": {
+      "version": 2,
+      "contentHeight": 640,
+      "viewportWidth": 1440,
+      "sourceHash": "fnv1a-login-v6",
+      "measuredAt": 1787821300000
+    }
+  },
+  "devMetadata": {
+    "htmlSrc": "pages/login-v6.html",
+    "interactions": []
+  }
+},
+
+    {
+      "id": "page-shell-system-v1",
+      "title": "通用壳 · 侧栏 + 顶栏 · v1",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787821400000,
+      "canvasData": {
+        "x": 0,
+        "y": 2300,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 720,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-shell-v1",
+          "measuredAt": 1787821400000
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/shell-system-v1.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-dashboard",
+      "title": "首页看板",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787811400000,
+      "canvasData": {
+        "x": 480,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1384,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-9916f012",
+          "measuredAt": 1787813858831
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/dashboard.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-indicators-operating",
+      "title": "经营指标",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787811400000,
+      "canvasData": {
+        "x": 960,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 2094,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-d7647c30",
+          "measuredAt": 1787813858831
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/indicators-operating.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-transactions-overview",
+      "title": "交易总览",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787811400000,
+      "canvasData": {
+        "x": 1440,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1580,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-b79f2905",
+          "measuredAt": 1787813858831
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/transactions-overview.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-data-import",
+      "title": "数据导入",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787811400000,
+      "canvasData": {
+        "x": 1920,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 2385,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-379a5675",
+          "measuredAt": 1787813858831
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/data-import.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-reports-list",
+      "title": "汇总报告",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787811400000,
+      "canvasData": {
+        "x": 2400,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1350,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-e87553ad",
+          "measuredAt": 1787813858831
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/reports-list.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-admin-users",
+      "title": "用户管理",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787811400000,
+      "canvasData": {
+        "x": 2880,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1438,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-f0462fc5",
+          "measuredAt": 1787813858831
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/admin-users.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-enterprise-lookup",
+      "title": "企业信息查询",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787811400000,
+      "canvasData": {
+        "x": 3360,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1659,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-a292e719",
+          "measuredAt": 1787818009829
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/enterprise-lookup.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-color-palette",
+      "title": "色板总览 · 蓝 / 橙 / 灰（Tab 切换）",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787813900000,
+      "canvasData": {
+        "x": 3840,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1059,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-1d2e8ee0",
+          "measuredAt": 1787815128781
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/color-palette.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-dashboard-analysis-keymetrics",
+      "title": "经营分析 · 关键指标",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 4320,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1317,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-b9a68bed",
+          "measuredAt": 1787818009829
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/dashboard-analysis-keymetrics.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-dashboard-analysis-cashflow",
+      "title": "经营分析 · 业务现金流",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 4800,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1799,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-2928e34f",
+          "measuredAt": 1787818009829
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/dashboard-analysis-cashflow.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-dashboard-analysis-receivable-aging",
+      "title": "经营分析 · 应收账龄",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 5280,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1007,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-632b1ac7",
+          "measuredAt": 1787818009829
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/dashboard-analysis-receivable-aging.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-dashboard-analysis-inventory-aging",
+      "title": "经营分析 · 存货库龄",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 5760,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1525,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-52ded11f",
+          "measuredAt": 1787818009829
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/dashboard-analysis-inventory-aging.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-dashboard-analysis-category-budget",
+      "title": "经营分析 · 品类预算",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 6240,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1536,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-184d8f04",
+          "measuredAt": 1787818009829
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/dashboard-analysis-category-budget.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-dashboard-analysis-subject-budget",
+      "title": "经营分析 · 科目预算",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 6720,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1564,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-22f6d730",
+          "measuredAt": 1787818009829
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/dashboard-analysis-subject-budget.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-dashboard-analysis-expense",
+      "title": "经营分析 · 运营费用",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 7200,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 2300,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-946e115c",
+          "measuredAt": 1787816700000
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/dashboard-analysis-expense.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-indicators-static",
+      "title": "财务指标 · 静态指标",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 7680,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-da30e0ab",
+          "measuredAt": 1787818009829
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/indicators-static.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-indicators-cashflow",
+      "title": "财务指标 · 现金流指标",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 8160,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-ebdcc247",
+          "measuredAt": 1787816700000
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/indicators-cashflow.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-transactions-aging",
+      "title": "往来 · 账龄分析",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 8640,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1837,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-680e2c97",
+          "measuredAt": 1787818009829
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/transactions-aging.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-transactions-coverage",
+      "title": "往来 · 主体覆盖",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 9120,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1149,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-4d25e61f",
+          "measuredAt": 1787818009829
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/transactions-coverage.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-transactions-account-filter",
+      "title": "往来 · 科目过滤",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 9600,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1800,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-c94779c9",
+          "measuredAt": 1787816700000
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/transactions-account-filter.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-transactions-collections-plans",
+      "title": "往来 · 催收计划",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 10080,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 2100,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-5030adfa",
+          "measuredAt": 1787816700000
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/transactions-collections-plans.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-transactions-collections-salesmen",
+      "title": "往来 · 销售员催收看板",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 10560,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1381,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-db09f734",
+          "measuredAt": 1787818009829
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/transactions-collections-salesmen.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-inventory",
+      "title": "存货管理",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 11040,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 2124,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-d4631482",
+          "measuredAt": 1787818009829
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/inventory.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-reports-analyses",
+      "title": "报告 · 单项分析",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 11520,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1646,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-24f7b19d",
+          "measuredAt": 1787818009829
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/reports-analyses.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-report-editor",
+      "title": "报告编辑器（动态路由通用）",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 12000,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1970,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-1244d977",
+          "measuredAt": 1787818009829
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/report-editor.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-data-browse",
+      "title": "数据 · 交叉浏览",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 12480,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1500,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-8623571e",
+          "measuredAt": 1787816700000
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/data-browse.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-data-reclassify",
+      "title": "数据 · 单体重分类",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 12960,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-b085be99",
+          "measuredAt": 1787818009829
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/data-reclassify.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-data-reclassify-consolidation",
+      "title": "数据 · 汇总重分类",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 13440,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1700,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-91dd64e4",
+          "measuredAt": 1787816700000
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/data-reclassify-consolidation.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-data-dimensions",
+      "title": "数据 · 维度 / 科目体系（5 tab）",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 13920,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-66b012f0",
+          "measuredAt": 1787818009829
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/data-dimensions.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-data-board",
+      "title": "数据 · 看板管理（5 tab）",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 14400,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 2656,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-6f90c76d",
+          "measuredAt": 1787818009829
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/data-board.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-admin-roles",
+      "title": "权限 · 角色管理",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 14880,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1293,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-a7601296",
+          "measuredAt": 1787818009829
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/admin-roles.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-admin-audit-logs",
+      "title": "权限 · 审计日志",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 15360,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1274,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-52d4a3ae",
+          "measuredAt": 1787818009829
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/admin-audit-logs.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-no-access",
+      "title": "权限不足 / 无访问权限",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 15840,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-f291d876",
+          "measuredAt": 1787818009829
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/no-access.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-component-library",
+      "title": "组件库总览（活字典）",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 16320,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 9044,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-e1fce514",
+          "measuredAt": 1787818009829
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/component-library.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-design-tokens",
+      "title": "设计令牌 / Typography 规范",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816500000,
+      "canvasData": {
+        "x": 16800,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 2800,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-18e440e8",
+          "measuredAt": 1787816700000
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/design-tokens.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-responsive-mobile",
+      "title": "响应式断点与移动端预览",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816800000,
+      "canvasData": {
+        "x": 17520,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 4200,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-3284c882",
+          "measuredAt": 1787816900000
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/responsive-mobile.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-state-collection",
+      "title": "6 态合集 · 空 / 加载 / 错误 / 无权限 / 无数据 / 网络异常",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1787816800000,
+      "canvasData": {
+        "x": 18000,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 3800,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-a961a97b",
+          "measuredAt": 1787816900000
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/state-collection.html",
+        "interactions": []
+      }
+    }
+  ],
+  "config": {
+    "autoLayout": true,
+    "deviceType": "desktop",
+    "projectName": "财年经营数据分析平台 · Ant Design 风格"
+  }
+}

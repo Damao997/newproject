@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>数据导入 · 经营数据分析平台</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; }
+  .shell-side { background: #001529; color: rgba(255, 255, 255, 0.85); display: flex; flex-direction: column; }
+  .shell-side-logo { height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); color: #fff; }
+  .shell-side-logo-mark { width: 32px; height: 32px; background: var(--color-primary); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 16px; }
+  .shell-side-logo-text { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
+  .shell-side-nav { padding: 12px 0; flex: 1; overflow-y: auto; }
+  .shell-nav-group-title { padding: 12px 28px 8px; color: rgba(255, 255, 255, 0.35); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .shell-nav-item { display: flex; align-items: center; gap: 12px; padding: 0 20px; height: 40px; color: rgba(255, 255, 255, 0.75); cursor: pointer; transition: all 0.2s; border-left: 3px solid transparent; font-size: 14px; text-decoration: none; }
+  .shell-nav-item:hover { color: #fff; background: rgba(255, 255, 255, 0.04); }
+  .shell-nav-item.is-active { background: var(--color-primary); color: #fff; border-left-color: #fff; }
+  .shell-nav-ic { width: 18px; flex-shrink: 0; color: rgba(255, 255, 255, 0.55); }
+  .shell-nav-item:hover .shell-nav-ic { color: #fff; }
+
+  .shell-header { background: #fff; border-bottom: 1px solid var(--antd-gray-3); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .shell-header-l { display: flex; align-items: center; gap: 16px; }
+  .shell-header-r { display: flex; align-items: center; gap: 16px; }
+
+  .page-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; }
+
+  /* 步骤条 */
+  .antd-steps { background: #fff; border: 1px solid var(--antd-gray-3); border-radius: var(--radius-large); padding: 24px 32px; margin-bottom: 16px; display: flex; align-items: center; }
+  .step-item { display: flex; align-items: center; flex: 1; }
+  .step-item:last-child { flex: 0; }
+  .step-circle { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; background: var(--antd-gray-2); color: var(--color-text-tertiary); border: 1px solid var(--antd-gray-3); margin-right: 12px; flex-shrink: 0; }
+  .step-item.is-active .step-circle { background: var(--color-primary); color: #fff; border-color: var(--color-primary); box-shadow: 0 0 0 4px var(--antd-brand-50); }
+  .step-item.is-done .step-circle { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+  .step-info { line-height: 1.2; }
+  .step-title { font-size: 14px; font-weight: 500; color: var(--color-foreground); }
+  .step-item:not(.is-active):not(.is-done) .step-title { color: var(--color-text-tertiary); }
+  .step-desc { font-size: 12px; color: var(--color-text-tertiary); margin-top: 4px; }
+  .step-line { flex: 1; height: 1px; background: var(--antd-gray-3); margin: 0 16px; }
+  .step-item.is-done + .step-line { background: var(--color-primary); }
+
+  /* 上传区 */
+  .upload-zone { background: #fff; border: 1px solid var(--antd-gray-3); border-radius: var(--radius-large); padding: 24px; margin-bottom: 16px; }
+  .upload-drop { border: 2px dashed var(--antd-brand-100); background: var(--antd-brand-50); border-radius: var(--radius-large); padding: 48px 24px; text-align: center; transition: all 0.2s; }
+  .upload-drop-icon { width: 64px; height: 64px; margin: 0 auto 16px; background: #fff; border-radius: 16px; display: flex; align-items: center; justify-content: center; color: var(--color-primary); border: 1px solid var(--antd-brand-100); }
+  .upload-drop-title { font-size: 16px; font-weight: 500; color: var(--color-foreground); margin-bottom: 8px; }
+  .upload-drop-desc { color: var(--color-text-secondary); font-size: 13px; margin-bottom: 16px; }
+  .upload-drop-hint { color: var(--color-text-tertiary); font-size: 12px; margin-top: 12px; }
+
+  .upload-meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; padding: 16px 0; border-top: 1px solid var(--antd-gray-3); margin-top: 20px; }
+  .upload-meta-item .label { font-size: 12px; color: var(--color-text-tertiary); }
+  .upload-meta-item .value { font-size: 14px; font-weight: 500; color: var(--color-foreground); margin-top: 4px; }
+
+  /* 已选文件列表 */
+  .file-list { background: #fff; border: 1px solid var(--antd-gray-3); border-radius: var(--radius-large); padding: 20px; margin-bottom: 16px; }
+  .file-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--antd-gray-3); }
+  .file-row:last-child { border-bottom: none; }
+  .file-ic { width: 36px; height: 36px; border-radius: 8px; background: var(--antd-brand-50); color: var(--color-primary); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .file-info { flex: 1; line-height: 1.3; }
+  .file-name { font-size: 14px; font-weight: 500; color: var(--color-foreground); }
+  .file-meta { font-size: 12px; color: var(--color-text-tertiary); margin-top: 4px; }
+  .file-progress { width: 180px; }
+
+  /* 数据表 */
+  .antd-table { width: 100%; border-collapse: collapse; background: #fff; }
+  .antd-table th { text-align: left; padding: 10px 12px; font-weight: 500; color: var(--color-foreground); background: var(--antd-gray-2); border-bottom: 1px solid var(--antd-gray-3); font-size: 12px; white-space: nowrap; }
+  .antd-table td { padding: 12px; border-bottom: 1px solid var(--antd-gray-3); font-size: 13px; vertical-align: middle; }
+  .antd-table tr:hover td { background: var(--antd-brand-50); }
+  .antd-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .table-tools { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .table-tools .left { display: flex; gap: 8px; align-items: center; }
+
+  .grid-3-1 { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+
+  /* 提示卡 */
+  .tip-card { background: var(--antd-brand-50); border: 1px solid var(--antd-brand-100); border-radius: var(--radius-medium); padding: 12px 16px; display: flex; align-items: flex-start; gap: 10px; margin-bottom: 16px; }
+  .tip-card-icon { color: var(--color-primary); flex-shrink: 0; }
+  .tip-card-content { font-size: 13px; color: var(--color-foreground); line-height: 1.6; }
+  .tip-card-content b { color: var(--color-primary); }
+
+  /* 模板卡 */
+  .template-list { display: flex; flex-direction: column; gap: 10px; }
+  .template-item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--antd-gray-3); border-radius: var(--radius-medium); cursor: pointer; transition: all 0.2s; }
+  .template-item:hover { border-color: var(--color-primary); background: var(--antd-brand-50); }
+  .template-ic { width: 36px; height: 36px; border-radius: 8px; background: #fff; color: var(--color-primary); border: 1px solid var(--antd-brand-100); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .template-info { flex: 1; line-height: 1.3; }
+  .template-name { font-size: 13px; font-weight: 500; color: var(--color-foreground); }
+  .template-meta { font-size: 11px; color: var(--color-text-tertiary); margin-top: 2px; }
+  .template-action { color: var(--color-primary); font-size: 12px; }
+
+  .section { background: #fff; border: 1px solid var(--antd-gray-3); border-radius: var(--radius-large); padding: 20px; }
+  .section h3 { font-size: 16px; font-weight: 600; margin: 0; }
+  .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+<div class="antd-page">
+  <aside class="shell-side" style="grid-column: 1;">
+    <div class="shell-side-logo">
+      <div class="shell-side-logo-mark">J</div>
+      <div class="shell-side-logo-text">经营分析平台</div>
+    </div>
+    <nav class="shell-side-nav">
+      <div class="shell-nav-group-title">主数据</div>
+      <a class="shell-nav-item" data-dom-id="nav-dashboard" href="dashboard.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        首页看板
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-indicators" href="indicators-operating.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+        财务指标
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-transactions" href="transactions-overview.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+        往来分析
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-inventory" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        存货管理
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-reports" href="reports-list.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+        分析报告
+      </a>
+      <div class="shell-nav-group-title">业务工具</div>
+      <a class="shell-nav-item" data-dom-id="nav-tools" href="enterprise-lookup.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        企业信息查询
+      </a>
+      <div class="shell-nav-group-title">数据管理</div>
+      <a class="shell-nav-item is-active" data-dom-id="nav-data" href="data-import.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        数据导入
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-reclassify" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h12"/></svg>
+        重分类管理
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-dim" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        维度管理
+      </a>
+      <div class="shell-nav-group-title">系统</div>
+      <a class="shell-nav-item" data-dom-id="nav-users" href="admin-users.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg>
+        用户管理
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-roles" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+        角色权限
+      </a>
+    </nav>
+  </aside>
+
+  <main class="antd-content">
+    <header class="shell-header">
+      <div class="shell-header-l">
+        <div class="antd-breadcrumb">
+          <a>数据管理</a>
+          <span class="sep">/</span>
+          <span class="current">数据导入</span>
+        </div>
+      </div>
+      <div class="shell-header-r">
+        <div class="user-chip">
+          <div class="antd-avatar" style="background: var(--antd-brand-100); color: var(--color-primary);">张</div>
+          <div>
+            <div class="user-chip-name" style="font-size:13px;font-weight:500;">张伟</div>
+            <div style="font-size:11px;color:var(--color-text-tertiary);">财务总监</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="antd-content-body">
+      <div class="page-head">
+        <div>
+          <div class="antd-page-head-title">数据导入</div>
+          <div class="antd-page-head-desc">支持财务凭证、应收应付、存货流水等业务单据批量导入，导入后自动进入校验流程</div>
+        </div>
+        <div class="antd-page-head-actions">
+          <button class="antd-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            模板下载
+          </button>
+          <button class="antd-btn">导入历史</button>
+        </div>
+      </div>
+
+      <!-- 步骤条 -->
+      <div class="antd-steps">
+        <div class="step-item is-active">
+          <div class="step-circle">1</div>
+          <div class="step-info">
+            <div class="step-title">上传文件</div>
+            <div class="step-desc">支持 .xlsx / .csv，单文件 ≤ 50MB</div>
+          </div>
+        </div>
+        <div class="step-line"></div>
+        <div class="step-item">
+          <div class="step-circle">2</div>
+          <div class="step-info">
+            <div class="step-title">数据校验</div>
+            <div class="step-desc">字段映射、格式校验、查重</div>
+          </div>
+        </div>
+        <div class="step-line"></div>
+        <div class="step-item">
+          <div class="step-circle">3</div>
+          <div class="step-info">
+            <div class="step-title">预览确认</div>
+            <div class="step-desc">查看错误行与处理建议</div>
+          </div>
+        </div>
+        <div class="step-line"></div>
+        <div class="step-item">
+          <div class="step-circle">4</div>
+          <div class="step-info">
+            <div class="step-title">提交入库</div>
+            <div class="step-desc">写入数据库并触发指标计算</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-3-1">
+        <div>
+          <!-- 上传区 -->
+          <div class="upload-zone">
+            <div class="upload-drop">
+              <div class="upload-drop-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+              </div>
+              <div class="upload-drop-title">将文件拖拽到此处，或点击选择</div>
+              <div class="upload-drop-desc">单次最多上传 10 个文件，建议批次控制在 5,000 行内</div>
+              <button class="antd-btn antd-btn-primary">选择文件</button>
+              <div class="upload-drop-hint">支持 .xlsx / .xls / .csv 格式 · 严禁上传含敏感个人信息的明文文件</div>
+            </div>
+            <div class="upload-meta">
+              <div class="upload-meta-item">
+                <div class="label">数据期间</div>
+                <div class="value">2026-08</div>
+              </div>
+              <div class="upload-meta-item">
+                <div class="label">所属公司</div>
+                <div class="value">浙江壹品慧生活服务集团</div>
+              </div>
+              <div class="upload-meta-item">
+                <div class="label">数据类型</div>
+                <div class="value">财务凭证</div>
+              </div>
+              <div class="upload-meta-item">
+                <div class="label">导入人</div>
+                <div class="value">张伟</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 已选文件 -->
+          <div class="file-list">
+            <div class="section-head" style="margin-bottom: 4px;">
+              <h3>已选择文件 <span style="font-weight:400;color:var(--color-text-tertiary);font-size:13px;margin-left:8px;">3 / 10</span></h3>
+              <span class="antd-btn" style="height:24px;font-size:12px;padding:0 8px;">清空</span>
+            </div>
+            <div class="file-row">
+              <div class="file-ic">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+              </div>
+              <div class="file-info">
+                <div class="file-name">2026-08-财务凭证-A套账.xlsx</div>
+                <div class="file-meta">2.4 MB · 4,892 行 · 上传完成</div>
+              </div>
+              <div class="file-progress">
+                <div class="antd-progress"><div class="antd-progress-track"><div class="antd-progress-bar is-success" style="width:100%;"></div></div></div>
+              </div>
+              <span class="antd-tag antd-tag-success">已就绪</span>
+              <button class="antd-btn" style="height:24px;font-size:12px;padding:0 8px;">移除</button>
+            </div>
+            <div class="file-row">
+              <div class="file-ic">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+              </div>
+              <div class="file-info">
+                <div class="file-name">2026-08-财务凭证-B套账.xlsx</div>
+                <div class="file-meta">1.8 MB · 3,205 行 · 上传完成</div>
+              </div>
+              <div class="file-progress">
+                <div class="antd-progress"><div class="antd-progress-track"><div class="antd-progress-bar is-success" style="width:100%;"></div></div></div>
+              </div>
+              <span class="antd-tag antd-tag-success">已就绪</span>
+              <button class="antd-btn" style="height:24px;font-size:12px;padding:0 8px;">移除</button>
+            </div>
+            <div class="file-row">
+              <div class="file-ic">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+              </div>
+              <div class="file-info">
+                <div class="file-name">2026-08-财务凭证-C套账.xlsx</div>
+                <div class="file-meta">正在解析... 67%</div>
+              </div>
+              <div class="file-progress">
+                <div class="antd-mini-bar" style="width:140px; display:inline-block; vertical-align:middle;"><i style="width:67%;"></i></div>
+                <span style="margin-left:8px; font-size:12px; color: var(--color-text-tertiary);">67%</span>
+                <span class="antd-pill is-orange" style="margin-left: 8px;">解析中</span>
+              <button class="antd-btn" style="height:24px;font-size:12px;padding:0 8px;">取消</button>
+            </div>
+          </div>
+
+          <!-- 历史批次表 -->
+          <div class="section">
+            <div class="section-head">
+              <h3>最近导入批次</h3>
+              <a style="color:var(--color-primary);font-size:13px;text-decoration:none;">查看全部 →</a>
+            </div>
+            <div class="table-tools">
+              <div class="left">
+                <div class="antd-input" style="width:240px; height:28px; font-size:12px; padding: 4px 8px;">按批次号 / 文件名搜索</div>
+                <span class="antd-tag antd-tag-default">本月</span>
+                <span class="antd-tag antd-tag-default">全部类型</span>
+              </div>
+              <div class="left" style="color:var(--color-text-tertiary);font-size:12px;">共 28 批次</div>
+            </div>
+            <table class="antd-table">
+              <thead>
+                <tr>
+                  <th>批次号</th>
+                  <th>文件名 / 数据类型</th>
+                  <th>期间</th>
+                  <th class="num">覆盖度</th>
+                  <th class="num">错误行</th>
+                  <th>状态</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span style="color:var(--color-primary);font-family:ui-monospace,monospace;">B20260826001</span></td>
+                  <td>应收单据-华东大区.xlsx<br><span style="color:var(--color-text-tertiary);font-size:11px;">类型: 应收单据</span></td>
+                  <td>2026-08</td>
+                  <td class="num"><div class="inline-progress"><div class="track"><div class="bar is-good" style="width:99%;"></div></div><span>99.2%</span></div></td>
+                  <td class="num">0</td>
+                  <td><span class="antd-tag antd-tag-success">已完成</span></td>
+                  <td><a style="color:var(--color-primary);font-size:12px;text-decoration:none;margin-right:8px;">详情</a><a style="color:var(--color-primary);font-size:12px;text-decoration:none;">回滚</a></td>
+                </tr>
+                <tr>
+                  <td><span style="color:var(--color-primary);font-family:ui-monospace,monospace;">B20260825008</span></td>
+                  <td>存货流水-工程仓.xlsx<br><span style="color:var(--color-text-tertiary);font-size:11px;">类型: 存货流水</span></td>
+                  <td>2026-08</td>
+                  <td class="num"><div class="inline-progress"><div class="track"><div class="bar is-good" style="width:97%;"></div></div><span>97.4%</span></div></td>
+                  <td class="num">0</td>
+                  <td><span class="antd-tag antd-tag-success">已完成</span></td>
+                  <td><a style="color:var(--color-primary);font-size:12px;text-decoration:none;margin-right:8px;">详情</a><a style="color:var(--color-primary);font-size:12px;text-decoration:none;">回滚</a></td>
+                </tr>
+                <tr>
+                  <td><span style="color:var(--color-primary);font-family:ui-monospace,monospace;">B20260825004</span></td>
+                  <td>应付单据-华南大区.xlsx<br><span style="color:var(--color-text-tertiary);font-size:11px;">类型: 应付单据</span></td>
+                  <td>2026-08</td>
+                  <td class="num"><div class="inline-progress"><div class="track"><div class="bar is-warn" style="width:88%;"></div></div><span>88.0%</span></div></td>
+                  <td class="num antd-text-warning">12</td>
+                  <td><span class="antd-tag antd-tag-warning">部分成功</span></td>
+                  <td><a style="color:var(--color-primary);font-size:12px;text-decoration:none;margin-right:8px;">查看错误</a><a style="color:var(--color-primary);font-size:12px;text-decoration:none;">回滚</a></td>
+                </tr>
+                <tr>
+                  <td><span style="color:var(--color-primary);font-family:ui-monospace,monospace;">B20260824002</span></td>
+                  <td>财务凭证-A套账.xlsx<br><span style="color:var(--color-text-tertiary);font-size:11px;">类型: 财务凭证</span></td>
+                  <td>2026-07</td>
+                  <td class="num"><div class="inline-progress"><div class="track"><div class="bar is-good" style="width:100%;"></div></div><span>100%</span></div></td>
+                  <td class="num">0</td>
+                  <td><span class="antd-tag antd-tag-success">已完成</span></td>
+                  <td><a style="color:var(--color-primary);font-size:12px;text-decoration:none;margin-right:8px;">详情</a><a style="color:var(--color-primary);font-size:12px;text-decoration:none;">回滚</a></td>
+                </tr>
+                <tr>
+                  <td><span style="color:var(--color-primary);font-family:ui-monospace,monospace;">B20260823006</span></td>
+                  <td>银行流水-工商.xlsx<br><span style="color:var(--color-text-tertiary);font-size:11px;">类型: 银行流水</span></td>
+                  <td>2026-08</td>
+                  <td class="num"><div class="inline-progress"><div class="track"><div class="bar" style="width:0%;"></div></div><span>0%</span></div></td>
+                  <td class="num antd-text-error">3,205</td>
+                  <td><span class="antd-tag antd-tag-error">已失败</span></td>
+                  <td><a style="color:var(--color-primary);font-size:12px;text-decoration:none;margin-right:8px;">查看错误</a><a style="color:var(--color-primary);font-size:12px;text-decoration:none;">重试</a></td>
+                </tr>
+                <tr>
+                  <td><span style="color:var(--color-primary);font-family:ui-monospace,monospace;">B20260822003</span></td>
+                  <td>收入明细-增值服务.xlsx<br><span style="color:var(--color-text-tertiary);font-size:11px;">类型: 收入明细</span></td>
+                  <td>2026-08</td>
+                  <td class="num"><div class="inline-progress"><div class="track"><div class="bar is-good" style="width:99.6%;"></div></div><span>99.6%</span></div></td>
+                  <td class="num">0</td>
+                  <td><span class="antd-tag antd-tag-success">已完成</span></td>
+                  <td><a style="color:var(--color-primary);font-size:12px;text-decoration:none;margin-right:8px;">详情</a><a style="color:var(--color-primary);font-size:12px;text-decoration:none;">回滚</a></td>
+                </tr>
+                <tr>
+                  <td><span style="color:var(--color-primary);font-family:ui-monospace,monospace;">B20260821001</span></td>
+                  <td>成本分配表-8月.xlsx<br><span style="color:var(--color-text-tertiary);font-size:11px;">类型: 成本分配</span></td>
+                  <td>2026-08</td>
+                  <td class="num"><div class="inline-progress"><div class="track"><div class="bar" style="width:46%;"></div></div><span>46.0%</span></div></td>
+                  <td class="num">—</td>
+                  <td><span class="antd-pill is-gray">排队中</span></td>
+                  <td><a style="color:var(--color-primary);font-size:12px;text-decoration:none;margin-right:8px;">详情</a><a style="color:var(--color-text-tertiary);font-size:12px;text-decoration:none;cursor:not-allowed;">回滚</a></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <div class="tip-card">
+            <div class="tip-card-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            </div>
+            <div class="tip-card-content">
+              请确保上传的<b>数据期间</b>与<b>所属公司</b>一致。同一期间内重复上传将按最新批次覆盖，导入历史可随时回滚。
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-head"><h3>导入模板</h3></div>
+            <div class="template-list">
+              <div class="template-item">
+                <div class="template-ic">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
+                </div>
+                <div class="template-info">
+                  <div class="template-name">财务凭证模板</div>
+                  <div class="template-meta">v3.2 · 22 列 · 6.5 KB</div>
+                </div>
+                <span class="template-action">下载</span>
+              </div>
+              <div class="template-item">
+                <div class="template-ic">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
+                </div>
+                <div class="template-info">
+                  <div class="template-name">应收/应付单据模板</div>
+                  <div class="template-meta">v2.4 · 18 列 · 5.2 KB</div>
+                </div>
+                <span class="template-action">下载</span>
+              </div>
+              <div class="template-item">
+                <div class="template-ic">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
+                </div>
+                <div class="template-info">
+                  <div class="template-name">存货流水模板</div>
+                  <div class="template-meta">v1.8 · 15 列 · 4.1 KB</div>
+                </div>
+                <span class="template-action">下载</span>
+              </div>
+              <div class="template-item">
+                <div class="template-ic">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
+                </div>
+                <div class="template-info">
+                  <div class="template-name">银行流水模板</div>
+                  <div class="template-meta">v2.1 · 12 列 · 3.8 KB</div>
+                </div>
+                <span class="template-action">下载</span>
+              </div>
+              <div class="template-item">
+                <div class="template-ic">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
+                </div>
+                <div class="template-info">
+                  <div class="template-name">收入/成本分配模板</div>
+                  <div class="template-meta">v2.0 · 16 列 · 4.5 KB</div>
+                </div>
+                <span class="template-action">下载</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

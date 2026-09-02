@@ -19,11 +19,14 @@ export const DASHBOARD_ANALYSIS_TABS: SubPageTab[] = [
   { path: '/dashboard/analysis/expense', label: '运营费用' },
 ]
 
-/** 往来分析 · 分析明细：账龄分析（默认）/ 科目过滤 / 催收计划 */
-export const TRANSACTION_DETAIL_TABS: SubPageTab[] = [
+/** 往来分析 6 个子页（统一 Tab 导航）：往来总览（默认）/ 账龄分析 / 科目过滤 / 导入覆盖 / 催收计划 / 业务员回款 */
+export const TRANSACTION_TABS: SubPageTab[] = [
+  { path: '/transactions/overview', label: '往来总览' },
   { path: '/transactions/aging', label: '账龄分析' },
   { path: '/transactions/account-filter', label: '科目过滤' },
+  { path: '/transactions/coverage', label: '导入覆盖' },
   { path: '/transactions/collections/plans', label: '催收计划' },
+  { path: '/transactions/collections/salesmen', label: '业务员回款' },
 ]
 
 /** 数据管理 · 数据导入：导入管理（默认）/ 数据预览 */
@@ -48,7 +51,7 @@ export const DIMENSION_TABS: SubPageTab[] = [
   { path: '/data/dimensions/formulas', label: '公式维护' },
 ]
 
-/** 数据管理 · 看板管理：品类配置（默认）/ 运营费用映射 / 主体配置 / 月度预算比例 / 产品配置 */
+/** 数据管理 · 映射管理：品类配置（默认）/ 运营费用映射 / 主体配置 / 月度预算比例 / 产品配置 */
 export const BOARD_TABS: SubPageTab[] = [
   { path: '/data/board/category', label: '品类配置' },
   { path: '/data/board/expense', label: '运营费用映射' },

@@ -794,6 +794,10 @@ model User {
   mustChangePassword  Boolean      @default(false) @map("must_change_password")
   // 多会话刷新令牌 jti 列表（Json 数组）：任一有效即放行，登录追加、登出/改密轮转移除
   refreshTokenJtiList Json?        @map("refresh_token_jti_list") @db.JsonB
+  // 「7 天内免登录」持久令牌：仅存 SHA-256 哈希，明文只在客户端 localStorage；登录勾选时签发，登出/改密时清空
+  persistentLoginTokenHash String?   @map("persistent_login_token_hash")
+  persistentLoginExpiresAt DateTime? @map("persistent_login_expires_at")
+  persistentLoginCreatedAt DateTime? @map("persistent_login_created_at")
   createdAt           DateTime     @default(now()) @map("created_at")
   updatedAt           DateTime     @updatedAt @map("updated_at")
 
@@ -805,6 +809,7 @@ model User {
   @@index([roleId])
   @@index([companyCode])
   @@index([status])
+  @@index([persistentLoginTokenHash])
   @@map("user")
 }
 

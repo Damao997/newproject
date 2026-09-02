@@ -11,6 +11,7 @@ import { AiOverviewDialog } from '@/components/indicators/ai-overview-panel'
 import { usePermission } from '@/hooks/usePermission'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { useCompanies, useOperatingIndicators, useStaticIndicators, useCashflowIndicators, useAvailablePeriods } from '@/hooks/api-queries'
+import { useGlobalCompanyScope } from '@/hooks/use-global-company-scope'
 import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
 import { usePageStore } from '@/stores/pageStateStore'
 import { filterTreeKeepSubtree } from '@/lib/subject-tree'
@@ -26,11 +27,11 @@ import { adapt, collectExpandableCodes, buildColumnsFor } from './indicators-ada
 /**
  * 财务指标页（经营/静态/现金流共用实现）：按科目层级查看指标数据。
  * subjectType 决定数据源（经营指标 / 静态指标 / 现金流量表）与展示列；
- * 支持主体/期间/去重分类口径筛选、科目搜索、全部展开/折叠、Excel 导出、
- * 单项分析撰写（需单选公司）与 AI 全局预分析。
+ * 公司/期间为全局口径（Header CompanyPill / PeriodPill），支持去重分类口径筛选、科目搜索、
+ * 全部展开/折叠、Excel 导出、单项分析撰写（需全局选中单一公司）与 AI 全局预分析。
  * 筛选区/导出逻辑/列与树适配分别拆分至 indicator-filter-bar / use-indicator-export / indicators-adapters。
  */
-export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'static' | 'cashflow' }) {
+export function IndicatorPage({ subjectType, description }: { subjectType: 'operating' | 'static' | 'cashflow'; description?: React.ReactNode }) {
   const { can } = usePermission()
   const navigate = useNavigate()
   // 从看板 KPI/关键指标表明细钻取进入时显示「返回看板」按钮（sessionStorage 标记，点击返回时清除；刷新后仍保留）
@@ -41,10 +42,9 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
   }, [navigate])
   // 子标签类型由路由入口决定（/indicators/operating | /indicators/static）
   const activeTab = subjectType
-  // 查询条件与展开状态持久化到 pageStateStore（路由切换/刷新后恢复）；analysisTarget 为瞬时抽屉状态
+  // 视图状态持久化到 pageStateStore（路由切换/刷新后恢复）；analysisTarget 为瞬时抽屉状态
+  // 公司/期间全局口径读 periodStore（Header 唯一入口），pageStateStore 的 dimFilter/periodFilter 停止读取（类型定义保留）
   const setIndicators = usePageStore((s) => s.setIndicators)
-  const dimFilter = usePageStore((s) => s.indicators.dimFilter)
-  const periodFilter = usePageStore((s) => s.indicators.periodFilter)
   const excludeReclassify = usePageStore((s) => s.indicators.excludeReclassify)
   const expandedCodes = usePageStore((s) => s.indicators.expandedCodes)
   const subjectKeyword = usePageStore((s) => s.indicators.subjectKeyword)
@@ -65,8 +65,6 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
-  const setDimFilter = useCallback((v: string) => setIndicators({ dimFilter: v }), [setIndicators])
-  const setPeriodFilter = useCallback((v: string) => setIndicators({ periodFilter: v }), [setIndicators])
   const setExcludeReclassify = useCallback((v: boolean) => setIndicators({ excludeReclassify: v }), [setIndicators])
   const setSubjectKeyword = useCallback((v: string) => setIndicators({ subjectKeyword: v }), [setIndicators])
   const setSort = useCallback((key: string, direction: 'asc' | 'desc' | null) => setIndicators({ sortKey: key, sortDirection: direction }), [setIndicators])
@@ -98,38 +96,23 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
 
   const fiscalYear = usePeriodStore((s) => s.fiscalYear)
   const { data: periodsData } = useAvailablePeriods()
-  // 期间候选按全局选中财年过滤
+  // 期间候选按全局选中财年过滤（供分析抽屉/AI 面板在全局未选月份时回退最新期）
   const periods = useMemo(
     () => filterPeriodsByFiscalYear(periodsData?.periods ?? [], fiscalYear, periodsData?.fiscalStartMonth ?? 1),
     [periodsData, fiscalYear],
   )
 
-  useEffect(() => {
-    if (periods.length === 0) return
-    // 首次加载（periodFilter 为空）默认选中最新期间；已选期间不存在时回退最新
-    if (periodFilter === '' || (!periods.includes(periodFilter) && periodFilter !== 'all')) setPeriodFilter(periods[periods.length - 1])
-  }, [periods, periodFilter, setPeriodFilter])
-
-  // 主体维度：company:CODE / summary:CODE → 传对应编码；all → 不传（后端按 scope 汇总）
-  const companyCode = dimFilter.startsWith('company:')
-    ? dimFilter.slice('company:'.length)
-    : dimFilter.startsWith('summary:')
-      ? dimFilter.slice('summary:'.length)
-      : undefined
-  const period = periodFilter === 'all' ? undefined : periodFilter
+  // 公司/期间全局口径（Header CompanyPill / PeriodPill 唯一入口）：
+  // 指标接口公司参数为单公司形态（FilterParams.companyCode?: string），全局选中多家公司时
+  // 由 useGlobalCompanyScope 取第一个并 antd message 提示降级；未选（null/[]）→ undefined（后端按 scope 汇总）
+  const { companyCode } = useGlobalCompanyScope('财务指标')
+  // 全局期间：null（仅选财年未选月份）→ undefined（后端取最新期）
+  const globalPeriod = usePeriodStore((s) => s.period)
+  const period = globalPeriod ?? undefined
 
   const { data: companies } = useCompanies()
-  // 公司显示名：跟随全局「显示简称」开关（下拉选项/抽屉标题等所有展示处统一）
+  // 公司显示名：跟随全局「显示简称」开关（抽屉标题等所有展示处统一）
   const { getDisplayName } = useCompanyDisplayName()
-  // 持久化主体校验：编码已删除/超出数据权限时回退全部主体（候选加载后生效一次，用户手动切换后不再覆盖）
-  useEffect(() => {
-    if (!companies || companies.length === 0) return
-    const valid = new Set(companies.map((c) => c.code))
-    const cur = usePageStore.getState().indicators.dimFilter
-    if (cur === 'all') return
-    const code = cur.startsWith('company:') || cur.startsWith('summary:') ? cur.slice('company:'.length) : undefined
-    if (!code || !valid.has(code)) setDimFilter('all')
-  }, [companies, setDimFilter])
   // AI 预分析需要两体系数据：当前 tab 的 query 恒挂载，另一体系在触发预分析时按需拉取（静态懒加载）
   const [aiNeedData, setAiNeedData] = useState(false)
   const operatingQuery = useOperatingIndicators({ companyCode, period, excludeReclassify: excludeReclassify || undefined }, { enabled: isOperating || aiNeedData })
@@ -209,7 +192,7 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
     })
   }
 
-  /** 打开单项分析抽屉：需先选中单一公司主体（未选择时按钮已在表格中禁用并提示） */
+  /** 打开单项分析抽屉：需先在全局公司筛选选中单一公司（未选择时按钮已在表格中禁用并提示） */
   const handleAnalyze = (node: SubjectNode) => {
     // 安全兜底：未选单一公司时不打开（正常流程按钮已禁用，此处防类型窄化丢失）
     if (!companyCode) return
@@ -239,8 +222,8 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
   const overviewStaticRows = useMemo(() => flattenForExport(staticQuery.data?.items ?? []).map(({ row }) => row), [staticQuery.data?.items])
   const hasOverviewData = overviewOperatingRows.length + overviewStaticRows.length > 0
 
-  /** 重置筛选：恢复默认主体/期间/重分类口径/科目搜索（空状态引导动作） */
-  const handleResetFilters = () => { setDimFilter('all'); setPeriodFilter(''); setExcludeReclassify(false); setSubjectKeyword('') }
+  /** 重置筛选：恢复默认重分类口径/科目搜索（公司/期间为全局口径，由 Header 管理，不属页面重置范围） */
+  const handleResetFilters = () => { setExcludeReclassify(false); setSubjectKeyword('') }
 
   // 导出：loading + 结果反馈（exporting/exportMsg/exportErr 与 handleExport 全链路迁入 use-indicator-export）
   const { exporting, exportMsg, exportErr, handleExport } = useIndicatorExport({
@@ -266,13 +249,13 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
       // 视口撑满布局：main 可视高 = 100dvh - Header(h-14=56px)；减去 main 的 pt-6(24px) 与 pb-6(24px) 即页面可用高
       // （lg 断点 pb-8=32px → 112px）。页面内容恒一屏、main 不出现全局滚动条，表格高度由 flex 链撑满。
       // 104/112 必须与 main-layout.tsx 的 Header 高与 pt/pb 同步（改布局时需同步更新）
+      description={description}
       stickyHeader
       headerRef={headerRef}
       actionsFullWidth
       actions={
         <IndicatorFilterBar
-          subjectType={activeTab} dimFilter={dimFilter} onDimFilterChange={setDimFilter}
-          periodFilter={periodFilter} onPeriodFilterChange={setPeriodFilter} periods={periods}
+          subjectType={activeTab}
           excludeReclassify={excludeReclassify} onExcludeReclassifyChange={setExcludeReclassify}
           subjectKeyword={subjectKeyword} onSubjectKeywordChange={setSubjectKeyword}
           isAllExpanded={isAllExpanded} onToggleExpandAll={toggleExpandAll}
@@ -356,7 +339,7 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
             /* 空状态：引导调整筛选或一键重置 */
             <div className="py-16 text-center">
               <p className="text-sm text-muted-foreground">当前筛选无数据</p>
-              <p className="mt-1 text-xs text-muted-foreground/70">请调整主体维度或期间后重试。</p>
+              <p className="mt-1 text-xs text-muted-foreground/70">请调整顶部公司/期间筛选后重试。</p>
               <Button variant="fused" size="sm" className="mt-3" onClick={handleResetFilters}>
                 重置筛选
               </Button>
@@ -371,7 +354,7 @@ export function IndicatorPage({ subjectType }: { subjectType: 'operating' | 'sta
                 onToggle={handleToggle}
                 onAnalyze={can('reports', 'create') ? handleAnalyze : undefined}
                 analyzeDisabled={!companyCode}
-                analyzeHint="请先在「主体维度」选择单一公司，再对该公司的科目撰写单项分析"
+                analyzeHint="请先在顶部公司筛选中选择单一公司，再对该公司的科目撰写单项分析"
                 stickyHeaderTop={headerHeight}
                 emptyText={subjectKeyword.trim() ? '未找到匹配科目' : undefined}
                 sortKey={sortKey}

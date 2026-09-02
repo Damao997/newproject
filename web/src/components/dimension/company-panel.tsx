@@ -175,7 +175,7 @@ export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete =
   return (
     <div className="space-y-4">
       {/* 搜索 + 显隐开关 + 操作按钮（吸顶） */}
-      <div className="sticky z-10 flex flex-col space-y-2 rounded-card bg-page p-4 sm:flex-row sm:items-center sm:space-x-2 sm:space-y-0" style={{ top: stickyTop }}>
+      <div className="sticky z-10 flex flex-col space-y-2 rounded-card bg-background shadow-sm p-4 sm:flex-row sm:items-center sm:space-x-2 sm:space-y-0" style={{ top: stickyTop }}>
         <div className="relative flex-1">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input placeholder="搜索公司名称或编码..." value={keyword} onChange={(e) => setKeyword(e.target.value)} className="pl-8" />

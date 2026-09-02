@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>静态指标 · 经营数据分析平台</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; }
+  .shell-side { background: #001529; color: rgba(255, 255, 255, 0.85); display: flex; flex-direction: column; }
+  .shell-side-logo { height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); color: #fff; }
+  .shell-side-logo-mark { width: 32px; height: 32px; background: var(--color-primary); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 16px; }
+  .shell-side-logo-text { font-size: 15px; font-weight: 600; }
+  .shell-side-nav { padding: 12px 0; flex: 1; overflow-y: auto; }
+  .shell-nav-group-title { padding: 12px 28px 8px; color: rgba(255, 255, 255, 0.35); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .shell-nav-item { display: flex; align-items: center; gap: 12px; padding: 0 20px; height: 40px; color: rgba(255, 255, 255, 0.75); cursor: pointer; transition: all 0.2s; border-left: 3px solid transparent; font-size: 14px; text-decoration: none; }
+  .shell-nav-item:hover { color: #fff; background: rgba(255, 255, 255, 0.04); }
+  .shell-nav-item.is-active { background: var(--color-primary); color: #fff; border-left-color: #fff; }
+  .shell-nav-ic { width: 18px; flex-shrink: 0; color: rgba(255, 255, 255, 0.55); }
+  .shell-nav-item:hover .shell-nav-ic { color: #fff; }
+
+  .shell-header { background: #fff; border-bottom: 1px solid var(--antd-gray-3); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .shell-header-l { display: flex; align-items: center; gap: 16px; }
+  .shell-header-r { display: flex; align-items: center; gap: 16px; }
+  .period-pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; background: var(--antd-gray-2); border-radius: var(--radius-medium); color: var(--color-foreground); font-size: 13px; cursor: pointer; }
+  .period-pill:hover { background: var(--antd-gray-3); }
+  .user-chip { display: flex; align-items: center; gap: 10px; padding: 4px 10px 4px 4px; border-radius: 20px; cursor: pointer; }
+  .user-chip:hover { background: var(--antd-gray-2); }
+  .user-chip-name { font-size: 13px; font-weight: 500; }
+  .user-chip-role { font-size: 11px; color: var(--color-text-tertiary); }
+
+  .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px; }
+  .col-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .antd-card { background: #fff; border-radius: var(--radius-medium); padding: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); border: 1px solid var(--antd-gray-3); }
+  .antd-card-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .antd-card-sub { font-size: 12px; color: var(--color-text-tertiary); margin-bottom: 16px; }
+
+  /* 变更记录链接 */
+  .antd-link { color: var(--color-primary); font-size: 12px; cursor: pointer; text-decoration: none; }
+  .antd-link:hover { text-decoration: underline; }
+
+  /* 科目树缩进 */
+  .tree-cell { display: flex; align-items: center; gap: 6px; }
+  .tree-arrow { width: 12px; height: 12px; color: var(--color-text-tertiary); flex-shrink: 0; }
+  .tree-indent { display: inline-block; }
+</style>
+</head>
+<body>
+<div class="antd-page">
+  <!-- Side shell (4 组导航, 财务指标 is-active) -->
+  <aside class="shell-side">
+    <div class="shell-side-logo">
+      <div class="shell-side-logo-mark">智</div>
+      <div class="shell-side-logo-text">经营数据分析平台</div>
+    </div>
+    <nav class="shell-side-nav">
+      <div class="shell-nav-group-title">主数据</div>
+      <a class="shell-nav-item" href="dashboard.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+        首页看板
+      </a>
+      <a class="shell-nav-item is-active" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l3-3 4 4 5-5"/></svg>
+        财务指标
+      </a>
+      <a class="shell-nav-item" href="transactions-overview.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+        往来分析
+      </a>
+      <a class="shell-nav-item" href="inventory.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        存货管理
+      </a>
+      <a class="shell-nav-item" href="reports-list.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+        分析报告
+      </a>
+
+      <div class="shell-nav-group-title">业务工具</div>
+      <a class="shell-nav-item" href="enterprise-lookup.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        企业信息查询
+      </a>
+
+      <div class="shell-nav-group-title">数据管理</div>
+      <a class="shell-nav-item" href="data-import.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        数据导入
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h12"/></svg>
+        重分类管理
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        维度管理
+      </a>
+
+      <div class="shell-nav-group-title">系统</div>
+      <a class="shell-nav-item" href="admin-users.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><circle cx="17" cy="7" r="3"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
+        用户管理
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+        角色权限
+      </a>
+    </nav>
+  </aside>
+
+  <main class="antd-content">
+    <header class="shell-header">
+      <div class="shell-header-l">
+        <div class="antd-breadcrumb">
+          <a>财务指标</a>
+          <span class="sep">/</span>
+          <span class="current">静态指标</span>
+        </div>
+      </div>
+      <div class="shell-header-r">
+        <div class="antd-select" style="min-width: 160px;">浙江壹品慧生活集团</div>
+        <div class="period-pill">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          2026 财年 · 8月
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <button class="antd-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          刷新
+        </button>
+        <div class="user-chip">
+          <div class="antd-avatar" style="background: var(--antd-brand-100); color: var(--color-primary);">张</div>
+          <div>
+            <div class="user-chip-name">张伟</div>
+            <div class="user-chip-role">财务总监</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="antd-content-body">
+      <!-- PageHead -->
+      <div class="antd-page-head">
+        <div>
+          <div class="antd-page-head-title">静态指标</div>
+          <div class="antd-page-head-desc">展示年末快照类静态指标及其科目树映射，关注指标值稳定性与变更轨迹</div>
+        </div>
+        <div class="antd-page-head-actions">
+          <button class="antd-btn">导出快照</button>
+          <button class="antd-btn antd-btn-primary">新建静态指标</button>
+        </div>
+      </div>
+
+      <!-- 3 个 stat-tile -->
+      <div class="stat-row">
+        <div class="antd-stat-tile">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">指标数</span>
+            <span class="antd-stat-tile-icon">数</span>
+          </div>
+          <div class="antd-stat-tile-value">42<span class="unit">项</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-up">↑ 3</span>
+            <span class="antd-text-tertiary antd-fs-sm">较上月新增</span>
+          </div>
+        </div>
+        <div class="antd-stat-tile">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">年末快照数</span>
+            <span class="antd-stat-tile-icon">末</span>
+          </div>
+          <div class="antd-stat-tile-value">38<span class="unit">项</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-flat">→ 0%</span>
+            <span class="antd-text-tertiary antd-fs-sm">与年初一致</span>
+          </div>
+        </div>
+        <div class="antd-stat-tile is-green">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">同比变动</span>
+            <span class="antd-stat-tile-icon">比</span>
+          </div>
+          <div class="antd-stat-tile-value antd-text-success">+ 4.6<span class="unit">%</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-up">↑ 1.2%</span>
+            <span class="antd-text-tertiary antd-fs-sm">较去年同期</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 左 科目树表 / 右 静态值列表 -->
+      <div class="col-2" style="margin-bottom: 16px;">
+        <div class="antd-card">
+          <div class="antd-card-title">科目树表</div>
+          <div class="antd-card-sub">静态指标按会计科目层级映射，标记每项指标是否静态</div>
+          <table class="antd-table antd-table-bordered antd-table-density-compact" style="width: 100%;">
+            <thead>
+              <tr>
+                <th style="width: 50%;">科目</th>
+                <th style="text-align: right;">指标值</th>
+                <th style="text-align: center; width: 90px;">是否静态</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <div class="tree-cell">
+                    <svg class="tree-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                    <strong>资产</strong>
+                  </div>
+                </td>
+                <td style="text-align: right; font-variant-numeric: tabular-nums;">1,285.4 万</td>
+                <td style="text-align: center;"><span class="antd-pill is-gray">—</span></td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="tree-cell">
+                    <span class="tree-indent" style="width: 16px;"></span>
+                    <svg class="tree-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+                    流动资产
+                  </div>
+                </td>
+                <td style="text-align: right; font-variant-numeric: tabular-nums;">682.1 万</td>
+                <td style="text-align: center;"><span class="antd-pill is-gray">—</span></td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="tree-cell">
+                    <span class="tree-indent" style="width: 32px;"></span>
+                    <span>货币资金</span>
+                  </div>
+                </td>
+                <td style="text-align: right; font-variant-numeric: tabular-nums;">256.8 万</td>
+                <td style="text-align: center;"><span class="antd-pill is-green">是</span></td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="tree-cell">
+                    <span class="tree-indent" style="width: 32px;"></span>
+                    <span>应收账款</span>
+                  </div>
+                </td>
+                <td style="text-align: right; font-variant-numeric: tabular-nums;">358.2 万</td>
+                <td style="text-align: center;"><span class="antd-pill is-green">是</span></td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="tree-cell">
+                    <span class="tree-indent" style="width: 32px;"></span>
+                    <span>存货</span>
+                  </div>
+                </td>
+                <td style="text-align: right; font-variant-numeric: tabular-nums;">67.1 万</td>
+                <td style="text-align: center;"><span class="antd-pill is-red">否</span></td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="tree-cell">
+                    <span class="tree-indent" style="width: 16px;"></span>
+                    <svg class="tree-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+                    非流动资产
+                  </div>
+                </td>
+                <td style="text-align: right; font-variant-numeric: tabular-nums;">603.3 万</td>
+                <td style="text-align: center;"><span class="antd-pill is-gray">—</span></td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="tree-cell">
+                    <span class="tree-indent" style="width: 32px;"></span>
+                    <span>固定资产</span>
+                  </div>
+                </td>
+                <td style="text-align: right; font-variant-numeric: tabular-nums;">412.6 万</td>
+                <td style="text-align: center;"><span class="antd-pill is-green">是</span></td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="tree-cell">
+                    <span class="tree-indent" style="width: 32px;"></span>
+                    <span>无形资产</span>
+                  </div>
+                </td>
+                <td style="text-align: right; font-variant-numeric: tabular-nums;">190.7 万</td>
+                <td style="text-align: center;"><span class="antd-pill is-green">是</span></td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="tree-cell">
+                    <svg class="tree-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                    <strong>负债</strong>
+                  </div>
+                </td>
+                <td style="text-align: right; font-variant-numeric: tabular-nums;">524.7 万</td>
+                <td style="text-align: center;"><span class="antd-pill is-gray">—</span></td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="tree-cell">
+                    <span class="tree-indent" style="width: 32px;"></span>
+                    <span>应付账款</span>
+                  </div>
+                </td>
+                <td style="text-align: right; font-variant-numeric: tabular-nums;">214.3 万</td>
+                <td style="text-align: center;"><span class="antd-pill is-green">是</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="antd-card">
+          <div class="antd-card-title">静态值列表</div>
+          <div class="antd-card-sub">年末快照类静态指标当前值，点击查看变更记录</div>
+          <table class="antd-table antd-table-bordered antd-table-density-compact" style="width: 100%;">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>指标名称</th>
+                <th style="text-align: right;">年末快照</th>
+                <th style="text-align: center; width: 110px;">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>01</td><td>货币资金余额</td><td style="text-align: right; font-variant-numeric: tabular-nums;">256.80 万</td><td style="text-align: center;"><a class="antd-link">查看变更记录</a></td></tr>
+              <tr><td>02</td><td>应收账款总额</td><td style="text-align: right; font-variant-numeric: tabular-nums;">358.20 万</td><td style="text-align: center;"><a class="antd-link">查看变更记录</a></td></tr>
+              <tr><td>03</td><td>固定资产净值</td><td style="text-align: right; font-variant-numeric: tabular-nums;">412.60 万</td><td style="text-align: center;"><a class="antd-link">查看变更记录</a></td></tr>
+              <tr><td>04</td><td>无形资产净值</td><td style="text-align: right; font-variant-numeric: tabular-nums;">190.70 万</td><td style="text-align: center;"><a class="antd-link">查看变更记录</a></td></tr>
+              <tr><td>05</td><td>应付账款余额</td><td style="text-align: right; font-variant-numeric: tabular-nums;">214.30 万</td><td style="text-align: center;"><a class="antd-link">查看变更记录</a></td></tr>
+              <tr><td>06</td><td>实收资本</td><td style="text-align: right; font-variant-numeric: tabular-nums;">500.00 万</td><td style="text-align: center;"><a class="antd-link">查看变更记录</a></td></tr>
+              <tr><td>07</td><td>资本公积</td><td style="text-align: right; font-variant-numeric: tabular-nums;">128.40 万</td><td style="text-align: center;"><a class="antd-link">查看变更记录</a></td></tr>
+              <tr><td>08</td><td>未分配利润</td><td style="text-align: right; font-variant-numeric: tabular-nums;">132.30 万</td><td style="text-align: center;"><a class="antd-link">查看变更记录</a></td></tr>
+              <tr><td>09</td><td>长期借款余额</td><td style="text-align: right; font-variant-numeric: tabular-nums;">180.00 万</td><td style="text-align: center;"><a class="antd-link">查看变更记录</a></td></tr>
+              <tr><td>10</td><td>所有者权益合计</td><td style="text-align: right; font-variant-numeric: tabular-nums;">760.70 万</td><td style="text-align: center;"><a class="antd-link">查看变更记录</a></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 底部 2 列宽表 -->
+      <div class="antd-card">
+        <div class="antd-card-title">期末/期初对照表</div>
+        <div class="antd-card-sub">静态指标期末值与期初值对比，同比列高亮关注</div>
+        <table class="antd-table antd-table-zebra antd-table-density-compact" style="width: 100%;">
+          <thead>
+            <tr>
+              <th style="width: 30%;">科目</th>
+              <th style="text-align: right;">期末值</th>
+              <th style="text-align: right;">期初值</th>
+              <th style="text-align: right;">同比变动</th>
+              <th style="text-align: center; width: 90px;">趋势</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>货币资金</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums;">256.80 万</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums;">238.50 万</td>
+              <td class="antd-emphasis-orange" style="text-align: right; font-variant-numeric: tabular-nums;">+ 7.7%</td>
+              <td style="text-align: center;"><span class="antd-tag antd-tag-success">↑ 上升</span></td>
+            </tr>
+            <tr>
+              <td>应收账款</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums;">358.20 万</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums;">340.10 万</td>
+              <td class="antd-emphasis-orange" style="text-align: right; font-variant-numeric: tabular-nums;">+ 5.3%</td>
+              <td style="text-align: center;"><span class="antd-tag antd-tag-warning">↑ 上升</span></td>
+            </tr>
+            <tr>
+              <td>存货</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums;">67.10 万</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums;">75.40 万</td>
+              <td class="antd-emphasis-orange" style="text-align: right; font-variant-numeric: tabular-nums;">- 11.0%</td>
+              <td style="text-align: center;"><span class="antd-tag antd-tag-success">↓ 下降</span></td>
+            </tr>
+            <tr>
+              <td>固定资产</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums;">412.60 万</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums;">428.90 万</td>
+              <td class="antd-emphasis-orange" style="text-align: right; font-variant-numeric: tabular-nums;">- 3.8%</td>
+              <td style="text-align: center;"><span class="antd-tag antd-tag-default">→ 平稳</span></td>
+            </tr>
+            <tr>
+              <td>应付账款</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums;">214.30 万</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums;">201.60 万</td>
+              <td class="antd-emphasis-orange" style="text-align: right; font-variant-numeric: tabular-nums;">+ 6.3%</td>
+              <td style="text-align: center;"><span class="antd-tag antd-tag-warning">↑ 上升</span></td>
+            </tr>
+            <tr>
+              <td>实收资本</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums;">500.00 万</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums;">500.00 万</td>
+              <td class="antd-emphasis-orange" style="text-align: right; font-variant-numeric: tabular-nums;">0.0%</td>
+              <td style="text-align: center;"><span class="antd-tag antd-tag-default">→ 平稳</span></td>
+            </tr>
+            <tr>
+              <td>长期借款</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums;">180.00 万</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums;">195.00 万</td>
+              <td class="antd-emphasis-orange" style="text-align: right; font-variant-numeric: tabular-nums;">- 7.7%</td>
+              <td style="text-align: center;"><span class="antd-tag antd-tag-success">↓ 下降</span></td>
+            </tr>
+            <tr>
+              <td>所有者权益</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums;">760.70 万</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums;">725.20 万</td>
+              <td class="antd-emphasis-orange" style="text-align: right; font-variant-numeric: tabular-nums;">+ 4.9%</td>
+              <td style="text-align: center;"><span class="antd-tag antd-tag-success">↑ 上升</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

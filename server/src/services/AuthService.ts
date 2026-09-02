@@ -6,6 +6,8 @@ import {
   signRefreshToken,
   verifyRefreshToken,
   getRefreshTokenExpiry,
+  generatePersistentLoginToken,
+  hashPersistentLoginToken,
 } from '../lib/jwt'
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
@@ -38,6 +40,13 @@ export interface LoginResult {
   accessToken: string
   refreshToken: string
   user: FrontendUser
+  /**
+   * 「7 天内免登录」明文令牌（base64url）。仅在 rememberMe=true 时下发；
+   * 客户端需存入 localStorage；服务端只保留 SHA-256 哈希。
+   */
+  persistentLoginToken?: string
+  /** 持久令牌剩余有效期（毫秒），仅在有 persistentLoginToken 时返回 */
+  persistentLoginExpiresInMs?: number
 }
 
 export interface TokenPair {
@@ -112,8 +121,13 @@ function toFrontendUser(user: UserWithRole): FrontendUser {
 }
 
 export const AuthService = {
-  /** 登录：校验凭证 → 签发令牌 → 记录 refresh jti → 审计 */
-  async login(username: string, password: string, meta: AuditMeta = {}): Promise<LoginResult> {
+  /** 登录：校验凭证 → 签发令牌 → 记录 refresh jti → 审计；rememberMe=true 时额外签发持久令牌 */
+  async login(
+    username: string,
+    password: string,
+    meta: AuditMeta = {},
+    options: { rememberMe?: boolean } = {},
+  ): Promise<LoginResult> {
     const user = await prisma.user.findUnique({
       where: { username },
       include: { role: { include: { permissions: true } } },
@@ -146,17 +160,34 @@ export const AuthService = {
     })
 
     // 多会话模型：追加而非覆盖，避免后登录会话把已登录会话踢下线
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { refreshTokenJtiList: appendJti(readJtiList(user), jti) },
-    })
+    const updateData: Prisma.UserUpdateInput = { refreshTokenJtiList: appendJti(readJtiList(user), jti) }
+    let persistentLoginToken: string | undefined
+    let persistentLoginExpiresInMs: number | undefined
+    if (options.rememberMe) {
+      const { raw, hash } = generatePersistentLoginToken()
+      const ttlDays = loadConfig().persistentLoginTtlDays
+      const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000)
+      // 同一用户仅保留一个持久令牌：新登录覆盖（多设备互踢，与「勾选即免登」语义一致）
+      updateData.persistentLoginTokenHash = hash
+      updateData.persistentLoginExpiresAt = expiresAt
+      updateData.persistentLoginCreatedAt = new Date()
+      persistentLoginToken = raw
+      persistentLoginExpiresInMs = ttlDays * 24 * 60 * 60 * 1000
+    }
+
+    await prisma.user.update({ where: { id: user.id }, data: updateData })
 
     await recordAudit(
       { userId: user.id, module: 'auth', action: 'login', targetId: user.id, ip: meta.ip ?? null, userAgent: meta.userAgent ?? null },
       meta.traceId,
     )
 
-    return { accessToken, refreshToken, user: toFrontendUser(user) }
+    return {
+      accessToken,
+      refreshToken,
+      user: toFrontendUser(user),
+      ...(persistentLoginToken ? { persistentLoginToken, persistentLoginExpiresInMs } : {}),
+    }
   },
 
   /** 刷新：验签 + 比对 jti + 黑名单 → 轮转（旧 jti 入黑名单，签发新对） */
@@ -217,7 +248,77 @@ export const AuthService = {
     return { accessToken: newAccess, refreshToken: newRefresh }
   },
 
-  /** 登出：仅将当前会话 jti 入黑名单并从列表移除（其他会话不受影响），记录审计 */
+  /**
+   * 自动登录（凭持久令牌）：哈希上送明文 → 查 user → 校验未过期/未停用 →
+   * 签发新的 access+refresh + 旋转持久令牌（DB 覆盖旧哈希，旧明文即刻失效，防重放）。
+   * 失败统一返回 unauthenticated（不区分「无此令牌」/「已过期」/「用户停用」，避免信息泄漏）。
+   * 审计 action 记为 auto_login，与密码登录区分。
+   */
+  async autoLogin(rawToken: string, meta: AuditMeta = {}): Promise<LoginResult> {
+    const tokenHash = hashPersistentLoginToken(rawToken)
+
+    // persistentLoginTokenHash 仅建索引未加唯一约束（同一用户轮转覆盖），用 findFirst
+    const user = await prisma.user.findFirst({
+      where: { persistentLoginTokenHash: tokenHash },
+      include: { role: { include: { permissions: true } } },
+    })
+
+    const now = new Date()
+    const expired = !user || user.status !== 'active' || !user.persistentLoginExpiresAt || user.persistentLoginExpiresAt.getTime() <= now.getTime()
+    if (expired) {
+      // 清理过期/失效的持久令牌字段，避免长期残留
+      if (user) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            persistentLoginTokenHash: null,
+            persistentLoginExpiresAt: null,
+            persistentLoginCreatedAt: null,
+          },
+        })
+      }
+      throw errors.unauthorized('免登录令牌无效或已过期')
+    }
+
+    // 签发新 access + refresh（共享 jti，落库追加）
+    const { token: refreshToken, jti } = signRefreshToken(user.id)
+    const accessToken = signAccessToken({
+      userId: user.id,
+      username: user.username,
+      roleCode: user.role.code,
+      jti,
+    })
+
+    // 旋转持久令牌：旧哈希被覆盖即作废，新明文下发给客户端
+    const { raw: newRaw, hash: newHash } = generatePersistentLoginToken()
+    const ttlDays = loadConfig().persistentLoginTtlDays
+    const newExpiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000)
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        refreshTokenJtiList: appendJti(readJtiList(user), jti),
+        persistentLoginTokenHash: newHash,
+        persistentLoginExpiresAt: newExpiresAt,
+        persistentLoginCreatedAt: new Date(),
+      },
+    })
+
+    await recordAudit(
+      { userId: user.id, module: 'auth', action: 'auto_login', targetId: user.id, ip: meta.ip ?? null, userAgent: meta.userAgent ?? null },
+      meta.traceId,
+    )
+
+    return {
+      accessToken,
+      refreshToken,
+      user: toFrontendUser(user),
+      persistentLoginToken: newRaw,
+      persistentLoginExpiresInMs: ttlDays * 24 * 60 * 60 * 1000,
+    }
+  },
+
+  /** 登出：仅将当前会话 jti 入黑名单并从列表移除（其他会话不受影响），同时清理持久令牌（强制下次走密码登录），记录审计 */
   async logout(userId: string, tokenJti: string | undefined, meta: AuditMeta = {}): Promise<void> {
     const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user) {
@@ -253,9 +354,25 @@ export const AuthService = {
         ),
         prisma.user.update({
           where: { id: user.id },
-          data: { refreshTokenJtiList: nextList },
+          data: {
+            refreshTokenJtiList: nextList,
+            // 登出即视为用户主动结束所有「免登录」信任，清理持久令牌字段
+            persistentLoginTokenHash: null,
+            persistentLoginExpiresAt: null,
+            persistentLoginCreatedAt: null,
+          },
         }),
       ])
+    } else {
+      // 仅有持久令牌需要清理（无活跃会话）的兜底
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          persistentLoginTokenHash: null,
+          persistentLoginExpiresAt: null,
+          persistentLoginCreatedAt: null,
+        },
+      })
     }
     await recordAudit(
       { userId, module: 'auth', action: 'logout', targetId: userId, ip: meta.ip ?? null, userAgent: meta.userAgent ?? null },
@@ -324,7 +441,15 @@ export const AuthService = {
     ops.push(
       prisma.user.update({
         where: { id: user.id },
-        data: { passwordHash, mustChangePassword: false, refreshTokenJtiList: updatedJtiList },
+        data: {
+          passwordHash,
+          mustChangePassword: false,
+          refreshTokenJtiList: updatedJtiList,
+          // 改密后强制重新登录所有免登录设备（吊销持久令牌）
+          persistentLoginTokenHash: null,
+          persistentLoginExpiresAt: null,
+          persistentLoginCreatedAt: null,
+        },
       })
     )
     await prisma.$transaction(ops)

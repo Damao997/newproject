@@ -7,6 +7,7 @@ import { Collapsible } from '@/components/ui/collapsible'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { cn } from '@/lib/utils'
 import { batchStatusLabel, errorColumns, templateTypeLabel, type ImportErrorRow } from './use-import-flow'
+import { BatchFilterBar, type BatchFilterValue } from './batch-filter-bar'
 import type { useBatchActivate } from '@/hooks/use-batch-activate'
 import type { ImportBatch } from '@/types'
 import {
@@ -21,10 +22,19 @@ import {
   Archive,
 } from 'lucide-react'
 
+interface BatchFilterProps {
+  value: BatchFilterValue
+  onChange: (patch: Partial<BatchFilterValue>) => void
+  activeCount: number
+  onReset: () => void
+}
+
 interface BatchPanelProps {
   canImport: boolean
   canArchive: boolean
   canPurgeBatch: boolean
+  // 批次筛选条（受控，状态来自 ImportPanel）
+  batchFilter: BatchFilterProps
   // 折叠偏好（来自 useImportFlow）
   qualityOpen: boolean
   onQualityOpenChange: (open: boolean) => void
@@ -65,6 +75,7 @@ export function BatchPanel(props: BatchPanelProps) {
     canImport,
     canArchive,
     canPurgeBatch,
+    batchFilter,
     qualityOpen,
     onQualityOpenChange,
     qualityStats,
@@ -256,13 +267,16 @@ export function BatchPanel(props: BatchPanelProps) {
           </div>
           {activateMsg && <p className="text-xs text-muted-foreground">{activateMsg}</p>}
 
+          {/* 批次筛选条：模块/状态/时间范围（实时筛选，重置仅清空筛选条件） */}
+          <BatchFilterBar {...batchFilter} />
+
           <DataTable
             columns={batchColumns}
             data={recentBatches}
             rowKey={(b) => b.id}
             dense
             maxHeight="320px"
-            emptyText="暂无导入批次"
+            emptyText={batchFilter.activeCount > 0 ? '无匹配的导入批次' : '暂无导入批次'}
             onRowClick={(b) => { setSelectedBatchId((prev) => (prev === b.id ? null : b.id)); setActivateMsg(null) }}
             rowClassName={(b) => (b.id === selectedBatchId ? 'bg-muted/60' : undefined)}
           />

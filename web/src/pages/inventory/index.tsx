@@ -1,364 +1,308 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { MonthPicker } from '@/components/ui/month-picker'
-import { CompanyMultiSelect } from '@/components/filters/company-select'
+import { useCallback, useMemo, useState } from 'react'
 import { PageContainer } from '@/components/layout/page-container'
 import { FilterBar } from '@/components/layout/filter-bar'
-import { FILTER_WIDTH } from '@/components/layout/filter-width'
-import { useStickyHeader } from '@/hooks/useStickyHeader'
-import { useExclusiveCompanyFilter } from '@/hooks/use-exclusive-company-filter'
+import { Card } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Pill } from '@/components/ui/pill'
+import { EmptyState } from '@/components/ui/empty-state'
 import { AnalysisDrawer, type AnalysisTarget } from '@/components/indicators/analysis-drawer'
-import {
-  useAvailablePeriods,
-  useCompanies,
-  useInventoryDetails,
-  useInventoryOverview,
-  useSubjectTree,
-} from '@/hooks/api-queries'
-import { usePermission } from '@/hooks/usePermission'
-import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
+import { useInventoryOverview, useInventoryDetails, useCompanies, type InventoryCategoryRow } from '@/hooks/api-queries'
 import { usePageStore } from '@/stores/pageStateStore'
-import { cn, formatMoneyWan, getChangeColor, getChangePrefix } from '@/lib/utils'
-import { ArrowLeft } from 'lucide-react'
+import { usePeriodStore } from '@/stores/periodStore'
+import { usePermission } from '@/hooks/usePermission'
+import { cn, formatMoneyWan } from '@/lib/utils'
 import { CategoryPieCard } from './category-pie-card'
 import { CategoryRankCard } from './category-rank-card'
 import { CompanyShareCard } from './company-share-card'
 import { InventoryTrendCard } from './trend-card'
-import { ChangeRate, DetailTable, QueryError } from './detail-table'
-import { EMPTY_ROWS, formatDays, type DetailDim, type ViewRow } from './inventory-utils'
+import { DetailTable, QueryError } from './detail-table'
+import { EMPTY_ROWS, formatDays } from './inventory-utils'
+import { CalendarDays, RefreshCw } from 'lucide-react'
+
+/** 空品类稳定引用：避免 `?? []` 每次渲染新建数组导致图表 memo 失效 */
+const EMPTY_CATEGORIES: InventoryCategoryRow[] = []
 
 /**
- * 存货管理页：数据源为静态数据（fact_static 存货品类叶子科目），
- * 按 期间 × 公司 × 品类 聚合展示总览 KPI、品类占比/排名、财年趋势与公司×品类明细；
- * 周转指标直接复用静态树「存货周转天数」，与指标页口径一致。金额单位：万元。
- *
- * 交互增强：饼图/排名图点击钻取品类 → 明细表联动筛选；明细表支持维度切换
- * （按公司汇总/按品类展开/公司×品类明细）、排序、关键词搜索（300ms 防抖持久化）、
- * 合计行、批量勾选与 Excel 导出；按公司汇总行支持公司级「分析」（存货根科目）；
- * 选中单个汇总主体时趋势卡旁展示成员单体公司占比饼图。
+ * 存货管理页：顶部四维 KPI（总额/品类占比/No.1 品类/周转天数）+ 品类占比饼图 +
+ * 品类排名条形图 + 成员单体公司占比饼图 + 财年趋势卡 + 公司×品类明细表（含导出/单项分析）。
+ * 筛选：公司/期间跟随顶部 Header 全局筛选（periodStore：companyCodes null/[] = 全部公司，
+ * period 必填 YYYY-MM；inventory API 期间未选择时显示空态）；页面特有筛选（品类钻取/明细维度）
+ * 持久化 pageStateStore。饼图/排名图点击钻取品类 → 联动明细表。
  */
 
-const DEFAULT_SUMMARY_CODE = 'ET0001'
-
-/** 默认筛选主体：ET0001 → 首个汇总主体 → 首个单体 → null（与往来总览页同款实现，保持两页行为一致） */
-function useDefaultCompanyCode(): string | null {
-  const { data: companies } = useCompanies()
-  return useMemo(() => {
-    const list = companies ?? []
-    const et0001 = list.find((c) => c.code === DEFAULT_SUMMARY_CODE)
-    if (et0001) return et0001.code
-    const summary = list.find((c) => c.type === 'summary')
-    if (summary) return summary.code
-    const entity = list.find((c) => c.type === 'entity')
-    return entity?.code ?? null
-  }, [companies])
+// ───────────────────── KPI 磁贴（沿用设计稿视觉） ─────────────────────
+interface KpiTile {
+  label: string
+  icon: string
+  valueText: string
+  unit: string
+  tone: 'orange' | 'cyan' | 'violet' | 'green'
+  emphasis?: boolean
+  chip: { direction: '↑' | '↓' | '→'; text: string; tone: 'up' | 'down' | 'flat' }
+  foot: string
 }
 
-function StatCard({ title, value, sub, index, loading }: {
-  title: string
-  value: React.ReactNode
-  sub?: React.ReactNode
-  index: number
-  loading?: boolean
-}) {
+const TONE_PRE: Record<KpiTile['tone'], string> = {
+  orange: 'before:bg-[#fa8c16]',
+  cyan: 'before:bg-[#13c2c2]',
+  violet: 'before:bg-[#722ed1]',
+  green: 'before:bg-[#52c41a]',
+}
+
+const TONE_ICON: Record<KpiTile['tone'], { bg: string; fg: string }> = {
+  orange: { bg: 'bg-[#fff7e6]', fg: 'text-[#fa8c16]' },
+  cyan: { bg: 'bg-[#e6fffb]', fg: 'text-[#13c2c2]' },
+  violet: { bg: 'bg-[#f9f0ff]', fg: 'text-[#722ed1]' },
+  green: { bg: 'bg-[#f6ffed]', fg: 'text-[#52c41a]' },
+}
+
+const CHIP_CLS: Record<'up' | 'down' | 'flat', string> = {
+  up: 'bg-[#fff1f0] text-[#ff4d4f]',
+  down: 'bg-[#f6ffed] text-[#52c41a]',
+  flat: 'bg-muted text-muted-foreground',
+}
+
+/** 变动率 → 红涨绿跌徽标（无口径/零变动显示 '-'） */
+function rateChip(rate: number): KpiTile['chip'] {
+  if (!Number.isFinite(rate)) return { direction: '→', text: '-', tone: 'flat' }
+  if (rate === 0) return { direction: '→', text: '0.0%', tone: 'flat' }
+  return rate > 0
+    ? { direction: '↑', text: `${rate.toFixed(1)}%`, tone: 'up' }
+    : { direction: '↓', text: `${Math.abs(rate).toFixed(1)}%`, tone: 'down' }
+}
+
+function StatTile({ tile }: { tile: KpiTile }) {
   return (
-    <Card
-      className="animate-fade-in border border-border"
-      style={{ animationDelay: `${index * 80}ms` }}
+    <div
+      className={cn(
+        'relative flex flex-col gap-2 overflow-hidden rounded-lg border border-border bg-card p-5',
+        "before:absolute before:bottom-0 before:left-0 before:top-0 before:w-[3px] before:content-['']",
+        TONE_PRE[tile.tone],
+        tile.emphasis && 'border-[#ffc069] bg-gradient-to-br from-[#ffe7ba] to-[#fff7e6]',
+      )}
     >
-      <CardHeader className="px-5 pb-1 pt-5 text-center">
-        <CardTitle className="text-[14px] font-medium tracking-wide text-black">{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="px-5 pb-4 text-center">
-        {loading ? (
-          <div>
-            <div className="skeleton h-8 w-24 rounded" />
-            <div className="skeleton mt-2.5 h-4 w-16 rounded" />
-          </div>
-        ) : (
-          <>
-            <div className="font-num text-2xl font-bold leading-tight tracking-tight text-foreground">{value}</div>
-            {sub && <div className="mt-2 text-xs text-muted-foreground">{sub}</div>}
-          </>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm text-secondary-foreground">{tile.label}</span>
+        <span
+          className={cn(
+            'inline-flex h-7 w-7 items-center justify-center rounded-md text-sm font-semibold',
+            TONE_ICON[tile.tone].bg,
+            TONE_ICON[tile.tone].fg,
+          )}
+        >
+          {tile.icon}
+        </span>
+      </div>
+      <div
+        className={cn(
+          'truncate font-mono text-[28px] font-semibold leading-tight tabular-nums',
+          tile.emphasis ? 'text-[#d46b08]' : 'text-foreground',
         )}
-      </CardContent>
-    </Card>
+      >
+        {tile.valueText}
+        {tile.unit && <span className="ml-1 text-sm font-normal text-muted-foreground">{tile.unit}</span>}
+      </div>
+      <div className="flex items-center gap-2 text-xs">
+        <span
+          className={cn(
+            'inline-flex h-5 items-center rounded-sm px-1.5 font-mono text-xs tabular-nums',
+            CHIP_CLS[tile.chip.tone],
+          )}
+        >
+          {tile.chip.direction} {tile.chip.text}
+        </span>
+        <span className="truncate text-muted-foreground">{tile.foot}</span>
+      </div>
+    </div>
   )
 }
 
+// ───────────────────── 主页面 ─────────────────────
 export default function InventoryPage() {
-  const { can } = usePermission()
-  // 吸顶测量：标题区 + 筛选卡高度实时测量，驱动筛选卡吸顶偏移
-  const { headerRef, filterRef, headerHeight } = useStickyHeader()
-  // 公司多选（空数组 = 全部公司）、期间单选（空串 = 跟随最新期间）、品类钻取与关键词；
-  // 查询条件持久化到 pageStateStore（路由切换/刷新后恢复）
+  // 页面特有筛选持久化：品类钻取/明细维度（公司/期间跟随顶部 Header 全局筛选）
   const setInventory = usePageStore((s) => s.setInventory)
-  const selectedCompanies = usePageStore((s) => s.inventory.companies)
-  const periodFilter = usePageStore((s) => s.inventory.period)
   const categoryCode = usePageStore((s) => s.inventory.categoryCode)
   const detailDim = usePageStore((s) => s.inventory.detailDim)
-  const setSelectedCompanies = useCallback((v: string[]) => setInventory({ companies: v }), [setInventory])
-  const setPeriodFilter = useCallback((v: string) => setInventory({ period: v }), [setInventory])
-  const setDetailDim = useCallback((d: DetailDim) => setInventory({ detailDim: d }), [setInventory])
-  const [analysisTarget, setAnalysisTarget] = useState<AnalysisTarget | null>(null)
-
+  const companies = usePeriodStore((s) => s.companyCodes)
   const fiscalYear = usePeriodStore((s) => s.fiscalYear)
-  const { data: periodsData } = useAvailablePeriods()
-  // 期间候选按全局选中财年过滤
-  const periods = useMemo(
-    () => filterPeriodsByFiscalYear(periodsData?.periods ?? [], fiscalYear, periodsData?.fiscalStartMonth ?? 1),
-    [periodsData, fiscalYear],
+  const period = usePeriodStore((s) => s.period)
+
+  const { can } = usePermission()
+  const { data: companiesData } = useCompanies()
+
+  // 查询参数：companyCodes null/[] = 全部公司（不传由后端取全部）；period 必填，未选期间不启用查询
+  const companyCodesParam = companies && companies.length > 0 ? companies : undefined
+  const overviewQuery = useInventoryOverview({ period: period ?? undefined, companyCodes: companyCodesParam })
+  const detailsQuery = useInventoryDetails({ period: period ?? undefined, companyCodes: companyCodesParam })
+
+  // 公司占比卡仅当恰好选中一个汇总主体时渲染（明细按成员单体展开，单选主体下占比才有意义）
+  const showShareCard = useMemo(() => {
+    if (!companies || companies.length !== 1) return false
+    return companiesData?.some((c) => c.code === companies[0] && c.type === 'summary') ?? false
+  }, [companies, companiesData])
+
+  // 钻取品类显示名：优先总览品类表，退化明细行，最终显示编码
+  const categoryName = useMemo(() => {
+    if (!categoryCode) return ''
+    return (
+      overviewQuery.data?.categories.find((c) => c.code === categoryCode)?.name
+      ?? detailsQuery.data?.rows.find((r) => r.categoryCode === categoryCode)?.categoryName
+      ?? categoryCode
+    )
+  }, [categoryCode, overviewQuery.data, detailsQuery.data])
+
+  // 品类钻取：点击饼图/排名条形 → 写入持久化筛选，再点同品类取消
+  const handleCategoryClick = useCallback(
+    (code: string) => {
+      setInventory({ categoryCode: usePageStore.getState().inventory.categoryCode === code ? '' : code })
+    },
+    [setInventory],
   )
 
-  useEffect(() => {
-    if (periods.length === 0) return
-    // 首次加载默认选中最新期间；已选期间随财年切换失效时回退最新
-    if (periodFilter === '' || !periods.includes(periodFilter)) {
-      setPeriodFilter(periods[periods.length - 1])
-    }
-  }, [periods, periodFilter, setPeriodFilter])
+  // 行级「分析」抽屉目标（明细表行内触发，构建上下文在 DetailTable 内完成）
+  const [analysisTarget, setAnalysisTarget] = useState<AnalysisTarget | null>(null)
 
-  const period = periodFilter || periods[periods.length - 1]
+  // ===== 四维 KPI：总额 / 品类占比 / No.1 品类 / 周转天数 =====
+  const kpiTiles = useMemo<KpiTile[]>(() => {
+    const total = overviewQuery.data?.total
+    const top = overviewQuery.data?.categories[0]
+    const days = overviewQuery.data?.turnoverDays
+    const vsYearStart = total && total.yearStart ? ((total.current - total.yearStart) / total.yearStart) * 100 : Number.NaN
+    const daysDelta = days && days.samePeriod ? ((days.current - days.samePeriod) / days.samePeriod) * 100 : Number.NaN
+    return [
+      {
+        label: '库存总额',
+        icon: '¥',
+        valueText: formatMoneyWan(total?.current ?? 0),
+        unit: '万',
+        tone: 'orange',
+        emphasis: true,
+        chip: rateChip(vsYearStart),
+        foot: '较年初',
+      },
+      {
+        label: '品类占比',
+        icon: '%',
+        valueText: top ? top.share.toFixed(1) : '-',
+        unit: '%',
+        tone: 'cyan',
+        chip: { direction: '→', text: top?.name ?? '-', tone: 'flat' },
+        foot: '最大品类',
+      },
+      {
+        label: 'No.1 品类',
+        icon: '类',
+        valueText: top ? formatMoneyWan(top.current) : '-',
+        unit: top ? '万' : '',
+        tone: 'violet',
+        chip: { direction: '→', text: top ? `No.${top.rank}` : '-', tone: 'flat' },
+        foot: top?.name ?? '暂无品类数据',
+      },
+      {
+        label: '库存周转天数',
+        icon: '天',
+        valueText: days && days.current > 0 ? days.current.toFixed(1) : '-',
+        unit: '天',
+        tone: 'green',
+        chip: rateChip(daysDelta),
+        foot: `同期 ${formatDays(days?.samePeriod ?? 0)}`,
+      },
+    ]
+  }, [overviewQuery.data])
 
-  // 持久化公司多选校验：编码已删除/越权时过滤，全部失效则回退默认主体（候选加载后生效，用户手动切换后不再覆盖）
-  const { data: companies } = useCompanies()
-  const defaultCode = useDefaultCompanyCode()
-  // 主体互斥业务规则：单体公司与汇总主体不能同时筛选；逻辑与轻提示收敛于共享 hook（防止成员公司双重计数）
-    const { handleCompaniesChange, noticeElement } = useExclusiveCompanyFilter({
-    companies,
-    getPrev: () => usePageStore.getState().inventory.companies,
-    setSelected: setSelectedCompanies,
-  })
-  useEffect(() => {
-    if (!companies || companies.length === 0) return
-    const valid = new Set(companies.map((c) => c.code))
-    const cur = usePageStore.getState().inventory.companies
-    if (cur.length === 0) return
-    const filtered = cur.filter((c) => valid.has(c))
-    if (filtered.length > 0) {
-      if (filtered.length !== cur.length) setSelectedCompanies(filtered)
-    } else if (defaultCode) {
-      setSelectedCompanies([defaultCode])
-    }
-  }, [companies, defaultCode, setSelectedCompanies])
-
-  // 成员公司占比饼图显示条件：恰好选中一个汇总主体时展示（单体/全部公司/多汇总不展示）
-  const showCompanyShare = useMemo(() => {
-    if (selectedCompanies.length !== 1 || !companies) return false
-    return companies.find((c) => c.code === selectedCompanies[0])?.type === 'summary'
-  }, [selectedCompanies, companies])
-
-  // 看板深链：/inventory?companies=A,B&period=YYYY-MM 挂载时写入 store 后清理 URL，
-  // 越权/失效值由上方校验与期间回退逻辑兜底；仅处理一次，避免刷新重复覆盖手动筛选
-  const [searchParams, setSearchParams] = useSearchParams()
-  const deepLinkApplied = useRef(false)
-  useEffect(() => {
-    if (deepLinkApplied.current) return
-    const companiesParam = searchParams.get('companies')
-    const periodParam = searchParams.get('period')
-    if (!companiesParam && !periodParam) return
-    deepLinkApplied.current = true
-    if (companiesParam) setSelectedCompanies(companiesParam.split(',').map((s) => s.trim()).filter(Boolean))
-    if (periodParam) setPeriodFilter(periodParam)
-    // 仅删除已消费的深链参数，保留 URL 上其他 query（避免 setSearchParams({}) 误清）
-    const next = new URLSearchParams(searchParams)
-    next.delete('companies')
-    next.delete('period')
-    setSearchParams(next, { replace: true })
-  }, [searchParams, setSelectedCompanies, setPeriodFilter, setSearchParams])
-
-  const overviewQuery = useInventoryOverview({ period, companyCodes: selectedCompanies })
-  const detailsQuery = useInventoryDetails({ period, companyCodes: selectedCompanies })
-  const overview = overviewQuery.data
+  const anyFetching = overviewQuery.isFetching || detailsQuery.isFetching
   const detailRows = detailsQuery.data?.rows ?? EMPTY_ROWS
-
-  // 「存货」根科目（静态树按名称解析，与后端 resolveInventorySubjects 口径一致），公司级分析主体
-  const { data: staticTree } = useSubjectTree('static')
-  const inventoryRoot = useMemo(() => staticTree?.find((n) => n.name === '存货') ?? null, [staticTree])
-
-  // ===== 图表 → 明细表品类钻取：再次点击同品类取消 =====
-  const handleCategoryClick = useCallback((code: string) => {
-    const cur = usePageStore.getState().inventory.categoryCode
-    setInventory({ categoryCode: cur === code ? '' : code })
-  }, [setInventory])
-
-  const activeCategoryName = useMemo(() => {
-    if (!categoryCode) return ''
-    return overview?.categories.find((c) => c.code === categoryCode)?.name
-      ?? detailRows.find((r) => r.categoryCode === categoryCode)?.categoryName
-      ?? categoryCode
-  }, [categoryCode, overview, detailRows])
-
-  /** 打开公司级单项分析抽屉（按公司汇总模式）：分析主体为该公司「存货」根科目，指标上下文=公司跨品类汇总值 */
-  const handleAnalyzeCompany = (row: ViewRow) => {
-    if (!period || !row.company || !inventoryRoot) return
-    setAnalysisTarget({
-      companyCode: row.company.code,
-      companyName: row.company.name,
-      subjectCode: inventoryRoot.code,
-      subjectName: inventoryRoot.name,
-      subjectType: 'static',
-      valueType: 'amount',
-      // 库存分析不依赖全年预算：抽屉不展示预算/达成率，metricContext 不含 budget/achievement
-      showBudget: false,
-      fiscalYear: period.slice(0, 4),
-      period,
-      // 静态科目 → MetricValue：本期→actual、同期→samePeriod、年初→budget/ytd、上年年初→samePeriodYtd（budget/ytd 槽为年初金额占位，非预算数据）
-      metric: { budget: row.yearStart, actual: row.current, samePeriod: row.samePeriod, ytd: row.yearStart, samePeriodYtd: row.lastYearStart },
-    })
-  }
-
-  const canAnalyze = can('reports', 'create')
-  const total = overview?.total
-  const isOverviewLoading = overviewQuery.isLoading
-  const turnover = overview?.turnoverDays
-  const turnoverDelta = turnover ? turnover.current - turnover.samePeriod : 0
-
-  // 从看板存货品类卡深链进入时显示「返回首页」按钮（sessionStorage 标记，点击返回时清除；刷新后仍保留）
-  const navigate = useNavigate()
-  const [fromDashboard] = useState(() => sessionStorage.getItem('dashboard.fromDashboard') === '1')
-  const handleBackToDashboard = useCallback(() => {
-    sessionStorage.removeItem('dashboard.fromDashboard')
-    navigate('/')
-  }, [navigate])
+  const categories = overviewQuery.data?.categories ?? EMPTY_CATEGORIES
 
   return (
     <PageContainer
-      title={(
-        <span className="flex items-center gap-1">
-          {fromDashboard && (
-            <Button variant="ghost" size="icon" className="-ml-2 h-8 w-8" onClick={handleBackToDashboard} aria-label="返回首页">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          )}
-          存货管理
-        </span>
-      )}
-      stickyHeader
-      headerRef={headerRef}
+      title="存货管理"
+      description="覆盖品类占比、库存排名、公司分布与财年趋势 · 期间与财年跟随顶部导航选择"
+      actions={
+        <Button variant="outline" size="sm" disabled={anyFetching} onClick={() => { overviewQuery.refetch(); detailsQuery.refetch() }}>
+          <RefreshCw className={cn('mr-1.5 h-3.5 w-3.5', anyFetching && 'animate-spin')} />
+          刷新
+        </Button>
+      }
     >
-      <div className="space-y-6">
-        {/* 筛选卡：公司多选（单体/汇总互斥）+ 期间单选（财年由顶部导航全局控制，财年月外的月份禁用）；吸顶 */}
-        <Card ref={filterRef} className="sticky z-10 rounded-card p-4" style={{ top: headerHeight }}>
+      {/* 筛选条：全局公司/期间已上收顶部 Header，此处仅保留明细条数反馈 */}
+      <Card className="rounded-card border border-border p-4">
         <FilterBar>
-          <CompanyMultiSelect
-            value={selectedCompanies}
-            onChange={handleCompaniesChange}
-            selectAllType="entity"
-            className={`h-9 ${FILTER_WIDTH.subject}`}
-          />
-          <MonthPicker
-            value={periodFilter}
-            onChange={setPeriodFilter}
-            availablePeriods={periods}
-            allowedPeriods={periods}
-            placeholder="最新期间"
-            className="h-9 w-full sm:w-[150px]"
-          />
-          <span className="text-xs text-muted-foreground">金额单位：万元</span>
+          {period && <Pill tone="blue">明细 {detailRows.length} 条</Pill>}
         </FilterBar>
-        {noticeElement}
-        </Card>
+      </Card>
 
-        {/* KPI 卡行：失败时整体降级为错误提示 */}
-        {overviewQuery.isError ? (
-          <QueryError
-            message={overviewQuery.error instanceof Error ? overviewQuery.error.message : undefined}
-            onRetry={() => overviewQuery.refetch()}
-            fetching={overviewQuery.isFetching}
-          />
-        ) : (
-          <div className={cn('grid gap-4 sm:grid-cols-2 lg:grid-cols-4 transition-opacity duration-200', overviewQuery.isFetching && 'opacity-60')}>
-            <StatCard
-              index={0}
-              loading={isOverviewLoading}
-              title="存货总额（本期）"
-              value={total ? formatMoneyWan(total.current) : '-'}
-              sub={total ? <>年初 <span className="font-num">{formatMoneyWan(total.yearStart)}</span></> : undefined}
-            />
-            <StatCard
-              index={1}
-              loading={isOverviewLoading}
-              title="较年初增减"
-              value={
-                total ? (
-                  <span className={getChangeColor(total.current - total.yearStart)}>
-                    {getChangePrefix(total.current - total.yearStart)}{formatMoneyWan(Math.abs(total.current - total.yearStart))}
-                  </span>
-                ) : '-'
-              }
-              sub={total ? <>增减率 <ChangeRate current={total.current} base={total.yearStart} /></> : undefined}
-            />
-            <StatCard
-              index={2}
-              loading={isOverviewLoading}
-              title="同比增减率"
-              value={total ? <ChangeRate current={total.current} base={total.samePeriod} /> : '-'}
-              sub={total ? <>同期 <span className="font-num">{formatMoneyWan(total.samePeriod)}</span></> : undefined}
-            />
-            <StatCard
-              index={3}
-              loading={isOverviewLoading}
-              title="存货周转天数"
-              value={overview ? formatDays(overview.turnoverDays.current) : '-'}
-              sub={turnover ? (
-                <>
-                  同期 <span className="font-num">{formatDays(turnover.samePeriod)}</span>
-                  {turnover.samePeriod > 0 && (
-                    <span className={cn('ml-1 font-num', getChangeColor(turnoverDelta))}>
-                      {getChangePrefix(turnoverDelta)}{Math.abs(turnoverDelta).toFixed(1)} 天
-                    </span>
-                  )}
-                </>
-              ) : undefined}
-            />
-          </div>
-        )}
-
-        {/* 图表区：品类占比饼图 + 品类排名（点击钻取品类 → 明细表联动） */}
-        <div className={cn('grid gap-6 lg:grid-cols-2 transition-opacity duration-200', overviewQuery.isFetching && 'opacity-60')}>
-          <CategoryPieCard categories={overview?.categories ?? []} loading={isOverviewLoading} onCategoryClick={handleCategoryClick} />
-          <CategoryRankCard categories={overview?.categories ?? []} loading={isOverviewLoading} onCategoryClick={handleCategoryClick} />
-        </div>
-
-        {/* 财年月度趋势（公司多选联动，财年跟随顶部导航）；选中单个汇总主体时旁挂成员公司占比饼图 */}
-        {showCompanyShare ? (
-          <div className="grid gap-6 lg:grid-cols-5">
-            <div className="lg:col-span-3">
-              <InventoryTrendCard companyCodes={selectedCompanies} fiscalYear={fiscalYear} />
-            </div>
-            <div className="lg:col-span-2">
-              <CompanyShareCard rows={detailRows} loading={detailsQuery.isLoading} />
-            </div>
-          </div>
-        ) : (
-          <InventoryTrendCard companyCodes={selectedCompanies} fiscalYear={fiscalYear} />
-        )}
-
-        {/* 明细表：维度切换/搜索/排序/行选择/导出/单项分析（状态与逻辑在 detail-table 内，主文件仅接数据与回调） */}
-        <DetailTable
-          detailDim={detailDim}
-          setDetailDim={setDetailDim}
-          rows={detailRows}
-          loading={detailsQuery.isLoading}
-          isError={detailsQuery.isError}
-          error={detailsQuery.error}
-          fetching={detailsQuery.isFetching}
-          onRetry={() => detailsQuery.refetch()}
-          period={period}
-          categoryCode={categoryCode}
-          categoryName={activeCategoryName}
-          canAnalyze={canAnalyze}
-          companyAnalyzeDisabled={!inventoryRoot}
-          onAnalyzeCompany={handleAnalyzeCompany}
-          onAnalyze={setAnalysisTarget}
+      {!period ? (
+        // 无数据期间：API 期间必填，等待顶部导航选择（PeriodPill 会自动归一化到最新月份）
+        <EmptyState
+          icon={CalendarDays}
+          title="未选择期间"
+          description="存货数据按月快照提供，请先在顶部导航选择期间"
+          compact
         />
-      </div>
+      ) : (
+        <>
+          {/* 四维 KPI 摘要行 */}
+          {overviewQuery.isLoading ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="加载中">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="skeleton h-[136px] rounded-lg border border-border" />
+              ))}
+            </div>
+          ) : overviewQuery.isError ? (
+            <QueryError
+              message={overviewQuery.error instanceof Error ? overviewQuery.error.message : undefined}
+              onRetry={() => overviewQuery.refetch()}
+              fetching={overviewQuery.isFetching}
+            />
+          ) : (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {kpiTiles.map((t) => (
+                <StatTile key={t.label} tile={t} />
+              ))}
+            </div>
+          )}
 
-      {/* 单项分析抽屉（与指标页共用组件） */}
-      <AnalysisDrawer open={analysisTarget !== null} target={analysisTarget} onClose={() => setAnalysisTarget(null)} />
+          {/* 2×2 网格：品类占比 / 品类排名 / 公司占比（条件渲染）/ 财年趋势 */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <CategoryPieCard
+              categories={categories}
+              loading={overviewQuery.isLoading}
+              onCategoryClick={handleCategoryClick}
+            />
+            <CategoryRankCard
+              categories={categories}
+              loading={overviewQuery.isLoading}
+              onCategoryClick={handleCategoryClick}
+            />
+            {showShareCard && (
+              <CompanyShareCard rows={detailRows} loading={detailsQuery.isLoading} />
+            )}
+            <div className={cn(!showShareCard && 'lg:col-span-2')}>
+              <InventoryTrendCard companyCodes={companyCodesParam ?? []} fiscalYear={fiscalYear} />
+            </div>
+          </div>
+
+          {/* 存货明细表（公司×品类：本期/年初/同期，维度切换/搜索/排序/导出/单项分析） */}
+          <DetailTable
+            detailDim={detailDim}
+            setDetailDim={(d) => setInventory({ detailDim: d })}
+            rows={detailRows}
+            loading={detailsQuery.isLoading}
+            isError={detailsQuery.isError}
+            error={detailsQuery.error}
+            fetching={detailsQuery.isFetching}
+            onRetry={() => detailsQuery.refetch()}
+            period={period}
+            categoryCode={categoryCode}
+            categoryName={categoryName}
+            canAnalyze={can('reports', 'create')}
+            onAnalyze={setAnalysisTarget}
+          />
+
+          <AnalysisDrawer open={analysisTarget !== null} target={analysisTarget} onClose={() => setAnalysisTarget(null)} />
+        </>
+      )}
     </PageContainer>
   )
 }

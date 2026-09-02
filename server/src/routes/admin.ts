@@ -116,12 +116,16 @@ router.get('/permissions', requirePermission('admin:permissions:view', 'view'), 
 }))
 
 // ===== 审计日志 =====
+router.get('/audit-logs/today-stats', requirePermission('admin:users:view', 'view'), asyncHandler(async (_req, res) => {
+  sendOk(res, await AdminService.todayAuditStats())
+}))
+
 router.get('/audit-logs', requirePermission('admin:users:view', 'view'), asyncHandler(async (req, res) => {
   const { page, pageSize } = pageParams(req.query)
   const q = req.query as Record<string, string | undefined>
   sendOk(res, await AdminService.listAuditLogs({
     page, pageSize,
-    module: q.module, action: q.action,
+    module: q.module, action: q.action, q: q.q,
     role: q.role, username: q.username, startDate: q.startDate, endDate: q.endDate,
   }))
 }))

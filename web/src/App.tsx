@@ -17,9 +17,16 @@ const DashboardAnalysisInventoryAgingPage = lazy(() => import('@/pages/dashboard
 const DashboardAnalysisCategoryBudgetPage = lazy(() => import('@/pages/dashboard/analysis/category-budget'))
 const DashboardAnalysisSubjectBudgetPage = lazy(() => import('@/pages/dashboard/analysis/subject-budget'))
 const DashboardAnalysisExpensePage = lazy(() => import('@/pages/dashboard/analysis/expense'))
-const IndicatorsOperatingPage = lazy(() => import('@/pages/indicators/operating'))
-const IndicatorsStaticPage = lazy(() => import('@/pages/indicators/static'))
-const IndicatorsCashflowPage = lazy(() => import('@/pages/indicators/cashflow'))
+// 财务指标：三个子路由共用完整版指标页（科目树/筛选/交叉表/分析抽屉/AI 概览/导出/列设置），按路由传 subjectType
+function lazyIndicatorPage(subjectType: 'operating' | 'static' | 'cashflow') {
+  return lazy(async () => {
+    const { IndicatorPage } = await import('@/pages/indicators')
+    return { default: () => <IndicatorPage subjectType={subjectType} /> }
+  })
+}
+const IndicatorsOperatingPage = lazyIndicatorPage('operating')
+const IndicatorsStaticPage = lazyIndicatorPage('static')
+const IndicatorsCashflowPage = lazyIndicatorPage('cashflow')
 const TransactionsOverviewPage = lazy(() => import('@/pages/transactions/overview'))
 const TransactionsAgingPage = lazy(() => import('@/pages/transactions/aging'))
 const TransactionsCoveragePage = lazy(() => import('@/pages/transactions/coverage'))
@@ -41,6 +48,7 @@ const AdminUsersPage = lazy(() => import('@/pages/admin/users'))
 const AdminRolesPage = lazy(() => import('@/pages/admin/roles'))
 const AdminAuditLogsPage = lazy(() => import('@/pages/admin/audit-logs'))
 const NoAccessPage = lazy(() => import('@/pages/no-access'))
+const DesignSnapshotPage = lazy(() => import('@/pages/__design/antd-style'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -141,6 +149,7 @@ function App() {
                 {/* 分析报告：汇总报告列表页（旧 ?tab=analyses 兼容重定向在页面内处理） */}
                 <Route path="reports" element={<RequirePermission resource="reports" action="view"><ReportsPage /></RequirePermission>} />
                 <Route path="reports/analyses" element={<RequirePermission resource="reports" action="view"><ReportsAnalysesPage /></RequirePermission>} />
+                <Route path="reports/editor/:reportId" element={<RequirePermission resource="reports" action="view"><ReportEditor /></RequirePermission>} />
                 <Route path="reports/:reportId/edit" element={<RequirePermission resource="reports" action="view"><ReportEditor /></RequirePermission>} />
                 <Route path="tools" element={<RequirePermission resource="tools" action="view"><LegacyQueryRedirect /></RequirePermission>} />
                 <Route path="tools/enterprise-lookup" element={<RequirePermission resource="tools" action="view"><ToolsLookupPage /></RequirePermission>} />
@@ -160,6 +169,8 @@ function App() {
                 <Route path="admin/audit-logs" element={<RequirePermission resource="admin:users" action="view"><AdminAuditLogsPage /></RequirePermission>} />
                 {/* 权限不足兜底页：无任何优先级内模块权限时落地 */}
                 <Route path="no-access" element={<NoAccessPage />} />
+                {/* 设计快照：antd 风格组件总览（仅用于研发/设计验收，不计入导航） */}
+                <Route path="__design/antd-style" element={<DesignSnapshotPage />} />
               </Route>
               {/* 未知路径：权限感知首页 */}
               <Route path="*" element={<HomeRedirect />} />

@@ -1,0 +1,802 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>组件库总览 · 设计↔开发对照手册 · 财年经营数据分析平台</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; background: var(--antd-gray-cool-3); }
+
+  /* 文档外壳：单页文档式（无 side shell） */
+  .doc-shell {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 40px 56px 64px;
+  }
+
+  /* 顶部标题区 */
+  .doc-head { margin-bottom: 32px; }
+  .doc-head h1 {
+    font-size: 28px; font-weight: 600;
+    color: var(--antd-gray-cool-12);
+    margin: 0 0 8px;
+  }
+  .doc-head p {
+    color: var(--antd-gray-cool-9);
+    font-size: 14px; line-height: 1.7;
+    margin: 0; max-width: 880px;
+  }
+  .doc-head-meta {
+    margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap;
+  }
+  .doc-head-meta .antd-tag { font-size: 12px; }
+
+  /* 文档 section = 白底卡 */
+  .doc-section {
+    background: #fff;
+    border: 1px solid var(--antd-gray-cool-5);
+    border-radius: 12px;
+    padding: 28px 32px 32px;
+    margin-bottom: 20px;
+  }
+  .doc-section > .antd-overline { margin-bottom: 8px; }
+  .doc-section > h2 {
+    font-size: 20px; font-weight: 600;
+    color: var(--antd-gray-cool-12);
+    margin: 0 0 6px;
+  }
+  .doc-section > h2 + .doc-section-desc {
+    color: var(--antd-gray-cool-9);
+    font-size: 13px;
+    margin: 0 0 24px;
+  }
+
+  /* 分组小标题 */
+  .doc-group { margin-top: 28px; }
+  .doc-group:first-of-type { margin-top: 8px; }
+  .doc-group h3 {
+    font-size: 15px; font-weight: 600;
+    color: var(--antd-gray-cool-12);
+    margin: 0 0 12px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .doc-group h3 .antd-tag { font-size: 11px; }
+
+  /* 演示卡：白底 + 边框 + padding 24 */
+  .doc-demo {
+    background: var(--antd-gray-cool-2);
+    border: 1px solid var(--antd-gray-cool-5);
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 12px;
+  }
+  .doc-demo-row {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  }
+  .doc-demo-col {
+    display: flex; flex-direction: column; gap: 12px; flex: 1; min-width: 0;
+  }
+  .doc-demo.is-tight { padding: 18px; }
+  .doc-demo-label {
+    font-size: 12px; color: var(--antd-gray-cool-9);
+    margin-bottom: 8px; font-weight: 500;
+  }
+
+  /* 代码片段 */
+  pre.doc-code {
+    margin: 0;
+    background: var(--antd-gray-cool-12);
+    color: var(--antd-gray-cool-2);
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-family: var(--antd-font-family-mono);
+    font-size: 12.5px;
+    line-height: 1.65;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  pre.doc-code .tk-c { color: var(--antd-gray-cool-7); font-style: italic; }
+  pre.doc-code .tk-k { color: var(--antd-brand-300); }
+  pre.doc-code .tk-v { color: var(--antd-orange-300); }
+
+  /* 适用场景 */
+  .doc-usage {
+    margin: 10px 0 0;
+    font-size: 12.5px;
+    color: var(--antd-gray-cool-9);
+    padding-left: 12px;
+    border-left: 2px solid var(--antd-brand-200);
+  }
+
+  /* 表格分组小工具 */
+  .doc-table-wrap {
+    border: 1px solid var(--antd-gray-cool-5);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  /* 状态点 4 色 */
+  .doc-dot {
+    display: inline-block;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--antd-state-success);
+  }
+  .doc-dot.is-blue   { background: var(--color-primary); }
+  .doc-dot.is-orange { background: var(--antd-orange-500); }
+  .doc-dot.is-green  { background: var(--antd-state-success); }
+  .doc-dot.is-red    { background: var(--antd-state-error); }
+  .doc-dot.is-gray   { background: var(--antd-gray-cool-7); }
+  .doc-dot.is-processing {
+    background: var(--color-primary);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+
+  /* loading spinner */
+  .doc-spinner {
+    width: 32px; height: 32px;
+    border: 3px solid var(--antd-gray-3);
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    display: inline-block;
+  }
+  .doc-spinner.is-orange { border-top-color: var(--antd-orange-500); }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* 迷你段落小标 */
+  .doc-mini-label {
+    display: inline-block;
+    font-size: 11px; color: var(--antd-gray-cool-8);
+    min-width: 96px;
+  }
+
+  /* 强调层对比表 */
+  .doc-emph-row {
+    display: grid;
+    grid-template-columns: 160px 1fr 1fr;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 14px;
+    border-bottom: 1px dashed var(--color-row-divider);
+  }
+  .doc-emph-row:last-child { border-bottom: none; }
+  .doc-emph-sample {
+    height: 40px;
+    border-radius: 6px;
+    border: 1px solid var(--antd-gray-cool-5);
+    display: flex; align-items: center; padding: 0 12px;
+    font-size: 13px; font-weight: 500;
+    color: var(--antd-gray-cool-12);
+  }
+
+  /* 废弃红榜 */
+  .doc-redlist {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+  .doc-red-card {
+    background: var(--antd-state-error-bg);
+    border: 1px solid var(--antd-state-error-border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .doc-red-card h4 {
+    font-size: 13px; font-weight: 600;
+    color: var(--antd-state-error);
+    margin: 0 0 6px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .doc-red-card h4 .antd-tag-error { font-size: 11px; }
+  .doc-red-card p {
+    font-size: 12.5px; color: var(--antd-gray-cool-10);
+    line-height: 1.65; margin: 0 0 8px;
+  }
+  .doc-red-card pre {
+    margin: 0;
+    background: rgba(255, 77, 79, 0.06);
+    border: 1px dashed var(--antd-state-error-border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: var(--antd-font-family-mono);
+    font-size: 12px;
+    color: var(--antd-state-error);
+    white-space: pre-wrap;
+  }
+
+  /* 空态卡 */
+  .doc-empty {
+    background: #fff;
+    border: 1px dashed var(--antd-gray-cool-6);
+    border-radius: 8px;
+    padding: 32px 24px;
+    text-align: center;
+    color: var(--antd-gray-cool-9);
+  }
+  .doc-empty-ic {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: var(--antd-gray-cool-3);
+    color: var(--antd-gray-cool-7);
+    display: inline-flex; align-items: center; justify-content: center;
+    margin-bottom: 12px;
+    font-size: 24px;
+  }
+  .doc-empty h4 {
+    font-size: 14px; color: var(--antd-gray-cool-12);
+    margin: 0 0 4px; font-weight: 600;
+  }
+  .doc-empty p { font-size: 12.5px; margin: 0 0 14px; }
+
+  /* 间距辅助 */
+  .doc-mt-2 { margin-top: 8px; }
+  .doc-mt-3 { margin-top: 12px; }
+  .doc-mt-4 { margin-top: 16px; }
+</style>
+</head>
+<body>
+<div class="doc-shell">
+
+  <!-- ============ 顶部标题 ============ -->
+  <div class="doc-head">
+    <h1>组件库总览 · 设计↔开发对照手册</h1>
+    <p>本页面是设计 / 研发 / 测试的「组件 ↔ token ↔ 代码片段」三方对照。每个分区给出：组件名 → 视觉演示 → HTML 片段 → 适用场景。所有色值与尺寸均通过 <code>--antd-*</code> 变量驱动，对应 antd v5 ConfigProvider <code>theme.token</code>，禁止写死 hex / px。</p>
+    <div class="doc-head-meta">
+      <span class="antd-tag">v5 · Design System</span>
+      <span class="antd-tag is-orange">Orange · 业务高亮</span>
+      <span class="antd-tag-warning">Warning · 风险告警</span>
+      <span class="antd-tag-success">Success · 成功</span>
+      <span class="antd-tag-error">Error · 失败</span>
+      <span class="antd-tag-default">Default · 中性</span>
+    </div>
+  </div>
+
+  <!-- ============ 01 基础组件 ============ -->
+  <section class="doc-section">
+    <span class="antd-overline">01 · Foundations</span>
+    <h2>基础组件</h2>
+    <p class="doc-section-desc">按钮、输入、标签、表格——业务页里出现频次最高的基础元素。所有 hover / focus / active 通过 CSS 变量驱动，迁移到 antd 组件时 class 名 1:1 复用。</p>
+
+    <!-- 按钮 -->
+    <div class="doc-group">
+      <h3>按钮 / Button <span class="antd-tag">4 变体 × 3 尺寸</span></h3>
+      <div class="doc-demo">
+        <div class="doc-demo-label">变体 · primary / default / ghost / danger</div>
+        <div class="doc-demo-row">
+          <button class="antd-btn antd-btn-primary">主操作</button>
+          <button class="antd-btn">次操作</button>
+          <button class="antd-btn antd-btn-ghost">文字按钮</button>
+          <button class="antd-btn antd-btn-danger">危险操作</button>
+          <button class="antd-btn antd-btn-primary" disabled style="opacity:.5; cursor:not-allowed;">禁用态</button>
+        </div>
+        <div class="doc-demo-label doc-mt-3">尺寸 · sm 24 / md 32 / lg 40</div>
+        <div class="doc-demo-row">
+          <button class="antd-btn antd-btn-primary antd-btn-sm">小号</button>
+          <button class="antd-btn antd-btn-primary">中号</button>
+          <button class="antd-btn antd-btn-primary antd-btn-lg">大号</button>
+        </div>
+      </div>
+<pre class="doc-code"><span class="tk-c">&lt;!-- 4 变体 + 3 尺寸 --&gt;</span>
+&lt;button class=<span class="tk-v">"antd-btn antd-btn-primary"</span>&gt;主操作&lt;/button&gt;
+&lt;button class=<span class="tk-v">"antd-btn"</span>&gt;次操作&lt;/button&gt;
+&lt;button class=<span class="tk-v">"antd-btn antd-btn-ghost"</span>&gt;文字按钮&lt;/button&gt;
+&lt;button class=<span class="tk-v">"antd-btn antd-btn-danger"</span>&gt;危险操作&lt;/button&gt;
+&lt;button class=<span class="tk-v">"antd-btn antd-btn-sm"</span>&gt;小号&lt;/button&gt;
+&lt;button class=<span class="tk-v">"antd-btn antd-btn-lg"</span>&gt;大号&lt;/button&gt;</pre>
+      <p class="doc-usage">适用场景：主操作唯一 1 个 / 页头常用 ghost 文字按钮 / 危险操作只在删除/重置等不可逆场景。</p>
+    </div>
+
+    <!-- 输入框 -->
+    <div class="doc-group">
+      <h3>输入框 / Input <span class="antd-tag-default">4 状态</span></h3>
+      <div class="doc-demo doc-demo-row" style="align-items: flex-start;">
+        <div style="flex:1; min-width:180px;">
+          <div class="doc-demo-label">默认</div>
+          <input class="antd-input" value="浙江壹品慧生活集团" />
+        </div>
+        <div style="flex:1; min-width:180px;">
+          <div class="doc-demo-label">Hover</div>
+          <input class="antd-input" value="hover 状态" style="border-color: var(--color-primary);" />
+        </div>
+        <div style="flex:1; min-width:180px;">
+          <div class="doc-demo-label">Focus</div>
+          <input class="antd-input" value="聚焦态" style="border-color: var(--color-primary); box-shadow: 0 0 0 2px rgba(22,119,255,.1);" />
+        </div>
+        <div style="flex:1; min-width:180px;">
+          <div class="doc-demo-label">Disabled</div>
+          <input class="antd-input" value="不可编辑" disabled style="color: var(--color-text-disabled); background: var(--antd-gray-2); cursor: not-allowed;" />
+        </div>
+      </div>
+<pre class="doc-code"><span class="tk-c">&lt;!-- 高度 32 / radius 6 / focus ring 2px --&gt;</span>
+&lt;input class=<span class="tk-v">"antd-input"</span> placeholder=<span class="tk-v">"请输入"</span> /&gt;</pre>
+      <p class="doc-usage">适用场景：所有表单输入，配合 .antd-form-item 垂直排版；禁用态需保留 value 不可清空。</p>
+    </div>
+
+    <!-- 标签 -->
+    <div class="doc-group">
+      <h3>标签 / Tag &amp; Pill <span class="antd-tag-success">4 + 5</span></h3>
+      <div class="doc-demo">
+        <div class="doc-demo-label">antd-tag · 方角标签 22 高</div>
+        <div class="doc-demo-row">
+          <span class="antd-tag">默认蓝</span>
+          <span class="antd-tag-success">成功</span>
+          <span class="antd-tag-warning">警告</span>
+          <span class="antd-tag-error">错误</span>
+          <span class="antd-tag-default">中性</span>
+        </div>
+        <div class="doc-demo-label doc-mt-3">antd-pill · 圆角胶囊 24 高</div>
+        <div class="doc-demo-row">
+          <span class="antd-pill is-orange">业务高亮</span>
+          <span class="antd-pill is-blue">主信息</span>
+          <span class="antd-pill is-green">已达成</span>
+          <span class="antd-pill is-red">失败 / 阻断</span>
+          <span class="antd-pill is-gray">中性 / 草稿</span>
+        </div>
+      </div>
+<pre class="doc-code"><span class="tk-c">&lt;!-- tag: 方角 22 高 / pill: 圆角 24 高 --&gt;</span>
+&lt;span class=<span class="tk-v">"antd-tag-success"</span>&gt;已发布&lt;/span&gt;
+&lt;span class=<span class="tk-v">"antd-pill is-orange"</span>&gt;Top1&lt;/span&gt;</pre>
+      <p class="doc-usage">适用场景：tag 用于表格内列、卡片角落；pill 用于 Tab 过滤器、空状态描述、统计行内 chip。</p>
+    </div>
+
+    <!-- 表格 -->
+    <div class="doc-group">
+      <h3>表格 / Table <span class="antd-tag-default">4 变体</span></h3>
+      <div class="doc-demo doc-mt-2" style="padding: 16px;">
+        <div class="doc-demo-label">基础 · 默认 hover 高亮</div>
+        <table class="antd-table">
+          <thead><tr><th>客户</th><th>本期收入</th><th class="num">占比</th></tr></thead>
+          <tbody>
+            <tr><td>浙江壹品慧</td><td>¥ 482,300</td><td class="num">37.5%</td></tr>
+            <tr><td>华润物业</td><td>¥ 318,500</td><td class="num">24.8%</td></tr>
+            <tr><td>绿城服务</td><td>¥ 198,400</td><td class="num">15.4%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="doc-demo doc-mt-2" style="padding: 16px;">
+        <div class="doc-demo-label">斑马纹 · antd-table-zebra</div>
+        <table class="antd-table antd-table-zebra">
+          <thead><tr><th>科目</th><th>本期</th><th class="num">同比</th></tr></thead>
+          <tbody>
+            <tr><td>主营业务收入</td><td>¥ 1,284.6 万</td><td class="num antd-text-error">↑ 12.4%</td></tr>
+            <tr><td>销售费用</td><td>¥ 98.4 万</td><td class="num">↓ 2.1%</td></tr>
+            <tr><td>管理费用</td><td>¥ 112.6 万</td><td class="num antd-text-error">↑ 5.3%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="doc-demo doc-mt-2" style="padding: 16px;">
+        <div class="doc-demo-label">紧凑 · antd-table-density-compact</div>
+        <table class="antd-table antd-table-density-compact">
+          <thead><tr><th>日期</th><th>凭证</th><th>摘要</th><th class="num">金额</th></tr></thead>
+          <tbody>
+            <tr><td>08-12</td><td>PZ-2026-0812-03</td><td>收浙江壹品 8 月物业费</td><td class="num">¥ 168,500</td></tr>
+            <tr><td>08-12</td><td>PZ-2026-0812-04</td><td>付 7 月电费</td><td class="num">¥ 32,400</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="doc-demo doc-mt-2" style="padding: 16px;">
+        <div class="doc-demo-label">带边框 · antd-table-bordered</div>
+        <table class="antd-table antd-table-bordered">
+          <thead><tr><th>维度</th><th>金额</th><th class="num">笔数</th></tr></thead>
+          <tbody>
+            <tr><td>销售商品</td><td>¥ 824,300</td><td class="num">128</td></tr>
+            <tr><td>提供服务</td><td>¥ 460,300</td><td class="num">86</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre class="doc-code"><span class="tk-c">&lt;!-- 4 变体：基础 / zebra / compact / bordered --&gt;</span>
+&lt;table class=<span class="tk-v">"antd-table antd-table-zebra"</span>&gt;...&lt;/table&gt;
+&lt;table class=<span class="tk-v">"antd-table antd-table-density-compact"</span>&gt;...&lt;/table&gt;
+&lt;table class=<span class="tk-v">"antd-table antd-table-bordered"</span>&gt;...&lt;/table&gt;</pre>
+      <p class="doc-usage">适用场景：基础用于 5-20 行；斑马纹用于 20+ 行；紧凑用于流水/凭证；带边框用于打印预览与多 sheet 切换。</p>
+    </div>
+  </section>
+
+  <!-- ============ 02 KPI 指标卡 ============ -->
+  <section class="doc-section">
+    <span class="antd-overline">02 · KPI Tiles</span>
+    <h2>KPI 指标卡 · stat-tile</h2>
+    <p class="doc-section-desc">4 色 stat-tile（orange / green / violet / cyan），其中 orange 再叠加 <code>antd-emphasis-warm-strong</code> 演示强橙态；底部 spark 12 段为视觉肌理，非数据走势。</p>
+
+    <div class="doc-demo" style="padding: 18px;">
+      <div class="doc-demo-row" style="align-items: stretch;">
+        <div class="antd-stat-tile is-orange antd-emphasis-warm-strong" style="flex:1; min-width:200px;">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label"><span class="antd-rank-badge is-1">1</span>本月营业收入</span>
+            <span class="antd-stat-tile-icon">¥</span>
+          </div>
+          <div class="antd-stat-tile-value">1,284.6<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-down">↑ 12.4%</span>
+            <span class="antd-text-tertiary antd-fs-sm">同比</span>
+            <div class="antd-stat-tile-spark">
+              <span style="height:30%"></span><span style="height:50%"></span><span style="height:42%"></span><span style="height:60%"></span><span style="height:55%"></span><span style="height:72%"></span><span style="height:68%"></span><span style="height:80%"></span><span style="height:74%"></span><span style="height:88%"></span><span style="height:82%"></span><span style="height:96%"></span>
+            </div>
+          </div>
+        </div>
+        <div class="antd-stat-tile is-green" style="flex:1; min-width:200px;">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label"><span class="antd-rank-badge is-2">2</span>累计毛利</span>
+            <span class="antd-stat-tile-icon">毛</span>
+          </div>
+          <div class="antd-stat-tile-value">462.3<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-down">↑ 8.7%</span>
+            <span class="antd-text-tertiary antd-fs-sm">同比</span>
+            <div class="antd-stat-tile-spark">
+              <span style="height:25%"></span><span style="height:32%"></span><span style="height:40%"></span><span style="height:48%"></span><span style="height:55%"></span><span style="height:60%"></span><span style="height:65%"></span><span style="height:70%"></span><span style="height:74%"></span><span style="height:80%"></span><span style="height:85%"></span><span style="height:92%"></span>
+            </div>
+          </div>
+        </div>
+        <div class="antd-stat-tile is-violet" style="flex:1; min-width:200px;">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">预算完成率</span>
+            <span class="antd-stat-tile-icon">%</span>
+          </div>
+          <div class="antd-stat-tile-value">67.2<span class="unit">%</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-down">↑ 4.1 pp</span>
+            <span class="antd-text-tertiary antd-fs-sm">超计划</span>
+            <div class="antd-stat-tile-spark">
+              <span style="height:20%"></span><span style="height:32%"></span><span style="height:40%"></span><span style="height:48%"></span><span style="height:55%"></span><span style="height:60%"></span><span style="height:65%"></span><span style="height:70%"></span><span style="height:75%"></span><span style="height:80%"></span><span style="height:85%"></span><span style="height:90%"></span>
+            </div>
+          </div>
+        </div>
+        <div class="antd-stat-tile is-cyan" style="flex:1; min-width:200px;">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">应收账款</span>
+            <span class="antd-stat-tile-icon">应</span>
+          </div>
+          <div class="antd-stat-tile-value">358.2<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-up">↑ 5.6%</span>
+            <span class="antd-text-tertiary antd-fs-sm">需关注</span>
+            <div class="antd-stat-tile-spark">
+              <span style="height:55%"></span><span style="height:60%"></span><span style="height:50%"></span><span style="height:65%"></span><span style="height:72%"></span><span style="height:60%"></span><span style="height:78%"></span><span style="height:74%"></span><span style="height:85%"></span><span style="height:80%"></span><span style="height:88%"></span><span style="height:95%"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+<pre class="doc-code"><span class="tk-c">&lt;!-- 4 色 stat-tile · 左侧 3px 色条 + spark --&gt;</span>
+&lt;div class=<span class="tk-v">"antd-stat-tile is-orange antd-emphasis-warm-strong"</span>&gt;
+  &lt;div class=<span class="tk-v">"antd-stat-tile-head"</span>&gt;...&lt;/div&gt;
+  &lt;div class=<span class="tk-v">"antd-stat-tile-value"</span>&gt;1,284.6&lt;span class=<span class="tk-v">"unit"</span>&gt;万&lt;/span&gt;&lt;/div&gt;
+  &lt;div class=<span class="tk-v">"antd-stat-tile-foot"</span>&gt;
+    &lt;span class=<span class="tk-v">"antd-stat-tile-chip is-down"</span>&gt;↑ 12.4%&lt;/span&gt;
+    &lt;div class=<span class="tk-v">"antd-stat-tile-spark"</span>&gt;&lt;span&gt;&lt;/span&gt;× 12&lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;</pre>
+    <p class="doc-usage">适用场景：dashboard Top 5、专题分析首屏；orange 强橙态仅给最关键指标（建议每屏 ≤ 1 个）。</p>
+  </section>
+
+  <!-- ============ 03 数据可视化 ============ -->
+  <section class="doc-section">
+    <span class="antd-overline">03 · Visualization</span>
+    <h2>数据可视化</h2>
+    <p class="doc-section-desc">mini-bar / rank-badge / ring-progress / heatmap——行内轻量可视化组件，覆盖 4 个最常见密度场景。</p>
+
+    <!-- mini-bar -->
+    <div class="doc-group">
+      <h3>mini-bar · 行内进度 <span class="antd-tag-default">4 变体</span></h3>
+      <div class="doc-demo">
+        <div class="doc-demo-row" style="gap:24px;">
+          <div><span class="doc-mini-label">默认蓝</span><div class="antd-mini-bar"><i style="width:72%;"></i></div></div>
+          <div><span class="doc-mini-label">is-orange</span><div class="antd-mini-bar is-orange"><i style="width:58%;"></i></div></div>
+          <div><span class="doc-mini-label">is-green</span><div class="antd-mini-bar is-green"><i style="width:88%;"></i></div></div>
+          <div><span class="doc-mini-label">is-error</span><div class="antd-mini-bar is-error"><i style="width:34%;"></i></div></div>
+        </div>
+        <div class="doc-demo-label doc-mt-3">6 进度档位示例（10% / 30% / 50% / 70% / 90% / 100%）</div>
+        <div class="doc-demo-row" style="gap:24px;">
+          <div class="antd-mini-bar is-orange"><i style="width:10%;"></i></div>
+          <div class="antd-mini-bar is-orange"><i style="width:30%;"></i></div>
+          <div class="antd-mini-bar is-orange"><i style="width:50%;"></i></div>
+          <div class="antd-mini-bar is-orange"><i style="width:70%;"></i></div>
+          <div class="antd-mini-bar is-orange"><i style="width:90%;"></i></div>
+          <div class="antd-mini-bar is-orange"><i style="width:100%;"></i></div>
+        </div>
+      </div>
+<pre class="doc-code"><span class="tk-c">&lt;!-- 宽 96 / 高 6 / pill --&gt;</span>
+&lt;div class=<span class="tk-v">"antd-mini-bar is-orange"</span>&gt;&lt;i style=<span class="tk-v">"width:58%;"</span>&gt;&lt;/i&gt;&lt;/div&gt;</pre>
+      <p class="doc-usage">适用场景：表格行内、列对齐、批量 KPI 对比；不要用于主图（请用 antd Progress 或图表）。</p>
+    </div>
+
+    <!-- rank-badge -->
+    <div class="doc-group">
+      <h3>rank-badge · 排名徽章 <span class="antd-tag-default">1/2/3/其他</span></h3>
+      <div class="doc-demo doc-demo-row" style="gap:18px;">
+        <span class="antd-rank-badge is-1">1</span>
+        <span class="antd-rank-badge is-2">2</span>
+        <span class="antd-rank-badge is-3">3</span>
+        <span class="antd-rank-badge">4</span>
+        <span class="antd-rank-badge">5</span>
+        <span class="antd-rank-badge">10</span>
+      </div>
+<pre class="doc-code"><span class="tk-c">&lt;!-- 22×22 圆角方 / mono 字体 --&gt;</span>
+&lt;span class=<span class="tk-v">"antd-rank-badge is-1"</span>&gt;1&lt;/span&gt;
+&lt;span class=<span class="tk-v">"antd-rank-badge is-2"</span>&gt;2&lt;/span&gt;
+&lt;span class=<span class="tk-v">"antd-rank-badge is-3"</span>&gt;3&lt;/span&gt;
+&lt;span class=<span class="tk-v">"antd-rank-badge"</span>&gt;4&lt;/span&gt; <span class="tk-c">&lt;!-- 4+ 自动灰 --&gt;</span></pre>
+      <p class="doc-usage">适用场景：Top N 列表、排名表格第 1 列；1-3 强制彩色，4+ 灰色保证视觉层级。</p>
+    </div>
+
+    <!-- ring-progress -->
+    <div class="doc-group">
+      <h3>ring-progress · 环形进度 <span class="antd-tag-default">3 色 + 中心 0~100%</span></h3>
+      <div class="doc-demo doc-demo-row" style="gap:28px;">
+        <div class="antd-ring-progress is-blue"   style="--pct: 67.2; --size: 88px;"><span>67%</span></div>
+        <div class="antd-ring-progress is-orange" style="--pct: 42.0; --size: 88px;"><span>42%</span></div>
+        <div class="antd-ring-progress is-green"  style="--pct: 88.5; --size: 88px;"><span>89%</span></div>
+        <div class="antd-ring-progress is-blue"   style="--pct: 12.0; --size: 88px;"><span>12%</span></div>
+      </div>
+<pre class="doc-code"><span class="tk-c">&lt;!-- 变量 --pct 驱动，conic-gradient 实现 --&gt;</span>
+&lt;div class=<span class="tk-v">"antd-ring-progress is-blue"</span> style=<span class="tk-v">"--pct:67.2;--size:88px;"</span>&gt;
+  &lt;span&gt;67%&lt;/span&gt;
+&lt;/div&gt;</pre>
+      <p class="doc-usage">适用场景：预算完成率、目标达成率、风险覆盖率；中心数字必须保留 1 位小数或 %。</p>
+    </div>
+
+    <!-- heatmap -->
+    <div class="doc-group">
+      <h3>heatmap · 月度热力网格 <span class="antd-tag-default">5×12</span></h3>
+      <div class="doc-demo">
+        <div class="doc-demo-label">5 行（业务线） × 12 列（1~12 月）</div>
+        <div class="antd-heatmap" style="grid-template-columns: 32px repeat(12, 1fr); gap: 3px;">
+          <div></div>
+          <div class="antd-text-tertiary" style="font-size:11px; text-align:center;">1</div>
+          <div class="antd-text-tertiary" style="font-size:11px; text-align:center;">2</div>
+          <div class="antd-text-tertiary" style="font-size:11px; text-align:center;">3</div>
+          <div class="antd-text-tertiary" style="font-size:11px; text-align:center;">4</div>
+          <div class="antd-text-tertiary" style="font-size:11px; text-align:center;">5</div>
+          <div class="antd-text-tertiary" style="font-size:11px; text-align:center;">6</div>
+          <div class="antd-text-tertiary" style="font-size:11px; text-align:center;">7</div>
+          <div class="antd-text-tertiary" style="font-size:11px; text-align:center;">8</div>
+          <div class="antd-text-tertiary" style="font-size:11px; text-align:center;">9</div>
+          <div class="antd-text-tertiary" style="font-size:11px; text-align:center;">10</div>
+          <div class="antd-text-tertiary" style="font-size:11px; text-align:center;">11</div>
+          <div class="antd-text-tertiary" style="font-size:11px; text-align:center;">12</div>
+
+          <div class="antd-text-tertiary" style="font-size:11px;">销售</div>
+          <div class="antd-heatmap-cell lv-1"></div><div class="antd-heatmap-cell lv-2"></div><div class="antd-heatmap-cell lv-2"></div><div class="antd-heatmap-cell lv-3"></div><div class="antd-heatmap-cell lv-3"></div><div class="antd-heatmap-cell lv-4"></div><div class="antd-heatmap-cell lv-4"></div><div class="antd-heatmap-cell lv-5"></div><div class="antd-heatmap-cell lv-4"></div><div class="antd-heatmap-cell lv-5"></div><div class="antd-heatmap-cell lv-5"></div><div class="antd-heatmap-cell lv-5"></div>
+
+          <div class="antd-text-tertiary" style="font-size:11px;">服务</div>
+          <div class="antd-heatmap-cell lv-2"></div><div class="antd-heatmap-cell lv-2"></div><div class="antd-heatmap-cell lv-3"></div><div class="antd-heatmap-cell lv-3"></div><div class="antd-heatmap-cell lv-3"></div><div class="antd-heatmap-cell lv-3"></div><div class="antd-heatmap-cell lv-4"></div><div class="antd-heatmap-cell lv-4"></div><div class="antd-heatmap-cell lv-4"></div><div class="antd-heatmap-cell lv-4"></div><div class="antd-heatmap-cell lv-5"></div><div class="antd-heatmap-cell lv-5"></div>
+
+          <div class="antd-text-tertiary" style="font-size:11px;">租赁</div>
+          <div class="antd-heatmap-cell lv-1"></div><div class="antd-heatmap-cell lv-1"></div><div class="antd-heatmap-cell lv-2"></div><div class="antd-heatmap-cell lv-2"></div><div class="antd-heatmap-cell lv-2"></div><div class="antd-heatmap-cell lv-3"></div><div class="antd-heatmap-cell lv-3"></div><div class="antd-heatmap-cell lv-3"></div><div class="antd-heatmap-cell lv-4"></div><div class="antd-heatmap-cell lv-4"></div><div class="antd-heatmap-cell lv-4"></div><div class="antd-heatmap-cell lv-4"></div>
+
+          <div class="antd-text-tertiary" style="font-size:11px;">咨询</div>
+          <div class="antd-heatmap-cell"></div><div class="antd-heatmap-cell lv-1"></div><div class="antd-heatmap-cell lv-1"></div><div class="antd-heatmap-cell lv-2"></div><div class="antd-heatmap-cell lv-2"></div><div class="antd-heatmap-cell lv-2"></div><div class="antd-heatmap-cell lv-3"></div><div class="antd-heatmap-cell lv-3"></div><div class="antd-heatmap-cell lv-3"></div><div class="antd-heatmap-cell lv-3"></div><div class="antd-heatmap-cell lv-4"></div><div class="antd-heatmap-cell lv-4"></div>
+
+          <div class="antd-text-tertiary" style="font-size:11px;">其他</div>
+          <div class="antd-heatmap-cell"></div><div class="antd-heatmap-cell"></div><div class="antd-heatmap-cell lv-1"></div><div class="antd-heatmap-cell lv-1"></div><div class="antd-heatmap-cell lv-1"></div><div class="antd-heatmap-cell lv-2"></div><div class="antd-heatmap-cell lv-2"></div><div class="antd-heatmap-cell lv-2"></div><div class="antd-heatmap-cell lv-2"></div><div class="antd-heatmap-cell lv-3"></div><div class="antd-heatmap-cell lv-3"></div><div class="antd-heatmap-cell lv-3"></div>
+        </div>
+      </div>
+<pre class="doc-code"><span class="tk-c">&lt;!-- 12 列 grid / lv-1 浅 → lv-5 深 --&gt;</span>
+&lt;div class=<span class="tk-v">"antd-heatmap"</span>&gt;
+  &lt;div class=<span class="tk-v">"antd-heatmap-cell lv-1"</span>&gt;&lt;/div&gt; &lt;span class="tk-c">×60&lt;/span&gt;
+&lt;/div&gt;</pre>
+      <p class="doc-usage">适用场景：业务线 × 月份 强度矩阵；5 档位够用，禁止扩展到 7+ 档（视觉过密）。</p>
+    </div>
+  </section>
+
+  <!-- ============ 04 状态标识 ============ -->
+  <section class="doc-section">
+    <span class="antd-overline">04 · Status</span>
+    <h2>状态标识</h2>
+    <p class="doc-section-desc">pill 5 色 + 数据时效条 + 状态点 + 空态 / loading 骨架——状态表达必须用 token，不允许自定义颜色。</p>
+
+    <div class="doc-group">
+      <h3>pill 5 色</h3>
+      <div class="doc-demo doc-demo-row">
+        <span class="antd-pill is-orange">is-orange · 业务高亮</span>
+        <span class="antd-pill is-blue">is-blue · 主信息</span>
+        <span class="antd-pill is-green">is-green · 已达成</span>
+        <span class="antd-pill is-red">is-red · 失败 / 阻断</span>
+        <span class="antd-pill is-gray">is-gray · 草稿 / 中性</span>
+      </div>
+<pre class="doc-code"><span class="tk-c">&lt;!-- 5 色 pill / 24 高 / radius-full --&gt;</span>
+&lt;span class=<span class="tk-v">"antd-pill is-orange"</span>&gt;生成中&lt;/span&gt;</pre>
+      <p class="doc-usage">适用场景：表格状态列、过滤器 chip、列表状态；5 色覆盖全部业务语境，不要发明新色。</p>
+    </div>
+
+    <div class="doc-group">
+      <h3>stale-bar · 数据时效条</h3>
+      <div class="doc-demo" style="background: linear-gradient(90deg, var(--antd-orange-50) 0%, transparent 100%);">
+        <div class="antd-stale-bar" style="background: transparent; border: 1px solid var(--antd-orange-100);">
+          <span class="dot"></span>
+          <span class="antd-fw-600">数据更新于 8 分钟前</span>
+          <span class="text-secondary">下一批次同步：今日 18:00 · 已完成 92% 采集</span>
+        </div>
+      </div>
+<pre class="doc-code"><span class="tk-c">&lt;!-- orange-50 → transparent 渐变 + pulse 圆点 --&gt;</span>
+&lt;div class=<span class="tk-v">"antd-stale-bar"</span>&gt;
+  &lt;span class=<span class="tk-v">"dot"</span>&gt;&lt;/span&gt;
+  &lt;span class=<span class="tk-v">"antd-fw-600"</span>&gt;数据更新于 8 分钟前&lt;/span&gt;
+&lt;/div&gt;</pre>
+      <p class="doc-usage">适用场景：dashboard 顶部、数据导入页、报告列表顶部；只用于「数据非实时」的提示，不允许用于一般通知。</p>
+    </div>
+
+    <div class="doc-group">
+      <h3>status dot · 4 色状态点</h3>
+      <div class="doc-demo doc-demo-row" style="gap: 32px;">
+        <div class="antd-flex" style="gap:6px;"><span class="doc-dot is-blue"></span><span class="antd-fs-sm">进行中</span></div>
+        <div class="antd-flex" style="gap:6px;"><span class="doc-dot is-green"></span><span class="antd-fs-sm">已完成</span></div>
+        <div class="antd-flex" style="gap:6px;"><span class="doc-dot is-orange"></span><span class="antd-fs-sm">警告</span></div>
+        <div class="antd-flex" style="gap:6px;"><span class="doc-dot is-red"></span><span class="antd-fs-sm">失败</span></div>
+        <div class="antd-flex" style="gap:6px;"><span class="doc-dot is-gray"></span><span class="antd-fs-sm">未开始</span></div>
+        <div class="antd-flex" style="gap:6px;"><span class="doc-dot is-processing"></span><span class="antd-fs-sm">实时处理中</span></div>
+      </div>
+<pre class="doc-code"><span class="tk-c">&lt;!-- 8×8 圆点 / pulse 关键帧 --&gt;</span>
+&lt;span class=<span class="tk-v">"doc-dot is-processing"</span>&gt;&lt;/span&gt; <span class="tk-c">实时处理中</span></pre>
+      <p class="doc-usage">适用场景：行内标记、活动流；processing 必须配 pulse 动画，静态点不允许冒充实时。</p>
+    </div>
+
+    <div class="doc-group">
+      <h3>loading · 加载圆环</h3>
+      <div class="doc-demo doc-demo-row" style="gap: 24px;">
+        <div class="antd-flex" style="gap:8px;"><div class="doc-spinner"></div><span class="antd-fs-sm antd-text-secondary">主色加载</span></div>
+        <div class="antd-flex" style="gap:8px;"><div class="doc-spinner is-orange"></div><span class="antd-fs-sm antd-text-secondary">强调橙加载</span></div>
+      </div>
+<pre class="doc-code"><span class="tk-c">&lt;!-- 0.8s linear 旋转 --&gt;</span>
+&lt;div class=<span class="tk-v">"doc-spinner is-orange"</span>&gt;&lt;/div&gt;</pre>
+      <p class="doc-usage">适用场景：按钮内 inline loading、卡片 loading 状态、全屏遮罩内部元素；不要用 4 个圆点跳动代替 spinner。</p>
+    </div>
+  </section>
+
+  <!-- ============ 05 强调层级 ============ -->
+  <section class="doc-section">
+    <span class="antd-overline">05 · Emphasis</span>
+    <h2>强调层级</h2>
+    <p class="doc-section-desc">emphasis-warm / emphasis-warm-strong / emphasis-orange / emphasis-orange-strong / tag-orange——4 个强调工具类与 1 个 tag 变体。</p>
+
+    <div class="doc-group">
+      <div class="doc-emph-row">
+        <div>
+          <div class="antd-fw-600" style="color:var(--antd-gray-cool-12);">emphasis-warm</div>
+          <div class="antd-fs-sm antd-text-tertiary" style="margin-top:2px;">淡橙背景渐变</div>
+        </div>
+        <div class="doc-emph-sample antd-emphasis-warm">背景：orange-50 → #fff</div>
+        <div class="doc-emph-sample antd-emphasis-warm" style="font-weight:600;">卡片背景用</div>
+      </div>
+      <div class="doc-emph-row">
+        <div>
+          <div class="antd-fw-600" style="color:var(--antd-gray-cool-12);">emphasis-warm-strong</div>
+          <div class="antd-fs-sm antd-text-tertiary" style="margin-top:2px;">橙边 + 橙底渐变</div>
+        </div>
+        <div class="doc-emph-sample antd-emphasis-warm-strong" style="border:1px solid var(--antd-orange-300);">强橙态：橙色边 + 渐变底</div>
+        <div class="doc-emph-sample antd-emphasis-warm-strong" style="border:1px solid var(--antd-orange-300); font-weight:600;">Top KPI 卡用</div>
+      </div>
+      <div class="doc-emph-row">
+        <div>
+          <div class="antd-fw-600" style="color:var(--antd-gray-cool-12);">emphasis-orange</div>
+          <div class="antd-fs-sm antd-text-tertiary" style="margin-top:2px;">文字强调橙</div>
+        </div>
+        <div><span class="antd-emphasis-orange">正数 / 关键文字 / Top1 标题</span></div>
+        <div><span class="antd-emphasis-orange" style="font-size:18px;">24.8%</span></div>
+      </div>
+      <div class="doc-emph-row">
+        <div>
+          <div class="antd-fw-600" style="color:var(--antd-gray-cool-12);">emphasis-orange-strong</div>
+          <div class="antd-fs-sm antd-text-tertiary" style="margin-top:2px;">深橙文字</div>
+        </div>
+        <div><span class="antd-emphasis-orange-strong">金额大数字 / 数字 KPI 强调</span></div>
+        <div><span class="antd-emphasis-orange-strong" style="font-size:18px;">¥ 1,284.6 万</span></div>
+      </div>
+    </div>
+
+    <div class="doc-group">
+      <h3>tag-orange · 完整示例</h3>
+      <div class="doc-demo doc-demo-row">
+        <span class="antd-tag-orange">生成中</span>
+        <span class="antd-tag-orange">部分成功</span>
+        <span class="antd-tag-orange">新业务线</span>
+        <span class="antd-tag-orange">专题报告</span>
+        <span class="antd-tag-orange">预算 67%</span>
+      </div>
+<pre class="doc-code"><span class="tk-c">&lt;!-- 22 高 / orange-50 底 / orange-600 字 --&gt;</span>
+&lt;span class=<span class="tk-v">"antd-tag-orange"</span>&gt;生成中&lt;/span&gt;</pre>
+      <p class="doc-usage">适用场景：4 个强调工具类全部用于「重点 KPI / Top1 / 关键金额」；tag-orange 替代旧版「warning 黄」，避免语义混淆。</p>
+    </div>
+  </section>
+
+  <!-- ============ 06 骨架与加载 ============ -->
+  <section class="doc-section">
+    <span class="antd-overline">06 · Skeleton &amp; Empty</span>
+    <h2>骨架与加载</h2>
+    <p class="doc-section-desc">3 行 skeleton（不同长度）+ loading spinner 圆环 + 1 个空状态卡（图标 + 文案 + 主按钮）。</p>
+
+    <div class="doc-group">
+      <h3>skeleton 骨架</h3>
+      <div class="doc-demo">
+        <div class="antd-skeleton" style="width: 60%; height: 18px; margin-bottom: 12px;"></div>
+        <div class="antd-skeleton" style="width: 88%; height: 14px; margin-bottom: 8px;"></div>
+        <div class="antd-skeleton" style="width: 44%; height: 14px;"></div>
+      </div>
+<pre class="doc-code"><span class="tk-c">&lt;!-- 1.4s skel 关键帧 / gradient sweep --&gt;</span>
+&lt;div class=<span class="tk-v">"antd-skeleton"</span> style=<span class="tk-v">"width:60%;height:18px;"</span>&gt;&lt;/div&gt;</pre>
+      <p class="doc-usage">适用场景：列表 / 卡片 / 表格首屏加载占位；不要让 skeleton 闪超过 4s，否则视为性能问题。</p>
+    </div>
+
+    <div class="doc-group">
+      <h3>loading spinner · 32px 圆环</h3>
+      <div class="doc-demo" style="display:flex; align-items:center; gap:24px;">
+        <div class="doc-spinner"></div>
+        <span class="antd-text-secondary antd-fs-sm">数据加载中…</span>
+      </div>
+      <p class="doc-usage">配合 skeleton 使用：先出 skeleton 占位 → 真实数据就绪后 spinner 渐隐。禁止两者同时长时间并存。</p>
+    </div>
+
+    <div class="doc-group">
+      <h3>empty · 空状态卡</h3>
+      <div class="doc-demo" style="background: #fff;">
+        <div class="doc-empty">
+          <div class="doc-empty-ic">∅</div>
+          <h4>暂无 8 月数据</h4>
+          <p>请先完成数据导入，或调整筛选时间范围。</p>
+          <button class="antd-btn antd-btn-primary">前往数据导入</button>
+        </div>
+      </div>
+<pre class="doc-code"><span class="tk-c">&lt;!-- 虚线边框 + 居中 + 主按钮 --&gt;</span>
+&lt;div class=<span class="tk-v">"doc-empty"</span>&gt;
+  &lt;div class=<span class="tk-v">"doc-empty-ic"</span>&gt;∅&lt;/div&gt;
+  &lt;h4&gt;暂无数据&lt;/h4&gt;
+  &lt;button class=<span class="tk-v">"antd-btn antd-btn-primary"</span>&gt;前往导入&lt;/button&gt;
+&lt;/div&gt;</pre>
+      <p class="doc-usage">适用场景：所有查询结果为 0 的列表 / 卡片 / 表格；必须给主操作出口，避免死路。</p>
+    </div>
+  </section>
+
+  <!-- ============ 07 已废弃 / 不要使用（红榜） ============ -->
+  <section class="doc-section">
+    <span class="antd-overline">07 · Don't</span>
+    <h2>已废弃 / 不要使用 · 红榜</h2>
+    <p class="doc-section-desc">以下 4 类用法在设计库迭代中已废弃。设计交付时如果出现，请打回。</p>
+
+    <div class="doc-redlist">
+      <div class="doc-red-card">
+        <h4>① 自定义色按钮 <span class="antd-tag-error">已废弃</span></h4>
+        <p>业务方曾要求把「重点客户」按钮染成紫色 / 绿色——紫色不在主色板，绿色是 success 状态色，混用造成语义混乱。统一改用 <code>.antd-btn-primary</code> + <code>antd-emphasis-warm-strong</code> 承载重点。</p>
+<pre>/* 反例 · 禁止 */
+.antd-btn-blue { background: #722ed1; }
+.antd-btn-purple { background: #13c2c2; }
+/* 正例 */
+&lt;button class="antd-btn-primary"&gt;重点客户&lt;/button&gt;</pre>
+      </div>
+
+      <div class="doc-red-card">
+        <h4>② 老版 kpi-card <span class="antd-tag-error">已废弃</span></h4>
+        <p>老项目用 <code>.kpi-card</code> + <code>.kpi-success/.kpi-warning/.kpi-error/.kpi-info</code> 4 个修饰符。色条硬编码无 token 体系。新版用 <code>.antd-stat-tile</code> + 4 色 is-*，左侧 3px 色条 + spark + chip。</p>
+<pre>/* 反例 */
+.kpi-card.kpi-warning { ... }
+/* 正例 */
+&lt;div class="antd-stat-tile is-cyan"&gt;...&lt;/div&gt;</pre>
+      </div>
+
+      <div class="doc-red-card">
+        <h4>③ 未经强调的弱 KPI 标数 <span class="antd-tag-error">已废弃</span></h4>
+        <p>老设计里 KPI 数字直接用 antd-kpi-value 28px 但无 spark / chip / 趋势 — 与表格数字无法区分。强 KPI 必须用 <code>.antd-stat-tile</code>；表格内数字继续用 <code>.antd-kpi-value</code>。</p>
+<pre>/* 反例 */
+&lt;div class="antd-kpi-value"&gt;1,284.6&lt;/div&gt;
+&lt;!-- 无 spark / 无 chip / 无 is-orange 修饰 --&gt;
+/* 正例 */
+&lt;div class="antd-stat-tile is-orange"&gt;...&lt;/div&gt;</pre>
+      </div>
+
+      <div class="doc-red-card">
+        <h4>④ 直接写死 rgba / hex <span class="antd-tag-error">已废弃</span></h4>
+        <p>任何颜色 / 字号 / 间距必须走 token。直接写 <code>#1677ff</code> 或 <code>rgba(22,119,255,.1)</code> 会让主题切换失效。统一替换为 <code>var(--color-primary)</code> / <code>var(--antd-brand-50)</code> 等。</p>
+<pre>/* 反例 */
+.card { background: #f0f7ff; }
+.dot  { box-shadow: 0 0 0 4px rgba(250,140,22,.12); }
+/* 正例 */
+.card { background: var(--antd-brand-50); }
+.dot  { box-shadow: 0 0 0 4px var(--antd-orange-bg); }</pre>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

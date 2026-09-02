@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>运营费用分析 · 财年经营数据分析平台</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; }
+
+  /* shell side */
+  .shell-side { background: #001529; color: rgba(255, 255, 255, 0.85); display: flex; flex-direction: column; }
+  .shell-side-logo { height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); color: #fff; }
+  .shell-side-logo-mark { width: 32px; height: 32px; background: var(--color-primary); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 16px; }
+  .shell-side-logo-text { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
+  .shell-side-nav { padding: 12px 0; flex: 1; overflow-y: auto; }
+  .shell-nav-group-title { padding: 12px 28px 8px; color: rgba(255, 255, 255, 0.35); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .shell-nav-item { display: flex; align-items: center; gap: 12px; padding: 0 20px; height: 40px; color: rgba(255, 255, 255, 0.75); cursor: pointer; transition: all 0.2s; border-left: 3px solid transparent; font-size: 14px; text-decoration: none; }
+  .shell-nav-item:hover { color: #fff; background: rgba(255, 255, 255, 0.04); }
+  .shell-nav-item.is-active { background: var(--color-primary); color: #fff; border-left-color: #fff; }
+  .shell-nav-ic { width: 18px; flex-shrink: 0; color: rgba(255, 255, 255, 0.55); }
+  .shell-nav-item:hover .shell-nav-ic { color: #fff; }
+
+  .shell-header { background: #fff; border-bottom: 1px solid var(--antd-gray-3); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .shell-header-r { display: flex; align-items: center; gap: 16px; }
+  .period-pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; background: var(--antd-gray-2); border-radius: var(--radius-medium); color: var(--color-foreground); font-size: 13px; cursor: pointer; }
+  .period-pill:hover { background: var(--antd-gray-3); }
+  .user-chip { display: flex; align-items: center; gap: 10px; padding: 4px 10px 4px 4px; border-radius: 20px; cursor: pointer; }
+  .user-chip:hover { background: var(--antd-gray-2); }
+  .user-chip-name { font-size: 13px; font-weight: 500; }
+  .user-chip-role { font-size: 11px; color: var(--color-text-tertiary); }
+
+  /* 6 列 KPI */
+  .kpi-row-6 { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 16px; }
+
+  /* 堆叠柱图 */
+  .stack-chart { width: 100%; height: 320px; }
+  .stack-grid line { stroke: var(--antd-gray-3); stroke-width: 1; stroke-dasharray: 2 2; }
+  .stack-axis text { font-size: 11px; fill: var(--color-text-tertiary); }
+  .stack-legend { display: flex; gap: 16px; font-size: 12px; color: var(--color-text-secondary); flex-wrap: wrap; }
+  .stack-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .stack-legend .dot { width: 10px; height: 10px; border-radius: 2px; }
+
+  /* 6 段堆叠柱段色 */
+  .seg-1 { fill: #1677ff; }
+  .seg-2 { fill: #13c2c2; }
+  .seg-3 { fill: #722ed1; }
+  .seg-4 { fill: #fa8c16; }
+  .seg-5 { fill: #eb2f96; }
+  .seg-6 { fill: #52c41a; }
+
+  /* 同环比对比表 */
+  .compare-table { width: 100%; border-collapse: collapse; }
+  .compare-table th {
+    text-align: left; padding: 10px 14px; font-weight: 500;
+    color: var(--color-foreground); background: var(--antd-gray-2);
+    border-bottom: 1px solid var(--antd-gray-3);
+    font-size: 12px; white-space: nowrap;
+  }
+  .compare-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--antd-gray-3);
+    font-size: 13px;
+    vertical-align: middle;
+  }
+  .compare-table.table-zebra tbody tr:nth-child(even) td { background: var(--antd-gray-1); }
+  .compare-table tr:hover td { background: var(--antd-brand-50); }
+  .compare-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .compare-table .center { text-align: center; }
+  .compare-table.density-compact th,
+  .compare-table.density-compact td { padding: 6px 12px; font-size: 12px; }
+
+  .delta-up { color: var(--antd-state-error); font-weight: 500; }
+  .delta-down { color: var(--antd-state-success); font-weight: 500; }
+  .delta-flat { color: var(--color-text-tertiary); }
+
+  /* 占比迷你条 */
+  .share-bar { width: 80px; height: 6px; background: var(--antd-gray-3); border-radius: 3px; overflow: hidden; display: inline-block; vertical-align: middle; margin-right: 8px; }
+  .share-bar > span { display: block; height: 100%; background: var(--color-primary); }
+
+  /* 卡片 */
+  .card { background: #fff; border: 1px solid var(--antd-gray-3); border-radius: var(--radius-large); padding: 20px; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .card-head h3 { font-size: 16px; font-weight: 600; margin: 0; }
+  .card-head h3 .badge { font-size: 12px; font-weight: 400; color: var(--color-text-tertiary); margin-left: 8px; }
+</style>
+</head>
+<body>
+<div class="antd-page">
+  <aside class="shell-side" style="grid-column: 1;">
+    <div class="shell-side-logo">
+      <div class="shell-side-logo-mark">J</div>
+      <div class="shell-side-logo-text">经营分析平台</div>
+    </div>
+    <nav class="shell-side-nav">
+      <div class="shell-nav-group-title">主数据</div>
+      <a class="shell-nav-item is-active" href="dashboard.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        首页看板
+      </a>
+      <a class="shell-nav-item" href="dashboard-analysis-keymetrics.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+        经营分析
+      </a>
+      <a class="shell-nav-item" href="indicators-operating.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+        财务指标
+      </a>
+      <a class="shell-nav-item" href="transactions-overview.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+        往来分析
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        存货管理
+      </a>
+      <a class="shell-nav-item" href="reports-list.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+        分析报告
+      </a>
+
+      <div class="shell-nav-group-title">业务工具</div>
+      <a class="shell-nav-item" href="enterprise-lookup.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        企业信息查询
+      </a>
+
+      <div class="shell-nav-group-title">数据管理</div>
+      <a class="shell-nav-item" href="data-import.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        数据导入
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h12"/></svg>
+        重分类管理
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        维度管理
+      </a>
+
+      <div class="shell-nav-group-title">系统</div>
+      <a class="shell-nav-item" href="admin-users.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><circle cx="17" cy="7" r="3"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
+        用户管理
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+        角色权限
+      </a>
+    </nav>
+  </aside>
+
+  <main class="antd-content">
+    <header class="shell-header">
+      <div>
+        <div class="antd-breadcrumb">
+          <span>首页</span>
+          <span class="sep">/</span>
+          <span>经营分析</span>
+          <span class="sep">/</span>
+          <span class="current">运营费用</span>
+        </div>
+      </div>
+      <div class="shell-header-r">
+        <div class="antd-select" style="min-width: 160px;">浙江壹品慧生活集团</div>
+        <div class="period-pill">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          2026 财年 · 8月
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <button class="antd-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          刷新
+        </button>
+        <div class="user-chip">
+          <div class="antd-avatar" style="background: var(--antd-brand-100); color: var(--color-primary);">张</div>
+          <div>
+            <div class="user-chip-name">张伟</div>
+            <div class="user-chip-role">财务总监</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="antd-content-body">
+      <!-- PageHead -->
+      <div class="antd-page-head" style="margin-bottom: var(--antd-space-5);">
+        <div>
+          <div class="antd-overline">经营分析 / 运营费用</div>
+          <h1 class="antd-page-head-title">运营费用分析</h1>
+          <div class="antd-page-head-desc">6 类运营费用结构、同环比变化与月度堆叠趋势 · 当期 2026-08</div>
+        </div>
+        <div class="antd-page-head-actions">
+          <button class="antd-btn antd-btn-default">导出明细</button>
+          <button class="antd-btn antd-btn-primary">费用归因</button>
+        </div>
+      </div>
+
+      <!-- 6 类费用 stat-tile 行（Top1 is-orange + emphasis-warm-strong） -->
+      <div class="kpi-row-6">
+        <div class="antd-stat-tile is-orange antd-emphasis-warm-strong">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label"><span class="antd-rank-badge is-1">1</span>人力成本 · Top</span>
+            <span class="antd-stat-tile-icon">人</span>
+          </div>
+          <div class="antd-stat-tile-value">126.8<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-down">↑ 9.2%</span>
+            <span class="antd-text-tertiary antd-fs-sm">同比</span>
+            <div class="antd-stat-tile-spark">
+              <span style="height:50%"></span><span style="height:55%"></span><span style="height:58%"></span><span style="height:62%"></span><span style="height:65%"></span><span style="height:68%"></span><span style="height:72%"></span><span style="height:75%"></span><span style="height:78%"></span><span style="height:82%"></span><span style="height:85%"></span><span style="height:90%"></span>
+            </div>
+          </div>
+        </div>
+        <div class="antd-stat-tile is-cyan">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label"><span class="antd-rank-badge is-2">2</span>办公费用</span>
+            <span class="antd-stat-tile-icon">办</span>
+          </div>
+          <div class="antd-stat-tile-value">38.4<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-flat">→ 0.8%</span>
+            <span class="antd-text-tertiary antd-fs-sm">同比</span>
+            <div class="antd-stat-tile-spark">
+              <span style="height:42%"></span><span style="height:45%"></span><span style="height:48%"></span><span style="height:46%"></span><span style="height:50%"></span><span style="height:48%"></span><span style="height:52%"></span><span style="height:50%"></span><span style="height:54%"></span><span style="height:52%"></span><span style="height:55%"></span><span style="height:54%"></span>
+            </div>
+          </div>
+        </div>
+        <div class="antd-stat-tile is-violet">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label"><span class="antd-rank-badge is-3">3</span>差旅费用</span>
+            <span class="antd-stat-tile-icon">差</span>
+          </div>
+          <div class="antd-stat-tile-value">32.6<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-up">↑ 14.5%</span>
+            <span class="antd-text-tertiary antd-fs-sm">同比</span>
+            <div class="antd-stat-tile-spark">
+              <span style="height:30%"></span><span style="height:35%"></span><span style="height:40%"></span><span style="height:45%"></span><span style="height:50%"></span><span style="height:55%"></span><span style="height:60%"></span><span style="height:65%"></span><span style="height:68%"></span><span style="height:72%"></span><span style="height:78%"></span><span style="height:82%"></span>
+            </div>
+          </div>
+        </div>
+        <div class="antd-stat-tile is-green">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label"><span class="antd-rank-badge is-4">4</span>营销费用</span>
+            <span class="antd-stat-tile-icon">营</span>
+          </div>
+          <div class="antd-stat-tile-value">28.9<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-down">↓ 6.3%</span>
+            <span class="antd-text-tertiary antd-fs-sm">同比</span>
+            <div class="antd-stat-tile-spark">
+              <span style="height:70%"></span><span style="height:65%"></span><span style="height:60%"></span><span style="height:55%"></span><span style="height:58%"></span><span style="height:52%"></span><span style="height:48%"></span><span style="height:45%"></span><span style="height:42%"></span><span style="height:40%"></span><span style="height:38%"></span><span style="height:36%"></span>
+            </div>
+          </div>
+        </div>
+        <div class="antd-stat-tile">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label"><span class="antd-rank-badge is-5">5</span>研发费用</span>
+            <span class="antd-stat-tile-icon">研</span>
+          </div>
+          <div class="antd-stat-tile-value">42.1<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-down">↑ 4.7%</span>
+            <span class="antd-text-tertiary antd-fs-sm">同比</span>
+            <div class="antd-stat-tile-spark">
+              <span style="height:38%"></span><span style="height:42%"></span><span style="height:45%"></span><span style="height:48%"></span><span style="height:52%"></span><span style="height:55%"></span><span style="height:58%"></span><span style="height:60%"></span><span style="height:62%"></span><span style="height:65%"></span><span style="height:68%"></span><span style="height:72%"></span>
+            </div>
+          </div>
+        </div>
+        <div class="antd-stat-tile">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label"><span class="antd-rank-badge is-6">6</span>其他费用</span>
+            <span class="antd-stat-tile-icon">其</span>
+          </div>
+          <div class="antd-stat-tile-value">17.7<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-flat">→ 0.4%</span>
+            <span class="antd-text-tertiary antd-fs-sm">同比</span>
+            <div class="antd-stat-tile-spark">
+              <span style="height:48%"></span><span style="height:50%"></span><span style="height:46%"></span><span style="height:52%"></span><span style="height:48%"></span><span style="height:54%"></span><span style="height:50%"></span><span style="height:48%"></span><span style="height:52%"></span><span style="height:50%"></span><span style="height:48%"></span><span style="height:50%"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 6 类费用月度堆叠柱 -->
+      <div class="card" style="margin-bottom: 16px;">
+        <div class="card-head">
+          <h3>6 类费用月度堆叠<span class="badge">近 12 个月</span></h3>
+          <div class="stack-legend">
+            <span><span class="dot seg-1"></span>人力成本</span>
+            <span><span class="dot seg-2"></span>办公费用</span>
+            <span><span class="dot seg-3"></span>差旅费用</span>
+            <span><span class="dot seg-4"></span>营销费用</span>
+            <span><span class="dot seg-5"></span>研发费用</span>
+            <span><span class="dot seg-6"></span>其他费用</span>
+          </div>
+        </div>
+        <svg class="stack-chart" viewBox="0 0 800 320" preserveAspectRatio="none">
+          <g class="stack-grid">
+            <line x1="50" y1="40" x2="800" y2="40"/>
+            <line x1="50" y1="110" x2="800" y2="110"/>
+            <line x1="50" y1="180" x2="800" y2="180"/>
+            <line x1="50" y1="250" x2="800" y2="250"/>
+          </g>
+          <g class="stack-axis">
+            <text x="10" y="44">300</text>
+            <text x="10" y="114">200</text>
+            <text x="10" y="184">100</text>
+            <text x="10" y="254">0</text>
+            <text x="80" y="300">9月</text>
+            <text x="140" y="300">10月</text>
+            <text x="200" y="300">11月</text>
+            <text x="260" y="300">12月</text>
+            <text x="320" y="300">1月</text>
+            <text x="380" y="300">2月</text>
+            <text x="440" y="300">3月</text>
+            <text x="500" y="300">4月</text>
+            <text x="560" y="300">5月</text>
+            <text x="620" y="300">6月</text>
+            <text x="680" y="300">7月</text>
+            <text x="740" y="300">8月</text>
+          </g>
+          <!-- 月度堆叠柱（每根柱分 6 段） -->
+          <g>
+            <!-- 9月: 总 230 -->
+            <rect class="seg-1" x="72" y="155" width="16" height="95"/>
+            <rect class="seg-2" x="72" y="135" width="16" height="20"/>
+            <rect class="seg-3" x="72" y="120" width="16" height="15"/>
+            <rect class="seg-4" x="72" y="92" width="16" height="28"/>
+            <rect class="seg-5" x="72" y="70" width="16" height="22"/>
+            <rect class="seg-6" x="72" y="58" width="16" height="12"/>
+            <!-- 10月: 总 235 -->
+            <rect class="seg-1" x="132" y="150" width="16" height="100"/>
+            <rect class="seg-2" x="132" y="128" width="16" height="22"/>
+            <rect class="seg-3" x="132" y="110" width="16" height="18"/>
+            <rect class="seg-4" x="132" y="84" width="16" height="26"/>
+            <rect class="seg-5" x="132" y="60" width="16" height="24"/>
+            <rect class="seg-6" x="132" y="48" width="16" height="12"/>
+            <!-- 11月: 总 248 -->
+            <rect class="seg-1" x="192" y="140" width="16" height="110"/>
+            <rect class="seg-2" x="192" y="118" width="16" height="22"/>
+            <rect class="seg-3" x="192" y="100" width="16" height="18"/>
+            <rect class="seg-4" x="192" y="72" width="16" height="28"/>
+            <rect class="seg-5" x="192" y="48" width="16" height="24"/>
+            <rect class="seg-6" x="192" y="36" width="16" height="12"/>
+            <!-- 12月: 总 268 -->
+            <rect class="seg-1" x="252" y="128" width="16" height="122"/>
+            <rect class="seg-2" x="252" y="105" width="16" height="23"/>
+            <rect class="seg-3" x="252" y="85" width="16" height="20"/>
+            <rect class="seg-4" x="252" y="55" width="16" height="30"/>
+            <rect class="seg-5" x="252" y="30" width="16" height="25"/>
+            <rect class="seg-6" x="252" y="18" width="16" height="12"/>
+            <!-- 1月: 总 245 -->
+            <rect class="seg-1" x="312" y="145" width="16" height="105"/>
+            <rect class="seg-2" x="312" y="123" width="16" height="22"/>
+            <rect class="seg-3" x="312" y="105" width="16" height="18"/>
+            <rect class="seg-4" x="312" y="78" width="16" height="27"/>
+            <rect class="seg-5" x="312" y="55" width="16" height="23"/>
+            <rect class="seg-6" x="312" y="43" width="16" height="12"/>
+            <!-- 2月: 总 218 -->
+            <rect class="seg-1" x="372" y="160" width="16" height="90"/>
+            <rect class="seg-2" x="372" y="142" width="16" height="18"/>
+            <rect class="seg-3" x="372" y="126" width="16" height="16"/>
+            <rect class="seg-4" x="372" y="100" width="16" height="26"/>
+            <rect class="seg-5" x="372" y="78" width="16" height="22"/>
+            <rect class="seg-6" x="372" y="68" width="16" height="10"/>
+            <!-- 3月: 总 252 -->
+            <rect class="seg-1" x="432" y="140" width="16" height="110"/>
+            <rect class="seg-2" x="432" y="118" width="16" height="22"/>
+            <rect class="seg-3" x="432" y="100" width="16" height="18"/>
+            <rect class="seg-4" x="432" y="72" width="16" height="28"/>
+            <rect class="seg-5" x="432" y="48" width="16" height="24"/>
+            <rect class="seg-6" x="432" y="36" width="16" height="12"/>
+            <!-- 4月: 总 260 -->
+            <rect class="seg-1" x="492" y="135" width="16" height="115"/>
+            <rect class="seg-2" x="492" y="113" width="16" height="22"/>
+            <rect class="seg-3" x="492" y="94" width="16" height="19"/>
+            <rect class="seg-4" x="492" y="66" width="16" height="28"/>
+            <rect class="seg-5" x="492" y="42" width="16" height="24"/>
+            <rect class="seg-6" x="492" y="30" width="16" height="12"/>
+            <!-- 5月: 总 270 -->
+            <rect class="seg-1" x="552" y="128" width="16" height="122"/>
+            <rect class="seg-2" x="552" y="105" width="16" height="23"/>
+            <rect class="seg-3" x="552" y="86" width="16" height="19"/>
+            <rect class="seg-4" x="552" y="58" width="16" height="28"/>
+            <rect class="seg-5" x="552" y="32" width="16" height="26"/>
+            <rect class="seg-6" x="552" y="20" width="16" height="12"/>
+            <!-- 6月: 总 278 -->
+            <rect class="seg-1" x="612" y="122" width="16" height="128"/>
+            <rect class="seg-2" x="612" y="98" width="16" height="24"/>
+            <rect class="seg-3" x="612" y="78" width="16" height="20"/>
+            <rect class="seg-4" x="612" y="50" width="16" height="28"/>
+            <rect class="seg-5" x="612" y="24" width="16" height="26"/>
+            <rect class="seg-6" x="612" y="12" width="16" height="12"/>
+            <!-- 7月: 总 282 -->
+            <rect class="seg-1" x="672" y="118" width="16" height="132"/>
+            <rect class="seg-2" x="672" y="94" width="16" height="24"/>
+            <rect class="seg-3" x="672" y="73" width="16" height="21"/>
+            <rect class="seg-4" x="672" y="44" width="16" height="29"/>
+            <rect class="seg-5" x="672" y="18" width="16" height="26"/>
+            <rect class="seg-6" x="672" y="6" width="16" height="12"/>
+            <!-- 8月(当期): 总 286.5 -->
+            <rect class="seg-1" x="732" y="115" width="16" height="135"/>
+            <rect class="seg-2" x="732" y="91" width="16" height="24"/>
+            <rect class="seg-3" x="732" y="70" width="16" height="21"/>
+            <rect class="seg-4" x="732" y="41" width="16" height="29"/>
+            <rect class="seg-5" x="732" y="15" width="16" height="26"/>
+            <rect class="seg-6" x="732" y="3" width="16" height="12"/>
+          </g>
+        </svg>
+      </div>
+
+      <!-- 同环比对比表 -->
+      <div class="card">
+        <div class="card-head">
+          <h3>6 类费用同环比对比<span class="badge">2026-08 vs 上月 / 2025-08</span></h3>
+          <a class="antd-card-extra" href="#">查看完整科目 →</a>
+        </div>
+        <table class="compare-table table-zebra density-compact">
+          <thead>
+            <tr>
+              <th>排名</th>
+              <th>费用类型</th>
+              <th class="num">本月</th>
+              <th class="num">上月</th>
+              <th class="num">环比</th>
+              <th class="num">去年同月</th>
+              <th class="num">同比</th>
+              <th>结构占比</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="center"><span class="antd-rank-badge is-1">1</span></td>
+              <td><span class="antd-text-fw-600">人力成本</span><div class="antd-text-tertiary antd-fs-xs">含工资 · 社保 · 福利</div></td>
+              <td class="num">¥126.8 万</td>
+              <td class="num">¥118.2 万</td>
+              <td class="num delta-up">↑ 7.3%</td>
+              <td class="num">¥116.1 万</td>
+              <td class="num delta-up">↑ 9.2%</td>
+              <td>
+                <span class="share-bar"><span style="width: 44%; background: #1677ff;"></span></span>
+                <span class="antd-text-mono antd-fs-sm">44.3%</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="center"><span class="antd-rank-badge is-2">2</span></td>
+              <td><span class="antd-text-fw-600">研发费用</span><div class="antd-text-tertiary antd-fs-xs">含外采研发服务</div></td>
+              <td class="num">¥42.1 万</td>
+              <td class="num">¥40.8 万</td>
+              <td class="num delta-up">↑ 3.2%</td>
+              <td class="num">¥40.2 万</td>
+              <td class="num delta-up">↑ 4.7%</td>
+              <td>
+                <span class="share-bar"><span style="width: 15%; background: #722ed1;"></span></span>
+                <span class="antd-text-mono antd-fs-sm">14.7%</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="center"><span class="antd-rank-badge is-3">3</span></td>
+              <td><span class="antd-text-fw-600">办公费用</span><div class="antd-text-tertiary antd-fs-xs">含租赁 · 水电 · 物业</div></td>
+              <td class="num">¥38.4 万</td>
+              <td class="num">¥38.0 万</td>
+              <td class="num delta-up">↑ 1.1%</td>
+              <td class="num">¥38.1 万</td>
+              <td class="num delta-flat">→ 0.8%</td>
+              <td>
+                <span class="share-bar"><span style="width: 13%; background: #13c2c2;"></span></span>
+                <span class="antd-text-mono antd-fs-sm">13.4%</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="center"><span class="antd-rank-badge is-4">4</span></td>
+              <td><span class="antd-text-fw-600">差旅费用</span><div class="antd-text-tertiary antd-fs-xs">交通 · 住宿 · 出差补助</div></td>
+              <td class="num">¥32.6 万</td>
+              <td class="num">¥28.4 万</td>
+              <td class="num delta-up">↑ 14.8%</td>
+              <td class="num">¥28.5 万</td>
+              <td class="num delta-up">↑ 14.4%</td>
+              <td>
+                <span class="share-bar"><span style="width: 11%; background: #722ed1;"></span></span>
+                <span class="antd-text-mono antd-fs-sm">11.4%</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="center"><span class="antd-rank-badge is-5">5</span></td>
+              <td><span class="antd-text-fw-600">营销费用</span><div class="antd-text-tertiary antd-fs-xs">含投放 · 活动 · 物料</div></td>
+              <td class="num">¥28.9 万</td>
+              <td class="num">¥30.2 万</td>
+              <td class="num delta-down">↓ 4.3%</td>
+              <td class="num">¥30.8 万</td>
+              <td class="num delta-down">↓ 6.2%</td>
+              <td>
+                <span class="share-bar"><span style="width: 10%; background: #fa8c16;"></span></span>
+                <span class="antd-text-mono antd-fs-sm">10.1%</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="center"><span class="antd-rank-badge is-6">6</span></td>
+              <td><span class="antd-text-fw-600">其他费用</span><div class="antd-text-tertiary antd-fs-xs">含残保金 · 杂项</div></td>
+              <td class="num">¥17.7 万</td>
+              <td class="num">¥17.6 万</td>
+              <td class="num delta-flat">→ 0.6%</td>
+              <td class="num">¥17.8 万</td>
+              <td class="num delta-flat">↓ 0.4%</td>
+              <td>
+                <span class="share-bar"><span style="width: 6%; background: #52c41a;"></span></span>
+                <span class="antd-text-mono antd-fs-sm">6.2%</span>
+              </td>
+            </tr>
+            <tr class="antd-emphasis-row" style="background: var(--antd-brand-50);">
+              <td class="center" colspan="2"><span class="antd-text-fw-600">合计</span></td>
+              <td class="num antd-text-fw-600">¥286.5 万</td>
+              <td class="num">¥273.2 万</td>
+              <td class="num delta-up">↑ 4.9%</td>
+              <td class="num">¥271.5 万</td>
+              <td class="num delta-up">↑ 5.5%</td>
+              <td><span class="antd-text-fw-600 antd-text-mono">100%</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

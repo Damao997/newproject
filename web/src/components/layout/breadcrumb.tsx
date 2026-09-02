@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Link, useInRouterContext, useLocation } from 'react-router-dom'
 import { navItems, type NavItem } from './nav-items'
-import { findBestNavChild } from '@/lib/nav-filter'
+import { findActiveNavItem } from '@/lib/nav-filter'
 import { cn } from '@/lib/utils'
 
 interface Crumb {
@@ -11,28 +11,20 @@ interface Crumb {
   leaf: boolean
 }
 
-/** 匹配当前 pathname 在导航树中的路径链（单一数据源，与侧边栏 nav-items 保持一致；忽略 query，筛选参数不吞面包屑） */
+/**
+ * 匹配当前 pathname 在导航树中的路径链（单一数据源，与侧边栏 nav-items 保持一致；忽略 query，筛选参数不吞面包屑）。
+ * 平铺一级菜单：叶子项按「自身 path + match」边界前缀匹配，嵌套路径取最长命中（唯一激活项口径与侧边栏一致）。
+ */
 function findCrumbPath(items: readonly NavItem[], pathname: string): Crumb[] | null {
-  for (const item of items) {
-    if (item.children?.length) {
-      const child = findBestNavChild(item.children, pathname)
-      if (child) {
-        return [
-          { label: item.label, path: item.path, leaf: false },
-          { label: child.label, path: child.path, leaf: true },
-        ]
-      }
-    } else if (item.path === pathname) {
-      return [{ label: item.label, path: item.path, leaf: true }]
-    }
-  }
-  return null
+  const item = findActiveNavItem(items, pathname)
+  return item ? [{ label: item.label, path: item.path, leaf: true }] : null
 }
 
 /**
  * 面包屑导航：按当前 pathname + search 从导航树推导路径链，链首固定「首页」根。
- * 导航两级化后典型链为「首页 / 一级 / 二级」3 段，链长 ≥2 即渲染（首页自身页面显示「首页看板 / 看板总览」，
- * 一级叶子页显示「首页 / 模块」）；未知路径（不在导航树）不渲染。
+ * 平铺一级菜单后典型链为「首页 / 一级」2 段；按「恢复面包屑显示」决议：
+ * - 即便只有一段也渲染（首页/总览等独立页也展示层级标识，便于用户随时确认当前位置）
+ * - 未知路径（不在导航树）不渲染
  * singleLine：顶栏场景单行显示（固定高度内不换行，超长截断）；默认换行。
  * 非 Router 上下文（如单测渲染 PageContainer）时安全降级为不渲染。
  */
@@ -53,7 +45,7 @@ function BreadcrumbInner({ singleLine }: { singleLine: boolean }) {
     return [{ label: '首页', path: '/dashboard', leaf: true }, ...chain]
   }, [pathname])
 
-  if (!crumbs || crumbs.length < 2) return null
+  if (!crumbs) return null
 
   return (
     <nav

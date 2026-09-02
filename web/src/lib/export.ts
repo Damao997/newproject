@@ -19,6 +19,15 @@ interface ExportOptions {
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
 /**
+ * 统一 Blob 下载：把 api 层返回的文件流（xlsx 等）触发浏览器保存。
+ * 动态 import file-saver，保持与 exportToExcel 相同的低频加载策略。
+ */
+export async function downloadBlob(blob: Blob, filename: string): Promise<void> {
+  const { saveAs } = await import('file-saver')
+  saveAs(blob, filename)
+}
+
+/**
  * 客户端 Excel 导出。
  *
  * 使用 ExcelJS 生成工作簿并通过 file-saver 触发浏览器下载，

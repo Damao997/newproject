@@ -1,4 +1,4 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { TipLabel } from '@/components/ui/tip-label'
@@ -14,6 +14,8 @@ interface SubjectBudgetCardProps {
   period?: string
   /** 指定主体（跟随看板顶部筛选 company:CODE / summary:CODE）；汇总主体返回成员明细行 */
   companyCode?: string
+  /** 主体类型：single=单体公司（默认）/ summary=汇总主体展开成员明细；经营分析子页跟随看板筛选传入 */
+  mode?: 'single' | 'summary'
 }
 
 /** 金额口径：本月实际 / 本年累计（预算口径随金额口径联动：月度=占比拆分后的当月预算，累计=年度预算总额） */
@@ -47,9 +49,9 @@ const TD_CLS = 'px-3 py-2 text-right font-num text-sm text-foreground'
  * 完成率以橙色进度条展示；预警列按达成率红黄绿三档（月度用月度达成率，累计用累计预算口径达成率）。
  * 外层 Card 由 AnalysisTabsCard 统一提供。
  */
-export function SubjectBudgetCard({ period, companyCode }: SubjectBudgetCardProps) {
+export function SubjectBudgetCard({ period, companyCode, mode = 'single' }: SubjectBudgetCardProps) {
   const [amountMode, setAmountMode] = useState<AmountMode>('month')
-  const { data, isLoading } = useSubjectBudget({ period, mode: 'single', companyCode })
+  const { data, isLoading } = useSubjectBudget({ period, mode, companyCode })
   const rows = data?.rows ?? []
   const isEmpty = !isLoading && rows.length === 0
 

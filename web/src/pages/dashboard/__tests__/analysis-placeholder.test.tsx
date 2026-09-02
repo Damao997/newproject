@@ -6,13 +6,16 @@ import { AnalysisPage } from '../analysis'
 
 vi.mock('@/hooks/useDashboardFilters', () => ({
   useDashboardFilters: () => ({
-    dimFilter: '', setDimFilter: vi.fn(), selectedPeriod: '', setSelectedPeriod: vi.fn(),
+    dimFilter: '', setDimFilter: vi.fn(), selectedPeriod: '',
     periodOptions: [], companyCode: '',
   }),
 }))
 
 vi.mock('@/hooks/api-queries', () => ({
   useCompanies: () => ({ data: [] }),
+  // receivable-aging 子页真实数据 hooks（期间未定时 enabled=false，返回空数据即可）
+  useDashboardReceivables: () => ({ data: undefined, isLoading: false, isError: false }),
+  useTransactionAging: () => ({ data: undefined, isLoading: false, isError: false, refetch: vi.fn() }),
 }))
 
 describe('经营分析占位页', () => {

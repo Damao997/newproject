@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="zh-CN" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 · 财年经营数据分析平台（v6 · 精简门面）</title>
+    <style id="theme-vars">
+/*
+ * Ant Design 风格设计系统
+ * 基于 Ant Design v5 设计语言
+ * 主题变量定义
+ */
+
+:root {
+  /* ========== 1. 品牌主色：蓝 ========== */
+  --antd-brand-50:  #e6f4ff;
+  --antd-brand-100: #bae0ff;
+  --antd-brand-200: #91caff;
+  --antd-brand-300: #69b1ff;
+  --antd-brand-400: #4096ff;
+  --antd-brand-500: #1677ff;   /* 主色 */
+  --antd-brand-600: #0958d9;
+  --antd-brand-700: #003eb3;
+  --antd-brand-800: #002c8c;
+  --antd-brand-900: #001d66;
+
+  /* ========== 2. 中性色 ========== */
+  --antd-white:    #ffffff;
+  --antd-gray-1:   #fafafa;
+  --antd-gray-2:   #f5f5f5;
+  --antd-gray-3:   #f0f0f0;
+  --antd-gray-4:   #d9d9d9;
+  --antd-gray-5:   #bfbfbf;
+  --antd-gray-6:   #8c8c8c;
+  --antd-gray-7:   #595959;
+  --antd-gray-8:   #434343;
+  --antd-gray-9:   #262626;
+  --antd-gray-10:  #1f1f1f;
+
+  /* ========== 3. 状态色 ========== */
+  --antd-state-success:      #52c41a;
+  --antd-state-success-bg:   #f6ffed;
+  --antd-state-success-border:#b7eb8f;
+  --antd-state-warning:      #faad14;
+  --antd-state-warning-bg:   #fffbe6;
+  --antd-state-warning-border:#ffe58f;
+  --antd-state-error:        #ff4d4f;
+  --antd-state-error-bg:     #fff2f0;
+  --antd-state-error-border: #ffccc7;
+  --antd-state-info:         #1677ff;
+  --antd-state-info-bg:      #e6f4ff;
+  --antd-state-info-border:  #91caff;
+
+  /* ========== 4. 字体 ========== */
+  --antd-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --antd-font-family-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --antd-font-size-sm: 12px;
+  --antd-font-size-base: 14px;
+  --antd-font-size-lg: 16px;
+  --antd-font-size-xl: 18px;
+  --antd-font-size-2xl: 20px;
+
+  /* ========== 5. 圆角/阴影/间距 ========== */
+  --antd-radius-sm: 4px;
+  --antd-radius-md: 6px;
+  --antd-radius-lg: 8px;
+  --antd-radius-xl: 12px;
+  --antd-shadow-sm:  0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02);
+  --antd-shadow-md:  0 6px 16px 0 rgba(0, 0, 0, 0.08), 0 3px 6px -4px rgba(0, 0, 0, 0.12), 0 9px 28px 8px rgba(0, 0, 0, 0.05);
+  --antd-shadow-lg:  0 9px 28px 8px rgba(0, 0, 0, 0.05), 0 6px 16px 0 rgba(0, 0, 0, 0.08), 0 3px 6px -4px rgba(0, 0, 0, 0.12);
+  --antd-space-1: 4px;
+  --antd-space-2: 8px;
+  --antd-space-3: 12px;
+  --antd-space-4: 16px;
+  --antd-space-5: 20px;
+  --antd-space-6: 24px;
+  --antd-space-8: 32px;
+  --antd-space-10: 40px;
+
+  /* ========== 6. 语义 Token（shadcn 风格） ========== */
+  --color-background:   #f5f5f5;
+  --color-foreground:   rgba(0, 0, 0, 0.88);
+  --color-card:         #ffffff;
+  --color-card-foreground: rgba(0, 0, 0, 0.88);
+  --color-popover:      #ffffff;
+  --color-popover-foreground: rgba(0, 0, 0, 0.88);
+  --color-primary:      #1677ff;
+  --color-primary-foreground: #ffffff;
+  --color-muted:        #fafafa;
+  --color-muted-foreground: rgba(0, 0, 0, 0.45);
+  --color-border:       #d9d9d9;
+  --color-border-light: #f0f0f0;
+  --color-input:        #d9d9d9;
+  --color-ring:         #4096ff;
+  --color-text-secondary: rgba(0, 0, 0, 0.65);
+  --color-text-tertiary:  rgba(0, 0, 0, 0.45);
+  --color-text-disabled:  rgba(0, 0, 0, 0.25);
+  --color-fill:         #f0f0f0;
+  --color-fill-secondary: #fafafa;
+  --color-fill-tertiary:  #f5f5f5;
+  --color-hover:        rgba(0, 0, 0, 0.04);
+  --color-active:       rgba(0, 0, 0, 0.06);
+
+  /* ========== 7. 强调橙（数据/财报高亮） ========== */
+  --antd-orange-50:   #fff7e6;
+  --antd-orange-100:  #ffe7ba;
+  --antd-orange-200:  #ffd591;
+  --antd-orange-300:  #ffc069;
+  --antd-orange-400:  #ffa940;
+  --antd-orange-500:  #fa8c16;   /* 强调橙主色 */
+  --antd-orange-600:  #d46b08;
+  --antd-orange-700:  #ad4e00;
+  --antd-orange-800:  #873800;
+  --antd-orange-900:  #612500;
+  --antd-orange-bg:      #fff7e6;
+  --antd-orange-border:  #ffd591;
+
+  /* ========== 8. 冷色阶（卡片/暗色模块用） ========== */
+  --antd-gray-cool-1:  #ffffff;
+  --antd-gray-cool-2:  #fcfcfd;
+  --antd-gray-cool-3:  #f8f9fa;
+  --antd-gray-cool-4:  #f1f3f5;
+  --antd-gray-cool-5:  #e6e8eb;
+  --antd-gray-cool-6:  #d9dce0;
+  --antd-gray-cool-7:  #b8bcc4;
+  --antd-gray-cool-8:  #8c93a0;
+  --antd-gray-cool-9:  #5b6472;
+  --antd-gray-cool-10: #3a4250;
+  --antd-gray-cool-11: #232a36;
+  --antd-gray-cool-12: #11161f;
+
+  /* ========== 9. 表格 ========== */
+  --color-table-zebra:    #fafbfc;
+  --color-table-hover:    #f0f7ff;
+  --color-table-selected: #e6f4ff;
+  --color-row-divider:    #f0f2f5;
+
+  /* ========== 10. 排名 / 排行 ========== */
+  --color-rank-1: #fa8c16;
+  --color-rank-2: #faad14;
+  --color-rank-3: #52c41a;
+  --color-rank-other: #8c8c8c;
+}
+
+/* === 全局基础样式（来自 colors_and_type.css 精简版） === */
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: var(--antd-font-family);
+  font-size: var(--antd-font-size-base);
+  line-height: 1.5;
+  color: var(--color-foreground);
+  background: var(--color-background);
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3, h4, h5, h6 { margin: 0; font-weight: 600; }
+button { font-family: inherit; }
+
+/* 按钮基础（用于登录主按钮） */
+.antd-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 15px;
+  font-size: var(--antd-font-size-base);
+  font-weight: 400;
+  border: 1px solid var(--color-border);
+  border-radius: var(--antd-radius-md);
+  background: var(--color-card);
+  color: var(--color-foreground);
+  cursor: pointer;
+  transition: all .15s;
+}
+.antd-btn:hover { color: var(--color-primary); border-color: var(--color-primary); }
+.antd-btn-primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+  box-shadow: 0 2px 0 color-mix(in srgb, var(--color-primary) 6%, transparent);
+}
+.antd-btn-primary:hover { background: var(--antd-brand-600); border-color: var(--antd-brand-600); color: var(--antd-white); }
+.antd-btn-lg { height: 40px; padding: 0 15px; font-size: var(--antd-font-size-lg); }
+
+/* 输入框 */
+.antd-input {
+  width: 100%;
+  height: 32px;
+  padding: 4px 11px;
+  font-size: var(--antd-font-size-base);
+  color: var(--color-foreground);
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--antd-radius-md);
+  transition: border-color .15s, box-shadow .15s;
+  font-family: inherit;
+}
+.antd-input:hover { border-color: var(--color-primary); }
+.antd-input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 10%, transparent); outline: none; }
+.antd-input::placeholder { color: var(--color-text-tertiary); }
+
+/* Tag */
+.antd-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  font-size: var(--antd-font-size-sm);
+  border: 1px solid;
+  border-radius: var(--antd-radius-sm);
+  background: var(--antd-gray-2);
+  border-color: var(--antd-gray-4);
+  color: var(--color-text-secondary);
+}
+.antd-tag-success { background: var(--antd-state-success-bg); border-color: var(--antd-state-success-border); color: var(--antd-state-success); }
+.antd-tag-warning { background: var(--antd-state-warning-bg); border-color: var(--antd-state-warning-border); color: var(--antd-state-warning); }
+.antd-tag-error   { background: var(--antd-state-error-bg);   border-color: var(--antd-state-error-border);   color: var(--antd-state-error); }
+.antd-tag-default { background: var(--antd-gray-2);           border-color: var(--antd-gray-4);              color: var(--color-text-secondary); }
+
+/* 警告条（用于错误提示） */
+.antd-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid;
+  border-radius: var(--antd-radius-md);
+  font-size: var(--antd-font-size-sm);
+}
+.antd-alert-error   { background: var(--antd-state-error-bg);   border-color: var(--antd-state-error-border);   color: var(--antd-state-error); }
+.antd-alert-warning { background: var(--antd-state-warning-bg); border-color: var(--antd-state-warning-border); color: var(--antd-state-warning); }
+.antd-alert-info    { background: var(--antd-state-info-bg);    border-color: var(--antd-state-info-border);    color: var(--color-primary); }
+    </style>
+</head>
+<body>
+  <div class="login-shell">
+
+    <!-- ========== 左侧：主品牌 + 标语（精简） ========== -->
+    <aside class="login-side">
+      <div class="login-brand">
+        <div class="login-brand-mark">壹</div>
+        <div>
+          <div class="login-brand-name">壹品慧</div>
+          <span class="login-brand-en">YIPINHUI · DATA</span>
+        </div>
+      </div>
+
+      <div class="login-pitch">
+        <h1>让数据<br/>替你<span class="accent">做决定</span></h1>
+        <p class="slogan">数 据 · 驱 动 经 营 决 策</p>
+      </div>
+    </aside>
+
+    <!-- ========== 右侧：精简登录区（仅账号密码 + 7天免登录） ========== -->
+    <main class="login-form-wrap">
+      <div class="login-form">
+
+        <h2 class="login-form-h">欢迎登录</h2>
+        <p class="login-form-sub">使用企业账号继续，未注册请联系管理员</p>
+
+        <!-- 错误条（demo 态，条件可见） -->
+        <div class="login-error" role="alert">
+          <span>!</span>
+          <span>账号或密码错误，还可重试 4 次（演示态）</span>
+        </div>
+
+        <!-- 账号 -->
+        <div class="login-field">
+          <label for="login-account">企业账号</label>
+          <input id="login-account" class="login-input" type="text" placeholder="请输入工号或邮箱" autocomplete="username" />
+        </div>
+
+        <!-- 密码（仅眼睛按钮） -->
+        <div class="login-field">
+          <label for="login-pwd">密码</label>
+          <div class="login-input-wrap">
+            <input id="login-pwd" class="login-input" type="password" placeholder="请输入密码" autocomplete="current-password" value="P@ssw0rd!2026" />
+            <span class="login-input-suffix" title="显示/隐藏密码">👁</span>
+          </div>
+        </div>
+
+        <!-- 7 天免登录 + 忘记密码 -->
+        <div class="login-row">
+          <label class="login-check">
+            <input type="checkbox" checked />
+            <span>7 天内免登录</span>
+          </label>
+          <a class="login-link">忘记密码？</a>
+        </div>
+
+        <!-- 登录主按钮 -->
+        <button class="login-submit" type="button">
+          <span>登 录</span>
+        </button>
+
+        <!-- 首次登录提示（条件可见）：引导到修改密码流程 -->
+        <p class="login-hint">
+          <span>·</span>
+          <span>首次登录或密码过期将被引导到修改密码流程</span>
+        </p>
+
+      </div>
+    </main>
+
+  </div>
+
+    <style>
+  /* =========================================================
+     登录页 v6（2026-08-27 · 精简门面）
+     左侧：仅主品牌区 + 标语（删除 KPI / sparkline / 底部 badge）
+     右侧：仅账户密码登录 + 7 天内免登录
+     强度条：仅在「修改密码」场景出现，登录页不再展示
+     ========================================================= */
+  body { margin: 0; font-family: var(--antd-font-family); }
+
+  /* ========== 1. 双栏外壳 ========== */
+  .login-shell {
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: 1fr 480px;
+    background: var(--color-background);
+  }
+  @media (max-width: 1024px) {
+    .login-shell { grid-template-columns: 1fr 440px; }
+  }
+  @media (max-width: 768px) {
+    .login-shell { grid-template-columns: 1fr; }
+    .login-side  { display: none; }
+  }
+
+  /* ========== 2. 左侧：品牌 + 标语（精简） ========== */
+  .login-side {
+    background:
+      radial-gradient(circle at 75% 15%, color-mix(in srgb, var(--antd-brand-500) 38%, transparent) 0%, transparent 45%),
+      radial-gradient(circle at 15% 85%, color-mix(in srgb, var(--antd-orange-500) 18%, transparent) 0%, transparent 50%),
+      linear-gradient(135deg, var(--antd-brand-900) 0%, var(--antd-brand-600) 60%, var(--antd-brand-500) 100%);
+    color: var(--antd-white);
+    padding: 56px;
+    display: flex;
+    flex-direction: column;
+    gap: 48px;
+    position: relative;
+    overflow: hidden;
+  }
+  /* 网格底纹 */
+  .login-side::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(color-mix(in srgb, var(--antd-white) 4.5%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in srgb, var(--antd-white) 4.5%, transparent) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+  }
+  /* 装饰光斑（保留一个，体积更小） */
+  .login-side::after {
+    content: "";
+    position: absolute;
+    right: -120px; bottom: -120px;
+    width: 360px; height: 360px;
+    background: radial-gradient(circle, color-mix(in srgb, var(--antd-orange-500) 18%, transparent) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  /* 顶部：Logo + 品牌 */
+  .login-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: relative;
+    z-index: 1;
+  }
+  .login-brand-mark {
+    width: 44px; height: 44px; border-radius: 10px;
+    background: color-mix(in srgb, var(--antd-white) 15%, transparent);
+    border: 1px solid color-mix(in srgb, var(--antd-white) 30%, transparent);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 20px;
+    color: var(--antd-white);
+  }
+  .login-brand-name { font-size: 17px; font-weight: 600; letter-spacing: 1px; }
+  .login-brand-en   { display: block; font-size: 9px; font-weight: 400; color: color-mix(in srgb, var(--antd-white) 60%, transparent); letter-spacing: 3px; margin-top: 2px; }
+
+  /* 中部：主标题 + Slogan（不再含 KPI / sparkline） */
+  .login-pitch {
+    position: relative;
+    z-index: 1;
+    margin: auto 0;
+  }
+  .login-pitch h1 {
+    font-size: 42px; line-height: 1.25; font-weight: 600; margin: 0 0 18px;
+    letter-spacing: 1px;
+  }
+  .login-pitch h1 .accent { color: var(--antd-orange-500); }
+  .login-pitch .slogan {
+    color: color-mix(in srgb, var(--antd-white) 78%, transparent); font-size: 13px; line-height: 1.7;
+    margin: 0;
+    letter-spacing: 4px;
+  }
+
+  /* ========== 3. 右侧：精简登录区 ========== */
+  .login-form-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    background: var(--color-card);
+  }
+  .login-form {
+    width: 100%;
+    max-width: 380px;
+  }
+  .login-form-h {
+    margin: 0 0 6px;
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--antd-gray-10);
+  }
+  .login-form-sub {
+    margin: 0 0 20px;
+    font-size: 13px;
+    color: var(--antd-gray-6);
+  }
+
+  /* 表单字段 */
+  .login-field {
+    margin-bottom: 14px;
+  }
+  .login-field label {
+    display: block;
+    font-size: 12px;
+    color: var(--antd-gray-7);
+    margin-bottom: 6px;
+  }
+  .login-input-wrap {
+    position: relative;
+  }
+  .login-input {
+    width: 100%;
+    height: 40px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 0 38px 0 12px;
+    font-size: 14px;
+    color: var(--antd-gray-10);
+    background: var(--color-card);
+    box-sizing: border-box;
+    transition: border-color .15s, box-shadow .15s;
+    font-family: inherit;
+  }
+  .login-input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 10%, transparent);
+  }
+  .login-input::placeholder { color: var(--antd-gray-5); }
+  .login-input-suffix {
+    position: absolute;
+    right: 10px; top: 50%;
+    transform: translateY(-50%);
+    color: var(--antd-gray-5);
+    font-size: 14px;
+    cursor: pointer;
+    user-select: none;
+    line-height: 1;
+  }
+  .login-input-suffix:hover { color: var(--color-primary); }
+
+  /* 7 天免登录 + 忘记密码 */
+  .login-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 12px 0 18px;
+    font-size: 13px;
+  }
+  .login-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--antd-gray-7);
+    cursor: pointer;
+  }
+  .login-check input { accent-color: var(--color-primary); }
+  .login-link {
+    color: var(--color-primary);
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .login-link:hover { text-decoration: underline; }
+
+  /* 登录主按钮 */
+  .login-submit {
+    width: 100%;
+    height: 42px;
+    border: none;
+    border-radius: 6px;
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--antd-brand-600) 100%);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity .15s, transform .1s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-family: inherit;
+    box-shadow: 0 2px 0 color-mix(in srgb, var(--color-primary) 6%, transparent);
+  }
+  .login-submit:hover { opacity: .94; }
+  .login-submit:active { transform: translateY(1px); }
+  .login-submit:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+  }
+
+  /* 错误条 */
+  .login-error {
+    margin: 0 0 14px;
+    padding: 8px 12px;
+    background: var(--antd-state-error-bg);
+    border: 1px solid var(--antd-state-error-border);
+    border-radius: 6px;
+    color: var(--antd-state-error);
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .login-error > span:first-child {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--antd-state-error);
+    color: var(--antd-white);
+    font-weight: 700;
+    font-size: 11px;
+    line-height: 1;
+  }
+
+  /* 首次登录 / 提示行（条件可见） */
+  .login-hint {
+    margin-top: 14px;
+    padding: 8px 12px;
+    background: var(--antd-orange-50);
+    border: 1px solid var(--antd-orange-100);
+    border-radius: 6px;
+    color: var(--antd-orange-700);
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+    </style>
+</body>
+</html>

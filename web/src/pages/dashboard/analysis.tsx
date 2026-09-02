@@ -1,40 +1,18 @@
 import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { Card, CardContent } from '@/components/ui/card'
+import { StaleBar } from '@/components/ui/stale-bar'
 import { PageContainer } from '@/components/layout/page-container'
 import { SubPageTabs } from '@/components/layout/sub-page-tabs'
 import { DASHBOARD_ANALYSIS_TABS } from '@/components/layout/module-tabs'
 import { useDashboardFilters } from '@/hooks/useDashboardFilters'
-import { DashboardFilterBar } from '@/components/filters/dashboard-filter-bar'
-import { ProductBudgetCard } from './product-budget-card'
-import { SubjectBudgetCard } from './subject-budget-card'
-import { ExpenseAnalysisCard } from './expense-analysis-card'
 import { KeyMetricsTable } from './key-metrics-table'
 import { AnalysisPlaceholder } from './analysis-placeholder'
-
-interface PlaceholderConfig {
-  title: string
-  note?: string
-  actionLabel?: string
-  actionHref?: string
-}
-
-/** 占位子页配置（与 Tab 标签一致）；receivable-aging 数据已在往来账龄落地，提供跳转通道 */
-const PLACEHOLDER_CONFIG: Partial<Record<'cash-flow' | 'receivable-aging' | 'inventory-aging', PlaceholderConfig>> = {
-  'cash-flow': {
-    title: '壹品慧业务现金流分析',
-    note: '功能规划中，如有需求请联系管理员反馈优先级',
-  },
-  'receivable-aging': {
-    title: '应收账款账龄分析表',
-    note: '数据已在「往来分析 · 账龄分析」落地，可直接前往查看',
-    actionLabel: '前往往来账龄分析',
-    actionHref: '/transactions/aging',
-  },
-  'inventory-aging': {
-    title: '存货库龄分析表',
-    note: '功能规划中，如有需求请联系管理员反馈优先级',
-  },
-}
+import { CategoryBudgetContent } from './analysis/category-budget-content'
+import { CashFlowContent } from './analysis/cash-flow-content'
+import { ReceivableAgingContent } from './analysis/receivable-aging-content'
+import { ExpenseContent } from './analysis/expense-content'
+import { SubjectBudgetContent } from './analysis/subject-budget-content'
+import { InventoryAgingContent } from './analysis/inventory-aging-content'
 
 /** 经营分析子页类型：func=已迁移功能卡，placeholder=入口占位 */
 export type AnalysisVariantKey =
@@ -54,12 +32,12 @@ interface AnalysisPageProps {
 /**
  * 首页看板 · 经营分析共享页：二级导航 SubPageTabs + 顶部筛选 + 子页内容。
  * - Tab 条路由驱动（切换即导航到 /dashboard/analysis/*）；
- * - 顶部期间 + 主体维度筛选复用首页看板筛选（useDashboardFilters），口径连续；
+ * - 顶部主体维度筛选复用首页看板筛选（useDashboardFilters），期间读全局 periodStore，口径连续；
  * - 已迁移功能卡（品类/公司预算达成、运营费用）直接包裹 Card 展示；其余为占位。
  */
 export function AnalysisPage({ variant }: AnalysisPageProps) {
   const { headerRef } = useStickyHeader()
-  const { dimFilter, setDimFilter, selectedPeriod, setSelectedPeriod, periodOptions, companyCode } =
+  const { selectedPeriod, periodOptions, companyCode } =
     useDashboardFilters()
   // 真实生效期间：选定期或后端最新期（与首页看板一致）
   const currentPeriod = selectedPeriod || periodOptions[periodOptions.length - 1] || ''
@@ -78,18 +56,14 @@ export function AnalysisPage({ variant }: AnalysisPageProps) {
           ? 'flex h-[calc(100dvh-104px)] flex-col lg:h-[calc(100dvh-112px)]'
           : undefined
       }
-      actions={
-        <DashboardFilterBar
-          dimFilter={dimFilter}
-          onDimChange={setDimFilter}
-          selectedPeriod={selectedPeriod}
-          onPeriodChange={setSelectedPeriod}
-          periodOptions={periodOptions}
-        />
-      }
     >
       {/* 二级导航：经营分析子页 Tab（路由驱动） */}
       <SubPageTabs items={DASHBOARD_ANALYSIS_TABS} />
+
+      {/* 数据时效条：与首页看板口径连续；数据随数据管理批次激活同步，不虚构采集进度 */}
+      <StaleBar meta={`当前期间：${currentPeriod || '最新期间'}`}>
+        数据随数据管理批次激活同步更新
+      </StaleBar>
 
       {(() => {
         switch (variant) {
@@ -105,33 +79,54 @@ export function AnalysisPage({ variant }: AnalysisPageProps) {
                 </CardContent>
               </Card>
             )
-          case 'category-budget':
+          case 'cash-flow':
             return (
               <Card className="animate-fade-in border border-border shadow-sm">
                 <CardContent className="px-6 py-6">
-                  <ProductBudgetCard
+                  <CashFlowContent
                     period={currentPeriod || undefined}
                     companyCode={companyCode}
                   />
                 </CardContent>
               </Card>
+            )
+          case 'category-budget':
+            return (
+              <CategoryBudgetContent
+                period={currentPeriod || undefined}
+                companyCode={companyCode}
+              />
             )
           case 'subject-budget':
             return (
+              <SubjectBudgetContent
+                period={currentPeriod || undefined}
+                companyCode={companyCode}
+              />
+            )
+          case 'expense':
+            return (
+              <ExpenseContent
+                period={currentPeriod || undefined}
+                companyCode={companyCode}
+              />
+            )
+          case 'receivable-aging':
+            return (
               <Card className="animate-fade-in border border-border shadow-sm">
                 <CardContent className="px-6 py-6">
-                  <SubjectBudgetCard
+                  <ReceivableAgingContent
                     period={currentPeriod || undefined}
                     companyCode={companyCode}
                   />
                 </CardContent>
               </Card>
             )
-          case 'expense':
+          case 'inventory-aging':
             return (
               <Card className="animate-fade-in border border-border shadow-sm">
                 <CardContent className="px-6 py-6">
-                  <ExpenseAnalysisCard
+                  <InventoryAgingContent
                     period={currentPeriod || undefined}
                     companyCode={companyCode}
                   />
@@ -139,7 +134,7 @@ export function AnalysisPage({ variant }: AnalysisPageProps) {
               </Card>
             )
           default:
-            return <AnalysisPlaceholder {...(PLACEHOLDER_CONFIG[variant] ?? { title: '经营分析' })} />
+            return <AnalysisPlaceholder title="经营分析" />
         }
       })()}
     </PageContainer>

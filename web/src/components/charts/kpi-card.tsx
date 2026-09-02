@@ -64,7 +64,7 @@ export function KpiCard({ data, index = 0, onClick }: KpiCardProps) {
   return (
     <AntdCard
       className={cn(
-        'animate-fade-in group overflow-hidden transition-all duration-200',
+        'animate-fade-in group relative overflow-hidden transition-all duration-200',
         onClick && 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md',
       )}
       styles={{ body: { padding: 0 } }}

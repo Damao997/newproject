@@ -1,294 +1,236 @@
-import { useMemo, useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
+import { useState } from 'react'
 import { PageContainer } from '@/components/layout/page-container'
 import { SubPageTabs } from '@/components/layout/sub-page-tabs'
 import { RECLASSIFY_TABS } from '@/components/layout/module-tabs'
+import { Button } from '@/components/ui/button'
 import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { usePermission } from '@/hooks/usePermission'
-import { usePageStore } from '@/stores/pageStateStore'
-import { useCompanies, useSubjects } from '@/hooks/api-queries'
-import { ReclassifyCompanyDialog } from '@/components/reclassify/reclassify-company-dialog'
-import { ReclassifySubjectDialog } from '@/components/reclassify/reclassify-subject-dialog'
-import { BudgetAdjustDialog } from '@/components/reclassify/budget-adjust-dialog'
-import { ReclassifyLogsPanel } from '@/components/reclassify/reclassify-logs-panel'
-import { TEMPLATE_LABEL, ReadonlyLogMeta, SectionTitle, invalidationText, type PreviewStatItem, type ReclassifyLogMeta } from '@/components/reclassify/shared'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { formatMoney, formatQuantity } from '@/lib/utils'
+import { ReclassifyLogsPanel } from '@/components/reclassify/reclassify-logs-panel'
+import {
+  ReclassifySubjectDialog,
+  type ReclassifySubjectPreset,
+} from '@/components/reclassify/reclassify-subject-dialog'
+import {
+  ReclassifyCompanyDialog,
+  type ReclassifyCompanyPreset,
+} from '@/components/reclassify/reclassify-company-dialog'
+import { BudgetAdjustDialog, type BudgetAdjustPreset } from '@/components/reclassify/budget-adjust-dialog'
+import type { PreviewStatItem, ReclassifyLogMeta } from '@/components/reclassify/shared'
 import type { ReclassifyLog } from '@/types'
-import { ArrowLeftRight, ArrowRight, CalendarRange, SlidersHorizontal } from 'lucide-react'
+import { ArrowLeftRight, CalendarRange, SlidersHorizontal } from 'lucide-react'
 
 /**
- * 数据管理 · 重分类管理 → 单体公司调整：调整记录管理 + 数据调整入口。
- * 操作按钮与「类型」筛选同行（筛选在左、按钮在右）：
- * - 科目调整：同一公司内科目金额/数量调整；
- * - 跨公司调整：不同公司间的数据迁移/重分类；
- * - 年度预算调整：仅按财年（全年）整体调整预算数据。
- * 汇总抵消入口在「汇总主体调整」独立页面（/data/reclassify/consolidation）。
- * 对话框预填从数据预览筛选状态跨页读取（pageStateStore 全局共享）。
+ * 数据管理 · 单体重分类：重分类日志面板 + 三类调整入口（科目调整 / 跨公司 / 预算调整）。
+ * - 日志面板：分页筛选 + 只读详情 + 撤销（revert）+ 重新应用（预填原参数）；
+ * - 对话框均由本页持有状态（key 强制重挂载使 preset 生效）；
+ * - 写权限：data:reclassify:subject（科目/预算调整）、data:reclassify:company（跨公司 + 撤销）。
  */
 
-/** 只读详情中的科目引用：优先中文名称（title 提示编码），根节点/无匹配回退特殊文案或编码 */
-function SubjectRef({ code, nameOf }: { code: string | null; nameOf: (code: string | null) => string | null }) {
-  if (!code) return <span className="text-muted-foreground">-</span>
-  if (code === '(root)') return <span className="text-xs text-muted-foreground">根节点</span>
-  const name = nameOf(code)
-  return name
-    ? <span className="text-xs" title={code}>{name}</span>
-    : <span className="font-mono text-xs">{code}</span>
+type DialogState =
+  | { kind: 'subject'; preset?: ReclassifySubjectPreset; readonly?: boolean; meta?: ReclassifyLogMeta; result?: PreviewStatItem[] }
+  | { kind: 'company'; preset?: ReclassifyCompanyPreset; readonly?: boolean; meta?: ReclassifyLogMeta; result?: PreviewStatItem[] }
+  | { kind: 'budget'; preset?: BudgetAdjustPreset; readonly?: boolean; meta?: ReclassifyLogMeta; result?: PreviewStatItem[] }
+
+/** 分型金额展示：数量类整数（无“万”），其余按金额（万元）；历史记录缺省按金额 */
+const fmtByType = (v: number, valueType?: string): string => (valueType === 'quantity' ? formatQuantity(v) : formatMoney(v))
+
+const metaOf = (log: ReclassifyLog): ReclassifyLogMeta => ({
+  operator: log.operator,
+  createdAt: log.createdAt,
+  affectedRows: log.affectedRows,
+  revertedAt: log.revertedAt,
+  revertedBy: log.revertedBy,
+  invalidatedAt: log.invalidatedAt,
+  invalidatedReason: log.invalidatedReason,
+  invalidation: log.invalidation,
+})
+
+/** 只读详情还原的执行结果统计（来自日志 detail） */
+const resultOf = (log: ReclassifyLog): PreviewStatItem[] => {
+  const d = log.detail
+  if (!d) return []
+  if (log.type === 'company') {
+    if ((d.transferMode ?? 'all') === 'all') {
+      return [
+        { label: '迁移明细', value: `${log.affectedRows} 条` },
+        { label: '合并求和', value: `${d.mergedRows ?? 0} 条` },
+      ]
+    }
+    return [
+      { label: '匹配明细', value: `${log.affectedRows} 条` },
+      { label: '转移金额', value: formatMoney(d.transferValue ?? 0), tone: 'primary' },
+      { label: '累加到现有行', value: `${d.mergedRows ?? 0} 条` },
+      { label: '新建明细行', value: `${d.createdRows ?? 0} 条` },
+    ]
+  }
+  // subject_adjust（含预算调整）
+  const vt = d.valueType
+  return [
+    { label: '影响明细行', value: `${log.affectedRows} 条` },
+    ...(d.decreaseAmount ? [{ label: '调减', value: `-${fmtByType(d.decreaseAmount, vt)}` }] : []),
+    ...(d.increaseAmount ? [{ label: '调增', value: `+${fmtByType(d.increaseAmount, vt)}` }] : []),
+    { label: '净变动', value: fmtByType(d.netChange ?? 0, vt), tone: (d.netChange ?? 0) !== 0 ? 'warning' : 'default' },
+  ]
 }
 
 export default function DataReclassifyPage() {
-  const { can } = usePermission()
   const { headerRef, headerHeight } = useStickyHeader()
-  const canReclassifyCompany = can('data:reclassify', 'company')
-  const canReclassifySubject = can('data:reclassify', 'subject')
+  const { can } = usePermission()
+  // 与后端一致：科目/预算调整 → data:reclassify:subject；跨公司与撤销/汇总抵消 → data:reclassify:company
+  const canSubject = can('data:reclassify', 'subject')
+  const canCompany = can('data:reclassify', 'company')
 
-  // 数据编辑入口：复用重分类/科目调整通道（校验、预览影响、二次确认、审计留痕均在对话框内）
-  const [adjustSubjectOpen, setAdjustSubjectOpen] = useState(false)
-  const [reclassifyCompanyOpen, setReclassifyCompanyOpen] = useState(false)
-  // 年度预算调整（仅作用于 budget 模板，按财年整体调整，不拆分月份）
-  const [budgetAdjustOpen, setBudgetAdjustOpen] = useState(false)
-  // 重分类记录「重新应用」目标：失效/已撤销日志 → 打开对应对话框并预填原参数（key 重挂载生效）
-  const [reapplyLog, setReapplyLog] = useState<ReclassifyLog | null>(null)
-  // 重分类记录「只读查看」目标：点击记录行 → 打开预填原始参数的只读详情对话框
-  const [viewLog, setViewLog] = useState<ReclassifyLog | null>(null)
+  const [dialog, setDialog] = useState<DialogState | null>(null)
+  const [nonce, setNonce] = useState(0)
+  const openDialog = (next: DialogState) => {
+    setDialog(next)
+    setNonce((n) => n + 1)
+  }
 
-  // 对话框预填：跨页读取数据预览筛选状态（仅选 1 家公司时预填该公司）
-  const browseSubjectType = usePageStore((s) => s.dataBrowse.subjectType)
-  const browseCompanies = usePageStore((s) => s.dataBrowse.companies)
-  const singleBrowseCompany = browseCompanies.length === 1 ? browseCompanies[0] : undefined
-
-  // 只读详情名称映射：公司 + 经营/静态/现金流科目（无匹配时回退编码展示）
-  const { data: companies } = useCompanies()
-  const { data: operatingSubjects } = useSubjects({ type: 'operating', pageSize: 1000 })
-  const { data: staticSubjects } = useSubjects({ type: 'static', pageSize: 1000 })
-  const { data: cashflowSubjects } = useSubjects({ type: 'cashflow', pageSize: 1000 })
-  const nameMap = useMemo(() => {
-    const m = new Map<string, string>()
-    for (const c of companies ?? []) m.set(c.code, c.name)
-    for (const s of operatingSubjects?.items ?? []) m.set(s.code, s.name)
-    for (const s of staticSubjects?.items ?? []) m.set(s.code, s.name)
-    for (const s of cashflowSubjects?.items ?? []) m.set(s.code, s.name)
-    return m
-  }, [companies, operatingSubjects, staticSubjects, cashflowSubjects])
-  const nameOf = (code: string | null) => (code ? (nameMap.get(code) ?? null) : null)
-
-  /** 分型金额展示：数量类整数（无“万”），其余按金额（万元）；历史记录无 valueType 回退金额 */
-  const formatByType = (v: number, valueType?: string): string => (valueType === 'quantity' ? formatQuantity(v) : formatMoney(v))
-
-  /** 只读详情「执行结果」：从日志 detail 还原当时的执行结果统计（无匹配数据返回 undefined） */
-  const resultOf = (l: ReclassifyLog): PreviewStatItem[] | undefined => {
-    const d = l.detail
-    if (l.type === 'company' && d?.transferMode) {
-      const items: PreviewStatItem[] = []
-      if (d.transferMode === 'all') {
-        items.push({ label: '迁移明细', value: `${l.affectedRows} 条` })
-        if (d.transferValue !== undefined) items.push({ label: '合计金额', value: formatMoney(d.transferValue), tone: 'primary' })
-      } else {
-        items.push({ label: '匹配明细', value: `${l.affectedRows} 条` })
-        if (d.transferValue !== undefined) items.push({ label: '转移金额', value: formatMoney(d.transferValue), tone: 'primary' })
-        if ((d.mergedRows ?? 0) > 0) items.push({ label: '累加到现有行', value: `${d.mergedRows} 条` })
-      }
-      if ((d.createdRows ?? 0) > 0) items.push({ label: '新建明细行', value: `${d.createdRows} 条` })
-      return items
+  /** 失效/已撤销记录「重新应用」：按日志类型预填原参数（company+budget 旧月度口径无编辑入口，面板不会回调） */
+  const handleReapply = (log: ReclassifyLog) => {
+    const d = log.detail
+    const period = log.period ?? log.periodFrom ?? ''
+    if (log.type === 'company') {
+      openDialog({
+        kind: 'company',
+        preset: {
+          templateType: (log.templateType as 'operating' | 'static' | 'cashflow') ?? 'operating',
+          sourceCompanyCode: log.sourceCompany ?? '',
+          targetCompanyCode: log.targetCompany ?? '',
+          transferMode: d?.transferMode ?? 'all',
+          ratio: d?.ratio ?? undefined,
+          amount: d?.amount ?? undefined,
+          period,
+          accountCodes: d?.accountCodes ?? [],
+        },
+      })
+      return
     }
-    if (l.type === 'subject_adjust' && d) {
-      const qty = d.valueType === 'quantity'
-      const items: PreviewStatItem[] = [{ label: '源科目匹配', value: `${l.affectedRows} 条` }]
-      if ((d.decreaseAmount ?? 0) > 0) items.push({ label: qty ? '调减数量' : '调减金额', value: `-${formatByType(d.decreaseAmount ?? 0, d.valueType)}`, tone: 'primary' })
-      if ((d.increaseAmount ?? 0) > 0) items.push({ label: qty ? '调增数量' : '调增金额', value: `+${formatByType(d.increaseAmount ?? 0, d.valueType)}`, tone: 'primary' })
-      if (d.netChange !== undefined) items.push({ label: '净变动', value: formatByType(d.netChange, d.valueType), tone: d.netChange !== 0 ? 'warning' : 'default' })
-      if ((d.createdRows ?? 0) > 0) items.push({ label: '新建明细行', value: `${d.createdRows} 条` })
-      return items
+    if (log.type === 'subject_adjust' && log.templateType === 'budget') {
+      openDialog({
+        kind: 'budget',
+        preset: {
+          companyCode: log.sourceCompany ?? '',
+          adjustMode: d?.adjustMode ?? 'both',
+          sourceAccountCode: log.sourceSubject,
+          targetAccountCode: log.targetSubject,
+          decreaseAmount: d?.decreaseAmount,
+          increaseAmount: d?.increaseAmount,
+          period,
+          reason: d?.reason,
+        },
+      })
+      return
     }
-    return undefined
+    if (log.type === 'subject_adjust') {
+      openDialog({
+        kind: 'subject',
+        preset: {
+          templateType: (log.templateType as 'operating' | 'static' | 'cashflow' | 'budget') ?? 'operating',
+          companyCode: log.sourceCompany ?? '',
+          adjustMode: d?.adjustMode ?? 'both',
+          sourceAccountCode: log.sourceSubject,
+          targetAccountCode: log.targetSubject,
+          decreaseAmount: d?.decreaseAmount,
+          increaseAmount: d?.increaseAmount,
+          period,
+          reason: d?.reason,
+        },
+      })
+    }
+  }
+
+  /** 行点击/「查看」打开只读详情（预填原始参数、禁止提交）；科目归类（subject）无对应对话框，不响应 */
+  const handleViewDetail = (log: ReclassifyLog) => {
+    const supported =
+      (log.type === 'company' && log.templateType !== 'budget')
+      || log.type === 'subject_adjust'
+    if (!supported) return
+    if (log.type === 'subject_adjust' && log.templateType === 'budget') {
+      openDialog({ kind: 'budget', readonly: true, meta: metaOf(log), result: resultOf(log) })
+      return
+    }
+    if (log.type === 'company') {
+      openDialog({ kind: 'company', readonly: true, meta: metaOf(log), result: resultOf(log) })
+      return
+    }
+    openDialog({ kind: 'subject', readonly: true, meta: metaOf(log), result: resultOf(log) })
   }
 
   return (
     <PageContainer
-      title="单体公司调整"
-      className="flex h-[calc(100dvh-104px)] flex-col lg:h-[calc(100dvh-112px)]"
-      // 视口撑满布局（对齐财务指标页）：main 可视高 = 100dvh - Header(56px) - main pt-6(24px) - pb-6(24px)；
-      // lg 断点 pb-8=32px → 112px。页面恒一屏、无全局滚动条，表格高度由 flex 链撑满；
-      // 104/112 需与 main-layout.tsx 的 Header 高与 pt/pb 同步
-      stickyHeader headerRef={headerRef}>
-      {/* 页内 Tab：单体公司调整（默认）/ 汇总主体调整 */}
+      title="单体重分类"
+      description="对单一主体的科目、跨公司、预算进行调整与重分类，保留完整调整记录"
+      stickyHeader
+      headerRef={headerRef}
+    >
       <SubPageTabs items={RECLASSIFY_TABS} />
+
       <ReclassifyLogsPanel
-        canRevert={canReclassifyCompany}
+        canRevert={canCompany}
         stickyTop={headerHeight}
+        onReapply={handleReapply}
+        onViewDetail={handleViewDetail}
         actions={
           <>
-            {canReclassifySubject && (
-              <Button variant="outline" size="sm" aria-label="科目调整" onClick={() => setAdjustSubjectOpen(true)}>
-                <SlidersHorizontal className="mr-2 h-4 w-4" />
+            {canSubject && (
+              <Button variant="outline" size="sm" onClick={() => openDialog({ kind: 'subject' })}>
+                <SlidersHorizontal className="mr-1.5 h-4 w-4" />
                 科目调整
               </Button>
             )}
-            {canReclassifyCompany && (
-              <Button variant="outline" size="sm" aria-label="跨公司调整" onClick={() => setReclassifyCompanyOpen(true)}>
-                <ArrowLeftRight className="mr-2 h-4 w-4" />
-                跨公司调整
+            {canSubject && (
+              <Button variant="outline" size="sm" onClick={() => openDialog({ kind: 'budget' })}>
+                <CalendarRange className="mr-1.5 h-4 w-4" />
+                预算调整
               </Button>
             )}
-            {canReclassifySubject && (
-              <Button variant="outline" size="sm" aria-label="年度预算调整" onClick={() => setBudgetAdjustOpen(true)}>
-                <CalendarRange className="mr-2 h-4 w-4" />
-                年度预算调整
+            {canCompany && (
+              <Button variant="outline" size="sm" onClick={() => openDialog({ kind: 'company' })}>
+                <ArrowLeftRight className="mr-1.5 h-4 w-4" />
+                跨公司调整
               </Button>
             )}
           </>
         }
-        onReapply={(log) => {
-          setReapplyLog(log)
-          if (log.type === 'company') setReclassifyCompanyOpen(true)
-          else if (log.templateType === 'budget') setBudgetAdjustOpen(true)
-          else setAdjustSubjectOpen(true)
-        }}
-        onViewDetail={(log) => {
-          // 只读查看：设置目标日志并打开对应只读对话框（subject 类型由独立只读 Dialog 控制）
-          setViewLog(log)
-          if (log.type === 'company') setReclassifyCompanyOpen(true)
-          else if (log.templateType === 'budget') setBudgetAdjustOpen(true)
-          else if (log.type === 'subject_adjust') setAdjustSubjectOpen(true)
-        }}
       />
 
-      {/* 日志 → 对话框预填参数与只读元信息（company/subject_adjust 共用；subject 换父类型无表单参数） */}
-      {(() => {
-        const log = viewLog ?? reapplyLog
-        const templateTypeOf = (l: ReclassifyLog): 'operating' | 'static' | 'cashflow' | 'budget' =>
-          l.templateType === 'static' || l.templateType === 'budget' || l.templateType === 'cashflow' ? l.templateType : 'operating'
-        const metaOf = (l: ReclassifyLog): ReclassifyLogMeta => ({
-          operator: l.operator,
-          createdAt: l.createdAt,
-          affectedRows: l.affectedRows,
-          revertedAt: l.revertedAt,
-          revertedBy: l.revertedBy,
-          invalidatedAt: l.invalidatedAt,
-          invalidatedReason: l.invalidatedReason,
-          invalidation: l.invalidation,
-        })
-        const closeLog = () => { setReapplyLog(null); setViewLog(null) }
-        return (
-          <>
-            {/* 同公司科目间调整（编辑/重新应用/只读查看共用；key 重挂载使 preset 生效） */}
-            <ReclassifySubjectDialog
-              key={`adjust-${browseSubjectType}-${singleBrowseCompany ?? 'all'}-${log?.id ?? 'none'}`}
-              open={adjustSubjectOpen}
-              onClose={() => { setAdjustSubjectOpen(false); closeLog() }}
-              defaultTemplateType={(browseSubjectType === 'cashflow' ? 'operating' : browseSubjectType)}
-              defaultCompany={singleBrowseCompany}
-              preset={log?.type === 'subject_adjust' && log.templateType !== 'budget' ? {
-                templateType: templateTypeOf(log),
-                companyCode: log.sourceCompany ?? '',
-                adjustMode: log.detail?.adjustMode ?? 'both',
-                sourceAccountCode: log.sourceSubject ?? undefined,
-                targetAccountCode: log.targetSubject ?? undefined,
-                decreaseAmount: log.detail?.decreaseAmount ?? undefined,
-                increaseAmount: log.detail?.increaseAmount ?? undefined,
-                period: log.period ?? log.periodFrom ?? '',
-                reason: log.detail?.reason ?? '',
-              } : undefined}
-              readonly={!!viewLog}
-              meta={viewLog ? metaOf(viewLog) : undefined}
-              result={viewLog ? resultOf(viewLog) : undefined}
-            />
-
-            {/* 跨公司重分类（编辑/重新应用/只读查看共用；key 重挂载使 preset 生效） */}
-            <ReclassifyCompanyDialog
-              key={`reclassify-${browseSubjectType}-${singleBrowseCompany ?? 'all'}-${log?.id ?? 'none'}`}
-              open={reclassifyCompanyOpen}
-              onClose={() => { setReclassifyCompanyOpen(false); closeLog() }}
-              defaultTemplateType={(browseSubjectType === 'cashflow' ? 'operating' : browseSubjectType)}
-              defaultSourceCompany={singleBrowseCompany}
-              preset={log?.type === 'company' ? {
-                templateType: templateTypeOf(log),
-                sourceCompanyCode: log.sourceCompany ?? '',
-                targetCompanyCode: log.targetCompany ?? '',
-                transferMode: log.detail?.transferMode ?? 'all',
-                ratio: log.detail?.ratio ?? undefined,
-                amount: log.detail?.amount ?? undefined,
-                period: log.period ?? log.periodFrom ?? '',
-                accountCodes: log.detail?.accountCodes ?? [],
-              } : undefined}
-              readonly={!!viewLog}
-              meta={viewLog ? metaOf(viewLog) : undefined}
-              result={viewLog ? resultOf(viewLog) : undefined}
-            />
-
-            {/* 年度预算调整（仅全年维度；编辑/重新应用/只读查看共用） */}
-            <BudgetAdjustDialog
-              key={`budget-${singleBrowseCompany ?? 'all'}-${log?.id ?? 'none'}`}
-              open={budgetAdjustOpen}
-              onClose={() => { setBudgetAdjustOpen(false); closeLog() }}
-              defaultCompany={singleBrowseCompany}
-              preset={log?.type === 'subject_adjust' && log.templateType === 'budget' ? {
-                companyCode: log.sourceCompany ?? '',
-                adjustMode: log.detail?.adjustMode ?? 'both',
-                sourceAccountCode: log.sourceSubject ?? undefined,
-                targetAccountCode: log.targetSubject ?? undefined,
-                decreaseAmount: log.detail?.decreaseAmount ?? undefined,
-                increaseAmount: log.detail?.increaseAmount ?? undefined,
-                period: log.period ?? log.periodFrom ?? '',
-                reason: log.detail?.reason ?? '',
-              } : undefined}
-              readonly={!!viewLog}
-              meta={viewLog ? metaOf(viewLog) : undefined}
-              result={viewLog ? resultOf(viewLog) : undefined}
-            />
-
-            {/* 科目归类（换父）记录：无调整表单，仅只读展示操作留痕（调整科目/旧父→新父/分类变更） */}
-            <Dialog open={!!viewLog && viewLog.type === 'subject'} onOpenChange={(o) => !o && setViewLog(null)}>
-              <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle>科目归类调整详情</DialogTitle>
-                  <DialogDescription>科目归类调整（换父）在科目树中执行，此处展示操作留痕</DialogDescription>
-                  {viewLog?.type === 'subject' && <ReadonlyLogMeta meta={metaOf(viewLog)} />}
-                </DialogHeader>
-                <div className="space-y-4">
-                  <section className="space-y-2">
-                    <SectionTitle>调整信息</SectionTitle>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <div className="space-y-1">
-                        <Label>模板类型</Label>
-                        <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">
-                          {viewLog?.templateType ? (TEMPLATE_LABEL[viewLog.templateType] ?? viewLog.templateType) : '科目体系'}
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        <Label>调整科目</Label>
-                        <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">
-                          {viewLog?.detail?.subjectCode ? (nameOf(viewLog.detail.subjectCode) ?? viewLog.detail.subjectCode) : '-'}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <Label>调整路径（旧父 → 新父）</Label>
-                      <div className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border bg-muted/40 px-3 py-1.5 text-sm">
-                        <SubjectRef code={viewLog?.sourceSubject ?? null} nameOf={nameOf} />
-                        <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
-                        <SubjectRef code={viewLog?.targetSubject ?? null} nameOf={nameOf} />
-                      </div>
-                    </div>
-                    {viewLog?.detail?.fromCategory !== undefined && viewLog?.detail?.toCategory !== undefined && (
-                      <p className="text-xs text-muted-foreground">分类归属：{viewLog.detail.fromCategory} → {viewLog.detail.toCategory}</p>
-                    )}
-                  </section>
-                  {viewLog?.invalidatedAt && (
-                    <p className="text-xs text-destructive">{invalidationText(viewLog)}</p>
-                  )}
-                  <p className="text-sm text-muted-foreground">请在「维度/科目体系」的科目树中查看该科目的当前归属与调整历史。</p>
-                </div>
-                <DialogFooter className="gap-2 sm:gap-0">
-                  <Button variant="outline" onClick={() => setViewLog(null)}>关闭</Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </>
-        )
-      })()}
+      {/* key 强制重挂载：对话框以 preset 初始化内部状态，重新应用/只读查看每次全新挂载 */}
+      {dialog?.kind === 'subject' && (
+        <ReclassifySubjectDialog
+          key={nonce}
+          open
+          onClose={() => setDialog(null)}
+          preset={dialog.preset}
+          readonly={dialog.readonly}
+          meta={dialog.meta}
+          result={dialog.result}
+        />
+      )}
+      {dialog?.kind === 'company' && (
+        <ReclassifyCompanyDialog
+          key={nonce}
+          open
+          onClose={() => setDialog(null)}
+          preset={dialog.preset}
+          readonly={dialog.readonly}
+          meta={dialog.meta}
+          result={dialog.result}
+        />
+      )}
+      {dialog?.kind === 'budget' && (
+        <BudgetAdjustDialog
+          key={nonce}
+          open
+          onClose={() => setDialog(null)}
+          preset={dialog.preset}
+          readonly={dialog.readonly}
+          meta={dialog.meta}
+          result={dialog.result}
+        />
+      )}
     </PageContainer>
   )
 }

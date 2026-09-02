@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>现金流指标 · 经营数据分析平台</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; }
+  .shell-side { background: #001529; color: rgba(255, 255, 255, 0.85); display: flex; flex-direction: column; }
+  .shell-side-logo { height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); color: #fff; }
+  .shell-side-logo-mark { width: 32px; height: 32px; background: var(--color-primary); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 16px; }
+  .shell-side-logo-text { font-size: 15px; font-weight: 600; }
+  .shell-side-nav { padding: 12px 0; flex: 1; overflow-y: auto; }
+  .shell-nav-group-title { padding: 12px 28px 8px; color: rgba(255, 255, 255, 0.35); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .shell-nav-item { display: flex; align-items: center; gap: 12px; padding: 0 20px; height: 40px; color: rgba(255, 255, 255, 0.75); cursor: pointer; transition: all 0.2s; border-left: 3px solid transparent; font-size: 14px; text-decoration: none; }
+  .shell-nav-item:hover { color: #fff; background: rgba(255, 255, 255, 0.04); }
+  .shell-nav-item.is-active { background: var(--color-primary); color: #fff; border-left-color: #fff; }
+  .shell-nav-ic { width: 18px; flex-shrink: 0; color: rgba(255, 255, 255, 0.55); }
+  .shell-nav-item:hover .shell-nav-ic { color: #fff; }
+
+  .shell-header { background: #fff; border-bottom: 1px solid var(--antd-gray-3); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .shell-header-l { display: flex; align-items: center; gap: 16px; }
+  .shell-header-r { display: flex; align-items: center; gap: 16px; }
+  .period-pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; background: var(--antd-gray-2); border-radius: var(--radius-medium); color: var(--color-foreground); font-size: 13px; cursor: pointer; }
+  .period-pill:hover { background: var(--antd-gray-3); }
+  .user-chip { display: flex; align-items: center; gap: 10px; padding: 4px 10px 4px 4px; border-radius: 20px; cursor: pointer; }
+  .user-chip:hover { background: var(--antd-gray-2); }
+  .user-chip-name { font-size: 13px; font-weight: 500; }
+  .user-chip-role { font-size: 11px; color: var(--color-text-tertiary); }
+
+  .stat-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 16px; }
+  .col-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .antd-card { background: #fff; border-radius: var(--radius-medium); padding: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); border: 1px solid var(--antd-gray-3); }
+  .antd-card-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .antd-card-sub { font-size: 12px; color: var(--color-text-tertiary); margin-bottom: 16px; }
+
+  /* 趋势图占位 */
+  .chart-svg { width: 100%; height: 240px; display: block; }
+  .chart-legend { display: flex; gap: 16px; font-size: 12px; color: var(--color-text-secondary); margin-top: 8px; }
+  .chart-legend-item { display: flex; align-items: center; gap: 6px; }
+  .chart-legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+
+  /* 对比柱 */
+  .bar-row { display: grid; grid-template-columns: 80px 1fr 90px; align-items: center; gap: 12px; padding: 6px 0; font-size: 12px; }
+  .bar-row-label { color: var(--color-text-secondary); }
+  .bar-row-bars { display: flex; flex-direction: column; gap: 4px; }
+  .bar-track { height: 12px; background: var(--antd-gray-2); border-radius: 2px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 2px; }
+  .bar-fill.is-current { background: var(--color-primary); }
+  .bar-fill.is-prev { background: var(--antd-brand-200); }
+  .bar-fill.is-yoy { background: var(--antd-state-warning-500, #faad14); }
+  .bar-row-value { text-align: right; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div class="antd-page">
+  <!-- Side shell (4 组导航, 财务指标 is-active) -->
+  <aside class="shell-side">
+    <div class="shell-side-logo">
+      <div class="shell-side-logo-mark">智</div>
+      <div class="shell-side-logo-text">经营数据分析平台</div>
+    </div>
+    <nav class="shell-side-nav">
+      <div class="shell-nav-group-title">主数据</div>
+      <a class="shell-nav-item" href="dashboard.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+        首页看板
+      </a>
+      <a class="shell-nav-item is-active" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l3-3 4 4 5-5"/></svg>
+        财务指标
+      </a>
+      <a class="shell-nav-item" href="transactions-overview.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+        往来分析
+      </a>
+      <a class="shell-nav-item" href="inventory.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        存货管理
+      </a>
+      <a class="shell-nav-item" href="reports-list.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+        分析报告
+      </a>
+
+      <div class="shell-nav-group-title">业务工具</div>
+      <a class="shell-nav-item" href="enterprise-lookup.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        企业信息查询
+      </a>
+
+      <div class="shell-nav-group-title">数据管理</div>
+      <a class="shell-nav-item" href="data-import.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        数据导入
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h12"/></svg>
+        重分类管理
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        维度管理
+      </a>
+
+      <div class="shell-nav-group-title">系统</div>
+      <a class="shell-nav-item" href="admin-users.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><circle cx="17" cy="7" r="3"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
+        用户管理
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+        角色权限
+      </a>
+    </nav>
+  </aside>
+
+  <main class="antd-content">
+    <header class="shell-header">
+      <div class="shell-header-l">
+        <div class="antd-breadcrumb">
+          <a>财务指标</a>
+          <span class="sep">/</span>
+          <span class="current">现金流指标</span>
+        </div>
+      </div>
+      <div class="shell-header-r">
+        <div class="antd-select" style="min-width: 160px;">浙江壹品慧生活集团</div>
+        <div class="period-pill">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          2026 财年 · 8月
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <button class="antd-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          刷新
+        </button>
+        <div class="user-chip">
+          <div class="antd-avatar" style="background: var(--antd-brand-100); color: var(--color-primary);">张</div>
+          <div>
+            <div class="user-chip-name">张伟</div>
+            <div class="user-chip-role">财务总监</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="antd-content-body">
+      <!-- PageHead -->
+      <div class="antd-page-head">
+        <div>
+          <div class="antd-page-head-title">现金流指标</div>
+          <div class="antd-page-head-desc">经营/投资/筹资三项现金流走势，关注净现金流稳定性与结构</div>
+        </div>
+        <div class="antd-page-head-actions">
+          <div class="antd-segmented">
+            <div class="antd-segmented-item is-active">月度</div>
+            <div class="antd-segmented-item">季度</div>
+            <div class="antd-segmented-item">年度</div>
+          </div>
+          <button class="antd-btn antd-btn-primary">导出明细</button>
+        </div>
+      </div>
+
+      <!-- 5 个 stat-tile -->
+      <div class="stat-row">
+        <div class="antd-stat-tile">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">经营活动现金流</span>
+            <span class="antd-stat-tile-icon">经</span>
+          </div>
+          <div class="antd-stat-tile-value antd-text-success">+ 86.4<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-up">↑ 12.3%</span>
+            <span class="antd-text-tertiary antd-fs-sm">较上月</span>
+          </div>
+        </div>
+        <div class="antd-stat-tile">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">投资活动现金流</span>
+            <span class="antd-stat-tile-icon">投</span>
+          </div>
+          <div class="antd-stat-tile-value antd-text-error">- 24.7<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-down">↓ 8.5%</span>
+            <span class="antd-text-tertiary antd-fs-sm">较上月</span>
+          </div>
+        </div>
+        <div class="antd-stat-tile">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">筹资活动现金流</span>
+            <span class="antd-stat-tile-icon">筹</span>
+          </div>
+          <div class="antd-stat-tile-value antd-text-error">- 12.0<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-down">↓ 3.1%</span>
+            <span class="antd-text-tertiary antd-fs-sm">较上月</span>
+          </div>
+        </div>
+        <div class="antd-stat-tile">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">期末现金余额</span>
+            <span class="antd-stat-tile-icon">余</span>
+          </div>
+          <div class="antd-stat-tile-value">256.8<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-up">↑ 4.6%</span>
+            <span class="antd-text-tertiary antd-fs-sm">较年初</span>
+          </div>
+        </div>
+        <div class="antd-stat-tile is-orange antd-emphasis-warm-strong">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">净现金流</span>
+            <span class="antd-stat-tile-icon">净</span>
+          </div>
+          <div class="antd-stat-tile-value antd-text-success">+ 49.7<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-up">↑ 18.2%</span>
+            <span class="antd-text-tertiary antd-fs-sm">较上月</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 左 趋势 / 右 对比 -->
+      <div class="col-2" style="margin-bottom: 16px;">
+        <div class="antd-card">
+          <div class="antd-card-title">月度趋势（近 12 月）</div>
+          <div class="antd-card-sub">三项现金流的月度走势，关注经营 / 投资 / 筹资的相对强弱</div>
+          <svg class="chart-svg" viewBox="0 0 600 240" preserveAspectRatio="none">
+            <!-- 网格 -->
+            <g stroke="var(--antd-gray-3)" stroke-width="1">
+              <line x1="40" y1="40" x2="580" y2="40"/>
+              <line x1="40" y1="90" x2="580" y2="90"/>
+              <line x1="40" y1="140" x2="580" y2="140"/>
+              <line x1="40" y1="190" x2="580" y2="190"/>
+            </g>
+            <!-- 0 轴 -->
+            <line x1="40" y1="115" x2="580" y2="115" stroke="var(--antd-gray-4)" stroke-dasharray="4 4"/>
+            <text x="36" y="44" text-anchor="end" font-size="10" fill="var(--color-text-tertiary)">100</text>
+            <text x="36" y="94" text-anchor="end" font-size="10" fill="var(--color-text-tertiary)">50</text>
+            <text x="36" y="144" text-anchor="end" font-size="10" fill="var(--color-text-tertiary)">0</text>
+            <text x="36" y="194" text-anchor="end" font-size="10" fill="var(--color-text-tertiary)">-50</text>
+            <!-- 经营 (绿) -->
+            <polyline points="60,135 105,128 150,118 195,110 240,100 285,95 330,88 375,82 420,76 465,70 510,65 555,60"
+                      fill="none" stroke="var(--antd-state-success-500, #52c41a)" stroke-width="2.5"/>
+            <!-- 投资 (橙) -->
+            <polyline points="60,118 105,122 150,125 195,128 240,130 285,132 330,135 375,138 420,140 465,142 510,145 555,148"
+                      fill="none" stroke="var(--antd-state-warning-500, #faad14)" stroke-width="2.5"/>
+            <!-- 筹资 (蓝) -->
+            <polyline points="60,120 105,118 150,120 195,122 240,121 285,123 330,122 375,124 420,123 465,125 510,124 555,126"
+                      fill="none" stroke="var(--color-primary)" stroke-width="2.5"/>
+            <!-- 净流 (深橙粗) -->
+            <polyline points="60,138 105,135 150,130 195,128 240,122 285,118 330,112 375,108 420,102 465,96 510,90 555,86"
+                      fill="none" stroke="var(--antd-state-error-500, #ff4d4f)" stroke-width="3"/>
+            <!-- X 轴月份 -->
+            <g font-size="10" fill="var(--color-text-tertiary)" text-anchor="middle">
+              <text x="60" y="220">9月</text>
+              <text x="105" y="220">10月</text>
+              <text x="150" y="220">11月</text>
+              <text x="195" y="220">12月</text>
+              <text x="240" y="220">1月</text>
+              <text x="285" y="220">2月</text>
+              <text x="330" y="220">3月</text>
+              <text x="375" y="220">4月</text>
+              <text x="420" y="220">5月</text>
+              <text x="465" y="220">6月</text>
+              <text x="510" y="220">7月</text>
+              <text x="555" y="220">8月</text>
+            </g>
+          </svg>
+          <div class="chart-legend">
+            <span class="chart-legend-item"><span class="chart-legend-dot" style="background: var(--antd-state-success-500, #52c41a);"></span>经营活动</span>
+            <span class="chart-legend-item"><span class="chart-legend-dot" style="background: var(--antd-state-warning-500, #faad14);"></span>投资活动</span>
+            <span class="chart-legend-item"><span class="chart-legend-dot" style="background: var(--color-primary);"></span>筹资活动</span>
+            <span class="chart-legend-item"><span class="chart-legend-dot" style="background: var(--antd-state-error-500, #ff4d4f);"></span>净现金流</span>
+          </div>
+        </div>
+
+        <div class="antd-card">
+          <div class="antd-card-title">近期对比（本期 vs 上期 vs 去年同期）</div>
+          <div class="antd-card-sub">5 段现金流的本期 / 上期 / 去年同期柱状对比</div>
+          <div class="bar-row">
+            <span class="bar-row-label">经营</span>
+            <div class="bar-row-bars">
+              <div class="bar-track"><div class="bar-fill is-current" style="width: 86%;"></div></div>
+              <div class="bar-track"><div class="bar-fill is-prev" style="width: 76%;"></div></div>
+              <div class="bar-track"><div class="bar-fill is-yoy" style="width: 65%;"></div></div>
+            </div>
+            <span class="bar-row-value antd-text-success">+ 86.4</span>
+          </div>
+          <div class="bar-row">
+            <span class="bar-row-label">投资</span>
+            <div class="bar-row-bars">
+              <div class="bar-track"><div class="bar-fill is-current" style="width: 25%;"></div></div>
+              <div class="bar-track"><div class="bar-fill is-prev" style="width: 30%;"></div></div>
+              <div class="bar-track"><div class="bar-fill is-yoy" style="width: 35%;"></div></div>
+            </div>
+            <span class="bar-row-value antd-text-error">- 24.7</span>
+          </div>
+          <div class="bar-row">
+            <span class="bar-row-label">筹资</span>
+            <div class="bar-row-bars">
+              <div class="bar-track"><div class="bar-fill is-current" style="width: 12%;"></div></div>
+              <div class="bar-track"><div class="bar-fill is-prev" style="width: 15%;"></div></div>
+              <div class="bar-track"><div class="bar-fill is-yoy" style="width: 18%;"></div></div>
+            </div>
+            <span class="bar-row-value antd-text-error">- 12.0</span>
+          </div>
+          <div class="bar-row">
+            <span class="bar-row-label">期末</span>
+            <div class="bar-row-bars">
+              <div class="bar-track"><div class="bar-fill is-current" style="width: 100%;"></div></div>
+              <div class="bar-track"><div class="bar-fill is-prev" style="width: 95%;"></div></div>
+              <div class="bar-track"><div class="bar-fill is-yoy" style="width: 88%;"></div></div>
+            </div>
+            <span class="bar-row-value">256.8</span>
+          </div>
+          <div class="bar-row" style="border-top: 1px solid var(--antd-gray-3); padding-top: 10px; margin-top: 4px;">
+            <span class="bar-row-label"><strong>净流</strong></span>
+            <div class="bar-row-bars">
+              <div class="bar-track"><div class="bar-fill is-current" style="width: 50%;"></div></div>
+              <div class="bar-track"><div class="bar-fill is-prev" style="width: 40%;"></div></div>
+              <div class="bar-track"><div class="bar-fill is-yoy" style="width: 32%;"></div></div>
+            </div>
+            <span class="bar-row-value antd-text-success"><strong>+ 49.7</strong></span>
+          </div>
+          <div class="chart-legend">
+            <span class="chart-legend-item"><span class="chart-legend-dot" style="background: var(--color-primary);"></span>本期</span>
+            <span class="chart-legend-item"><span class="chart-legend-dot" style="background: var(--antd-brand-200);"></span>上期</span>
+            <span class="chart-legend-item"><span class="chart-legend-dot" style="background: var(--antd-state-warning-500, #faad14);"></span>去年同期</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 底部 5 段现金流明细表 -->
+      <div class="antd-card">
+        <div class="antd-card-title">5 段现金流明细表</div>
+        <div class="antd-card-sub">近 5 个期间的经营/投资/筹资/期末/净流明细，净流列高亮</div>
+        <table class="antd-table antd-table-zebra antd-table-density-compact" style="width: 100%;">
+          <thead>
+            <tr>
+              <th>期间</th>
+              <th style="text-align: right;">经营活动</th>
+              <th style="text-align: right;">投资活动</th>
+              <th style="text-align: right;">筹资活动</th>
+              <th style="text-align: right;">期末余额</th>
+              <th style="text-align: right;">净现金流</th>
+              <th style="text-align: right;">同比</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>2026 · 8月</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums; color: var(--antd-state-success-500, #52c41a);">+ 86.4</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums; color: var(--antd-state-error-500, #ff4d4f);">- 24.7</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums; color: var(--antd-state-error-500, #ff4d4f);">- 12.0</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums;">256.80</td>
+              <td class="antd-emphasis-orange" style="text-align: right; font-variant-numeric: tabular-nums; color: var(--antd-state-success-500, #52c41a);"><strong>+ 49.7</strong></td>
+              <td class="antd-emphasis-orange" style="text-align: right; font-variant-numeric: tabular-nums;">+ 18.2%</td>
+            </tr>
+            <tr>
+              <td>2026 · 7月</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums; color: var(--antd-state-success-500, #52c41a);">+ 76.9</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums; color: var(--antd-state-error-500, #ff4d4f);">- 27.0</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums; color: var(--antd-state-error-500, #ff4d4f);">- 12.4</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums;">237.10</td>
+              <td class="antd-emphasis-orange" style="text-align: right; font-variant-numeric: tabular-nums; color: var(--antd-state-success-500, #52c41a);"><strong>+ 37.5</strong></td>
+              <td class="antd-emphasis-orange" style="text-align: right; font-variant-numeric: tabular-nums;">+ 9.4%</td>
+            </tr>
+            <tr>
+              <td>2026 · 6月</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums; color: var(--antd-state-success-500, #52c41a);">+ 70.2</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums; color: var(--antd-state-error-500, #ff4d4f);">- 30.2</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums; color: var(--antd-state-error-500, #ff4d4f);">- 13.1</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums;">199.60</td>
+              <td class="antd-emphasis-orange" style="text-align: right; font-variant-numeric: tabular-nums; color: var(--antd-state-success-500, #52c41a);"><strong>+ 26.9</strong></td>
+              <td class="antd-emphasis-orange" style="text-align: right; font-variant-numeric: tabular-nums;">+ 4.8%</td>
+            </tr>
+            <tr>
+              <td>2026 · 5月</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums; color: var(--antd-state-success-500, #52c41a);">+ 65.8</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums; color: var(--antd-state-error-500, #ff4d4f);">- 32.4</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums; color: var(--antd-state-error-500, #ff4d4f);">- 13.5</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums;">172.70</td>
+              <td class="antd-emphasis-orange" style="text-align: right; font-variant-numeric: tabular-nums; color: var(--antd-state-success-500, #52c41a);"><strong>+ 19.9</strong></td>
+              <td class="antd-emphasis-orange" style="text-align: right; font-variant-numeric: tabular-nums;">- 1.2%</td>
+            </tr>
+            <tr>
+              <td>2026 · 4月</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums; color: var(--antd-state-success-500, #52c41a);">+ 62.0</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums; color: var(--antd-state-error-500, #ff4d4f);">- 35.1</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums; color: var(--antd-state-error-500, #ff4d4f);">- 14.0</td>
+              <td style="text-align: right; font-variant-numeric: tabular-nums;">152.80</td>
+              <td class="antd-emphasis-orange" style="text-align: right; font-variant-numeric: tabular-nums; color: var(--antd-state-success-500, #52c41a);"><strong>+ 12.9</strong></td>
+              <td class="antd-emphasis-orange" style="text-align: right; font-variant-numeric: tabular-nums;">- 6.8%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>
