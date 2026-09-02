@@ -126,7 +126,7 @@ export function EnterpriseLookup() {
     >
       {/* 搜索 hero：主题主色同色相渐变（随侧边栏风格切换）+ 输入 + 最近搜索（真实查询历史） */}
       <div className="relative overflow-hidden rounded-card bg-gradient-to-br from-primary to-[hsl(var(--primary)/0.72)] p-8 text-white shadow-antd-1">
-        <span className="pointer-events-none absolute -right-16 -top-16 h-60 w-60 rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }} aria-hidden />
+        <span className="pointer-events-none absolute -right-16 -top-16 h-60 w-60 rounded-full bg-white/[0.08]" aria-hidden />
         <h2 className="relative text-[22px] font-semibold leading-tight">查询企业工商信息</h2>
         <p className="relative mt-2 text-sm text-white/85">输入企业名称或统一社会信用代码，查询结果由数据源聚合并缓存</p>
 
@@ -140,8 +140,7 @@ export function EnterpriseLookup() {
           <Input
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            className="h-9 flex-1 border-0 shadow-none focus-visible:ring-0"
-            style={{ background: 'transparent' }}
+            className="h-9 flex-1 border-0 bg-transparent shadow-none focus-visible:ring-0"
             placeholder="企业名称 / 统一社会信用代码"
           />
           <Button type="submit" className="h-9 px-5" disabled={searchQuery.isFetching}>

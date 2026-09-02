@@ -29,8 +29,9 @@ function rateText(rate: number | null): string {
   return rate === null ? '–' : formatPercent(rate / 100)
 }
 
-/** 达成率红绿灯三档：≥75 达标绿 / 60-75 预警黄 / <60 未达标红；无预算灰（阈值见 ACHIEVEMENT_RATE_THRESHOLDS） */
-function rateColorClass(rate: number | null): string {
+/** 达成率红绿灯三档：≥75 达标绿 / 60-75 预警黄 / <60 未达标红；无预算灰（阈值见 ACHIEVEMENT_RATE_THRESHOLDS）。
+ * 导出供其他达成率文本（如主体预算内容页大数字）复用，保证全站红绿灯分档一致 */
+export function rateColorClass(rate: number | null): string {
   if (rate === null) return 'text-muted-foreground'
   if (rate >= ACHIEVEMENT_RATE_THRESHOLDS.PASS) return 'text-success-strong'
   if (rate >= ACHIEVEMENT_RATE_THRESHOLDS.WARN) return 'text-warning-strong'

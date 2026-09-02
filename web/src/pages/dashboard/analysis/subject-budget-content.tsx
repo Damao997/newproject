@@ -8,6 +8,8 @@ import { usePageStore } from '@/stores/pageStateStore'
 import { totalOf } from '../budget-total'
 import { SubjectBudgetCard } from '../subject-budget-card'
 import { cn, formatMoneyWan } from '@/lib/utils'
+import { ACHIEVEMENT_RATE_THRESHOLDS } from '@/lib/constants'
+import { rateColorClass } from '@/components/charts/kpi-card'
 import type { ProductBudgetMetric } from '@/types'
 
 interface SubjectBudgetContentProps {
@@ -17,11 +19,11 @@ interface SubjectBudgetContentProps {
   companyCode?: string
 }
 
-/** 达成率环色阶：≥75 绿 / 60-75 橙 / <60 红 / null 灰 */
+/** 达成率环色阶：≥75 绿 / 60-75 橙 / <60 红 / null 灰（阈值消费共享常量，与 kpi-card 红绿灯分档一致） */
 function rateColor(rate: number | null): string {
   if (rate === null) return 'hsl(var(--muted-foreground) / 0.4)'
-  if (rate >= 75) return 'hsl(var(--success-500))'
-  if (rate >= 60) return 'hsl(var(--orange-500))'
+  if (rate >= ACHIEVEMENT_RATE_THRESHOLDS.PASS) return 'hsl(var(--success-500))'
+  if (rate >= ACHIEVEMENT_RATE_THRESHOLDS.WARN) return 'hsl(var(--orange-500))'
   return 'hsl(var(--destructive))'
 }
 
@@ -158,7 +160,7 @@ export function SubjectBudgetContent({ period, companyCode }: SubjectBudgetConte
               ))}
               <div className="relative flex flex-col gap-2 overflow-hidden rounded-card border border-border bg-card p-5 shadow-antd-1 before:absolute before:bottom-0 before:left-0 before:top-0 before:w-[3px] before:bg-orange-500 before:content-['']">
                 <span className="text-body text-muted-foreground">整体累计达成率</span>
-                <div className="font-num text-2xl font-semibold leading-tight" style={{ color: rateColor(total.income.ytdRate) }}>
+                <div className={cn('font-num text-2xl font-semibold leading-tight', rateColorClass(total.income.ytdRate))}>
                   {total.income.ytdRate === null ? '–' : total.income.ytdRate.toFixed(1)}
                   {total.income.ytdRate !== null && <span className="ml-1 text-sm font-normal text-muted-foreground">%</span>}
                 </div>
