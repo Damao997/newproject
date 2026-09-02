@@ -287,24 +287,21 @@ function DetailTable({ rows, onJumpOperating }: { rows: DetailRow[]; onJumpOpera
         <span className="text-xs uppercase tracking-wider text-muted-foreground">科目 / 本期 / 同比 / 环比 / 趋势</span>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="data-table-report">
           <thead>
-            <tr className="border-b border-border bg-muted/40 text-xs text-muted-foreground">
-              <th className="w-[16em] px-3 py-2 text-left font-medium">科目</th>
-              <th className="px-3 py-2 text-right font-medium">本期</th>
-              <th className="px-3 py-2 text-right font-medium">同比</th>
-              <th className="px-3 py-2 text-right font-medium">环比</th>
-              <th className="px-3 py-2 text-left font-medium">12月趋势</th>
-              <th className="px-3 py-2 text-left font-medium">状态</th>
+            <tr>
+              <th className="w-[16em] text-left">科目</th>
+              <th className="text-right">本期</th>
+              <th className="text-right">同比</th>
+              <th className="text-right">环比</th>
+              <th className="text-left">12月趋势</th>
+              <th className="text-left">状态</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr
-                key={r.key}
-                className="border-b border-border/60 last:border-b-0 hover:bg-blue-1/50"
-              >
-                <td className="px-3 py-2.5 text-left text-foreground">
+              <tr key={r.key}>
+                <td className="text-left text-foreground">
                   {r.key === 'expense' || r.key === 'finance' ? (
                     <button
                       type="button"
@@ -318,19 +315,19 @@ function DetailTable({ rows, onJumpOperating }: { rows: DetailRow[]; onJumpOpera
                     r.label
                   )}
                 </td>
-                <td className="px-3 py-2.5 text-right font-num tabular-nums text-foreground">
+                <td className="text-right font-num tabular-nums text-foreground">
                   {formatMoneyWan(r.actual)} 万
                 </td>
-                <td className="px-3 py-2.5 text-right">
+                <td className="text-right">
                   <DeltaCell value={r.yoy} />
                 </td>
-                <td className="px-3 py-2.5 text-right">
+                <td className="text-right">
                   <DeltaCell value={r.mom} />
                 </td>
-                <td className="px-3 py-2.5">
+                <td>
                   <TrendCell pct={r.trendPct} tone={r.trendTone} />
                 </td>
-                <td className="px-3 py-2.5">
+                <td>
                   <Pill tone={r.status.tone}>{r.status.text}</Pill>
                 </td>
               </tr>

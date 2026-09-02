@@ -391,46 +391,46 @@ export function ReceivableAgingContent({ period, companyCode }: ReceivableAgingC
                 <EmptyState compact className="py-10" title="暂无明细数据" />
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-sm">
+                  <table className="data-table-report">
                     <thead>
-                      <tr className="border-b border-border bg-muted/40">
-                        <th className="px-3 py-2 text-left text-body font-medium text-foreground">主体</th>
-                        <th className="px-3 py-2 text-right text-body font-medium text-foreground">期末余额</th>
+                      <tr>
+                        <th className="text-left">主体</th>
+                        <th className="text-right">期末余额</th>
                         {AGING_GROUPS.map((g) => (
-                          <th key={g} className="px-3 py-2 text-right text-body font-medium text-foreground">{g}</th>
+                          <th key={g} className="text-right">{g}</th>
                         ))}
-                        <th className="px-3 py-2 text-left text-body font-medium text-foreground">分布</th>
+                        <th className="text-left">分布</th>
                       </tr>
                     </thead>
                     <tbody>
                       {[...(agingRows ?? [])]
                         .sort((a, b) => b.closingBalance - a.closingBalance)
-                        .map((r, i) => (
-                          <tr key={r.companyCode} className={cn('border-b border-border/60', i % 2 === 1 && 'bg-muted/30')}>
-                            <td className="max-w-[12em] truncate px-3 py-2 text-left text-body text-foreground" title={r.companyName ?? r.companyCode}>
+                        .map((r) => (
+                          <tr key={r.companyCode}>
+                            <td className="max-w-[12em] truncate text-left text-body text-foreground" title={r.companyName ?? r.companyCode}>
                               {r.companyName ?? r.companyCode}
                             </td>
-                            <td className="px-3 py-2 text-right font-num text-sm font-semibold text-foreground">
+                            <td className="text-right font-num text-sm font-semibold text-foreground">
                               {formatWan(r.closingBalance)}
                             </td>
                             {AGING_GROUPS.map((g) => {
                               const v = r.aging[g] ?? 0
                               return (
-                                <td key={g} className={cn('px-3 py-2 text-right font-num text-sm', v !== 0 ? 'text-foreground' : 'text-muted-foreground/60')}>
+                                <td key={g} className={cn('text-right font-num text-sm', v !== 0 ? 'text-foreground' : 'text-muted-foreground/60')}>
                                   {v !== 0 ? formatWan(v) : '–'}
                                 </td>
                               )
                             })}
-                            <td className="px-3 py-2">
+                            <td>
                               <AgingStackBar aging={r.aging} closingBalance={r.closingBalance} />
                             </td>
                           </tr>
                         ))}
-                      <tr className="border-t-2 border-border bg-muted/40 font-semibold">
-                        <td className="px-3 py-2 text-left text-body">合计</td>
-                        <td className="px-3 py-2 text-right font-num text-sm">{formatWan(agingClosingTotal)}</td>
+                      <tr className="report-total-row">
+                        <td className="text-left text-body">合计</td>
+                        <td className="text-right font-num text-sm">{formatWan(agingClosingTotal)}</td>
                         {AGING_GROUPS.map((g) => (
-                          <td key={g} className="px-3 py-2 text-right font-num text-sm">
+                          <td key={g} className="text-right font-num text-sm">
                             {formatWan(agingTotalByGroup.get(g) ?? 0)}
                           </td>
                         ))}

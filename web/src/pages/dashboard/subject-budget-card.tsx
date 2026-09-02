@@ -82,15 +82,15 @@ export function SubjectBudgetCard({ period, companyCode, mode = 'single' }: Subj
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm">
+            <table className="data-table-report data-table-report--striped">
               <thead>
                 <tr className="border-b border-border">
-                  <th rowSpan={2} className="px-3 py-2 text-left text-body font-medium text-foreground w-[10em]">主体</th>
-                  <th colSpan={5} className="px-3 py-2 text-center text-body font-semibold text-foreground">收入</th>
-                  <th colSpan={5} className="px-3 py-2 text-center text-body font-semibold text-foreground">毛利</th>
-                  <th colSpan={5} className="px-3 py-2 text-center text-body font-semibold text-foreground">净利润</th>
+                  <th rowSpan={2} className="text-left w-[10em]">主体</th>
+                  <th colSpan={5} className="text-center font-semibold">收入</th>
+                  <th colSpan={5} className="text-center font-semibold">毛利</th>
+                  <th colSpan={5} className="text-center font-semibold">净利润</th>
                 </tr>
-                <tr className="border-b border-border">
+                <tr>
                   <th className={TH_CLS}>{amountMode === 'month' ? '月度预算' : '年度预算'}</th>
                   <th className={TH_CLS}>{amountMode === 'month' ? '本月金额' : '累计金额'}</th>
                   <th className={TH_CLS}><TipLabel label="预算完成率" tip="月度=本月金额÷当月预算；累计=累计金额÷年度预算" /></th>
@@ -109,12 +109,12 @@ export function SubjectBudgetCard({ period, companyCode, mode = 'single' }: Subj
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, i) => {
+                {rows.map((row) => {
                   const income = displayOf(row.income)
                   const profit = displayOf(row.profit)
                   const netProfit = displayOf(row.netProfit)
                   return (
-                    <tr key={row.code} className={cn('border-b border-border/60', i % 2 === 1 && 'bg-muted/30')}>
+                    <tr key={row.code}>
                       {/* 主体名单行截断（空格不计入 10 字符判定）：固定 w-[10em] + truncate，Tooltip 悬停显示完整名称 */}
                       <td className="px-3 py-2 text-left text-sm font-medium text-foreground w-[10em]">
                         {row.name.replace(/\s/g, '').length > 10 ? (

@@ -1,4 +1,4 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { TipLabel } from '@/components/ui/tip-label'
@@ -81,14 +81,14 @@ export function ProductBudgetCard({ period, companyCode }: ProductBudgetCardProp
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm">
+            <table className="data-table-report data-table-report--striped">
               <thead>
                 <tr className="border-b border-border">
-                  <th rowSpan={2} className="px-3 py-2 text-left text-body font-medium text-foreground w-[10em]">品类</th>
-                  <th colSpan={6} className="px-3 py-2 text-center text-body font-semibold text-foreground">收入</th>
-                  <th colSpan={6} className="px-3 py-2 text-center text-body font-semibold text-foreground">毛利</th>
+                  <th rowSpan={2} className="text-left w-[10em]">品类</th>
+                  <th colSpan={6} className="text-center font-semibold">收入</th>
+                  <th colSpan={6} className="text-center font-semibold">毛利</th>
                 </tr>
-                <tr className="border-b border-border">
+                <tr>
                   <th className={TH_CLS}>{amountMode === 'month' ? '月度预算' : '年度预算'}</th>
                   <th className={TH_CLS}>{amountMode === 'month' ? '本月金额' : '累计金额'}</th>
                   <th className={TH_CLS}>{amountMode === 'month' ? '同期金额' : '同期累计'}</th>
@@ -104,11 +104,11 @@ export function ProductBudgetCard({ period, companyCode }: ProductBudgetCardProp
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, i) => {
+                {rows.map((row) => {
                   const income = displayOf(row.income)
                   const profit = displayOf(row.profit)
                   return (
-                    <tr key={row.category} className={cn('border-b border-border/60', i % 2 === 1 && 'bg-muted/30')}>
+                    <tr key={row.category}>
                       {/* 品类名单行截断（空格不计入 10 字符判定）：固定 w-[10em] + truncate，Tooltip 悬停显示完整名称 */}
                       <td className="px-3 py-2 text-left text-sm font-medium text-foreground w-[10em]">
                         {row.category.replace(/\s/g, '').length > 10 ? (

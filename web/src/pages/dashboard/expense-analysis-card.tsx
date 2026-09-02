@@ -92,14 +92,14 @@ export function ExpenseAnalysisCard({ period, companyCode }: ExpenseAnalysisCard
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm">
+            <table className="data-table-report data-table-report--striped">
               <thead>
                 <tr className="border-b border-border">
-                  <th rowSpan={2} className="px-3 py-2 text-left text-body font-medium text-foreground w-[10em]">指标名称</th>
-                  <th colSpan={6} className="px-3 py-2 text-center text-body font-semibold text-foreground">月度完成情况</th>
-                  <th colSpan={6} className="px-3 py-2 text-center text-body font-semibold text-foreground">财年累计完成情况</th>
+                  <th rowSpan={2} className="text-left w-[10em]">指标名称</th>
+                  <th colSpan={6} className="text-center font-semibold">月度完成情况</th>
+                  <th colSpan={6} className="text-center font-semibold">财年累计完成情况</th>
                 </tr>
-                <tr className="border-b border-border">
+                <tr>
                   <th className={TH_CLS}>月度预算</th>
                   <th className={TH_CLS}>本月金额</th>
                   <th className={TH_CLS}><TipLabel label="使用率" tip="本月金额÷当月预算（月度）" /></th>
@@ -115,10 +115,10 @@ export function ExpenseAnalysisCard({ period, companyCode }: ExpenseAnalysisCard
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, i) => {
+                {rows.map((row) => {
                   const { code, name, ...metric } = row
                   return (
-                    <tr key={code} className={cn('border-b border-border/60', i % 2 === 1 && 'bg-muted/30')}>
+                    <tr key={code}>
                       {/* 指标名单行截断（空格不计入 10 字符判定）：固定 w-[10em] + truncate，Tooltip 悬停显示完整名称 */}
                       <td className="px-3 py-2 text-left text-sm font-medium text-foreground w-[10em]">
                         {name.replace(/\s/g, '').length > 10 ? (

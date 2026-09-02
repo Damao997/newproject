@@ -1761,28 +1761,41 @@
 /* ============ 原生报表表统一皮肤 ============
  * 目标：让未走 DataTable 的原生 <table>（报表/聚合表）与 antd Table token（antd-provider）同皮：
  * 表头底色 #fafafa（--ink-2，对齐 Table.headerBg/rowHoverBg）、行线 #f0f0f0（--border-subtle，对齐 Table.borderColor）、
- * 表头文字 13px foreground（对齐 Table.headerColor）。对齐方式无法从 CSS 推断的（数字列右对齐/等宽）仍由标记显式声明。
- * 接入方式：table 挂 .data-table-report → 删除表头重复类 → th/td 仅保留对齐与业务类。 */
+ * 表头文字 13px foreground（对齐 Table.headerColor）。
+ * 实现要点：:where() 将内部选择器特异性降为 (0,1,0)，th/td 上的显式工具类（text-right/text-center 等，utilities 层靠后）
+ * 均可覆盖默认值——单行表头表与分组表头表（rowSpan/colSpan 预算卡）都能安全接入。
+ * 接入方式：table 挂 .data-table-report → 表头行重复类删除 → th/td 仅保留对齐与业务类。 */
 @layer components {
   .data-table-report {
     @apply w-full border-collapse text-sm;
   }
-  .data-table-report thead th {
-    @apply whitespace-nowrap border-b border-border bg-ink-2 px-3 py-2 text-left text-[13px] font-medium text-foreground;
+  /* 表头行：底色 #fafafa；末行下边框（单行表头唯一行 / 分组表头第二行均命中 :last-child） */
+  .data-table-report :where(thead tr) {
+    @apply bg-ink-2;
   }
-  .data-table-report tbody td {
+  .data-table-report :where(thead tr:last-child) {
+    @apply border-b border-border;
+  }
+  .data-table-report :where(thead th) {
+    @apply whitespace-nowrap px-3 py-2 text-[13px] font-medium text-foreground;
+  }
+  .data-table-report :where(tbody td) {
     @apply border-b border-subtle px-3 py-2;
   }
+  /* 末行去下边线（表头已有分隔线，避免卡片内双重收尾线） */
+  .data-table-report :where(tbody tr:last-child td) {
+    @apply border-b-0;
+  }
   /* 斑马纹变体：偶数行浅灰底（可选启用） */
-  .data-table-report--striped tbody tr:nth-child(even) td {
+  .data-table-report--striped :where(tbody tr:nth-child(even)) {
     @apply bg-muted/30;
   }
   /* 行 hover：#fafafa（对齐 Table.rowHoverBg）；置于 striped 之后，同特异性下 hover 优先 */
-  .data-table-report tbody tr:hover td {
+  .data-table-report :where(tbody tr:hover) {
     @apply bg-ink-2;
   }
-  /* 合计行：顶部双线加重 + 浅灰底（可选启用） */
-  .data-table-report tr.report-total-row td {
+  /* 合计行：tr 挂 .report-total-row → 顶部双线加重 + 浅灰底（可选启用） */
+  .data-table-report :where(tr.report-total-row) {
     @apply border-t-2 border-border bg-muted/40 font-semibold;
   }
 }
