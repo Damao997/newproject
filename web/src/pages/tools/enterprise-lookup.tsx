@@ -124,8 +124,8 @@ export function EnterpriseLookup() {
       title="企业信息查询"
       description="企业工商信息一站式查询，辅助客户准入与风险决策"
     >
-      {/* 搜索 hero：渐变蓝 + 输入 + 最近搜索（真实查询历史） */}
-      <div className="relative overflow-hidden rounded-card p-8 text-white shadow-antd-1" style={{ background: 'linear-gradient(135deg, #1677ff 0%, #4096ff 100%)' }}>
+      {/* 搜索 hero：主题主色同色相渐变（随侧边栏风格切换）+ 输入 + 最近搜索（真实查询历史） */}
+      <div className="relative overflow-hidden rounded-card bg-gradient-to-br from-primary to-[hsl(var(--primary)/0.72)] p-8 text-white shadow-antd-1">
         <span className="pointer-events-none absolute -right-16 -top-16 h-60 w-60 rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }} aria-hidden />
         <h2 className="relative text-[22px] font-semibold leading-tight">查询企业工商信息</h2>
         <p className="relative mt-2 text-sm text-white/85">输入企业名称或统一社会信用代码，查询结果由数据源聚合并缓存</p>
@@ -219,7 +219,7 @@ export function EnterpriseLookup() {
           ) : (
             <Card className="rounded-card p-0">
               <div className="flex items-start gap-5 border-b border-border-light p-5">
-                <div className="flex h-[72px] w-[72px] flex-shrink-0 items-center justify-center rounded-xl text-2xl font-bold text-white shadow-antd-1" style={{ background: 'linear-gradient(135deg, #1677ff, #4096ff)' }}>
+                <div className="flex h-[72px] w-[72px] flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-[hsl(var(--primary)/0.72)] text-2xl font-bold text-white shadow-antd-1">
                   {result.name.charAt(0)}
                 </div>
                 <div className="min-w-0 flex-1">

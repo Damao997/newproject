@@ -43,22 +43,22 @@ interface KpiTile {
 }
 
 const TONE_PRE: Record<KpiTile['tone'], string> = {
-  orange: 'before:bg-[#fa8c16]',
-  cyan: 'before:bg-[#13c2c2]',
-  violet: 'before:bg-[#722ed1]',
-  green: 'before:bg-[#52c41a]',
+  orange: 'before:bg-orange-500',
+  cyan: 'before:bg-chart-8',
+  violet: 'before:bg-chart-11',
+  green: 'before:bg-success',
 }
 
 const TONE_ICON: Record<KpiTile['tone'], { bg: string; fg: string }> = {
-  orange: { bg: 'bg-[#fff7e6]', fg: 'text-[#fa8c16]' },
-  cyan: { bg: 'bg-[#e6fffb]', fg: 'text-[#13c2c2]' },
-  violet: { bg: 'bg-[#f9f0ff]', fg: 'text-[#722ed1]' },
-  green: { bg: 'bg-[#f6ffed]', fg: 'text-[#52c41a]' },
+  orange: { bg: 'bg-orange-50', fg: 'text-orange-700' },
+  cyan: { bg: 'bg-[hsl(var(--chart-8)/0.12)]', fg: 'text-chart-8' },
+  violet: { bg: 'bg-[hsl(var(--chart-11)/0.12)]', fg: 'text-chart-11' },
+  green: { bg: 'bg-success-50', fg: 'text-success-strong' },
 }
 
 const CHIP_CLS: Record<'up' | 'down' | 'flat', string> = {
-  up: 'bg-[#fff1f0] text-[#ff4d4f]',
-  down: 'bg-[#f6ffed] text-[#52c41a]',
+  up: 'bg-destructive-50 text-destructive-700',
+  down: 'bg-success-50 text-success-strong',
   flat: 'bg-muted text-muted-foreground',
 }
 
@@ -78,7 +78,7 @@ function StatTile({ tile }: { tile: KpiTile }) {
         'relative flex flex-col gap-2 overflow-hidden rounded-lg border border-border bg-card p-5',
         "before:absolute before:bottom-0 before:left-0 before:top-0 before:w-[3px] before:content-['']",
         TONE_PRE[tile.tone],
-        tile.emphasis && 'border-[#ffc069] bg-gradient-to-br from-[#ffe7ba] to-[#fff7e6]',
+        tile.emphasis && 'border-orange-300 bg-gradient-to-br from-orange-100 to-orange-50',
       )}
     >
       <div className="flex items-center justify-between gap-2">
@@ -96,7 +96,7 @@ function StatTile({ tile }: { tile: KpiTile }) {
       <div
         className={cn(
           'truncate font-mono text-[28px] font-semibold leading-tight tabular-nums',
-          tile.emphasis ? 'text-[#d46b08]' : 'text-foreground',
+          tile.emphasis ? 'text-orange-600' : 'text-foreground',
         )}
       >
         {tile.valueText}
