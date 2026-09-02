@@ -60,7 +60,7 @@ const CATEGORY_TONES: Record<AuditCategory, 'green' | 'blue' | 'orange' | 'gray'
 const CATEGORY_DOT: Record<AuditCategory, string> = {
   login: 'border-[color:var(--state-success)] [&::after]:bg-[color:var(--state-success)]',
   data: 'border-[color:var(--color-primary)] [&::after]:bg-[color:var(--color-primary)]',
-  perm: 'border-[#fa8c16] [&::after]:bg-[#fa8c16]',
+  perm: 'border-orange-500 [&::after]:bg-orange-500',
   sys: 'border-[color:var(--state-warning)] [&::after]:bg-[color:var(--state-warning)]',
   other: 'border-[color:var(--muted-foreground)] [&::after]:bg-[color:var(--muted-foreground)]',
 }
@@ -68,12 +68,12 @@ const CATEGORY_DOT: Record<AuditCategory, string> = {
 /** 状态类值中文（detail 内 active/inactive 翻译） */
 const STATUS_LABELS: Record<string, string> = { active: '启用', inactive: '停用' }
 
-/** 用户头像按用户名取模分配底色（确定性，同一用户颜色稳定） */
+/** 用户头像按用户名取模分配底色（确定性，同一用户颜色稳定）：token 色阶类（禁硬编码 hex） */
 const AVATAR_PALETTE = [
-  'bg-[#e6f4ff] text-[#1677ff]',
-  'bg-[#f6ffed] text-[#52c41a]',
-  'bg-[#f9f0ff] text-[#722ed1]',
-  'bg-[#fff7e6] text-[#fa8c16]',
+  'bg-blue-1 text-blue-9',
+  'bg-success-50 text-success-strong',
+  'bg-[hsl(var(--chart-11)/0.12)] text-chart-11',
+  'bg-orange-50 text-orange-700',
 ] as const
 
 function avatarClass(username: string): string {
@@ -628,7 +628,7 @@ export default function AuditLogsPage() {
 
           <Card className="rounded-card p-5">
             <div className="mb-2 flex items-center gap-2 text-[14px] font-semibold">
-              <Info className="h-4 w-4 text-[#91caff]" />
+              <Info className="h-4 w-4 text-blue-6" />
               提示
             </div>
             <p className="text-[13px] leading-6 text-muted-foreground">

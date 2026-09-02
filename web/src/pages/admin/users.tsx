@@ -35,15 +35,15 @@ import type { User } from '@/types'
 
 const PAGE_SIZE = 10
 
-/** 头像渐变色板（按 id 哈希取色，避免依赖 mock 字段） */
+/** 头像渐变色板（按 id 哈希取色）：token 色阶渐变类（近似映射原设计色，禁硬编码 hex） */
 const AVATAR_GRADIENTS = [
-  'linear-gradient(135deg, #1677ff, #4096ff)',
-  'linear-gradient(135deg, #52c41a, #95de64)',
-  'linear-gradient(135deg, #722ed1, #b37feb)',
-  'linear-gradient(135deg, #fa8c16, #ffc069)',
-  'linear-gradient(135deg, #13c2c2, #5cdbd3)',
-  'linear-gradient(135deg, #eb2f96, #ff85c0)',
-  'linear-gradient(135deg, #2f54eb, #85a5ff)',
+  'bg-gradient-to-br from-blue-8 to-blue-6',
+  'bg-gradient-to-br from-success-500 to-success-300',
+  'bg-gradient-to-br from-chart-11 to-chart-5',
+  'bg-gradient-to-br from-orange-500 to-orange-300',
+  'bg-gradient-to-br from-chart-8 to-info-300',
+  'bg-gradient-to-br from-chart-7 to-destructive-300',
+  'bg-gradient-to-br from-blue-11 to-blue-6',
 ]
 
 /** 角色编码 → 标签色调（与设计稿语义一致：超管红 / 管理员橙 / 财务蓝 / 其余灰） */
@@ -67,8 +67,10 @@ function UserAvatar({ user }: { user: User }) {
   const letter = (user.name || user.username).slice(0, 1)
   return (
     <div
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-medium text-white"
-      style={{ background: AVATAR_GRADIENTS[idx] }}
+      className={cn(
+        'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-medium text-white',
+        AVATAR_GRADIENTS[idx],
+      )}
     >
       {letter}
     </div>
@@ -148,10 +150,10 @@ export default function UsersPage() {
     const inactive = users.length - active
     const mustChange = users.filter((u) => u.mustChangePassword).length
     return [
-      { label: '用户总数', value: totalFromServer, sub: '系统账号合计', dotClass: 'bg-[#1677ff]' },
-      { label: '活跃用户', value: active, sub: '当前拉取范围', dotClass: 'bg-[#52c41a]', subClass: 'text-[#52c41a]' },
-      { label: '已停用', value: inactive, sub: '当前拉取范围', dotClass: 'bg-[#ff4d4f]' },
-      { label: '待改密', value: mustChange, sub: '首次登录/重置后须修改', dotClass: 'bg-[#fa8c16]' },
+      { label: '用户总数', value: totalFromServer, sub: '系统账号合计', dotClass: 'bg-blue-8' },
+      { label: '活跃用户', value: active, sub: '当前拉取范围', dotClass: 'bg-success', subClass: 'text-success-strong' },
+      { label: '已停用', value: inactive, sub: '当前拉取范围', dotClass: 'bg-destructive' },
+      { label: '待改密', value: mustChange, sub: '首次登录/重置后须修改', dotClass: 'bg-orange-500' },
     ]
   }, [users, totalFromServer])
 
@@ -286,7 +288,7 @@ export default function UsersPage() {
                 className={cn(
                   'h-7 rounded-pill border px-3 text-xs transition-colors',
                   c.code === roleFilter
-                    ? 'border-primary bg-[#e6f4ff] text-primary'
+                    ? 'border-primary bg-blue-1 text-primary'
                     : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground',
                 )}
               >
@@ -368,7 +370,7 @@ export default function UsersPage() {
                 {paged.map((user) => {
                   const isActive = user.status === 'active'
                   return (
-                    <tr key={user.id} className="border-b border-border transition-colors hover:bg-[#e6f4ff]/40">
+                    <tr key={user.id} className="border-b border-border transition-colors hover:bg-blue-1">
                       <td className="px-3 py-3.5 align-middle">
                         <div className="flex items-center gap-2.5">
                           <UserAvatar user={user} />
@@ -395,7 +397,7 @@ export default function UsersPage() {
                             disabled={!(isActive ? canDelete : canUpdate)}
                             onCheckedChange={() => handleToggleStatus(user)}
                           />
-                          <span className={cn('text-xs', isActive ? 'text-[#52c41a]' : 'text-muted-foreground')}>
+                          <span className={cn('text-xs', isActive ? 'text-success-strong' : 'text-muted-foreground')}>
                             {isActive ? '启用' : '已停用'}
                           </span>
                         </div>

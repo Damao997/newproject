@@ -43,14 +43,14 @@ interface PermItem {
   action: string
 }
 
-/** 角色头像色板（按索引循环，保留设计稿卡片视觉） */
-const ROLE_COLORS: Array<{ color: string; bg: string }> = [
-  { color: '#1677ff', bg: '#e6f4ff' },
-  { color: '#52c41a', bg: '#f6ffed' },
-  { color: '#fa8c16', bg: '#fff7e6' },
-  { color: '#722ed1', bg: '#f9f0ff' },
-  { color: '#13c2c2', bg: '#e6fffb' },
-  { color: '#eb2f96', bg: '#fff0f6' },
+/** 角色头像色板（按索引循环，保留设计稿卡片视觉）：token 色阶类（fg 文字色 / bg 同色浅底，禁硬编码 hex） */
+const ROLE_COLORS: Array<{ fg: string; bg: string }> = [
+  { fg: 'text-blue-9', bg: 'bg-[hsl(var(--blue-8)/0.12)]' },
+  { fg: 'text-success-strong', bg: 'bg-[hsl(var(--success)/0.12)]' },
+  { fg: 'text-orange-700', bg: 'bg-[hsl(var(--orange-500)/0.14)]' },
+  { fg: 'text-chart-11', bg: 'bg-[hsl(var(--chart-11)/0.12)]' },
+  { fg: 'text-chart-8', bg: 'bg-[hsl(var(--chart-8)/0.12)]' },
+  { fg: 'text-chart-7', bg: 'bg-[hsl(var(--chart-7)/0.12)]' },
 ]
 
 function RoleAvatar({ role, index, size = 'md' }: { role: RoleItem; index: number; size?: 'md' | 'sm' }) {
@@ -61,8 +61,9 @@ function RoleAvatar({ role, index, size = 'md' }: { role: RoleItem; index: numbe
       className={cn(
         'inline-flex shrink-0 items-center justify-center rounded-md font-semibold',
         size === 'md' ? 'h-9 w-9 text-sm' : 'h-6 w-6 text-[11px]',
+        palette.bg,
+        palette.fg,
       )}
-      style={{ background: palette.bg, color: palette.color }}
     >
       {short}
     </span>
@@ -182,10 +183,10 @@ export default function RolesPage() {
     const system = roles.filter((r) => r.isSystem).length
     const highRisk = roles.filter((r) => (r.permissions ?? []).some((p) => isHighRiskPermission(p.resource))).length
     return [
-      { label: '角色总数', value: roles.length, dotClass: 'bg-[#1677ff]' },
-      { label: '系统角色', value: system, dotClass: 'bg-[#52c41a]' },
-      { label: '自定义角色', value: roles.length - system, dotClass: 'bg-[#fa8c16]' },
-      { label: '含高危权限', value: highRisk, dotClass: 'bg-[#ff4d4f]' },
+      { label: '角色总数', value: roles.length, dotClass: 'bg-blue-8' },
+      { label: '系统角色', value: system, dotClass: 'bg-success' },
+      { label: '自定义角色', value: roles.length - system, dotClass: 'bg-orange-500' },
+      { label: '含高危权限', value: highRisk, dotClass: 'bg-destructive' },
     ]
   }, [roles])
 
@@ -348,7 +349,7 @@ export default function RolesPage() {
             <table className="w-full border-collapse text-[13px]">
               <thead>
                 <tr>
-                  <th scope="col" className="w-9 border-b border-border-light bg-[#f5f5f5] px-3 py-2.5">
+                  <th scope="col" className="w-9 border-b border-border-light bg-ink-3 px-3 py-2.5">
                     <Checkbox
                       size="sm"
                       aria-label="全选当前角色"
@@ -356,12 +357,12 @@ export default function RolesPage() {
                       onCheckedChange={toggleAllRows}
                     />
                   </th>
-                  <th scope="col" className="border-b border-border-light bg-[#f5f5f5] px-3 py-2.5 text-left text-xs font-semibold text-foreground">角色名称</th>
-                  <th scope="col" className="border-b border-border-light bg-[#f5f5f5] px-3 py-2.5 text-left text-xs font-semibold text-foreground">角色编码</th>
-                  <th scope="col" className="border-b border-border-light bg-[#f5f5f5] px-3 py-2.5 text-left text-xs font-semibold text-foreground">类型</th>
-                  <th scope="col" className="border-b border-border-light bg-[#f5f5f5] px-3 py-2.5 text-right text-xs font-semibold text-foreground">权限数</th>
-                  <th scope="col" className="border-b border-border-light bg-[#f5f5f5] px-3 py-2.5 text-right text-xs font-semibold text-foreground">成员数</th>
-                  <th scope="col" className="border-b border-border-light bg-[#f5f5f5] px-3 py-2.5 text-center text-xs font-semibold text-foreground">操作</th>
+                  <th scope="col" className="border-b border-border-light bg-ink-3 px-3 py-2.5 text-left text-xs font-semibold text-foreground">角色名称</th>
+                  <th scope="col" className="border-b border-border-light bg-ink-3 px-3 py-2.5 text-left text-xs font-semibold text-foreground">角色编码</th>
+                  <th scope="col" className="border-b border-border-light bg-ink-3 px-3 py-2.5 text-left text-xs font-semibold text-foreground">类型</th>
+                  <th scope="col" className="border-b border-border-light bg-ink-3 px-3 py-2.5 text-right text-xs font-semibold text-foreground">权限数</th>
+                  <th scope="col" className="border-b border-border-light bg-ink-3 px-3 py-2.5 text-right text-xs font-semibold text-foreground">成员数</th>
+                  <th scope="col" className="border-b border-border-light bg-ink-3 px-3 py-2.5 text-center text-xs font-semibold text-foreground">操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -378,7 +379,7 @@ export default function RolesPage() {
                   </tr>
                 )}
                 {filtered.map((role, index) => (
-                  <tr key={role.id} className={cn(index % 2 === 1 && 'bg-[#fafafa]')}>
+                  <tr key={role.id} className={cn(index % 2 === 1 && 'bg-ink-2')}>
                     <td className="border-b border-border-light px-3 py-3 align-middle">
                       <Checkbox size="sm" aria-label="选择该行" checked={selectedIds.has(role.id)} onCheckedChange={() => toggleRow(role.id)} />
                     </td>
@@ -416,7 +417,7 @@ export default function RolesPage() {
                   {canUpdatePerms ? ' · 点击单元格配置权限' : ''}
                 </p>
               </div>
-              <span className="inline-flex items-center gap-1 rounded-pill bg-[#e6f4ff] px-2 py-0.5 text-xs text-[#1677ff]">
+              <span className="inline-flex items-center gap-1 rounded-pill bg-blue-1 px-2 py-0.5 text-xs text-blue-9">
                 <ShieldCheck className="h-3 w-3" />
                 共 {perms.length} 项权限
               </span>
@@ -427,13 +428,13 @@ export default function RolesPage() {
                 <table className="w-full border-collapse text-[13px]" style={{ minWidth: 640 }}>
                   <thead>
                     <tr>
-                      <th className="sticky left-0 z-[1] min-w-[160px] max-w-[200px] border-b border-r border-border-light bg-[#f5f5f5] px-3.5 py-3 text-left text-xs font-semibold text-foreground">
+                      <th className="sticky left-0 z-[1] min-w-[160px] max-w-[200px] border-b border-r border-border-light bg-ink-3 px-3.5 py-3 text-left text-xs font-semibold text-foreground">
                         角色
                       </th>
                       {modules.map((mod) => (
                         <th
                           key={mod}
-                          className="border-b border-r border-border-light bg-[#f5f5f5] px-2 py-3 text-center text-xs font-semibold text-foreground last:border-r-0"
+                          className="border-b border-r border-border-light bg-ink-3 px-2 py-3 text-center text-xs font-semibold text-foreground last:border-r-0"
                         >
                           {PERMISSION_MODULE_LABELS[mod] ?? mod}
                         </th>
@@ -444,11 +445,11 @@ export default function RolesPage() {
                     {roles.map((role, index) => {
                       const isEven = index % 2 === 1
                       return (
-                        <tr key={role.id} className={cn(isEven ? 'bg-[#fafafa]' : 'bg-white')}>
+                        <tr key={role.id} className={cn(isEven ? 'bg-ink-2' : 'bg-white')}>
                           <th
                             className={cn(
                               'sticky left-0 z-[1] min-w-[160px] max-w-[200px] border-b border-r border-border-light px-3.5 py-3 text-left',
-                              isEven ? 'bg-[#fafafa]' : 'bg-[#f5f5f5]',
+                              isEven ? 'bg-ink-2' : 'bg-ink-3',
                             )}
                           >
                             <div className="flex items-center gap-2">
@@ -516,8 +517,11 @@ export default function RolesPage() {
                   <div key={role.id} className="rounded-card border border-border-light bg-card p-4 shadow-antd-1">
                     <div className="flex items-center gap-2">
                       <span
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-md text-sm font-semibold"
-                        style={{ background: palette.bg, color: palette.color }}
+                        className={cn(
+                          'inline-flex h-9 w-9 items-center justify-center rounded-md text-sm font-semibold',
+                          palette.bg,
+                          palette.fg,
+                        )}
                       >
                         {role.name.slice(0, 2)}
                       </span>
