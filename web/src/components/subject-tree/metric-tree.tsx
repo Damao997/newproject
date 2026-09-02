@@ -1,4 +1,4 @@
-﻿/* eslint-disable react/only-export-components -- OPERATING_COLUMNS/STATIC_COLUMNS 列配置导出供后续任务（排序/筛选/列设置）复用 */
+/* eslint-disable react/only-export-components -- OPERATING_COLUMNS/STATIC_COLUMNS 列配置导出供后续任务（排序/筛选/列设置）复用 */
 import { Fragment, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronRight, ChevronDown, MessageSquarePlus } from 'lucide-react'
 import type { SortDirection } from '@/components/data-table/data-table'
@@ -123,7 +123,7 @@ function renderValueCells(
   const yoyOf = (key: string, value: MetricValue) => (key === 'ytdYoy' ? calcYtdYoy(value) : calcYoy(value))
   return columns.map((col) => {
     const cellBase = cn(
-      'whitespace-nowrap border-b px-3 align-middle text-center font-num',
+      'whitespace-nowrap border-b border-subtle px-3 align-middle text-center font-num',
       rowPad,
       col.primary && 'font-medium',
       col.secondary && 'text-muted-foreground',
@@ -174,7 +174,7 @@ function SubjectCell({
   return (
     <td
       className={cn(
-        'sticky z-[1] min-w-[160px] border-b border-r bg-background px-4 align-middle shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)] transition-colors group-hover:bg-muted',
+        'sticky z-[1] min-w-[160px] border-b border-r border-subtle bg-background px-4 align-middle shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)] transition-colors group-hover:bg-muted',
         rowPad,
       )}
     >
@@ -316,7 +316,7 @@ export function MetricTree({
   const colSpan = 1 + valueCols.length
   // 表头 sticky：组名行 top-0、明细行 top-GROUP_HEAD_H（组名行 h-11=44px，模块级 GROUP_HEAD_H 单一来源）
   // TABLE_HEAD_BASE（13px/500 黑字居中）为共享样式常量，对齐《统一表格设计标准》
-  const headBase = cn(TABLE_HEAD_BASE, 'h-11 border-b bg-muted px-3')
+  const headBase = cn(TABLE_HEAD_BASE, 'h-11 border-b bg-ink-2 px-3')
 
   /** 排序三态循环：升序 → 降序 → 取消（受控，与 DataTable 一致；取消时 sortKey 保持键值、direction 为 null，再次点击回升序） */
   const handleSort = (key: string) => {
@@ -354,11 +354,11 @@ export function MetricTree({
             {isOperating ? (
               <>
                 {/* 组名行：sticky top-0 固定容器顶 */}
-                <tr className="sticky top-0 z-[2] bg-muted">
+                <tr className="sticky top-0 z-[2] bg-ink-2">
                   <th
                     rowSpan={2}
                     scope="col"
-                    className={cn(headBase, 'sticky left-0 z-[3] min-w-[160px] border-r bg-muted text-center shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)]')}
+                    className={cn(headBase, 'sticky left-0 z-[3] min-w-[160px] border-r bg-ink-2 text-center shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)]')}
                   >
                     科目
                   </th>
@@ -405,10 +405,10 @@ export function MetricTree({
                 </tr>
               </>
             ) : (
-              <tr className="sticky top-0 z-[2] bg-muted">
+              <tr className="sticky top-0 z-[2] bg-ink-2">
                 <th
                   scope="col"
-                  className={cn(headBase, 'sticky left-0 z-[3] min-w-[160px] border-r bg-muted text-center shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)]')}
+                  className={cn(headBase, 'sticky left-0 z-[3] min-w-[160px] border-r bg-ink-2 text-center shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)]')}
                 >
                   科目
                 </th>

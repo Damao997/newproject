@@ -309,44 +309,37 @@ export function CashFlowContent({ period, companyCode }: CashFlowContentProps) {
             <span className="ml-2 text-xs font-normal text-muted-foreground">本月 / 同比 / 累计 / 累计同比 · 单位：万元</span>
           </h3>
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm">
+            <table className="data-table-report data-table-report--striped">
               <thead>
-                <tr className="border-b border-border bg-muted/40">
-                  <th className="px-3 py-2 text-left text-body font-medium text-foreground">科目</th>
-                  <th className="px-3 py-2 text-right text-body font-medium text-foreground">本月</th>
-                  <th className="px-3 py-2 text-right text-body font-medium text-foreground">上年同月</th>
-                  <th className="px-3 py-2 text-right text-body font-medium text-foreground">本月同比</th>
-                  <th className="px-3 py-2 text-right text-body font-medium text-foreground">财年累计</th>
-                  <th className="px-3 py-2 text-right text-body font-medium text-foreground">同期累计</th>
-                  <th className="px-3 py-2 text-right text-body font-medium text-foreground">累计同比</th>
+                <tr>
+                  <th className="text-left">科目</th>
+                  <th className="text-right">本月</th>
+                  <th className="text-right">上年同月</th>
+                  <th className="text-right">本月同比</th>
+                  <th className="text-right">财年累计</th>
+                  <th className="text-right">同期累计</th>
+                  <th className="text-right">累计同比</th>
                 </tr>
               </thead>
               <tbody>
-                {detailRows.map((r, i) => {
+                {detailRows.map((r) => {
                   const myoy = yoyChip(r.m.yoy)
                   const yyoy = yoyChip(r.m.ytdYoy)
                   return (
-                    <tr
-                      key={r.name}
-                      className={cn(
-                        'border-b border-border/60',
-                        i % 2 === 1 && 'bg-muted/30',
-                        !r.indent && 'font-semibold',
-                      )}
-                    >
-                      <td className={cn('px-3 py-2 text-left text-body text-foreground', r.indent && 'pl-8 font-normal text-muted-foreground')}>
+                    <tr key={r.name} className={cn(!r.indent && 'font-semibold')}>
+                      <td className={cn('text-left text-body text-foreground', r.indent && 'pl-8 font-normal text-muted-foreground')}>
                         {r.name}
                       </td>
-                      <td className={cn('px-3 py-2 text-right font-num text-sm', r.m.current < 0 && 'text-destructive')}>
+                      <td className={cn('text-right font-num text-sm', r.m.current < 0 && 'text-destructive')}>
                         {formatMoneyWan(r.m.current)}
                       </td>
-                      <td className="px-3 py-2 text-right font-num text-sm text-muted-foreground">{formatMoneyWan(r.m.samePeriod)}</td>
-                      <td className={cn('px-3 py-2 text-right font-num text-sm', myoy.cls)}>{myoy.text}</td>
-                      <td className={cn('px-3 py-2 text-right font-num text-sm', r.m.ytd < 0 && 'text-destructive')}>
+                      <td className="text-right font-num text-sm text-muted-foreground">{formatMoneyWan(r.m.samePeriod)}</td>
+                      <td className={cn('text-right font-num text-sm', myoy.cls)}>{myoy.text}</td>
+                      <td className={cn('text-right font-num text-sm', r.m.ytd < 0 && 'text-destructive')}>
                         {formatMoneyWan(r.m.ytd)}
                       </td>
-                      <td className="px-3 py-2 text-right font-num text-sm text-muted-foreground">{formatMoneyWan(r.m.samePeriodYtd)}</td>
-                      <td className={cn('px-3 py-2 text-right font-num text-sm', yyoy.cls)}>{yyoy.text}</td>
+                      <td className="text-right font-num text-sm text-muted-foreground">{formatMoneyWan(r.m.samePeriodYtd)}</td>
+                      <td className={cn('text-right font-num text-sm', yyoy.cls)}>{yyoy.text}</td>
                     </tr>
                   )
                 })}

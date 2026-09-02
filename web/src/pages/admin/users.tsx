@@ -340,21 +340,21 @@ export default function UsersPage() {
 
           {/* 用户表 */}
           <div className="overflow-x-auto rounded-card border border-border bg-background">
-            <table className="w-full border-collapse text-[13px]">
+            <table className="data-table-report data-table-report--striped">
               <thead>
-                <tr className="border-b border-border bg-muted/70">
-                  <th scope="col" className="px-3 py-2.5 text-left text-xs font-medium text-foreground">用户</th>
-                  <th scope="col" className="px-3 py-2.5 text-left text-xs font-medium text-foreground">角色</th>
-                  <th scope="col" className="px-3 py-2.5 text-left text-xs font-medium text-foreground">数据范围</th>
-                  <th scope="col" className="px-3 py-2.5 text-left text-xs font-medium text-foreground">最近登录</th>
-                  <th scope="col" className="px-3 py-2.5 text-left text-xs font-medium text-foreground">状态</th>
-                  <th scope="col" className="w-[70px] px-3 py-2.5 text-left text-xs font-medium text-foreground">操作</th>
+                <tr>
+                  <th scope="col" className="text-left">用户</th>
+                  <th scope="col" className="text-left">角色</th>
+                  <th scope="col" className="text-left">数据范围</th>
+                  <th scope="col" className="text-left">最近登录</th>
+                  <th scope="col" className="text-left">状态</th>
+                  <th scope="col" className="w-[70px] text-left">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {usersQuery.isLoading && (
                   <tr>
-                    <td colSpan={6} className="px-3 py-10 text-center text-sm text-muted-foreground">
+                    <td colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
                       <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
                       正在加载用户...
                     </td>
@@ -370,8 +370,8 @@ export default function UsersPage() {
                 {paged.map((user) => {
                   const isActive = user.status === 'active'
                   return (
-                    <tr key={user.id} className="border-b border-border transition-colors hover:bg-blue-1">
-                      <td className="px-3 py-3.5 align-middle">
+                    <tr key={user.id}>
+                      <td>
                         <div className="flex items-center gap-2.5">
                           <UserAvatar user={user} />
                           <div>
@@ -380,16 +380,16 @@ export default function UsersPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="whitespace-nowrap px-3 py-3.5 align-middle">
+                      <td className="whitespace-nowrap">
                         <Pill tone={ROLE_TONES[user.role] ?? 'gray'}>{roleNameOf.get(user.role) ?? user.role}</Pill>
                       </td>
-                      <td className="max-w-[200px] truncate px-3 py-3.5 align-middle text-[13px] text-foreground" title={user.dataScope}>
+                      <td className="max-w-[200px] truncate text-[13px] text-foreground" title={user.dataScope}>
                         {user.dataScope || '—'}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-3.5 align-middle text-[13px] text-foreground tabular-nums">
+                      <td className="whitespace-nowrap font-num tabular-nums text-[13px] text-foreground">
                         {formatTime(user.lastLoginAt)}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-3.5 align-middle">
+                      <td className="whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           <Switch
                             checked={isActive}
@@ -402,7 +402,7 @@ export default function UsersPage() {
                           </span>
                         </div>
                       </td>
-                      <td className="whitespace-nowrap px-3 py-3.5 align-middle">
+                      <td className="whitespace-nowrap">
                         {(canUpdate || canResetPwd || canDelete || canPurge) && (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>

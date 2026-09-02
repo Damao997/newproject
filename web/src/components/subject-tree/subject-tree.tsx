@@ -1,4 +1,4 @@
-﻿import { Fragment, type ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import { ChevronRight, ChevronDown } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
@@ -71,8 +71,8 @@ function TreeRows({
         const meta = dataTypeMeta[node.dataType]
         return (
           <Fragment key={node.code}>
-            <tr className="border-b transition-colors hover:bg-muted/50">
-              <td className="px-4 py-1.5 leading-[14px] align-middle">
+            <tr>
+              <td className="px-4 py-1.5 leading-[14px]">
                 <div className="flex items-center" style={{ paddingLeft: depth * 20 }}>
                   {hasChildren ? (
                     <button
@@ -95,12 +95,12 @@ function TreeRows({
                   </span>
                 </div>
               </td>
-              <td className="px-4 py-1.5 leading-[14px] align-middle font-mono text-muted-foreground">{node.code}</td>
-              <td className="px-4 py-1.5 leading-[14px] align-middle">
+              <td className="px-4 py-1.5 leading-[14px] font-mono text-muted-foreground">{node.code}</td>
+              <td className="px-4 py-1.5 leading-[14px]">
                 <Badge variant="outline">level{node.level}</Badge>
               </td>
-              <td className="px-4 py-1.5 leading-[14px] align-middle text-muted-foreground">{node.category}</td>
-              <td className="px-4 py-1.5 leading-[14px] align-middle">
+              <td className="px-4 py-1.5 leading-[14px] text-muted-foreground">{node.category}</td>
+              <td className="px-4 py-1.5 leading-[14px]">
                 <div className="flex items-center gap-1">
                   <Badge variant={meta.variant}>{meta.label}</Badge>
                   {node.valueType && valueTypeLabel[node.valueType] && (
@@ -109,7 +109,7 @@ function TreeRows({
                 </div>
               </td>
               {actions && (
-                <td className="px-4 py-1.5 leading-[14px] align-middle">
+                <td className="px-4 py-1.5 leading-[14px]">
                   <div className="flex items-center justify-end gap-1">{actions(node)}</div>
                 </td>
               )}
@@ -134,7 +134,7 @@ function TreeRows({
 /**
  * 经营分析科目树形表格。
  *
- * 纸质感样式对齐 data-table.tsx；支持按编码受控展开折叠、缩进表达层级、
+ * 表头/行线走 .data-table-report 复合类（对齐 antd Table token）；支持按编码受控展开折叠、缩进表达层级、
  * 展示编码/层级/类别/数据类型徽标，并可高亮搜索命中。
  */
 export function SubjectTree({
@@ -147,16 +147,16 @@ export function SubjectTree({
 }: SubjectTreeProps) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full caption-bottom text-body">
-        <thead className="[&_tr]:border-b">
-          <tr className="border-b bg-muted/50">
-            <th className="h-8 px-4 text-body leading-[14px] text-center align-middle font-medium text-foreground">科目名称</th>
-            <th className="h-8 px-4 text-body leading-[14px] text-center align-middle font-medium text-foreground">科目编码</th>
-            <th className="h-8 px-4 text-body leading-[14px] text-center align-middle font-medium text-foreground">层级</th>
-            <th className="h-8 px-4 text-body leading-[14px] text-center align-middle font-medium text-foreground">类别</th>
-            <th className="h-8 px-4 text-body leading-[14px] text-center align-middle font-medium text-foreground">数据类型</th>
+      <table className="data-table-report w-full caption-bottom text-body">
+        <thead>
+          <tr>
+            <th className="text-center">科目名称</th>
+            <th className="text-center">科目编码</th>
+            <th className="text-center">层级</th>
+            <th className="text-center">类别</th>
+            <th className="text-center">数据类型</th>
             {actions && (
-              <th className="h-8 px-4 text-body leading-[14px] text-center align-middle font-medium text-foreground">操作</th>
+              <th className="text-center">操作</th>
             )}
           </tr>
         </thead>

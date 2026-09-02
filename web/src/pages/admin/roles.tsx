@@ -346,10 +346,10 @@ export default function RolesPage() {
             </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-[13px]">
+            <table className="data-table-report data-table-report--striped">
               <thead>
                 <tr>
-                  <th scope="col" className="w-9 border-b border-border-light bg-ink-3 px-3 py-2.5">
+                  <th scope="col" className="w-9 text-center">
                     <Checkbox
                       size="sm"
                       aria-label="全选当前角色"
@@ -357,18 +357,18 @@ export default function RolesPage() {
                       onCheckedChange={toggleAllRows}
                     />
                   </th>
-                  <th scope="col" className="border-b border-border-light bg-ink-3 px-3 py-2.5 text-left text-xs font-semibold text-foreground">角色名称</th>
-                  <th scope="col" className="border-b border-border-light bg-ink-3 px-3 py-2.5 text-left text-xs font-semibold text-foreground">角色编码</th>
-                  <th scope="col" className="border-b border-border-light bg-ink-3 px-3 py-2.5 text-left text-xs font-semibold text-foreground">类型</th>
-                  <th scope="col" className="border-b border-border-light bg-ink-3 px-3 py-2.5 text-right text-xs font-semibold text-foreground">权限数</th>
-                  <th scope="col" className="border-b border-border-light bg-ink-3 px-3 py-2.5 text-right text-xs font-semibold text-foreground">成员数</th>
-                  <th scope="col" className="border-b border-border-light bg-ink-3 px-3 py-2.5 text-center text-xs font-semibold text-foreground">操作</th>
+                  <th scope="col" className="text-left">角色名称</th>
+                  <th scope="col" className="text-left">角色编码</th>
+                  <th scope="col" className="text-left">类型</th>
+                  <th scope="col" className="text-right">权限数</th>
+                  <th scope="col" className="text-right">成员数</th>
+                  <th scope="col" className="text-center">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {rolesLoading && (
                   <tr>
-                    <td colSpan={7} className="px-3 py-10 text-center text-sm text-muted-foreground">正在加载角色...</td>
+                    <td colSpan={7} className="py-10 text-center text-sm text-muted-foreground">正在加载角色...</td>
                   </tr>
                 )}
                 {!rolesLoading && filtered.length === 0 && (
@@ -379,24 +379,24 @@ export default function RolesPage() {
                   </tr>
                 )}
                 {filtered.map((role, index) => (
-                  <tr key={role.id} className={cn(index % 2 === 1 && 'bg-ink-2')}>
-                    <td className="border-b border-border-light px-3 py-3 align-middle">
+                  <tr key={role.id}>
+                    <td className="text-center">
                       <Checkbox size="sm" aria-label="选择该行" checked={selectedIds.has(role.id)} onCheckedChange={() => toggleRow(role.id)} />
                     </td>
-                    <td className="border-b border-border-light px-3 py-3 align-middle">
+                    <td>
                       <div className="flex items-center gap-2">
                         <RoleAvatar role={role} index={index} size="sm" />
                         <span className="font-medium text-foreground">{role.name}</span>
                         {role.isSystem && <Lock className="h-3 w-3 text-muted-foreground" aria-label="系统预置" />}
                       </div>
                     </td>
-                    <td className="border-b border-border-light px-3 py-3 font-mono text-xs text-muted-foreground">{role.code}</td>
-                    <td className="border-b border-border-light px-3 py-3 align-middle">
+                    <td className="font-mono text-xs text-muted-foreground">{role.code}</td>
+                    <td>
                       {role.isSystem ? <Pill tone="blue">系统预置</Pill> : <Pill tone="gray">自定义</Pill>}
                     </td>
-                    <td className="border-b border-border-light px-3 py-3 text-right font-num tabular-nums">{(role.permissions ?? []).length}</td>
-                    <td className="border-b border-border-light px-3 py-3 text-right font-num tabular-nums">{role.userCount ?? 0}</td>
-                    <td className="border-b border-border-light px-3 py-3 text-center align-middle">
+                    <td className="text-right font-num tabular-nums">{(role.permissions ?? []).length}</td>
+                    <td className="text-right font-num tabular-nums">{role.userCount ?? 0}</td>
+                    <td className="text-center">
                       <div className="flex justify-center">{renderActions(role, index)}</div>
                     </td>
                   </tr>

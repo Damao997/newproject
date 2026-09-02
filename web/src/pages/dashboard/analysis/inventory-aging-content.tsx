@@ -228,30 +228,30 @@ export function InventoryAgingContent({ period, companyCode }: InventoryAgingCon
             <EmptyState compact className="py-10" title="暂无明细数据" />
           ) : (
             <div className="max-h-[480px] overflow-auto">
-              <table className="w-full border-collapse text-sm">
-                <thead className="sticky top-0 bg-card">
-                  <tr className="border-b border-border bg-muted/40">
-                    <th className="px-3 py-2 text-left text-body font-medium text-foreground">公司</th>
-                    <th className="px-3 py-2 text-left text-body font-medium text-foreground">品类</th>
-                    <th className="px-3 py-2 text-right text-body font-medium text-foreground">本期</th>
-                    <th className="px-3 py-2 text-right text-body font-medium text-foreground">年初</th>
-                    <th className="px-3 py-2 text-right text-body font-medium text-foreground">同期</th>
-                    <th className="px-3 py-2 text-right text-body font-medium text-foreground">同比</th>
+              <table className="data-table-report data-table-report--striped">
+                <thead className="sticky top-0 z-[1] bg-ink-2">
+                  <tr>
+                    <th className="text-left">公司</th>
+                    <th className="text-left">品类</th>
+                    <th className="text-right">本期</th>
+                    <th className="text-right">年初</th>
+                    <th className="text-right">同期</th>
+                    <th className="text-right">同比</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {detailRows.map((r, i) => {
+                  {detailRows.map((r) => {
                     const chip = yoyChip(r.yoy)
                     return (
-                      <tr key={`${r.companyCode}-${r.categoryCode}`} className={cn('border-b border-border/60', i % 2 === 1 && 'bg-muted/30')}>
-                        <td className="max-w-[12em] truncate px-3 py-2 text-left text-body text-foreground" title={r.companyName}>
+                      <tr key={`${r.companyCode}-${r.categoryCode}`}>
+                        <td className="max-w-[12em] truncate text-left text-body text-foreground" title={r.companyName}>
                           {r.companyShortName ?? r.companyName}
                         </td>
-                        <td className="px-3 py-2 text-left text-body text-foreground">{r.categoryName}</td>
-                        <td className="px-3 py-2 text-right font-num text-sm text-foreground">{formatMoneyWan(r.current)}</td>
-                        <td className="px-3 py-2 text-right font-num text-sm text-muted-foreground">{formatMoneyWan(r.yearStart)}</td>
-                        <td className="px-3 py-2 text-right font-num text-sm text-muted-foreground">{formatMoneyWan(r.samePeriod)}</td>
-                        <td className={cn('px-3 py-2 text-right font-num text-sm', chip.cls)}>{chip.text}</td>
+                        <td className="text-left text-body text-foreground">{r.categoryName}</td>
+                        <td className="text-right font-num text-sm text-foreground">{formatMoneyWan(r.current)}</td>
+                        <td className="text-right font-num text-sm text-muted-foreground">{formatMoneyWan(r.yearStart)}</td>
+                        <td className="text-right font-num text-sm text-muted-foreground">{formatMoneyWan(r.samePeriod)}</td>
+                        <td className={cn('text-right font-num text-sm', chip.cls)}>{chip.text}</td>
                       </tr>
                     )
                   })}
