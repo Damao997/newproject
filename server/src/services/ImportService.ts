@@ -927,8 +927,9 @@ export const ImportService = {
   async uploadTransactionOne(file: { originalname: string; buffer: Buffer; size: number }, userId: string, traceId?: string, valueUnit: ValueUnit = 'yuan'): Promise<ImportBatchDto> {
     assertExcelMagic(file.buffer)
 
+    // 文件去重：同 hash 且 active 的往来批次（按类型收敛，避免与其他模板同哈希批次互相误拦）
     const fileHash = createHash('sha256').update(file.buffer).digest('hex')
-    const dup = await prisma.importBatch.findFirst({ where: { fileHash, lifecycleStatus: 'active' }, select: { id: true } })
+    const dup = await prisma.importBatch.findFirst({ where: { fileHash, dataType: 'transaction', lifecycleStatus: 'active' }, select: { id: true } })
     if (dup) throw errors.conflict('该文件已导入并处于生效状态，请勿重复导入')
 
     const batch = await prisma.importBatch.create({
@@ -1008,9 +1009,9 @@ export const ImportService = {
     }
     assertExcelMagic(file.buffer)
 
-    // 文件去重：同 hash 且 active 的批次
+    // 文件去重：同 hash 同类型且 active 的批次（合并导入三类共用同一哈希，按类型收敛避免跨类型误拦）
     const fileHash = createHash('sha256').update(file.buffer).digest('hex')
-    const dup = await prisma.importBatch.findFirst({ where: { fileHash, lifecycleStatus: 'active' }, select: { id: true } })
+    const dup = await prisma.importBatch.findFirst({ where: { fileHash, dataType: templateType, lifecycleStatus: 'active' }, select: { id: true } })
     if (dup) {
       throw errors.conflict('该文件已导入并处于生效状态，请勿重复导入')
     }
@@ -1119,12 +1120,7 @@ export const ImportService = {
   async uploadMerged(file: { originalname: string; buffer: Buffer; size: number }, userId: string, traceId?: string, fiscalYear = fyLabelOfDate(new Date()), valueUnit: ValueUnit = 'wan'): Promise<{ items: ImportBatchDto[] }> {
     assertExcelMagic(file.buffer)
 
-    // 文件去重：同 hash 且 active 的批次
     const fileHash = createHash('sha256').update(file.buffer).digest('hex')
-    const dup = await prisma.importBatch.findFirst({ where: { fileHash, lifecycleStatus: 'active' }, select: { id: true } })
-    if (dup) {
-      throw errors.conflict('该文件已导入并处于生效状态，请勿重复导入')
-    }
 
     const resolversByType: Record<MergedSheetType, Resolvers> = {
       operating: await buildResolvers('operating', fiscalYear),
@@ -1148,9 +1144,17 @@ export const ImportService = {
     await assertCompaniesInScope(companyCodes, undefined, '导入')
 
     const items: ImportBatchDto[] = []
+    // 文件去重按类型收敛：合并文件三类共用同一哈希，某类型已有同哈希 active 批次时仅跳过该类型
+    const skippedTypes: string[] = []
+    const MERGED_TYPE_LABEL: Record<MergedSheetType, string> = { operating: '经营数据', static: '静态数据', cashflow: '现金流量数据' }
     for (const t of ['operating', 'static', 'cashflow'] as const) {
       const r = parsed[t]
       if (!r || (r.operating.length === 0 && r.static.length === 0 && r.budget.length === 0)) continue
+      const dup = await prisma.importBatch.findFirst({ where: { fileHash, dataType: t, lifecycleStatus: 'active' }, select: { id: true } })
+      if (dup) {
+        skippedTypes.push(MERGED_TYPE_LABEL[t])
+        continue
+      }
       const batch = await prisma.importBatch.create({
         data: {
           fileName: file.originalname,
@@ -1196,6 +1200,9 @@ export const ImportService = {
       })
       await recordAudit({ userId, module: 'data', action: 'import', targetId: batch.id, detail: { templateType: t, rowCount, errorCount, valueUnit } }, traceId)
       items.push(toDto(updated))
+    }
+    if (items.length === 0 && skippedTypes.length > 0) {
+      throw errors.conflict(`该文件已导入并处于生效状态（${skippedTypes.join('、')}），请先归档对应批次后再重复导入`)
     }
     if (items.length === 0) {
       throw errors.badRequest('文件中未识别到 经营数据/静态数据/现金流量数据 任一 Sheet')
