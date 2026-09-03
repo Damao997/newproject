@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { basePrisma, prisma } from '../lib/prisma'
 import { DataService } from '../services/DataService'
 import { AggregationService, flattenValueTree } from '../services/AggregationService'
@@ -108,9 +108,15 @@ describe('科目 CRUD', () => {
 
   it('停用被事实引用的科目 → conflict', async () => {
     if (!dbReady) return
-    const ref = await basePrisma.factOperating.findFirst({ select: { accountCode: true } })
+    // 须选中「active 且被事实引用」的科目：旧树停用残留码（如 OP_08xx）虽被事实引用，
+    // 但科目已 inactive，对 inactive 科目重复停用是无害 no-op，不触发引用保护
+    const activeCodes = await basePrisma.accountSubject.findMany({ where: { status: 'active' }, select: { code: true } })
+    const ref = await basePrisma.factOperating.findFirst({
+      where: { accountCode: { in: activeCodes.map((c) => c.code) } },
+      select: { accountCode: true },
+    })
     if (!ref) return
-    const subject = await basePrisma.accountSubject.findFirst({ where: { code: ref.accountCode }, select: { id: true } })
+    const subject = await basePrisma.accountSubject.findFirst({ where: { code: ref.accountCode, status: 'active' }, select: { id: true } })
     if (!subject) return
     await expect(DataService.updateSubject(subject.id, { status: 'inactive' }, ctx())).rejects.toMatchObject({ code: 409 })
   })

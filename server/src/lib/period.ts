@@ -1,14 +1,14 @@
 /**
  * 期数（会计期间）工具：期格式统一 `YYYY-MM`，字典序即时间序。
- * 支持可配置财年起始月 FISCAL_START_MONTH（1–12，默认 1）。
+ * 支持可配置财年起始月 FISCAL_START_MONTH（1–12，默认 4=业务财年 4 月制）。
  * 全部为纯函数，便于单测；财年起始月可显式传入或回退到环境配置。
  */
 
-/** 读取财年起始月（env FISCAL_START_MONTH，默认 1，非法回退 1） */
+/** 读取财年起始月（env FISCAL_START_MONTH；未配置或非法回退 4——业务财年为 4 月制，回退 1 会导致 YTD/预算口径静默错误） */
 export function getFiscalStartMonth(): number {
   const raw = process.env.FISCAL_START_MONTH
-  const n = raw ? Number(raw) : 1
-  if (!Number.isInteger(n) || n < 1 || n > 12) return 1
+  const n = raw ? Number(raw) : 4
+  if (!Number.isInteger(n) || n < 1 || n > 12) return 4
   return n
 }
 

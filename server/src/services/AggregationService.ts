@@ -806,10 +806,19 @@ export const AggregationService = {
         }
       }
     }
-    // 净额类公式重算：仅对依赖链含 calc 科目的公式（净额=流入-流出、自由现金流）基于回填后的预算重新求值；
-    // 子级求和公式（依赖全为 data 叶子）不参与，避免再次覆盖直填层预算
-    const calcCodes = new Set(calc.map((m) => m.code))
-    const netOnly = calc.filter((m) => (m.dependsOn ?? []).some((d) => calcCodes.has(d)))
+    // 净额类公式重算：仅对依赖链含 calc 类科目的公式（净额=流入-流出、自由现金流）基于回填后的预算重新求值；
+    // 子级求和公式（依赖全为 data 叶子）不参与，避免再次覆盖直填层预算。
+    // calc 类判定须取全部 dataType='calc' 科目码：流入/流出层（如 CF0101）无存储公式、靠子级求和，
+    // 不在 loadCalcFormulas 结果（仅含有存储公式的指标）内，若只取后者净额类会被误排除、预算恒为 0。
+    const calcClassCodes = new Set(
+      (
+        await prisma.metric.findMany({
+          where: { dataType: 'calc', status: 'active', code: { startsWith: 'CF' } },
+          select: { code: true },
+        })
+      ).map((m) => m.code),
+    )
+    const netOnly = calc.filter((m) => (m.dependsOn ?? []).some((d) => calcClassCodes.has(d)))
     if (netOnly.length > 0) applyCalcLayer(tree, netOnly, Object.keys(EMPTY_CASHFLOW))
     return tree
   },

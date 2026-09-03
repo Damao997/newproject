@@ -1,9 +1,10 @@
-﻿import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
 import { Bold, Italic, Heading2, Heading3, List, ListOrdered, Quote, Undo, Redo, Link as LinkIcon, RemoveFormatting, Sparkles, X, Check, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { sanitizeForDisplay } from '@/lib/sanitize'
 import { useAiStream } from '@/hooks/use-ai-stream'
 import { LinkDialog } from './link-dialog'
 
@@ -164,7 +165,8 @@ export function RichTextEditor({ value, onChange, placeholder, className, editab
       StarterKit,
       Link.configure({ openOnClick: false, HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' } }),
     ],
-    content: value,
+    // DOMPurify 展示前二次净化（纵深防御，兑现安全规范 §8.2；TipTap schema 白名单为主防线）
+    content: sanitizeForDisplay(value),
     editable,
     editorProps: {
       attributes: {
@@ -175,10 +177,10 @@ export function RichTextEditor({ value, onChange, placeholder, className, editab
     onUpdate: ({ editor: e }) => onChange(e.getHTML()),
   })
 
-  // 外部 value 变化时同步（仅在差异时重置，避免光标跳动）
+  // 外部 value 变化时同步（仅在差异时重置，避免光标跳动）；同步前净化，防历史脏数据入编辑器
   useEffect(() => {
     if (editor && value !== editor.getHTML()) {
-      editor.commands.setContent(value, { emitUpdate: false })
+      editor.commands.setContent(sanitizeForDisplay(value), { emitUpdate: false })
     }
   }, [value, editor])
 

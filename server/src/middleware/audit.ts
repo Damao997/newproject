@@ -18,12 +18,9 @@ export interface AuditInput {
   userAgent?: string | null
 }
 
-/** 从请求中提取客户端 IP（信任反向代理链首段） */
+/** 从请求中提取客户端 IP：req.ip 为 trust proxy 解析后的可信口径（nginx 追加段），
+ *  客户端伪造的 X-Forwarded-For 首段被 Express 忽略，防止审计 IP 被污染误导溯源 */
 export function clientIp(req: Request): string | null {
-  const forwarded = req.header('X-Forwarded-For')
-  if (forwarded) {
-    return forwarded.split(',')[0]?.trim() ?? null
-  }
   return req.ip ?? req.socket?.remoteAddress ?? null
 }
 

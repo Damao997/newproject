@@ -5,6 +5,8 @@ node_modules
 # Build output
 dist
 **/dist
+# 本地调试产物（浏览器截图/临时脚本/日志），禁止入库
+web/audit/
 .vite
 
 # Logs

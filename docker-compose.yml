@@ -19,6 +19,14 @@ services:
     image: postgres:15-alpine
     container_name: yipinhui-postgres
     restart: unless-stopped
+    # 资源上限：防止单服务耗尽宿主机内存触发 OOM 连锁（shared_buffers 约 256M 另由 postgres 自身管理）
+    mem_limit: 1g
+    # 容器日志轮转：json-file 默认无上限，长期运行会吃满磁盘
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${DB_SUPER_PASSWORD:?DB_SUPER_PASSWORD 未设置}
@@ -67,6 +75,12 @@ services:
       dockerfile: Dockerfile
     container_name: yipinhui-backend
     restart: unless-stopped
+    mem_limit: 1500m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       NODE_ENV: production
       PORT: 3001
@@ -81,9 +95,13 @@ services:
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-v4-flash}
       # CORS 白名单，支持逗号分隔多值；严禁通配符
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost}
-      FISCAL_START_MONTH: ${FISCAL_START_MONTH:-1}
+      # 财年起始月：业务财年 4 月制，默认 4（勿回退 1，否则 YTD/预算口径静默错误）
+      FISCAL_START_MONTH: ${FISCAL_START_MONTH:-4}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       ENTERPRISE_INFO_PROVIDER: ${ENTERPRISE_INFO_PROVIDER:-mock}
+      # 企业工商查询密钥：provider 为 tianyancha/qichacha 时必填，否则企业查询端点不可用
+      ENTERPRISE_INFO_API_KEY: ${ENTERPRISE_INFO_API_KEY:-}
+      ENTERPRISE_INFO_API_BASE: ${ENTERPRISE_INFO_API_BASE:-}
       BCRYPT_COST: ${BCRYPT_COST:-12}
     expose:
       - "3001"
@@ -113,6 +131,12 @@ services:
       dockerfile: Dockerfile
     container_name: yipinhui-frontend
     restart: unless-stopped
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     ports:
       - "80:80"
     depends_on:
@@ -133,6 +157,12 @@ services:
     image: postgres:15-alpine
     container_name: yipinhui-backup
     restart: unless-stopped
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       PGHOST: postgres
       PGUSER: postgres

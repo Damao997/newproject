@@ -55,12 +55,14 @@ describe('clientUserAgent', () => {
 })
 
 describe('auditMeta', () => {
-  it('一次性提取 ip + userAgent + traceId', () => {
-    const req = fakeReq({ 'User-Agent': 'curl/8.0', 'X-Forwarded-For': '203.0.113.7, 10.0.0.1' })
-    expect(auditMeta(req)).toEqual({ ip: '203.0.113.7', userAgent: 'curl/8.0', traceId: 'trace-1' })
+  it('IP 取 trust proxy 可信口径（req.ip），客户端伪造的 XFF 首段被忽略', () => {
+    // 第二参模拟 Express 在 trust proxy=1 下解析出的可信 req.ip；
+    // 客户端伪造的 X-Forwarded-For: 6.6.6.6 不得污染审计 IP
+    const req = fakeReq({ 'User-Agent': 'curl/8.0', 'X-Forwarded-For': '6.6.6.6' }, '203.0.113.9')
+    expect(auditMeta(req)).toEqual({ ip: '203.0.113.9', userAgent: 'curl/8.0', traceId: 'trace-1' })
   })
 
-  it('无 XFF 时回落 req.ip', () => {
+  it('无 XFF 时取 req.ip / socket 回落', () => {
     expect(clientIp(fakeReq({}, '192.168.1.9'))).toBe('192.168.1.9')
   })
 })

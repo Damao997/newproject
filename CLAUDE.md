@@ -2,7 +2,7 @@
 
 > **项目身份**：`yipinhui_finance_analytics` | 内部管理口径财务数据平台 | "Excel 进、看板/报表出"
 > **技术栈**：Vite+React18+Radix UI+Shadcn/ui+Tailwind+Zustand+ECharts+TipTap / Express4.19+Prisma+PostgreSQL15+JWT
-> **AI 引擎**：DeepSeek API（SSE 流式） | **部署**：内网 Docker 单机 | **单位**：万元/人民币/简体中文
+> **AI 引擎**：DeepSeek API（SSE 流式） | **部署**：生产为内网 Windows 非 Docker（PM2 + 嵌入式 PG17，权威口径见 docs/plans/环境管理规范.md；Docker 为预留迁移路径） | **单位**：万元/人民币/简体中文
 > **受众**：本文件由 AI Agent 自动加载，是日常开发的唯一权威规范入口。
 
 ---
@@ -241,8 +241,8 @@ formatMoneyWan(value) // → "1,234.56"（财务指标/数据管理，纯数值�
 ### AI 交互铁律
 
 - **润色**：选中段落 → SSE 流式预览（侧边栏/浮层，**禁止直接覆盖编辑器**）→ 用户确认 → 替换原文
-- **脱敏**：绝对金额 → 区间（<10万/十万级/百万级/千万级/亿级），百分比不脱敏，公司名 → 动态映射
-- **双管道**：polish（文本→脱敏→LLM→还原）/ analyze（结构化→计算→脱敏→LLM→生成）
+- **脱敏（v1.2 决策，2026-09 复审确认）**：公司名 → 动态映射，百分比不脱敏；绝对金额**不做区间化**——金额明文外发 DeepSeek 为经用户确认的接受项（内网部署 + 上游数据政策），若未来切换内网 LLM 网关可恢复区间化（<10万/十万级/百万级/千万级/亿级）
+- **双管道**：polish（文本→公司名映射→LLM→还原）/ analyze（结构化→计算→脱敏→LLM→生成）
 - **前端标识**：AI 生成段落包裹 `<div data-ai-suggested="true">` + 图标标识
 
 ### 公式计算

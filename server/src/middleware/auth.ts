@@ -45,6 +45,15 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
       throw errors.unauthorized('访问令牌无效')
     }
 
+    // 会话黑名单：登出/改密后旧 access token 立即失效（不再等 15min TTL 自然过期）。
+    // 旧版无 jti 的存量 token 跳过本检查，随 TTL 自然过期。
+    if (payload.jti) {
+      const blacklisted = await prisma.tokenBlacklist.findUnique({ where: { jti: payload.jti } })
+      if (blacklisted) {
+        throw errors.unauthorized('会话已失效，请重新登录')
+      }
+    }
+
     // findUnique 不经软删除扩展，需手动校验用户状态
     const user = await prisma.user.findUnique({
       where: { id: payload.sub },

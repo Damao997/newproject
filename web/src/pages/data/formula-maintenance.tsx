@@ -21,6 +21,7 @@ import {
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { Pagination } from '@/components/data-table/pagination'
 import { PAGINATION } from '@/lib/constants'
+import { useAuthStore } from '@/stores/authStore'
 import {
   useMetrics,
   useSubjects,
@@ -195,7 +196,8 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
     setFormulaExportFlash(null)
     try {
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || '/api/v1'}/data/metrics/formulas/export`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('accessToken') ?? ''}` },
+        // token 统一取自 zustand store（localStorage 的 auth-storage 为嵌套 JSON，直读 getItem('accessToken') 恒为 null 导致 401）
+        headers: { Authorization: `Bearer ${useAuthStore.getState().accessToken ?? ''}` },
       })
       const json = await res.json()
       if (!res.ok || !json?.data || !Array.isArray(json.data)) throw new Error(json?.message || '导出数据格式异常，请稍后重试')

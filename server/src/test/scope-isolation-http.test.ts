@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import request from 'supertest'
 import ExcelJS from 'exceljs'
 import { createApp } from '../app'
@@ -46,6 +46,8 @@ let expNoToken = ''
 let expNoRoleId = ''
 let expNoPermissionId = ''
 const detailIds: string[] = []
+// 范围外催收计划夹具（直入库绕过守卫，供写入路径越权断言）
+let outPlanId = ''
 
 beforeAll(async () => {
   try {
@@ -197,16 +199,30 @@ beforeAll(async () => {
       expNoUserId = expNoUser.id
       const expNoLogin = await request(app).post('/api/v1/auth/login').send({ username: `__expno_u_${suffix}`, password: PASSWORD })
       if (expNoLogin.status === 200) expNoToken = expNoLogin.body.data.accessToken
+
+      // 范围外催收计划夹具：直入库绕过守卫，供 update/addLog/listLogs 越权断言
+      const outPlan = await basePrisma.collectionPlan.create({
+        data: {
+          companyCode: CO_OUT,
+          counterpartyCode: `__SCOPE_CP_${suffix}`,
+          accountCode: `__SCOPE_ACC_${suffix}`,
+          overdueAmount: 100,
+          plannedDate: new Date('2099-09-01'),
+        },
+        select: { id: true },
+      })
+      outPlanId = outPlan.id
     }
   } catch (e) {
     // eslint-disable-next-line no-console
     console.error('[scope-isolation-http] 夹具准备失败：', e)
     dbReady = false
   }
-})
+}, 90_000) // 夹含多次 bcrypt 登录（单次可达 2.5s），环境慢时默认 10s 钩子超时会误判整套件失败
 
 afterAll(async () => {
   await basePrisma.transactionDetail.deleteMany({ where: { id: { in: detailIds } } }).catch(() => undefined)
+  if (outPlanId) await basePrisma.collectionPlan.deleteMany({ where: { id: outPlanId } }).catch(() => undefined)
   for (const uid of [userId, viewerUserId, noViewUserId, invOnlyUserId, expNoUserId]) {
     if (!uid) continue
     await basePrisma.tokenBlacklist.deleteMany({ where: { userId: uid } }).catch(() => undefined)
@@ -224,7 +240,7 @@ afterAll(async () => {
   await basePrisma.company
     .deleteMany({ where: { code: { in: [CO_IN, CO_OUT, ET_PARTIAL] } } })
     .catch(() => undefined)
-})
+}, 30_000)
 
 function auth(req: request.Test) {
   return req.set('Authorization', `Bearer ${token}`)
@@ -368,5 +384,33 @@ describe('数据范围隔离 HTTP 端到端（真实 DB）', () => {
     if (!dbReady || !expNoToken) return
     const res = await request(app).get('/api/v1/transactions/aging/export').set('Authorization', `Bearer ${expNoToken}`)
     expect(res.status).toBe(403)
+  })
+
+  it('催收计划：对范围外公司创建 → 403（写入路径 scope 守卫回归）', async () => {
+    if (!dbReady) return
+    const res = await auth(
+      request(app).post('/api/v1/transactions/collections').send({
+        companyCode: CO_OUT,
+        counterpartyCode: `__SCOPE_CP_${suffix}`,
+        accountCode: `__SCOPE_ACC_${suffix}`,
+        overdueAmount: 100,
+        plannedDate: '2099-09-01',
+      }),
+    )
+    expect(res.status).toBe(403)
+  })
+
+  it('催收计划：篡改范围外公司计划 → 403', async () => {
+    if (!dbReady || !outPlanId) return
+    const res = await auth(request(app).patch(`/api/v1/transactions/collections/${outPlanId}`).send({ actualAmount: 1 }))
+    expect(res.status).toBe(403)
+  })
+
+  it('催收记录：读/写范围外公司计划 → 均 403', async () => {
+    if (!dbReady || !outPlanId) return
+    const read = await auth(request(app).get(`/api/v1/transactions/collections/${outPlanId}/logs`))
+    expect(read.status).toBe(403)
+    const write = await auth(request(app).post(`/api/v1/transactions/collections/${outPlanId}/logs`).send({ content: '越权写入尝试' }))
+    expect(write.status).toBe(403)
   })
 })

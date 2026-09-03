@@ -265,9 +265,11 @@ async function main(): Promise<void> {
         passwordHash,
         roleId: role.id,
         companyCode: u.companyCode ?? null,
+        // 首次登录强制改密：预置口令已随代码入库（公开已知），不允许长期可用（与 AdminService.createUser 一致）
+        mustChangePassword: true,
       },
     })
-    console.log(`[seed] 演示用户 ${u.username} 初始口令（仅本地开发）：${u.password}`)
+    console.log(`[seed] 演示用户 ${u.username} 初始口令（仅首次登录，登录后强制改密）：${u.password}`)
   }
   console.log(`[seed] 演示用户 ${USERS.length} 个 完成`)
 

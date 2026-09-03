@@ -1,4 +1,4 @@
-﻿import { Router } from 'express'
+import { Router } from 'express'
 import { authenticate } from '../middleware/auth'
 import { attachScope } from '../middleware/attach-scope'
 import { requirePermission } from '../middleware/permission'
@@ -39,6 +39,15 @@ function sseWrite(res: Response, event: { type: string; content?: string; error?
   res.write(`data: ${JSON.stringify(event)}\n\n`)
 }
 
+/** 客户端断开监听：SSE 连接提前关闭时中止上游 LLM 流，避免继续消耗 token 配额 */
+function onClientAbort(res: Response): AbortSignal {
+  const controller = new AbortController()
+  res.on('close', () => {
+    if (!res.writableEnded) controller.abort()
+  })
+  return controller.signal
+}
+
 // AI 润色（选中文本 → SSE 流式润色，不覆盖编辑器）
 router.post(
   '/polish',
@@ -49,9 +58,10 @@ router.post(
     const style = typeof req.body?.style === 'string' ? req.body.style : 'formal'
     const authUser = req.authUser as AuthUserContext
     initSSE(res)
+    const signal = onClientAbort(res)
     try {
       const { finalText } = await AIProxyService.polishStream(
-        { text, style, userId: authUser.userId, traceId: req.traceId },
+        { text, style, userId: authUser.userId, traceId: req.traceId, signal },
         (delta) => sseWrite(res, { type: 'token', content: delta }),
       )
       sseWrite(res, { type: 'done', finalText })
@@ -84,6 +94,7 @@ router.post(
           userPrompt: typeof b.userPrompt === 'string' ? b.userPrompt : undefined,
           userId: authUser.userId,
           traceId: req.traceId,
+          signal: onClientAbort(res),
         },
         (delta) => sseWrite(res, { type: 'token', content: delta }),
       )
@@ -116,6 +127,7 @@ router.post(
           sections: exportData.sections.filter((s) => !s.missing).map((s) => ({ title: s.title, plainText: s.plainText })),
           userId: authUser.userId,
           traceId: req.traceId,
+          signal: onClientAbort(res),
         },
         (delta) => sseWrite(res, { type: 'token', content: delta }),
       )
@@ -152,6 +164,7 @@ router.post(
           userId: authUser.userId,
           traceId: req.traceId,
           scope: { companyCode: authUser.companyCode, scopeValue: authUser.scopeValue, dataScopeCodes: authUser.dataScopeCodes },
+          signal: onClientAbort(res),
         },
         (delta) => sseWrite(res, { type: 'token', content: delta }),
       )

@@ -37,7 +37,7 @@ export function createApp(): Application {
     const start = Date.now()
     res.on('finish', () => {
       const user = req.authUser?.username ?? 'anonymous'
-      const ip = req.header('X-Forwarded-For')?.split(',')[0]?.trim() ?? req.ip ?? '-'
+      const ip = req.ip ?? '-' // trust proxy 可信口径，客户端伪造的 XFF 首段被忽略
       const ms = Date.now() - start
       logger.info(req.traceId, `${req.method} ${req.originalUrl} → ${res.statusCode} [user=${user}] [ip=${ip}] ${ms}ms`)
     })

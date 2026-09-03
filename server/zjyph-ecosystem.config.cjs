@@ -35,7 +35,8 @@ module.exports = {
       cwd: __dirname,
       script: 'dist/src/server.js',
       autorestart: true,
-      max_memory_restart: '500M',
+      // 1.5G：导入走 multer memoryStorage（上限 200MB × 解析峰值），500M 会被 PM2 误杀大文件导入
+      max_memory_restart: '1.5G',
       out_file: path.join(LOG_DIR, 'backend.out.log'),
       error_file: path.join(LOG_DIR, 'backend.err.log'),
       log_date_format: 'YYYY-MM-DD HH:mm:ss',

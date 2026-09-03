@@ -1,4 +1,4 @@
-﻿import { prisma } from '../lib/prisma'
+import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
 import { assertCompaniesInScope } from '../lib/scope-guard'
@@ -450,6 +450,8 @@ export const CollectionService = {
     if (Number.isNaN(plannedDate.getTime())) throw errors.badRequest('计划催收日期不合法')
     const method = input.method || 'phone'
     if (!COLLECTION_METHODS.includes(method as never)) throw errors.badRequest('催收方式不合法（phone/letter/legal）')
+    // 数据范围守卫：目标公司必须在当前用户数据范围内（防跨公司伪造催收计划）
+    await assertCompaniesInScope([input.companyCode], undefined, '新增催收计划')
 
     const plan = await prisma.collectionPlan.create({
       data: {
@@ -474,6 +476,8 @@ export const CollectionService = {
   async update(id: string, patch: { status?: string; actualAmount?: number; expectedAmount?: number; plannedDate?: string; method?: string; collectorId?: string; remark?: string; billedUncollectedAmount?: number; salesmanId?: string | null; statusNote?: string }, ctx: Ctx) {
     const plan = await prisma.collectionPlan.findUnique({ where: { id } })
     if (!plan) throw errors.notFound('催收计划不存在')
+    // 数据范围守卫：计划归属公司必须在当前用户数据范围内（防跨公司篡改）
+    await assertCompaniesInScope([plan.companyCode], undefined, '修改催收计划')
 
     const data: Record<string, unknown> = {}
     if (patch.status !== undefined && patch.status !== plan.status) {
@@ -541,8 +545,10 @@ export const CollectionService = {
    * 催收记录列表
    */
   async listLogs(planId: string): Promise<CollectionLogDto[]> {
-    const plan = await prisma.collectionPlan.findUnique({ where: { id: planId }, select: { id: true } })
+    const plan = await prisma.collectionPlan.findUnique({ where: { id: planId }, select: { id: true, companyCode: true } })
     if (!plan) throw errors.notFound('催收计划不存在')
+    // 数据范围守卫：计划归属公司必须在当前用户数据范围内（防越权读催收记录）
+    await assertCompaniesInScope([plan.companyCode], undefined, '查看催收记录')
     const logs = await prisma.collectionLog.findMany({ where: { planId }, orderBy: { actionTime: 'desc' } })
     return logs.map((l) => ({
       id: l.id,
@@ -558,8 +564,10 @@ export const CollectionService = {
    * 新增催收记录
    */
   async addLog(planId: string, input: { content: string; attachmentUrl?: string }, ctx: Ctx): Promise<CollectionLogDto> {
-    const plan = await prisma.collectionPlan.findUnique({ where: { id: planId }, select: { id: true } })
+    const plan = await prisma.collectionPlan.findUnique({ where: { id: planId }, select: { id: true, companyCode: true } })
     if (!plan) throw errors.notFound('催收计划不存在')
+    // 数据范围守卫：计划归属公司必须在当前用户数据范围内（防越权写催收记录）
+    await assertCompaniesInScope([plan.companyCode], undefined, '新增催收记录')
     const content = (input.content || '').trim()
     if (!content) throw errors.badRequest('催收内容必填')
     const log = await prisma.collectionLog.create({

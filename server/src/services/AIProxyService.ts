@@ -108,7 +108,7 @@ export const AIProxyService = {
    * onToken 逐段回调（含公司别名，前端仅作预览）；返回值为还原+净化后的最终文本。
    */
   async polishStream(
-    params: { text: string; style?: string; userId: string; traceId?: string },
+    params: { text: string; style?: string; userId: string; traceId?: string; signal?: AbortSignal },
     onToken: (delta: string) => void,
   ): Promise<{ finalText: string }> {
     const { text, userId, traceId } = params
@@ -127,7 +127,7 @@ export const AIProxyService = {
     await chatStream(POLISH_SYSTEM_PROMPTS[style], desensitized, (delta) => {
       full += delta
       onToken(delta)
-    }, traceId)
+    }, traceId, params.signal)
 
     const filtered = filterOutput(full)
     const finalText = restoreCompanyMap(filtered.sanitized, map)
@@ -150,6 +150,7 @@ export const AIProxyService = {
       userPrompt?: string
       userId: string
       traceId?: string
+      signal?: AbortSignal
     },
     onToken: (delta: string) => void,
   ): Promise<{ finalText: string }> {
@@ -177,7 +178,7 @@ export const AIProxyService = {
     await chatStream(buildTemplatePrompt(ANALYZE_SYSTEM_PROMPT, AI_TEMPLATES.analyze.sections), fullPrompt, (delta) => {
       full += delta
       onToken(delta)
-    }, traceId)
+    }, traceId, params.signal)
 
     const filtered = filterOutput(full)
     // 事实块以别名注入 LLM，输出可能复述别名（如“公司C”）；面向内网授权用户展示前需反向还原为真实公司名
@@ -192,7 +193,7 @@ export const AIProxyService = {
    * （避免对已入库分析正文误拦），但仍受 system prompt 声明与输出过滤双重约束。
    */
   async summarizeStream(
-    params: { title: string; sections: { title: string; plainText: string }[]; userId: string; traceId?: string },
+    params: { title: string; sections: { title: string; plainText: string }[]; userId: string; traceId?: string; signal?: AbortSignal },
     onToken: (delta: string) => void,
   ): Promise<{ finalText: string }> {
     const { title, userId, traceId } = params
@@ -214,7 +215,7 @@ export const AIProxyService = {
     await chatStream(SUMMARY_SYSTEM_PROMPT, `报告标题：${title}\n\n各章节内容摘录：\n${desensitized}`, (delta) => {
       full += delta
       onToken(delta)
-    }, traceId)
+    }, traceId, params.signal)
 
     const filtered = filterOutput(full)
     const finalText = restoreCompanyMap(filtered.sanitized, map)
@@ -237,6 +238,7 @@ export const AIProxyService = {
       traceId?: string
       /** 操作者数据范围（归档写前校验：非 ALL 公司须在范围内，越权 403） */
       scope: Pick<AuthUserContext, 'companyCode' | 'scopeValue' | 'dataScopeCodes'>
+      signal?: AbortSignal
     },
     onToken: (delta: string) => void,
   ): Promise<{ finalText: string }> {
@@ -260,7 +262,7 @@ export const AIProxyService = {
     await chatStream(buildTemplatePrompt(OVERVIEW_SYSTEM_PROMPT, AI_TEMPLATES.overview.sections), factBlock, (delta) => {
       full += delta
       onToken(delta)
-    }, traceId)
+    }, traceId, params.signal)
 
     const filtered = filterOutput(full)
     const finalText = restoreCompanyMap(filtered.sanitized, map)

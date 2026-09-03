@@ -3,7 +3,7 @@ import type { Request, Response, NextFunction } from 'express'
 import { signAccessToken } from '../lib/jwt'
 
 const mocks = vi.hoisted(() => ({
-  prisma: { user: { findUnique: vi.fn() } },
+  prisma: { user: { findUnique: vi.fn() }, tokenBlacklist: { findUnique: vi.fn().mockResolvedValue(null) } },
 }))
 
 vi.mock('../lib/prisma', () => ({
@@ -40,6 +40,16 @@ beforeEach(() => vi.clearAllMocks())
 describe('authenticate 中间件', () => {
   it('缺少 Authorization 头 → 401', async () => {
     const req = makeReq({})
+    const next = vi.fn() as unknown as NextFunction
+    await authenticate(req, {} as Response, next)
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ code: 401 }))
+  })
+
+  it('jti 命中会话黑名单（登出/改密后旧 token）→ 401', async () => {
+    mocks.prisma.user.findUnique.mockResolvedValue(activeUser())
+    mocks.prisma.tokenBlacklist.findUnique.mockResolvedValueOnce({ jti: 'jti-1', userId: 'u1' })
+    const token = signAccessToken({ userId: 'u1', username: 'alice', roleCode: 'admin' })
+    const req = makeReq({ Authorization: `Bearer ${token}` })
     const next = vi.fn() as unknown as NextFunction
     await authenticate(req, {} as Response, next)
     expect(next).toHaveBeenCalledWith(expect.objectContaining({ code: 401 }))

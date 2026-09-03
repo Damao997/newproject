@@ -88,6 +88,8 @@ export async function chatStream(
   user: string,
   onToken: (delta: string) => void,
   traceId?: string,
+  /** 外部中止信号（客户端断开 SSE 时），中止后停止从上游拉流，避免无效消耗 token 配额 */
+  signal?: AbortSignal,
 ): Promise<void> {
   const cfg = loadConfig()
   if (!cfg.deepseekApiKey) {
@@ -101,6 +103,10 @@ export async function chatStream(
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 90_000)
+  if (signal) {
+    if (signal.aborted) controller.abort()
+    else signal.addEventListener('abort', () => controller.abort(), { once: true })
+  }
   try {
     const res = await fetch(`${cfg.deepseekApiBase}/chat/completions`, {
       method: 'POST',
