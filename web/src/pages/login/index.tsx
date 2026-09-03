@@ -224,10 +224,10 @@ export default function LoginPage() {
 
           {/* 账号 */}
           <div className="login-field">
-            <Label htmlFor="username">企业账号</Label>
+            <Label htmlFor="username">账号</Label>
             <Input
               id="username"
-              placeholder="请输入工号或邮箱"
+              placeholder="请输入账号"
               value={username}
               onChange={(e) => handleUsernameChange(e.target.value)}
               onBlur={() => handleBlur('username')}
