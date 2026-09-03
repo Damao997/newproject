@@ -98,3 +98,6 @@ web/pnpm-workspace.yaml
 
 # Claude internal
 .claude
+
+# frp 内网穿透（frpc.toml 内含 token，整目录本地化，不入库）
+frp/
