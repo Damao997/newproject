@@ -41,16 +41,16 @@ export interface ExpenseMappingCheckResult {
   brokenCodes: string[]
 }
 
-/** 科目编码（经营指标级联数字编码，如 PL05010101）：一对一映射 code=科目编码 */
+/** 旧格式映射编码（历史一对一映射曾以科目编码入库，仅供建立迁移计划时识别，新建不再允许） */
 const SUBJECT_CODE_RE = /^PL[0-9]+$/
-/** 归并/自定义映射编码：EXP_ 前缀 + 小写英文/数字/下划线（含统一自动编码 EXP_001） */
+/** 映射编码：EXP_ 前缀 + 小写英文/数字/下划线（含统一自动编码 EXP_001） */
 const CUSTOM_CODE_RE = /^EXP_[a-z0-9][a-z0-9_]*$/
 /** 统一自动编码的数字序号部分（EXP_001 → 001） */
 const EXP_NUMERIC_RE = /^EXP_(\d+)$/
 
-/** 映射编码合法格式：一对一映射=科目编码（PL 前缀数字）；归并/自定义=EXP_ 前缀（小写英文或数字序号，如 EXP_001/EXP_rd_expense） */
+/** 映射编码合法格式：统一为 EXP_ 前缀（小写英文或数字序号，如 EXP_001/EXP_rd_expense） */
 export function isValidMappingCode(code: string): boolean {
-  return SUBJECT_CODE_RE.test(code) || CUSTOM_CODE_RE.test(code)
+  return CUSTOM_CODE_RE.test(code)
 }
 
 /** 统一编码生成输入行（expenseSubjectMapping 行子集：code + 墓碑标记） */
@@ -240,12 +240,12 @@ export const ExpenseAnalysisService = {
   },
 
   async create(input: { code?: string; name: string; subjectCodes: string[]; sortOrder?: number; status?: string }, ctx: AuditCtx): Promise<ExpenseMappingDto> {
-    // 编码缺省时自动生成统一编码（EXP_ 数字序号）；显式传入时按原有格式校验
+    // 编码固定为 EXP_ 前缀：缺省时自动生成统一编码；显式传入时须为 EXP_ 格式
     const code = String(input.code ?? '').trim() || await nextMappingCode()
     const name = String(input.name ?? '').trim()
     const subjectCodes = Array.isArray(input.subjectCodes) ? input.subjectCodes.map((c) => String(c).trim()).filter(Boolean) : []
     if (!name) throw errors.badRequest('展示名称必填')
-    if (!isValidMappingCode(code)) throw errors.badRequest('映射编码需为科目编码（PL 前缀）或 EXP_ 前缀（小写英文/数字序号，如 EXP_001）')
+    if (!isValidMappingCode(code)) throw errors.badRequest('映射编码须为 EXP_ 前缀（小写英文/数字序号，如 EXP_001），建议留空由系统自动生成')
     if (subjectCodes.length === 0) throw errors.badRequest('至少选择 1 个运营费用科目')
     const exists = await prisma.expenseSubjectMapping.findUnique({ where: { code } })
     if (exists) {

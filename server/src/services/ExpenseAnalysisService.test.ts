@@ -41,9 +41,9 @@ function feeTree(): SubjectRow[] {
 
 describe('ExpenseAnalysisService 运营费用映射', () => {
   describe('isValidMappingCode 编码规范校验', () => {
-    it('科目编码（PL_ 前缀数字，一对一映射）通过', () => {
-      expect(isValidMappingCode('PL05010101')).toBe(true)
-      expect(isValidMappingCode('PL05010118')).toBe(true)
+    it('科目编码（PL 前缀数字）不再允许：映射编码固定为 EXP_ 前缀', () => {
+      expect(isValidMappingCode('PL05010101')).toBe(false)
+      expect(isValidMappingCode('PL05010118')).toBe(false)
     })
     it('EXP_ 前缀小写英文（归并/自定义映射）通过', () => {
       expect(isValidMappingCode('EXP_rd_expense')).toBe(true)
@@ -63,6 +63,8 @@ describe('ExpenseAnalysisService 运营费用映射', () => {
       expect(isValidMappingCode('EXP_-x')).toBe(false)
       expect(isValidMappingCode('')).toBe(false)
       expect(isValidMappingCode('PL_x')).toBe(false)
+      expect(isValidMappingCode('EXP_')).toBe(false)
+      expect(isValidMappingCode('EXP_001x')).toBe(true)
     })
   })
 

@@ -1,4 +1,6 @@
 import { PageContainer } from '@/components/layout/page-container'
+import { SubPageTabs } from '@/components/layout/sub-page-tabs'
+import { REPORTS_TABS } from '@/components/layout/module-tabs'
 import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { AnalysisManager } from './analysis-list'
 
@@ -17,6 +19,7 @@ export default function ReportsAnalysesPage() {
       stickyHeader
       headerRef={headerRef}
     >
+      <SubPageTabs items={REPORTS_TABS} />
       <AnalysisManager stickyTop={headerHeight} />
     </PageContainer>
   )

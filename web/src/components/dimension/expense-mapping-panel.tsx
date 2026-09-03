@@ -14,11 +14,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useConfirm } from '@/components/ui/confirm-dialog'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { useExpenseMappings, useExpenseMappingCheck, useExpenseMappingMutations } from '@/hooks/api-queries'
 import { api } from '@/lib/api'
+import { BatchRowsDialog, BatchOpMessage } from './batch-rows-dialog'
+import { useBatchDelete } from './use-batch-delete'
 import { cn } from '@/lib/utils'
-import { Plus, RefreshCw, Pencil, Trash2, AlertTriangle, XCircle, Loader2, Check } from 'lucide-react'
+import { Plus, RefreshCw, Pencil, Trash2, AlertTriangle, XCircle, Loader2, Check, ListPlus, ChevronDown } from 'lucide-react'
 import type { ExpenseMapping, ExpenseMappingCheckResult } from '@/types'
 
 interface ExpenseMappingPanelProps {
@@ -37,8 +40,18 @@ interface MappingForm {
 
 const EMPTY_FORM: MappingForm = { code: '', name: '', subjectCodes: [], sortOrder: '', status: 'active' }
 
-/** 映射编码合法格式（与后端 isValidMappingCode 一致）：一对一=科目编码（PL 前缀）；归并/自定义=EXP_ 前缀（小写英文/数字序号） */
-const MAPPING_CODE_RE = /^(PL[0-9]+|EXP_[a-z0-9][a-z0-9_]*)$/
+/** 批量新增行表单（编码由系统逐条自动生成，不在行内填写） */
+interface BatchMappingRow {
+  name: string
+  subjectCodes: string[]
+  sortOrder: string
+  status: 'active' | 'inactive'
+}
+
+const EMPTY_BATCH_ROW: BatchMappingRow = { name: '', subjectCodes: [], sortOrder: '', status: 'active' }
+
+/** 映射编码合法格式（与后端 isValidMappingCode 一致）：统一为 EXP_ 前缀（小写英文/数字序号） */
+const MAPPING_CODE_RE = /^EXP_[a-z0-9][a-z0-9_]*$/
 
 /**
  * 运营费用映射管理面板（运营费用分析）：维护展示指标 ↔ 经营科目编码集合的对应关系，
@@ -57,6 +70,14 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
   const [saving, setSaving] = useState(false)
   const [codeLoading, setCodeLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [batchOpen, setBatchOpen] = useState(false)
+
+  // 批量删除：受控行选择 + 顺序逐条调用单条删除接口
+  const batchDelete = useBatchDelete<ExpenseMappingCheckResult['mappings'][number]>({
+    entityLabel: '运营费用映射',
+    getName: (row) => row.name,
+    removeOne: (row) => mutations.remove.mutateAsync(row.id),
+  })
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['data', 'expense-mappings'] })
@@ -109,7 +130,7 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
       return
     }
     if (!editing && !MAPPING_CODE_RE.test(form.code.trim())) {
-      setError('映射编码需为科目编码（PL 前缀）或 EXP_ 前缀（小写英文/数字序号，如 EXP_001）')
+      setError('映射编码须为 EXP_ 前缀（小写英文/数字序号，如 EXP_001），请关闭对话框重新打开以自动生成')
       return
     }
     if (form.subjectCodes.length === 0) {
@@ -157,6 +178,39 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
   // 顺序同为 sortOrder 升序，与 list 等价且信息更全；fallback（check 未返回）仅作加载期兜底
   const rows = (check?.mappings ?? mappings ?? []) as ExpenseMappingCheckResult['mappings']
   const hasWarnings = (check?.uncoveredSubjects.length ?? 0) > 0 || (check?.brokenCodes.length ?? 0) > 0
+
+  // 批量新增行校验：名称必填 + 至少 1 个科目 + 行间/已有列表名称查重
+  const validateBatchRow = (row: BatchMappingRow, _index: number, allRows: BatchMappingRow[]): string | null => {
+    if (!row.name.trim()) return '展示名称必填'
+    if (row.subjectCodes.length === 0) return '至少选择 1 个运营费用科目'
+    if (rows.some((m) => m.name === row.name.trim())) return `展示名称「${row.name.trim()}」已存在`
+    if (allRows.filter((r) => r.name.trim() === row.name.trim()).length > 1) return `展示名称「${row.name.trim()}」在批量行中重复`
+    return null
+  }
+
+  // 批量新增提交：逐行预取自动编码后顺序创建，返回与行对齐的错误（null=成功）
+  const submitBatchRows = async (batchRows: BatchMappingRow[]): Promise<(string | null)[]> => {
+    const result: (string | null)[] = []
+    for (const row of batchRows) {
+      try {
+        const { code } = await api.getNextExpenseMappingCode()
+        await mutations.create.mutateAsync({
+          code,
+          name: row.name.trim(),
+          subjectCodes: row.subjectCodes,
+          sortOrder: row.sortOrder ? Number(row.sortOrder) : 0,
+          status: row.status,
+        })
+        result.push(null)
+      } catch (e: any) {
+        result.push(e?.response?.data?.message ?? e?.message ?? '创建失败')
+      }
+    }
+    return result
+  }
+
+  // 批量删除选中行（rows 以 check.mappings 为渲染源，含 id）
+  const selectedBatchRows = rows.filter((r) => batchDelete.selectedKeys.has(r.id))
 
   // 映射列表列（权限门禁行操作）
   const columns: DataTableColumn<(typeof rows)[number]>[] = useMemo(() => {
@@ -227,6 +281,25 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
               新增映射
             </Button>
           )}
+          {canCreate && (
+            <Button variant="outline" size="sm" onClick={() => setBatchOpen(true)}>
+              <ListPlus className="mr-2 h-4 w-4" />
+              批量新增
+            </Button>
+          )}
+          {canDelete && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-destructive hover:text-destructive"
+              disabled={batchDelete.selectedKeys.size === 0 || batchDelete.running}
+              onClick={() => batchDelete.runBatchDelete(selectedBatchRows)}
+            >
+              {batchDelete.running && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <Trash2 className="mr-2 h-4 w-4" />
+              批量删除{batchDelete.selectedKeys.size > 0 ? `（${batchDelete.selectedKeys.size}）` : ''}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -273,6 +346,7 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
         emptyText="暂无映射配置，点击「新增映射」创建"
         caption="运营费用映射列表"
         loading={isLoading}
+        rowSelection={canDelete ? { selectedKeys: batchDelete.selectedKeys, onSelectionChange: batchDelete.setSelectedKeys } : undefined}
       />
 
       {error && (
@@ -281,6 +355,7 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
           {error}
         </p>
       )}
+      <BatchOpMessage message={batchDelete.message} onDismiss={batchDelete.clearMessage} />
 
       {/* 新增/编辑对话框 */}
       <Dialog open={dialogOpen} onOpenChange={(o) => { if (!o && !saving) { setDialogOpen(false); setError(null) } }}>
@@ -386,6 +461,104 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 批量新增对话框（多行表单，逐条创建；编码由系统自动生成） */}
+      <BatchRowsDialog<BatchMappingRow>
+        open={batchOpen}
+        onOpenChange={setBatchOpen}
+        title="批量新增运营费用映射"
+        description="逐行填写后一次性创建；映射编码由系统按行自动生成（EXP_ 序号），创建后不可修改。"
+        createEmptyRow={() => ({ ...EMPTY_BATCH_ROW })}
+        validateRow={validateBatchRow}
+        submitRows={submitBatchRows}
+        renderRowFields={(row, _index, patch, invalid) => (
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-12">
+            <div className="md:col-span-4">
+              <Input
+                value={row.name}
+                onChange={(e) => patch({ name: e.target.value })}
+                placeholder="展示名称 *"
+                aria-invalid={invalid && !row.name.trim()}
+              />
+            </div>
+            <div className="md:col-span-4">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn('w-full justify-between font-normal', row.subjectCodes.length === 0 && 'text-muted-foreground')}
+                    aria-invalid={invalid && row.subjectCodes.length === 0}
+                  >
+                    {row.subjectCodes.length > 0 ? `已选 ${row.subjectCodes.length} 个科目` : '引用科目 *'}
+                    <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="max-h-72 w-80 overflow-y-auto" align="start">
+                  {(check?.candidates?.length ?? 0) === 0 && (
+                    <p className="p-2 text-xs text-muted-foreground">未检测到运营费用科目（科目树中可能尚未配置「费用 &gt; 壹品慧费用 &gt; 运营费用」）</p>
+                  )}
+                  {(check?.candidates ?? []).map((group) => (
+                    <div key={group.group} className="mb-2">
+                      <p className="mb-1 text-xs font-medium text-foreground">{group.group}</p>
+                      <div className="space-y-1">
+                        {group.items.map((item) => {
+                          const selected = row.subjectCodes.includes(item.code)
+                          return (
+                            <label
+                              key={item.code}
+                              className={cn(
+                                'flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1 text-xs transition-colors',
+                                selected ? 'border-primary/50 bg-primary/5 text-foreground' : 'border-border text-muted-foreground hover:bg-muted/50',
+                              )}
+                            >
+                              <Checkbox
+                                size="sm"
+                                className="shrink-0"
+                                checked={selected}
+                                onCheckedChange={() =>
+                                  patch({
+                                    subjectCodes: selected
+                                      ? row.subjectCodes.filter((c) => c !== item.code)
+                                      : [...row.subjectCodes, item.code],
+                                  })
+                                }
+                              />
+                              <span className="flex-1 truncate" title={item.name}>{item.name}</span>
+                              {!item.hasData && <span className="shrink-0 text-micro text-muted-foreground">（暂无数据）</span>}
+                              {selected && <Check className="h-3 w-3 shrink-0 text-primary" />}
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div className="md:col-span-2">
+              <Input
+                type="number"
+                value={row.sortOrder}
+                onChange={(e) => patch({ sortOrder: e.target.value })}
+                placeholder="排序"
+              />
+            </div>
+            <div className="flex items-center gap-2 md:col-span-2">
+              {(['active', 'inactive'] as const).map((s) => (
+                <label key={s} className={cn('flex cursor-pointer items-center gap-1 text-xs', row.status === s ? 'text-foreground' : 'text-muted-foreground')}>
+                  <input
+                    type="radio"
+                    className="h-3.5 w-3.5 accent-primary"
+                    checked={row.status === s}
+                    onChange={() => patch({ status: s })}
+                  />
+                  {s === 'active' ? '启用' : '停用'}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+      />
 
       {confirmElement}
     </div>

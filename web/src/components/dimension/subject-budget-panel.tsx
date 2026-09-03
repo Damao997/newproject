@@ -25,8 +25,10 @@ import { useConfirm } from '@/components/ui/confirm-dialog'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { useCompanies } from '@/hooks/api-queries'
 import { useSubjectBudgetConfigs, useSubjectBudgetConfigCheck, useSubjectBudgetConfigMutations } from '@/hooks/api-queries'
+import { BatchRowsDialog, BatchOpMessage } from './batch-rows-dialog'
+import { useBatchDelete } from './use-batch-delete'
 import { cn } from '@/lib/utils'
-import { Plus, RefreshCw, Pencil, Trash2, AlertTriangle, Loader2 } from 'lucide-react'
+import { Plus, RefreshCw, Pencil, Trash2, AlertTriangle, Loader2, ListPlus } from 'lucide-react'
 import type { SubjectBudgetConfig } from '@/types'
 
 interface SubjectBudgetPanelProps {
@@ -34,6 +36,15 @@ interface SubjectBudgetPanelProps {
   canUpdate?: boolean
   canDelete?: boolean
 }
+
+/** 批量新增行表单（主体/排序/状态） */
+interface BatchSubjectRow {
+  companyCode: string
+  sortOrder: string
+  status: 'active' | 'inactive'
+}
+
+const EMPTY_BATCH_ROW: BatchSubjectRow = { companyCode: '', sortOrder: '', status: 'active' }
 
 /**
  * 主体展示配置管理面板（主体预算达成分析）：维护看板主体预算达成分析展示的主体（排序/启停），
@@ -52,6 +63,14 @@ export function SubjectBudgetPanel({ canCreate = false, canUpdate = false, canDe
   const [form, setForm] = useState({ companyCode: '', sortOrder: '', status: 'active' as 'active' | 'inactive' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [batchOpen, setBatchOpen] = useState(false)
+
+  // 批量删除：受控行选择 + 顺序逐条调用单条删除接口
+  const batchDelete = useBatchDelete<SubjectBudgetConfig>({
+    entityLabel: '主体配置',
+    getName: (row) => row.companyName,
+    removeOne: (row) => mutations.remove.mutateAsync(row.id),
+  })
 
   // 可新增候选：公司表 active 主体中尚未配置的
   const configuredCodes = useMemo(() => new Set((configs ?? []).map((c) => c.companyCode)), [configs])
@@ -117,6 +136,34 @@ export function SubjectBudgetPanel({ canCreate = false, canUpdate = false, canDe
   const unconfigured = check?.unconfiguredSubjects ?? []
   const hasWarnings = unconfigured.length > 0
 
+  // 批量新增行校验：主体必选 + 行间/已配置查重
+  const validateBatchRow = (row: BatchSubjectRow, _index: number, allRows: BatchSubjectRow[]): string | null => {
+    if (!row.companyCode) return '请选择主体'
+    if (configuredCodes.has(row.companyCode)) return '该主体已配置'
+    if (allRows.filter((r) => r.companyCode === row.companyCode).length > 1) return '主体在批量行中重复'
+    return null
+  }
+
+  // 批量新增提交：顺序调用单条 create，返回与行对齐的错误（null=成功）
+  const submitBatchRows = async (batchRows: BatchSubjectRow[]): Promise<(string | null)[]> => {
+    const result: (string | null)[] = []
+    for (const row of batchRows) {
+      try {
+        await mutations.create.mutateAsync({
+          companyCode: row.companyCode,
+          sortOrder: row.sortOrder ? Number(row.sortOrder) : 0,
+          status: row.status,
+        })
+        result.push(null)
+      } catch (e: any) {
+        result.push(e?.response?.data?.message ?? e?.message ?? '创建失败')
+      }
+    }
+    return result
+  }
+
+  const selectedBatchRows = (configs ?? []).filter((r) => batchDelete.selectedKeys.has(r.id))
+
   // 配置列表列（权限门禁行操作；斑马纹由 rowClassName 表达）
   const columns: DataTableColumn<SubjectBudgetConfig>[] = useMemo(() => {
     const cols: DataTableColumn<SubjectBudgetConfig>[] = [
@@ -177,6 +224,25 @@ export function SubjectBudgetPanel({ canCreate = false, canUpdate = false, canDe
               新增主体
             </Button>
           )}
+          {canCreate && (
+            <Button variant="outline" size="sm" onClick={() => setBatchOpen(true)}>
+              <ListPlus className="mr-2 h-4 w-4" />
+              批量新增
+            </Button>
+          )}
+          {canDelete && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-destructive hover:text-destructive"
+              disabled={batchDelete.selectedKeys.size === 0 || batchDelete.running}
+              onClick={() => batchDelete.runBatchDelete(selectedBatchRows)}
+            >
+              {batchDelete.running && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <Trash2 className="mr-2 h-4 w-4" />
+              批量删除{batchDelete.selectedKeys.size > 0 ? `（${batchDelete.selectedKeys.size}）` : ''}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -210,6 +276,7 @@ export function SubjectBudgetPanel({ canCreate = false, canUpdate = false, canDe
         caption="主体展示配置列表"
         rowClassName={(_, i) => (i % 2 === 1 ? 'bg-muted/30' : undefined)}
         loading={isLoading}
+        rowSelection={canDelete ? { selectedKeys: batchDelete.selectedKeys, onSelectionChange: batchDelete.setSelectedKeys } : undefined}
       />
 
       {error && (
@@ -218,6 +285,7 @@ export function SubjectBudgetPanel({ canCreate = false, canUpdate = false, canDe
           {error}
         </p>
       )}
+      <BatchOpMessage message={batchDelete.message} onDismiss={batchDelete.clearMessage} />
 
       {/* 新增/编辑对话框 */}
       <Dialog open={dialogOpen} onOpenChange={(o) => { if (!o && !saving) { setDialogOpen(false); setError(null) } }}>
@@ -300,6 +368,68 @@ export function SubjectBudgetPanel({ canCreate = false, canUpdate = false, canDe
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 批量新增对话框（多行表单，逐条创建） */}
+      <BatchRowsDialog<BatchSubjectRow>
+        open={batchOpen}
+        onOpenChange={setBatchOpen}
+        title="批量新增主体配置"
+        description="逐行选择主体后一次性创建；仅可选择尚未配置的公司/汇总主体，同一主体不可在多行重复。"
+        createEmptyRow={() => ({ ...EMPTY_BATCH_ROW })}
+        validateRow={validateBatchRow}
+        submitRows={submitBatchRows}
+        renderRowFields={(row, _index, patch, invalid) => (
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-6">
+            <div className="md:col-span-3">
+              <Select value={row.companyCode} onValueChange={(v) => patch({ companyCode: v })}>
+                <SelectTrigger className="w-full" aria-invalid={invalid && !row.companyCode}>
+                  <SelectValue placeholder="选择主体 *" />
+                </SelectTrigger>
+                <SelectContent>
+                  {entityCandidates.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel>公司</SelectLabel>
+                      {entityCandidates.map((c) => (
+                        <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
+                      ))}
+                    </SelectGroup>
+                  )}
+                  {summaryCandidates.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel>汇总主体</SelectLabel>
+                      {summaryCandidates.map((c) => (
+                        <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
+                      ))}
+                    </SelectGroup>
+                  )}
+                  {candidates.length === 0 && <SelectItem value="__none__" disabled>暂无未配置主体</SelectItem>}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="md:col-span-1">
+              <Input
+                type="number"
+                value={row.sortOrder}
+                onChange={(e) => patch({ sortOrder: e.target.value })}
+                placeholder="排序"
+              />
+            </div>
+            <div className="flex items-center gap-2 md:col-span-2">
+              {(['active', 'inactive'] as const).map((s) => (
+                <label key={s} className={cn('flex cursor-pointer items-center gap-1 text-xs', row.status === s ? 'text-foreground' : 'text-muted-foreground')}>
+                  <input
+                    type="radio"
+                    className="h-3.5 w-3.5 accent-primary"
+                    checked={row.status === s}
+                    onChange={() => patch({ status: s })}
+                  />
+                  {s === 'active' ? '启用' : '停用'}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+      />
 
       {confirmElement}
     </div>

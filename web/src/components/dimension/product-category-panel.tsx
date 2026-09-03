@@ -15,8 +15,10 @@ import {
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { useProductCategories, useProductCategoryCheck, useProductCategoryMutations } from '@/hooks/api-queries'
+import { BatchRowsDialog, BatchOpMessage } from './batch-rows-dialog'
+import { useBatchDelete } from './use-batch-delete'
 import { cn } from '@/lib/utils'
-import { Plus, RefreshCw, Pencil, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
+import { Plus, RefreshCw, Pencil, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, ListPlus } from 'lucide-react'
 import type { ProductCategory } from '@/types'
 
 interface ProductCategoryPanelProps {
@@ -51,6 +53,14 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
   const [form, setForm] = useState<CategoryForm>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [batchOpen, setBatchOpen] = useState(false)
+
+  // 批量删除：受控行选择 + 顺序逐条调用单条删除接口
+  const batchDelete = useBatchDelete<ProductCategory>({
+    entityLabel: '品类配置',
+    getName: (row) => row.name,
+    removeOne: (row) => mutations.remove.mutateAsync(row.id),
+  })
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['data', 'product-categories'] })
@@ -121,6 +131,38 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
       setError(e?.response?.data?.message ?? e?.message ?? '删除失败')
     }
   }
+
+  // 批量新增行校验：必填 + 编码唯一（对已有列表与行间查重）
+  const validateBatchRow = (row: CategoryForm, _index: number, allRows: CategoryForm[]): string | null => {
+    if (!row.code.trim()) return '品类编码必填'
+    if (!row.name.trim()) return '品类名称必填'
+    if (!row.subjectKeyword.trim()) return '匹配关键词必填'
+    if ((categories ?? []).some((c) => c.code === row.code.trim())) return `编码 ${row.code.trim()} 已存在`
+    if (allRows.filter((r) => r.code.trim() === row.code.trim()).length > 1) return `编码 ${row.code.trim()} 在批量行中重复`
+    return null
+  }
+
+  // 批量新增提交：顺序调用单条 create，返回与行对齐的错误（null=成功）
+  const submitBatchRows = async (rows: CategoryForm[]): Promise<(string | null)[]> => {
+    const result: (string | null)[] = []
+    for (const row of rows) {
+      try {
+        await mutations.create.mutateAsync({
+          code: row.code.trim(),
+          name: row.name.trim(),
+          subjectKeyword: row.subjectKeyword.trim(),
+          sortOrder: row.sortOrder ? Number(row.sortOrder) : 0,
+          status: row.status,
+        })
+        result.push(null)
+      } catch (e: any) {
+        result.push(e?.response?.data?.message ?? e?.message ?? '创建失败')
+      }
+    }
+    return result
+  }
+
+  const selectedBatchRows = (categories ?? []).filter((r) => batchDelete.selectedKeys.has(r.id))
 
   const checkMap = new Map((check?.categories ?? []).map((c) => [c.id, c]))
   const hasWarnings = (check?.uncoveredSubjects.length ?? 0) > 0 || (check?.brokenKeywords.length ?? 0) > 0 || (check?.missingProfitMirror.length ?? 0) > 0
@@ -215,6 +257,25 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
               新增品类
             </Button>
           )}
+          {canCreate && (
+            <Button variant="outline" size="sm" onClick={() => setBatchOpen(true)}>
+              <ListPlus className="mr-2 h-4 w-4" />
+              批量新增
+            </Button>
+          )}
+          {canDelete && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-destructive hover:text-destructive"
+              disabled={batchDelete.selectedKeys.size === 0 || batchDelete.running}
+              onClick={() => batchDelete.runBatchDelete(selectedBatchRows)}
+            >
+              {batchDelete.running && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <Trash2 className="mr-2 h-4 w-4" />
+              批量删除{batchDelete.selectedKeys.size > 0 ? `（${batchDelete.selectedKeys.size}）` : ''}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -275,6 +336,7 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
         emptyText="暂无品类配置，点击「新增品类」创建"
         caption="品类配置列表"
         loading={isLoading}
+        rowSelection={canDelete ? { selectedKeys: batchDelete.selectedKeys, onSelectionChange: batchDelete.setSelectedKeys } : undefined}
       />
 
       {error && (
@@ -283,6 +345,7 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
           {error}
         </p>
       )}
+      <BatchOpMessage message={batchDelete.message} onDismiss={batchDelete.clearMessage} />
 
       {/* 新增/编辑对话框 */}
       <Dialog open={dialogOpen} onOpenChange={(o) => { if (!o && !saving) { setDialogOpen(false); setError(null) } }}>
@@ -357,6 +420,58 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 批量新增对话框（多行表单，逐条创建） */}
+      <BatchRowsDialog<CategoryForm>
+        open={batchOpen}
+        onOpenChange={setBatchOpen}
+        title="批量新增品类配置"
+        description="逐行填写后一次性创建；编码不可与已有品类重复，匹配关键词对应经营科目树收入类别下的科目名。"
+        createEmptyRow={() => ({ ...EMPTY_FORM })}
+        validateRow={validateBatchRow}
+        submitRows={submitBatchRows}
+        renderRowFields={(row, _index, patch, invalid) => (
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+            <Input
+              value={row.code}
+              onChange={(e) => patch({ code: e.target.value })}
+              placeholder="编码 *"
+              aria-invalid={invalid && !row.code.trim()}
+            />
+            <Input
+              value={row.name}
+              onChange={(e) => patch({ name: e.target.value })}
+              placeholder="品类名称 *"
+              aria-invalid={invalid && !row.name.trim()}
+            />
+            <Input
+              value={row.subjectKeyword}
+              onChange={(e) => patch({ subjectKeyword: e.target.value })}
+              placeholder="匹配关键词 *"
+              aria-invalid={invalid && !row.subjectKeyword.trim()}
+            />
+            <Input
+              type="number"
+              value={row.sortOrder}
+              onChange={(e) => patch({ sortOrder: e.target.value })}
+              placeholder="排序"
+            />
+            <div className="flex items-center gap-3">
+              {(['active', 'inactive'] as const).map((s) => (
+                <label key={s} className={cn('flex cursor-pointer items-center gap-1.5 text-xs', row.status === s ? 'text-foreground' : 'text-muted-foreground')}>
+                  <input
+                    type="radio"
+                    className="h-3.5 w-3.5 accent-primary"
+                    checked={row.status === s}
+                    onChange={() => patch({ status: s })}
+                  />
+                  {s === 'active' ? '启用' : '停用'}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+      />
 
       {confirmElement}
     </div>

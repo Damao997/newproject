@@ -23,6 +23,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Pagination } from '@/components/data-table/pagination'
 import { PageContainer } from '@/components/layout/page-container'
+import { SubPageTabs } from '@/components/layout/sub-page-tabs'
+import { REPORTS_TABS } from '@/components/layout/module-tabs'
 import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { usePermission } from '@/hooks/usePermission'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
@@ -75,6 +77,7 @@ export default function ReportsPage() {
       stickyHeader
       headerRef={headerRef}
     >
+      <SubPageTabs items={REPORTS_TABS} />
       <ReportsList filterRef={filterRef} stickyTop={headerHeight} />
     </PageContainer>
   )

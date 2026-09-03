@@ -120,13 +120,13 @@ export const navItems: NavItem[] = [
     group: 'management',
   },
   {
-    // 页内 Tab：经营分析科目（默认）/ 静态科目 / 主体管理 / 汇总主体映射 / 公式维护
+    // 页内 Tab：经营分析科目（默认）/ 静态科目 / 现金流量科目 / 主体管理 / 汇总主体映射 / 公式维护
     path: '/data/dimensions/operating',
     label: '维度管理',
     icon: Layers,
     resource: 'data:browse:view',
     group: 'management',
-    match: ['/data/dimensions/static', '/data/dimensions/company', '/data/dimensions/summary', '/data/dimensions/formulas'],
+    match: ['/data/dimensions/static', '/data/dimensions/cashflow', '/data/dimensions/company', '/data/dimensions/summary', '/data/dimensions/formulas'],
   },
   {
     // 页内 Tab：品类配置（默认）/ 运营费用映射 / 主体配置 / 月度预算比例 / 产品配置

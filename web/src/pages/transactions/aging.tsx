@@ -32,8 +32,10 @@ import type { AgingAnalysisRow } from '@/types'
 /**
  * 往来账龄分析：公司/期间跟随顶部 Header 全局筛选（periodStore），页面内保留往来类型 +
  * 科目多选 + 对象类型多选 + 客商关键词 + 分组方式（type/counterparty/account）下的
- * 账龄分桶（8 段）矩阵；「仅显示小计」持久化到 pageStateStore（展开/收起明细行）；
- * Excel 导出带进度（transactions:export）；行级「单项分析」挂载往来分析抽屉。数据：GET /transactions/aging。
+ * 账龄分桶（8 段）矩阵；「按往来客商」模式下分组头为公司（小计按公司聚合，与 Excel 导出结构一致），
+ * 明细行仍为公司×类型×客商粒度；表格列宽随内容动态适应（whitespace-nowrap + auto 布局）不换行；
+ * 「仅显示小计」持久化到 pageStateStore（展开/收起明细行）；Excel 导出带进度（transactions:export）；
+ * 行级「单项分析」挂载往来分析抽屉。数据：GET /transactions/aging。
  */
 
 const GROUP_BY_OPTIONS = [
@@ -104,22 +106,23 @@ export default function TransactionsAgingPage() {
   }
 
   // ===== 前端分组：组键与组名随 groupBy 变化，组内按余额降序，组间按小计降序 =====
+  // 按往来客商模式下分组头为公司（小计按公司聚合），明细行仍为公司×类型×客商粒度
   const groups = useMemo(() => {
-    const map = new Map<string, { name: string; rows: AgingAnalysisRow[]; closing: number }>()
+    const map = new Map<string, { name: string; companyCode?: string; rows: AgingAnalysisRow[]; closing: number }>()
     for (const r of rows) {
       const key =
         groupBy === 'type'
           ? r.transactionType
           : groupBy === 'counterparty'
-            ? `${r.counterpartyCode ?? '-'}|${r.counterpartyName ?? ''}`
+            ? r.companyCode
             : `${r.accountCode ?? '-'}|${r.accountDesc ?? ''}`
       const name =
         groupBy === 'type'
           ? r.transactionType
           : groupBy === 'counterparty'
-            ? r.counterpartyName || r.counterpartyCode || '未知客商'
+            ? r.companyName || r.companyCode
             : r.accountDesc || r.accountCode || '未知科目'
-      if (!map.has(key)) map.set(key, { name, rows: [], closing: 0 })
+      if (!map.has(key)) map.set(key, { name, companyCode: groupBy === 'counterparty' ? r.companyCode : undefined, rows: [], closing: 0 })
       const g = map.get(key)!
       g.rows.push(r)
       g.closing += r.closingBalance
@@ -294,10 +297,10 @@ export default function TransactionsAgingPage() {
                 ))}
                 {/* 合计行 */}
                 <tr className="report-total-row">
-                  <td className="px-3 py-2" colSpan={4}>合计 · {groups.length} 组</td>
-                  <td className="px-3 py-2 text-right font-num">{fmtAmount(totalClosing)}</td>
+                  <td className="whitespace-nowrap px-3 py-2" colSpan={4}>合计 · {groups.length} 组</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right font-num">{fmtAmount(totalClosing)}</td>
                   {AGING_GROUPS.map((g) => (
-                    <td key={g} className="px-2 py-2 text-right font-num">
+                    <td key={g} className="whitespace-nowrap px-2 py-2 text-right font-num">
                       {rows.reduce((s, r) => s + (r.aging[g] ?? 0), 0) !== 0
                         ? fmtAmount(rows.reduce((s, r) => s + (r.aging[g] ?? 0), 0))
                         : '-'}
@@ -322,29 +325,34 @@ export default function TransactionsAgingPage() {
   )
 }
 
-/** 组块：组头（小计 + 堆叠条）+ 明细行（subtotalOnly 时隐藏，组头保留） */
+/** 组块：组头（小计 + 堆叠条）+ 明细行（subtotalOnly 时隐藏，组头保留）；
+ *  按往来客商模式下组头为公司显示名（getDisplayName 简称联动），其余模式组头为分组维度名 */
 function AgingGroupBlock({ group, groupBy, subtotalOnly, onAnalyze }: {
-  group: { name: string; rows: AgingAnalysisRow[]; closing: number }
+  group: { name: string; companyCode?: string; rows: AgingAnalysisRow[]; closing: number }
   groupBy: string
   subtotalOnly: boolean
   onAnalyze: (row: AgingAnalysisRow) => void
 }) {
   const { getDisplayName } = useCompanyDisplayName()
+  const groupLabel =
+    groupBy === 'counterparty' && group.companyCode
+      ? getDisplayName(group.companyCode, group.name)
+      : group.name
   return (
     <>
       {/* 组头（小计） */}
       <tr className="border-b bg-muted/30">
-        <td className="px-3 py-2 font-medium" colSpan={4}>
+        <td className="whitespace-nowrap px-3 py-2 font-medium" colSpan={4}>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-foreground">{group.name}</span>
+            <span className="whitespace-nowrap text-foreground">{groupLabel}</span>
             <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">
               {subtotalOnly ? `${group.rows.length} 行` : '含明细'}
             </span>
           </div>
         </td>
-        <td className="px-3 py-2 text-right font-num font-semibold">{fmtAmount(group.closing)}</td>
+        <td className="whitespace-nowrap px-3 py-2 text-right font-num font-semibold">{fmtAmount(group.closing)}</td>
         {AGING_GROUPS.map((b) => (
-          <td key={b} className="px-2 py-2 text-right font-num text-muted-foreground">
+          <td key={b} className="whitespace-nowrap px-2 py-2 text-right font-num text-muted-foreground">
             {group.rows.reduce((s, r) => s + (r.aging[b] ?? 0), 0) !== 0
               ? fmtAmount(group.rows.reduce((s, r) => s + (r.aging[b] ?? 0), 0))
               : '-'}
@@ -357,28 +365,28 @@ function AgingGroupBlock({ group, groupBy, subtotalOnly, onAnalyze }: {
         const rowKey = `${r.companyCode}|${r.transactionType}|${r.counterpartyCode ?? ''}|${r.accountCode ?? ''}|${i}`
         return (
           <tr key={rowKey} className="group">
-            <td className="px-3 py-2" title={r.companyCode}>{getDisplayName(r.companyCode, r.companyName ?? undefined)}</td>
-            <td className="px-3 py-2">{r.transactionType}</td>
-            <td className="px-3 py-2">
+            <td className="whitespace-nowrap px-3 py-2" title={r.companyCode}>{getDisplayName(r.companyCode, r.companyName ?? undefined)}</td>
+            <td className="whitespace-nowrap px-3 py-2">{r.transactionType}</td>
+            <td className="whitespace-nowrap px-3 py-2">
               {groupBy === 'account'
                 ? (r.accountDesc || r.accountCode || '-')
                 : groupBy === 'counterparty'
                   ? (r.counterpartyName || r.counterpartyCode || '-')
                   : (r.counterpartyName || r.counterpartyCode || r.accountDesc || r.accountCode || '-')}
             </td>
-            <td className="px-3 py-2 text-center">
+            <td className="whitespace-nowrap px-3 py-2 text-center">
               {r.partyType ? <PartyTypeTag partyType={r.partyType} /> : <span className="text-xs text-muted-foreground">-</span>}
             </td>
-            <td className="px-3 py-2 text-right font-num font-medium">{fmtAmount(r.closingBalance)}</td>
+            <td className="whitespace-nowrap px-3 py-2 text-right font-num font-medium">{fmtAmount(r.closingBalance)}</td>
             {AGING_GROUPS.map((b) => {
               const v = r.aging[b] ?? 0
               return (
-                <td key={b} className={cn('px-2 py-2 text-right', v !== 0 && b === '3年以上' && 'font-medium text-destructive')}>
+                <td key={b} className={cn('whitespace-nowrap px-2 py-2 text-right', v !== 0 && b === '3年以上' && 'font-medium text-destructive')}>
                   {v !== 0 ? fmtAmount(v) : '-'}
                 </td>
               )
             })}
-            <td className="px-3 py-2 text-center">
+            <td className="whitespace-nowrap px-3 py-2 text-center">
               <Button
                 variant="ghost"
                 size="sm"
@@ -395,7 +403,7 @@ function AgingGroupBlock({ group, groupBy, subtotalOnly, onAnalyze }: {
       {/* 组头附堆叠条（明细隐藏时直观展示账龄结构） */}
       {subtotalOnly && (
         <tr className="border-b">
-          <td colSpan={4 + 1 + AGING_GROUPS.length + 1} className="px-3 pb-2">
+          <td colSpan={4 + 1 + AGING_GROUPS.length + 1} className="whitespace-nowrap px-3 pb-2">
             <AgingStackBar
               aging={group.rows.reduce<Record<string, number>>((acc, r) => {
                 for (const b of AGING_GROUPS) acc[b] = (acc[b] ?? 0) + (r.aging[b] ?? 0)

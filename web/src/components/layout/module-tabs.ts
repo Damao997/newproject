@@ -7,6 +7,12 @@ export const INDICATOR_TABS: SubPageTab[] = [
   { path: '/indicators/cashflow', label: '现金流量表' },
 ]
 
+/** 分析报告中心：汇总报告（默认）/ 单项分析（侧边栏平铺后原二级入口由页内 Tab 承接） */
+export const REPORTS_TABS: SubPageTab[] = [
+  { path: '/reports', label: '汇总报告' },
+  { path: '/reports/analyses', label: '单项分析' },
+]
+
 /** 首页看板 · 经营分析：壹品慧关键指标表（默认）/ 壹品慧业务现金流分析 / 应收账款账龄分析表 / 存货库龄分析表
  * / 品类预算达成 / 公司预算达成 / 运营费用（后三项由原综合分析卡迁入） */
 export const DASHBOARD_ANALYSIS_TABS: SubPageTab[] = [

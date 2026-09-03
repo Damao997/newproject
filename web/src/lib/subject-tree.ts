@@ -1,25 +1,10 @@
 import type { SubjectNode } from '@/types'
-import { rawOperatingAnalysis } from '@/mock/operating-analysis'
-import { rawStaticAnalysis } from '@/mock/static-analysis'
-import { rawCashflowAnalysis } from '@/mock/cashflow-analysis'
-
-/** 原始科目节点（仅名称 + 数据类型 + 子节点），编码/层级/类别由 decorateTree 生成 */
-export interface RawSubjectNode {
-  name: string
-  dataType: 'data' | 'calc' | 'display'
-  children?: RawSubjectNode[]
-}
 
 /** 展开后的行：节点 + 深度 */
 export interface FlatSubjectRow {
   node: SubjectNode
   depth: number
 }
-
-/**
- * 前序遍历装饰原始树：为每个节点赋级联编码（level0 用段位表如 PL02 / BS01 / CF01，子级 = 父码 + 2 位序号如 PL0201）、
- * level（= 深度）、category（= level0 根名）。
- */
 
 /**
  * level0 科目段位表（名称 → 2 位段位）。
@@ -56,13 +41,6 @@ export const SUBJECT_PREFIX_MAP: Record<string, 'PL' | 'BS' | 'CF'> = {
   '总资产': 'BS', '总负债': 'BS', '权益净资产': 'BS', '静态指标': 'BS',
   // 现金流（CF_）
   '经营活动产生的现金流量': 'CF', '投资活动产生的现金流量': 'CF', '筹资活动产生的现金流量': 'CF',
-}
-
-/** level0 编码：前缀 + 段位表登记段位（未登记抛错，强制维护）；无下划线（PL01/BS01/CF01 风格） */
-function rootSubjectCodeOf(prefix: string, name: string): string {
-  const segment = SUBJECT_SEGMENT_MAP[name]
-  if (!segment) throw new Error(`科目未登记 level0 段位：${name}（请向 SUBJECT_SEGMENT_MAP 补充）`)
-  return `${prefix}${segment}`
 }
 
 /** 子级编码：父码数字段 + 2 位序号 */
@@ -109,31 +87,6 @@ export function nextRootSubjectCode(prefix: 'PL' | 'BS' | 'CF', name: string, fl
   while (usedSegs.includes(next)) next++
   if (next > 99) return { code: null, registered: false }
   return { code: `${prefix}${String(next).padStart(2, '0')}`, registered: false }
-}
-
-/** 前序遍历装饰原始树：级联赋码（level0 段位 + 子级父码拼接）、level=深度、category=level0 根名 */
-export function decorateTree(raw: RawSubjectNode[], prefix: 'PL' | 'BS' | 'CF' = 'PL'): SubjectNode[] {
-  const walk = (nodes: RawSubjectNode[], level: number, parentCode: string | null, category: string): SubjectNode[] => {
-    // 本级序号：同一父节点下从 1 递增（level0 用段位表，不使用序号）
-    let seq = 0
-    return nodes.map((n) => {
-      const code = level === 0 ? rootSubjectCodeOf(prefix, n.name) : childSubjectCodeOf(parentCode as string, ++seq)
-      // level0 节点自身即类别根
-      const rootCategory = level === 0 ? n.name : category
-      const decorated: SubjectNode = {
-        code,
-        name: n.name,
-        level,
-        category: rootCategory,
-        dataType: n.dataType,
-        children: [],
-      }
-      decorated.children = n.children ? walk(n.children, level + 1, code, rootCategory) : []
-      return decorated
-    })
-  }
-
-  return walk(raw, 0, null, '')
 }
 
 /** 由后端扁平列表（含 parentCode/dataType）按 parentCode 构树，根为 parentCode 为空者 */
@@ -225,21 +178,3 @@ export function filterTreeKeepSubtree(tree: SubjectNode[], keyword: string): Sub
     })
   return walk(tree)
 }
-
-/** 装饰后的完整经营分析树 */
-export const operatingAnalysisTree = decorateTree(rawOperatingAnalysis, 'PL')
-
-/** 装饰后的经营分析扁平列表（供导出、统计） */
-export const operatingAnalysisFlat = flattenTree(operatingAnalysisTree)
-
-/** 装饰后的完整静态指标树 */
-export const staticAnalysisTree = decorateTree(rawStaticAnalysis, 'BS')
-
-/** 装饰后的静态指标扁平列表 */
-export const staticAnalysisFlat = flattenTree(staticAnalysisTree)
-
-/** 装饰后的完整现金流量树 */
-export const cashflowAnalysisTree = decorateTree(rawCashflowAnalysis, 'CF')
-
-/** 装饰后的现金流量扁平列表 */
-export const cashflowAnalysisFlat = flattenTree(cashflowAnalysisTree)

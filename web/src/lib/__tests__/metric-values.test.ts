@@ -1,12 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
-  computeMetricMap,
   calcYoy,
   calcAchievement,
   calcYtdYoy,
   type MetricValue,
 } from '@/lib/metric-values'
-import type { SubjectNode } from '@/types'
 
 /**
  * metric-values 边界测试。
@@ -18,18 +16,6 @@ import type { SubjectNode } from '@/types'
 /** 构造 MetricValue，未指定字段取 0 */
 function mv(partial: Partial<MetricValue>): MetricValue {
   return { budget: 0, actual: 0, samePeriod: 0, ytd: 0, samePeriodYtd: 0, ...partial }
-}
-
-/** 构造科目节点 */
-function node(code: string, children: SubjectNode[] = []): SubjectNode {
-  return {
-    code,
-    name: code,
-    level: 0,
-    category: 'test',
-    dataType: children.length > 0 ? 'calc' : 'data',
-    children,
-  } as SubjectNode
 }
 
 describe('calcYoy 同比', () => {
@@ -127,110 +113,5 @@ describe('calcYtdYoy 累计同比', () => {
   it('同期累计为负（扭亏）→ 按绝对值分母显示正增长', () => {
     // (300 - (-300)) / |-300| = 2：亏损转盈利按 +200% 解读
     expect(calcYtdYoy(mv({ ytd: 300, samePeriodYtd: -300 }))).toBeCloseTo(2, 10)
-  })
-})
-
-describe('computeMetricMap', () => {
-  it('空树 → 空映射', () => {
-    expect(computeMetricMap([], 'EN330059', '2025-06').size).toBe(0)
-  })
-
-  it('单叶子：全部字段为有限正值且保留 2 位小数', () => {
-    const map = computeMetricMap([node('OP_02')], 'EN330059', '2025-06')
-    const v = map.get('OP_02')!
-    expect(v).toBeDefined()
-    for (const [k, n] of Object.entries(v)) {
-      expect(Number.isFinite(n), `${k} 应为有限数`).toBe(true)
-      expect(n, `${k} 应为正值`).toBeGreaterThan(0)
-      // 2 位小数：×100 后应为整数
-      expect(Math.abs(n * 100 - Math.round(n * 100)), `${k} 应保留 2 位小数`).toBeLessThan(1e-6)
-    }
-  })
-
-  it('确定性：同一 (树,主体,期间) 两次调用结果完全一致', () => {
-    const t = [node('OP_02', [node('OP_0201'), node('OP_0202')])]
-    const a = computeMetricMap(t, 'EN330059', '2025-06')
-    const b = computeMetricMap(t, 'EN330059', '2025-06')
-    expect([...a.entries()]).toEqual([...b.entries()])
-  })
-
-  it('切换主体维度 → 结果变化', () => {
-    const t = [node('OP_02')]
-    const a = computeMetricMap(t, 'EN330059', '2025-06').get('OP_02')!
-    const b = computeMetricMap(t, 'EN330060', '2025-06').get('OP_02')!
-    expect(a.actual).not.toBe(b.actual)
-  })
-
-  it('切换期间 → 结果变化', () => {
-    const t = [node('OP_02')]
-    const a = computeMetricMap(t, 'EN330059', '2025-06').get('OP_02')!
-    const b = computeMetricMap(t, 'EN330059', '2025-07').get('OP_02')!
-    expect(a.actual).not.toBe(b.actual)
-  })
-
-  it('父节点 = 子节点各字段之和（容许 2 位小数舍入误差）', () => {
-    const tree = [node('OP_02', [node('OP_0201'), node('OP_0202'), node('OP_0203')])]
-    const map = computeMetricMap(tree, 'EN330059', '2025-06')
-    const parent = map.get('OP_02')!
-    const kids = ['OP_0201', 'OP_0202', 'OP_0203'].map((c) => map.get(c)!)
-
-    for (const key of ['budget', 'actual', 'samePeriod', 'ytd', 'samePeriodYtd'] as const) {
-      const sum = kids.reduce((s, k) => s + k[key], 0)
-      expect(parent[key], `${key} 聚合`).toBeCloseTo(sum, 2)
-    }
-  })
-
-  it('多层嵌套逐级聚合', () => {
-    const tree = [node('OP_02', [node('OP_0201', [node('OP_0202'), node('OP_0203')])])]
-    const map = computeMetricMap(tree, 'EN330059', '2025-06')
-    expect(map.size).toBe(4)
-    expect(map.get('OP_02')!.actual).toBeCloseTo(map.get('OP_0201')!.actual, 2)
-    expect(map.get('OP_0201')!.actual).toBeCloseTo(
-      map.get('OP_0202')!.actual + map.get('OP_0203')!.actual,
-      2,
-    )
-  })
-
-  it('valueMin/valueMax 约束叶子本月实际区间', () => {
-    const map = computeMetricMap([node('OP_02')], 'EN330059', '2025-06', {
-      valueMin: 10,
-      valueMax: 20,
-    })
-    const actual = map.get('OP_02')!.actual
-    expect(actual).toBeGreaterThanOrEqual(10)
-    expect(actual).toBeLessThanOrEqual(20)
-  })
-
-  it('valueMin == valueMax 时不产生 NaN（range 下限保护）', () => {
-    const map = computeMetricMap([node('OP_02')], 'EN330059', '2025-06', {
-      valueMin: 50,
-      valueMax: 50,
-    })
-    const v = map.get('OP_02')!
-    expect(Number.isFinite(v.actual)).toBe(true)
-    expect(v.actual).toBeGreaterThanOrEqual(50)
-  })
-
-  it('valueMax < valueMin 时仍不产生 NaN', () => {
-    const map = computeMetricMap([node('OP_02')], 'EN330059', '2025-06', {
-      valueMin: 100,
-      valueMax: 10,
-    })
-    expect(Number.isFinite(map.get('OP_02')!.actual)).toBe(true)
-  })
-
-  it('叶子预算约为本月实际的 12 倍量级（年度预算口径）', () => {
-    const map = computeMetricMap([node('OP_02')], 'EN330059', '2025-06')
-    const v = map.get('OP_02')!
-    const ratio = v.budget / v.actual
-    expect(ratio).toBeGreaterThan(10)
-    expect(ratio).toBeLessThan(14)
-  })
-
-  it('达成率落在合理区间（防"预算按月"回归）', () => {
-    const map = computeMetricMap([node('OP_02')], 'EN330059', '2025-06')
-    const rate = calcAchievement(map.get('OP_02')!)
-    expect(rate).toBeGreaterThan(0.2)
-    expect(rate).toBeLessThan(1.2)
   })
 })
