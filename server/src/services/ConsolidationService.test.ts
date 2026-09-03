@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { basePrisma, prisma } from '../lib/prisma'
 import { ConsolidationService } from './ConsolidationService'
-import { AggregationService, type ValueNode } from './AggregationService'
+import { AggregationService, flattenValueTree, type ValueNode } from './AggregationService'
 import { DashboardService } from './DashboardService'
-import { OPERATING_DIMS, STATIC_DIMS } from '../lib/metric-values'
+import { OPERATING_DIMS, STATIC_DIMS, CASHFLOW_DIMS } from '../lib/metric-values'
 
 /**
  * 汇总抵消调整集成测试（真实 DB）：创建 → 汇总聚合叠加生效（本月/累计）、
@@ -326,5 +326,77 @@ describe('静态模板汇总抵消（templateType=static）', () => {
         ctx(),
       ),
     ).rejects.toThrow('不属于所选模板科目树')
+  })
+})
+
+describe('现金流量表模板汇总抵消（templateType=cashflow）', () => {
+  let ok = false
+  let cfLeaf = ''
+  let memberCode = ''
+  let adjustId = ''
+  const SP = '2098-06'
+
+  beforeAll(async () => {
+    try {
+      await basePrisma.$queryRaw`SELECT 1`
+      // 现金流 data 类叶子（流入/流出层）；净额类 CF01~04 为 calc，不作为候选
+      const leaves = await basePrisma.accountSubject.findMany({ where: { subjectType: 'cashflow', isLeaf: true, status: 'active' }, select: { code: true } })
+      const dm = await basePrisma.metric.findFirst({ where: { code: { in: leaves.map((l) => l.code) }, dataType: 'data' }, select: { code: true } })
+      cfLeaf = dm?.code ?? ''
+      if (!cfLeaf || !summaryCode) return
+      const m = await basePrisma.companyAggregationMap.findFirst({ where: { summaryCompanyCode: summaryCode }, select: { singleCompanyCode: true } })
+      memberCode = m?.singleCompanyCode ?? ''
+      if (!memberCode) return
+      const created = await ConsolidationService.createAdjustment(
+        { templateType: 'cashflow', summaryCompanyCode: summaryCode, accountCode: cfLeaf, period: SP, amount: -66.5, reason: '现金流模板抵消测试' },
+        fullScope,
+        ctx(),
+      )
+      adjustId = created.id
+      createdAdjustmentIds.push(created.id)
+      ok = true
+    } catch {
+      ok = false
+    }
+  })
+
+  afterAll(async () => {
+    if (adjustId) await basePrisma.consolidationAdjustment.deleteMany({ where: { id: adjustId } }).catch(() => undefined)
+  })
+
+  it('cashflow 模板创建成功，并在现金流树汇总口径叠加本月实际与本年累计（单体链路不叠加）', async () => {
+    if (!ok) return
+    // 测试期 2098-06 无真实现金流数据 → 基线为 0；抵消后本期/累计（财年内）均叠加抵消额
+    const treeWith = await AggregationService.buildCashflowTree([memberCode], SP, { consolidationSummaryCode: summaryCode })
+    const found = flattenValueTree(treeWith).find((n) => n.code === cfLeaf)
+    expect(found?.values[CASHFLOW_DIMS.ACTUAL_MONTH] ?? 0).toBe(-66.5)
+    expect(found?.values[CASHFLOW_DIMS.YTD_ACTUAL] ?? 0).toBe(-66.5)
+    const treeWithout = await AggregationService.buildCashflowTree([memberCode], SP)
+    const base = flattenValueTree(treeWithout).find((n) => n.code === cfLeaf)
+    expect(base?.values[CASHFLOW_DIMS.ACTUAL_MONTH] ?? 0).toBe(0)
+  })
+
+  it('cashflow 模板拒绝经营科目与现金流 calc 科目（净额类由公式计算）', async () => {
+    if (!ok) return
+    await expect(
+      ConsolidationService.createAdjustment(
+        { templateType: 'cashflow', summaryCompanyCode: summaryCode, accountCode: dataSubjectCode, period: SP, amount: 50, reason: '科目树校验测试' },
+        fullScope,
+        ctx(),
+      ),
+    ).rejects.toThrow('不属于所选模板科目树')
+    const calcCf = await basePrisma.metric.findFirst({
+      where: { dataType: 'calc', code: { startsWith: 'CF' } },
+      select: { code: true },
+    })
+    if (calcCf) {
+      await expect(
+        ConsolidationService.createAdjustment(
+          { templateType: 'cashflow', summaryCompanyCode: summaryCode, accountCode: calcCf.code, period: SP, amount: 50, reason: 'calc 拦截测试' },
+          fullScope,
+          ctx(),
+        ),
+      ).rejects.toThrow('data 类')
+    }
   })
 })

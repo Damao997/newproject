@@ -22,15 +22,16 @@ import { ArrowLeftRight, CalendarRange, SlidersHorizontal } from 'lucide-react'
 
 /**
  * 数据管理 · 单体重分类：重分类日志面板 + 三类调整入口（科目调整 / 跨公司 / 预算调整）。
- * - 日志面板：分页筛选 + 只读详情 + 撤销（revert）+ 重新应用（预填原参数）；
+ * - 日志面板：分页筛选 + 只读详情 + 撤销（revert）+ 重新应用（预填原参数，可修改后提交，
+ *   提交走 reapply 接口更新原日志记录状态为已生效，不新建记录）；
  * - 对话框均由本页持有状态（key 强制重挂载使 preset 生效）；
  * - 写权限：data:reclassify:subject（科目/预算调整）、data:reclassify:company（跨公司 + 撤销）。
  */
 
 type DialogState =
-  | { kind: 'subject'; preset?: ReclassifySubjectPreset; readonly?: boolean; meta?: ReclassifyLogMeta; result?: PreviewStatItem[] }
-  | { kind: 'company'; preset?: ReclassifyCompanyPreset; readonly?: boolean; meta?: ReclassifyLogMeta; result?: PreviewStatItem[] }
-  | { kind: 'budget'; preset?: BudgetAdjustPreset; readonly?: boolean; meta?: ReclassifyLogMeta; result?: PreviewStatItem[] }
+  | { kind: 'subject'; preset?: ReclassifySubjectPreset; readonly?: boolean; meta?: ReclassifyLogMeta; result?: PreviewStatItem[]; reapplyLogId?: string }
+  | { kind: 'company'; preset?: ReclassifyCompanyPreset; readonly?: boolean; meta?: ReclassifyLogMeta; result?: PreviewStatItem[]; reapplyLogId?: string }
+  | { kind: 'budget'; preset?: BudgetAdjustPreset; readonly?: boolean; meta?: ReclassifyLogMeta; result?: PreviewStatItem[]; reapplyLogId?: string }
 
 /** 分型金额展示：数量类整数（无“万”），其余按金额（万元）；历史记录缺省按金额 */
 const fmtByType = (v: number, valueType?: string): string => (valueType === 'quantity' ? formatQuantity(v) : formatMoney(v))
@@ -88,13 +89,15 @@ export default function DataReclassifyPage() {
     setNonce((n) => n + 1)
   }
 
-  /** 失效/已撤销记录「重新应用」：按日志类型预填原参数（company+budget 旧月度口径无编辑入口，面板不会回调） */
+  /** 失效/已撤销记录「重新应用」：按日志类型预填原参数打开对话框，提交时更新原日志记录（不新建记录）
+   *（company+budget 旧月度口径无编辑入口，面板不会回调） */
   const handleReapply = (log: ReclassifyLog) => {
     const d = log.detail
     const period = log.period ?? log.periodFrom ?? ''
     if (log.type === 'company') {
       openDialog({
         kind: 'company',
+        reapplyLogId: log.id,
         preset: {
           templateType: (log.templateType as 'operating' | 'static' | 'cashflow') ?? 'operating',
           sourceCompanyCode: log.sourceCompany ?? '',
@@ -111,6 +114,7 @@ export default function DataReclassifyPage() {
     if (log.type === 'subject_adjust' && log.templateType === 'budget') {
       openDialog({
         kind: 'budget',
+        reapplyLogId: log.id,
         preset: {
           companyCode: log.sourceCompany ?? '',
           adjustMode: d?.adjustMode ?? 'both',
@@ -127,6 +131,7 @@ export default function DataReclassifyPage() {
     if (log.type === 'subject_adjust') {
       openDialog({
         kind: 'subject',
+        reapplyLogId: log.id,
         preset: {
           templateType: (log.templateType as 'operating' | 'static' | 'cashflow' | 'budget') ?? 'operating',
           companyCode: log.sourceCompany ?? '',
@@ -170,6 +175,7 @@ export default function DataReclassifyPage() {
 
       <ReclassifyLogsPanel
         canRevert={canCompany}
+        canReapplySubject={canSubject}
         stickyTop={headerHeight}
         onReapply={handleReapply}
         onViewDetail={handleViewDetail}
@@ -207,6 +213,7 @@ export default function DataReclassifyPage() {
           readonly={dialog.readonly}
           meta={dialog.meta}
           result={dialog.result}
+          reapplyLogId={dialog.reapplyLogId}
         />
       )}
       {dialog?.kind === 'company' && (
@@ -218,6 +225,7 @@ export default function DataReclassifyPage() {
           readonly={dialog.readonly}
           meta={dialog.meta}
           result={dialog.result}
+          reapplyLogId={dialog.reapplyLogId}
         />
       )}
       {dialog?.kind === 'budget' && (
@@ -229,6 +237,7 @@ export default function DataReclassifyPage() {
           readonly={dialog.readonly}
           meta={dialog.meta}
           result={dialog.result}
+          reapplyLogId={dialog.reapplyLogId}
         />
       )}
     </PageContainer>

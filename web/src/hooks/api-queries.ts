@@ -653,6 +653,34 @@ export function useRevertReclassifyLog() {
   })
 }
 
+/** 重新应用已撤销/已失效的跨公司重分类：更新原日志记录（恢复"正常"态），不新建记录 */
+export function useReapplyReclassifyCompany() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: ReclassifyCompanyInput }) => api.reapplyReclassifyCompany(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['data', 'cross-table'] })
+      qc.invalidateQueries({ queryKey: ['indicators'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+      qc.invalidateQueries({ queryKey: ['data', 'reclassify-logs'] })
+    },
+  })
+}
+
+/** 重新应用已撤销/已失效的科目调整（含预算调整）：更新原日志记录（恢复"正常"态），不新建记录 */
+export function useReapplyAdjustSubject() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: AdjustSubjectInput }) => api.reapplyAdjustSubject(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['data', 'cross-table'] })
+      qc.invalidateQueries({ queryKey: ['indicators'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+      qc.invalidateQueries({ queryKey: ['data', 'reclassify-logs'] })
+    },
+  })
+}
+
 export function usePreviewAdjustSubject() {
   return useMutation({
     mutationFn: (data: AdjustSubjectInput) => api.previewAdjustSubject(data),
@@ -674,7 +702,7 @@ export function useAdjustSubject() {
 
 // ---------------- 汇总抵消调整（汇总口径内部交易抵消，单体报表不受影响） ----------------
 export interface ConsolidationAdjustInput {
-  templateType: 'operating' | 'static'
+  templateType: 'operating' | 'static' | 'cashflow'
   summaryCompanyCode: string
   accountCode: string
   period: string

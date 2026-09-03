@@ -6,15 +6,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { Pagination } from '@/components/data-table/pagination'
 import { useConfirm } from '@/components/ui/confirm-dialog'
-import { useCompanies, useSubjects, useReclassifyLogs, useRevertReclassifyLog } from '@/hooks/api-queries'
+import { useSubjects, useReclassifyLogs, useRevertReclassifyLog } from '@/hooks/api-queries'
+import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { formatMoney, formatQuantity, cn } from '@/lib/utils'
 import { ArrowRight, Eye, RotateCcw, Undo2 } from 'lucide-react'
 import { TYPE_LABEL, TEMPLATE_LABEL_SHORT, invalidationText } from './shared'
 import type { ReclassifyLog } from '@/types'
 
 interface ReclassifyLogsPanelProps {
-  /** 是否可执行撤销（data:reclassify:company 权限） */
+  /** 是否可执行撤销与跨公司重分类重新应用（data:reclassify:company 权限） */
   canRevert: boolean
+  /** 是否可重新应用科目调整记录（data:reclassify:subject 权限） */
+  canReapplySubject?: boolean
   /** 失效/已撤销记录「重新应用」：由父级按类型打开对应对话框并预填原参数 */
   onReapply?: (log: ReclassifyLog) => void
   /** 点击记录行打开只读详情对话框（预填原始操作参数） */
@@ -102,7 +105,7 @@ function AmountDetail({ log }: { log: ReclassifyLog }) {
  * 重分类记录面板（内嵌于数据管理页）：分页展示跨公司/科目归类/科目调整历史，
  * 行点击或操作列「查看」打开只读详情；含快照的记录支持一键撤销（逆向恢复事实行）。
  */
-export function ReclassifyLogsPanel({ canRevert, onReapply, onViewDetail, actions, stickyTop = 0 }: ReclassifyLogsPanelProps & { stickyTop?: number }) {
+export function ReclassifyLogsPanel({ canRevert, canReapplySubject = false, onReapply, onViewDetail, actions, stickyTop = 0 }: ReclassifyLogsPanelProps & { stickyTop?: number }) {
   const [type, setType] = useState('all')
   const [page, setPage] = useState(1)
   const [message, setMessage] = useState<string | null>(null)
@@ -110,19 +113,19 @@ export function ReclassifyLogsPanel({ canRevert, onReapply, onViewDetail, action
   const { data, isFetching } = useReclassifyLogs({ page, pageSize: PAGE_SIZE, type: type === 'all' ? undefined : type })
   const revertMutation = useRevertReclassifyLog()
 
-  // 源/目标中文名称映射：公司 + 经营/静态/现金流科目（无匹配时回退编码展示）
-  const { data: companies } = useCompanies()
+  // 源/目标中文名称映射：公司（跟随「显示简称」开关，无简称回退全称）+ 经营/静态/现金流科目（无匹配时回退编码展示）
+  const { displayNameMap } = useCompanyDisplayName()
   const { data: operatingSubjects } = useSubjects({ type: 'operating', pageSize: 1000 })
   const { data: staticSubjects } = useSubjects({ type: 'static', pageSize: 1000 })
   const { data: cashflowSubjects } = useSubjects({ type: 'cashflow', pageSize: 1000 })
   const nameMap = useMemo(() => {
     const m = new Map<string, string>()
-    for (const c of companies ?? []) m.set(c.code, c.name)
+    for (const [code, name] of displayNameMap) m.set(code, name)
     for (const s of operatingSubjects?.items ?? []) m.set(s.code, s.name)
     for (const s of staticSubjects?.items ?? []) m.set(s.code, s.name)
     for (const s of cashflowSubjects?.items ?? []) m.set(s.code, s.name)
     return m
-  }, [companies, operatingSubjects, staticSubjects, cashflowSubjects])
+  }, [displayNameMap, operatingSubjects, staticSubjects, cashflowSubjects])
   const nameOf = (code: string | null) => (code ? (nameMap.get(code) ?? null) : null)
 
   const items = (data?.items ?? []) as ReclassifyLog[]
@@ -158,7 +161,10 @@ export function ReclassifyLogsPanel({ canRevert, onReapply, onViewDetail, action
       key: 'affectedRows', header: '影响行数', align: 'right', cellClassName: 'font-num',
       render: (r) => (r.type === 'subject' ? '-' : r.affectedRows),
     },
-    { key: 'operator', header: '操作人' },
+    // 操作人列宽固定 12 个英文字符（约 6 个汉字）：用户名正常展示，UUID 等长值截断省略，hover 见全称
+    { key: 'operator', header: '操作人', render: (r) => (
+      <span className="block max-w-[12ch] truncate" title={r.operator}>{r.operator}</span>
+    ) },
     {
       key: 'status', header: '状态',
       render: (r) => r.revertedAt
@@ -182,7 +188,7 @@ export function ReclassifyLogsPanel({ canRevert, onReapply, onViewDetail, action
         >
           <Eye className="h-4 w-4" />
         </Button>
-        {canRevert && (r.revertible ? (
+        {canRevert && r.revertible ? (
           <Button
             variant="ghost"
             size="sm"
@@ -193,28 +199,30 @@ export function ReclassifyLogsPanel({ canRevert, onReapply, onViewDetail, action
             <Undo2 className="mr-1 h-4 w-4" />
             撤销
           </Button>
-        ) : (r.invalidatedAt || r.revertedAt) && (r.type === 'company' || r.type === 'subject_adjust') && !(r.type === 'company' && r.templateType === 'budget') && onReapply ? (
+        ) : (r.invalidatedAt || r.revertedAt) && (r.type === 'company' || r.type === 'subject_adjust') && !(r.type === 'company' && r.templateType === 'budget') && onReapply
+          && (r.type === 'company' ? canRevert : canReapplySubject) ? (
+          // 重新应用：提交后更新原日志记录状态为已生效（不新建记录）；
           // 历史「跨公司+预算」日志（旧月度口径）已无对应编辑入口，仅保留只读查看
           <Button
             variant="ghost"
             size="sm"
-            title="在最新数据上重新执行本次调整（参数可修改）"
+            title="在最新数据上重新执行本次调整（参数可修改，更新原记录状态，不新建记录）"
             onClick={(e) => { e.stopPropagation(); onReapply(r) }}
           >
             <RotateCcw className="mr-1 h-4 w-4" />
             重新应用
           </Button>
-        ) : (
+        ) : canRevert ? (
           <span className="text-xs text-muted-foreground">{r.revertedAt ? '已撤销' : '不可撤销'}</span>
-        ))}
+        ) : null}
       </div>
     ),
   })
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col space-y-3">
+    <div className="flex min-h-0 flex-1 flex-col space-y-2">
       {/* 筛选工具条（吸顶） */}
-      <Card className="sticky z-10 shrink-0 rounded-card p-4" style={{ top: stickyTop }}>
+      <Card className="sticky z-10 shrink-0 rounded-card px-4 py-2.5" style={{ top: stickyTop }}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">类型:</span>
@@ -238,6 +246,7 @@ export function ReclassifyLogsPanel({ canRevert, onReapply, onViewDetail, action
         columns={columns}
         data={items}
         rowKey={(r) => r.id}
+        density="compact"
         emptyText={isFetching ? '加载中…' : '暂无重分类记录'}
         onRowClick={(r) => onViewDetail?.(r)}
         maxHeight={`calc(100dvh - ${stickyTop}px - 24px)`}

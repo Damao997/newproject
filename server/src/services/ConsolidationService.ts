@@ -15,7 +15,7 @@ type Scope = Pick<AuthUserContext, 'companyCode' | 'scopeValue'> & { dataScopeCo
 interface AuditCtx { userId: string; traceId?: string }
 
 export interface ConsolidationAdjustParams {
-  templateType: 'operating' | 'static'
+  templateType: 'operating' | 'static' | 'cashflow'
   summaryCompanyCode: string
   accountCode: string
   /** 调整期间（单月 YYYY-MM） */
@@ -45,8 +45,9 @@ async function assertSummaryCompany(code: string): Promise<void> {
 }
 
 /** 校验科目存在、属于所选模板科目树且为 data 类（data 叶子，避免 calc 公式计算覆盖抵消额） */
-async function assertDataSubject(code: string, templateType: 'operating' | 'static'): Promise<void> {
-  const expectedSubjectType = templateType === 'static' ? 'static' : 'operating'
+async function assertDataSubject(code: string, templateType: 'operating' | 'static' | 'cashflow'): Promise<void> {
+  // 与 AggregationService.subjectTypeOf 口径一致：现金流模板取现金流科目树，静态取静态树，其余取经营树
+  const expectedSubjectType = templateType === 'static' ? 'static' : templateType === 'cashflow' ? 'cashflow' : 'operating'
   const subject = await prisma.accountSubject.findUnique({ where: { code }, select: { code: true, subjectType: true } })
   if (!subject || subject.subjectType !== expectedSubjectType) throw errors.badRequest('科目不存在或不属于所选模板科目树')
   const metric = await prisma.metric.findUnique({ where: { code }, select: { dataType: true } })

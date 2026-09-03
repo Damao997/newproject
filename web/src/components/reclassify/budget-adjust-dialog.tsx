@@ -18,6 +18,7 @@ import {
   useAvailablePeriods,
   usePreviewAdjustSubject,
   useAdjustSubject,
+  useReapplyAdjustSubject,
 } from '@/hooks/api-queries'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { formatMoney, formatQuantity, cn } from '@/lib/utils'
@@ -37,6 +38,8 @@ interface BudgetAdjustDialogProps {
   meta?: ReclassifyLogMeta
   /** 只读模式下还原的当时执行结果统计（来自日志 detail，如调减/调增金额、净变动、新建行数） */
   result?: PreviewStatItem[]
+  /** 重新应用模式：传入原日志 id，提交时更新原日志记录（恢复"正常"态），不新建记录 */
+  reapplyLogId?: string
 }
 
 export interface BudgetAdjustPreset {
@@ -81,7 +84,7 @@ function fyLabelOf(period: string, fiscalStartMonth: number): string {
  * 调整方式与科目调整一致（双向/仅调减/仅调增），期间固定为财年选择器（提交 period 传 YYYY，
  * 后端按 fiscalYear 整体匹配）；金额类科目单位为万元，数量类按整数调整。
  */
-export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, readonly = false, meta, result }: BudgetAdjustDialogProps) {
+export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, readonly = false, meta, result, reapplyLogId }: BudgetAdjustDialogProps) {
   const [companyCode, setCompanyCode] = useState<string>(preset?.companyCode ?? defaultCompany ?? '')
   const [adjustMode, setAdjustMode] = useState<AdjustMode>(preset?.adjustMode ?? 'both')
   const [sourceAccountCode, setSourceAccountCode] = useState(preset?.sourceAccountCode ?? '')
@@ -136,6 +139,7 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
 
   const previewMutation = usePreviewAdjustSubject()
   const adjustMutation = useAdjustSubject()
+  const reapplyMutation = useReapplyAdjustSubject()
 
   const buildPayload = () => ({
     templateType: 'budget' as const,
@@ -236,24 +240,27 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
     const actionText = adjustMode === 'increase'
       ? `「${targetName}」调增 ${fmt(preview.increaseAmount, activeQty)}`
       : `「${sourceName}」调减 ${fmt(preview.decreaseAmount, activeQty)}${adjustMode === 'both' && targetName ? `，「${targetName}」调增 ${fmt(preview.increaseAmount, activeQty)}` : ''}`
+    const reapplyNote = reapplyLogId ? '提交后将更新原调整记录状态为已生效（不新建记录）。' : ''
     const ok = await confirm({
-      title: '确认年度预算调整',
-      description: `将把「${companyName}」${fiscalYear} 年度预算中${actionText}${netText}。年度预算按全年整体调整，不拆分到月份。此操作将影响看板与指标且不可撤销，确认继续？`,
+      title: reapplyLogId ? '确认重新应用年度预算调整' : '确认年度预算调整',
+      description: `将把「${companyName}」${fiscalYear} 年度预算中${actionText}${netText}。年度预算按全年整体调整，不拆分到月份。${reapplyNote}此操作将影响看板与指标，确认继续？`,
       danger: true,
-      confirmText: '确认调整',
+      confirmText: reapplyLogId ? '确认重新应用' : '确认调整',
     })
     if (!ok) return
     setError(null)
     try {
-      const res = await adjustMutation.mutateAsync(buildPayload())
+      const res = reapplyLogId
+        ? await reapplyMutation.mutateAsync({ id: reapplyLogId, data: buildPayload() })
+        : await adjustMutation.mutateAsync(buildPayload())
       const doneParts = [
         res.decreaseAmount > 0 ? `调减 ${fmt(res.decreaseAmount, activeQty)}` : '',
         res.increaseAmount > 0 ? `调增 ${fmt(res.increaseAmount, activeQty)}` : '',
       ].filter(Boolean).join('，')
-      setDone(`调整完成：${doneParts}，涉及 ${res.affectedRows} 条明细${res.createdRows > 0 ? `，新建 ${res.createdRows} 条` : ''}。`)
+      setDone(`${reapplyLogId ? '重新应用完成' : '调整完成'}：${doneParts}，涉及 ${res.affectedRows} 条明细${res.createdRows > 0 ? `，新建 ${res.createdRows} 条` : ''}${reapplyLogId ? '，原记录已恢复为已生效状态。' : '。'}`)
       setPreview(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '调整失败')
+      setError(err instanceof Error ? err.message : reapplyLogId ? '重新应用失败' : '调整失败')
     }
   }
 
@@ -290,10 +297,12 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-1.5">
-            {readonly ? '年度预算调整详情' : '年度预算调整'}
+            {readonly ? '年度预算调整详情' : reapplyLogId ? '重新应用年度预算调整' : '年度预算调整'}
             <TitleHint text={readonly
               ? '原始操作参数只读展示'
-              : '仅支持按财年（全年）整体调整年度预算数据，不再按月拆分；金额类科目单位为万元，数量类按整数调整。'
+              : reapplyLogId
+                ? '在最新数据上重新执行原调整（参数可修改），提交后更新原记录状态为已生效，不新建记录。'
+                : '仅支持按财年（全年）整体调整年度预算数据，不再按月拆分；金额类科目单位为万元，数量类按整数调整。'
             } />
           </DialogTitle>
           {readonly && meta && <ReadonlyLogMeta meta={meta} />}
@@ -541,8 +550,8 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
               >
                 {previewMutation.isPending ? '预览中...' : '预览影响'}
               </Button>
-              <Button variant="destructive" onClick={handleSubmit} disabled={!preview || preview.affectedRows === 0 || !reason.trim() || adjustMutation.isPending}>
-                {adjustMutation.isPending ? '调整中...' : '执行调整'}
+              <Button variant="destructive" onClick={handleSubmit} disabled={!preview || preview.affectedRows === 0 || !reason.trim() || adjustMutation.isPending || reapplyMutation.isPending}>
+                {adjustMutation.isPending || reapplyMutation.isPending ? (reapplyLogId ? '重新应用中...' : '调整中...') : reapplyLogId ? '重新应用' : '执行调整'}
               </Button>
             </>
           )}

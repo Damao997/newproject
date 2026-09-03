@@ -18,6 +18,7 @@ import {
   useAvailablePeriods,
   usePreviewReclassifyCompany,
   useReclassifyCompany,
+  useReapplyReclassifyCompany,
 } from '@/hooks/api-queries'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { formatMoney, cn } from '@/lib/utils'
@@ -39,6 +40,8 @@ interface ReclassifyCompanyDialogProps {
   meta?: ReclassifyLogMeta
   /** 只读模式下还原的当时执行结果统计（来自日志 detail，如迁移/转移金额、合并、新建行数） */
   result?: PreviewStatItem[]
+  /** 重新应用模式：传入原日志 id，提交时更新原日志记录（恢复"正常"态），不新建记录 */
+  reapplyLogId?: string
 }
 
 export interface ReclassifyCompanyPreset {
@@ -67,7 +70,7 @@ interface PreviewData {
  * （源行调减保留，目标同口径行调增，无则新建）。提交前预览影响并二次确认。
  * 期间按单月必选（与后端口径一致）；本年累计由查询时按财年实时聚合，自动反映调整结果。
  */
-export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = 'operating', defaultSourceCompany, preset, readonly = false, meta, result }: ReclassifyCompanyDialogProps) {
+export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = 'operating', defaultSourceCompany, preset, readonly = false, meta, result, reapplyLogId }: ReclassifyCompanyDialogProps) {
   const [templateType, setTemplateType] = useState<string>(preset?.templateType ?? defaultTemplateType)
   const [sourceCompanyCode, setSourceCompanyCode] = useState<string>(preset?.sourceCompanyCode ?? defaultSourceCompany ?? '')
   const [targetCompanyCode, setTargetCompanyCode] = useState<string>(preset?.targetCompanyCode ?? '')
@@ -89,8 +92,9 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
   // 下拉选项跟随「显示简称」开关；确认弹窗文案仍用全称，保证高危操作确认的严谨性
   const { displayNameMap } = useCompanyDisplayName()
 
-  // 科目候选：静态模板取静态科目，否则取经营科目；比率类（公式计算）与 calc/display 类不可直接调整，从候选中排除
-  const subjectType = templateType === 'static' ? 'static' : 'operating'
+  // 科目候选：静态→静态科目树、现金流→现金流科目树、其余→经营科目树（与后端 subjectTypeOf 口径一致）；
+  // 比率类（公式计算）与 calc/display 类不可直接重分类，从候选中排除
+  const subjectType = templateType === 'cashflow' ? 'cashflow' : templateType === 'static' ? 'static' : 'operating'
   const { data: subjectsData } = useSubjects({ type: subjectType, pageSize: 1000 })
   const subjectOptions = useMemo(
     () => (subjectsData?.items ?? []).filter((s) => s.valueType !== 'ratio' && s.dataType !== 'calc' && s.dataType !== 'display'),
@@ -99,6 +103,7 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
 
   const previewMutation = usePreviewReclassifyCompany()
   const reclassifyMutation = useReclassifyCompany()
+  const reapplyMutation = useReapplyReclassifyCompany()
 
   const buildPayload = () => ({
     templateType,
@@ -175,28 +180,31 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
     if (!preview || preview.affectedRows === 0) return
     const sourceName = entityCompanies.find((c) => c.code === sourceCompanyCode)?.name ?? sourceCompanyCode
     const targetName = entityCompanies.find((c) => c.code === targetCompanyCode)?.name ?? targetCompanyCode
+    const reapplyNote = reapplyLogId ? '提交后将更新原重分类记录状态为已生效（不新建记录）。' : ''
     const description = transferMode === 'all'
-      ? `将把「${sourceName}」的 ${preview.affectedRows} 条${TEMPLATE_LABEL[templateType]}明细（合计 ${formatMoney(preview.totalValue)}）改挂到「${targetName}」${preview.conflictRows > 0 ? `，其中 ${preview.conflictRows} 条将与目标公司现有数据合并求和` : ''}。此操作将影响看板与指标且不可撤销，确认继续？`
-      : `将从「${sourceName}」的 ${preview.affectedRows} 条${TEMPLATE_LABEL[templateType]}明细（合计 ${formatMoney(preview.totalValue)}）中转移 ${formatMoney(preview.transferValue)} 到「${targetName}」，源公司保留剩余金额${preview.conflictRows > 0 ? `；${preview.conflictRows} 条将累加到目标公司现有数据` : ''}${preview.createRows > 0 ? `；将新建 ${preview.createRows} 条目标公司明细` : ''}。此操作将影响看板与指标且不可撤销，确认继续？`
+      ? `将把「${sourceName}」的 ${preview.affectedRows} 条${TEMPLATE_LABEL[templateType]}明细（合计 ${formatMoney(preview.totalValue)}）改挂到「${targetName}」${preview.conflictRows > 0 ? `，其中 ${preview.conflictRows} 条将与目标公司现有数据合并求和` : ''}。${reapplyNote}此操作将影响看板与指标，确认继续？`
+      : `将从「${sourceName}」的 ${preview.affectedRows} 条${TEMPLATE_LABEL[templateType]}明细（合计 ${formatMoney(preview.totalValue)}）中转移 ${formatMoney(preview.transferValue)} 到「${targetName}」，源公司保留剩余金额${preview.conflictRows > 0 ? `；${preview.conflictRows} 条将累加到目标公司现有数据` : ''}${preview.createRows > 0 ? `；将新建 ${preview.createRows} 条目标公司明细` : ''}。${reapplyNote}此操作将影响看板与指标，确认继续？`
     const ok = await confirm({
-      title: '确认跨公司重分类',
+      title: reapplyLogId ? '确认重新应用跨公司重分类' : '确认跨公司重分类',
       description,
       danger: true,
-      confirmText: '确认重分类',
+      confirmText: reapplyLogId ? '确认重新应用' : '确认重分类',
     })
     if (!ok) return
     setError(null)
     try {
-      const res = await reclassifyMutation.mutateAsync(buildPayload())
+      const res = reapplyLogId
+        ? await reapplyMutation.mutateAsync({ id: reapplyLogId, data: buildPayload() })
+        : await reclassifyMutation.mutateAsync(buildPayload())
       setDone(
         transferMode === 'all'
-          ? `重分类完成：迁移 ${res.affectedRows} 条明细${res.mergedRows > 0 ? `，其中 ${res.mergedRows} 条已合并` : ''}。`
-          : `重分类完成：转移金额 ${formatMoney(res.transferValue)}，涉及 ${res.affectedRows} 条明细${res.mergedRows > 0 ? `，${res.mergedRows} 条已累加` : ''}${res.createdRows > 0 ? `，新建 ${res.createdRows} 条` : ''}。`,
+          ? `${reapplyLogId ? '重新应用完成' : '重分类完成'}：迁移 ${res.affectedRows} 条明细${res.mergedRows > 0 ? `，其中 ${res.mergedRows} 条已合并` : ''}${reapplyLogId ? '，原记录已恢复为已生效状态。' : '。'}`
+          : `${reapplyLogId ? '重新应用完成' : '重分类完成'}：转移金额 ${formatMoney(res.transferValue)}，涉及 ${res.affectedRows} 条明细${res.mergedRows > 0 ? `，${res.mergedRows} 条已累加` : ''}${res.createdRows > 0 ? `，新建 ${res.createdRows} 条` : ''}${reapplyLogId ? '，原记录已恢复为已生效状态。' : '。'}`,
       )
       setPreview(null)
       setSelectedSubjects(new Set())
     } catch (err) {
-      setError(err instanceof Error ? err.message : '重分类失败')
+      setError(err instanceof Error ? err.message : reapplyLogId ? '重新应用失败' : '重分类失败')
     }
   }
 
@@ -221,10 +229,12 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-1.5">
-            {readonly ? '跨公司重分类详情' : '跨公司数据重分类'}
+            {readonly ? '跨公司重分类详情' : reapplyLogId ? '重新应用跨公司重分类' : '跨公司数据重分类'}
             <TitleHint text={readonly
               ? '原始操作参数只读展示'
-              : '将源公司已生效的数据转移到目标公司，看板与指标将即时刷新。'
+              : reapplyLogId
+                ? '在最新数据上重新执行原重分类（参数可修改），提交后更新原记录状态为已生效，不新建记录。'
+                : '将源公司已生效的数据转移到目标公司，看板与指标将即时刷新。'
             } />
           </DialogTitle>
           {readonly && meta && <ReadonlyLogMeta meta={meta} />}
@@ -420,8 +430,8 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
               <Button variant="outline" onClick={handlePreview} disabled={previewMutation.isPending || !sourceCompanyCode || !targetCompanyCode || !period}>
                 {previewMutation.isPending ? '预览中...' : '预览影响'}
               </Button>
-              <Button variant="destructive" onClick={handleSubmit} disabled={!preview || preview.affectedRows === 0 || reclassifyMutation.isPending}>
-                {reclassifyMutation.isPending ? '重分类中...' : '执行重分类'}
+              <Button variant="destructive" onClick={handleSubmit} disabled={!preview || preview.affectedRows === 0 || reclassifyMutation.isPending || reapplyMutation.isPending}>
+                {reclassifyMutation.isPending || reapplyMutation.isPending ? (reapplyLogId ? '重新应用中...' : '重分类中...') : reapplyLogId ? '重新应用' : '执行重分类'}
               </Button>
             </>
           )}

@@ -20,6 +20,8 @@ import type { Prisma } from '@prisma/client'
  *   按财年整体调整），历史月度口径（YYYY-MM）仍兼容（按期间所属财年匹配）。
  * - 科目树换父见 DataService.reclassifySubject。
  * 每次操作写 ReclassificationLog（含行级快照 snapshot，支持 revertLog 撤销）+ 审计日志；
+ * 已撤销/已失效记录可经 reapplyLog 重新应用：更新原日志记录（清撤销/失效状态恢复"正常"、
+ * 刷新快照，旧快照与状态轨迹归档至 detail.history），不新建记录；
  * 相关公司须在操作者数据范围内（scope 守卫）。
  * 汇总主体与 YTD 累计均为查询时实时派生，事实行变更后自动生效，无需物化重算。
  */
@@ -731,6 +733,45 @@ async function validateCompanyExists(code: string): Promise<void> {
   if (!found) throw errors.badRequest('公司不存在')
 }
 
+/** 跨公司重分类前置校验（创建与重新应用共用）：参数/公司/范围/科目合法性，返回执行上下文 */
+async function validateCompanyReclassify(p: ReclassifyCompanyParams, scope: Scope): Promise<{ mode: TransferMode; filter: FactFilter; batchIds: string[] }> {
+  const mode = validateTransferParams(p)
+  const filter: FactFilter = { ...periodFilterOf(p.templateType, p.period), accountCodes: p.accountCodes }
+  await validateCompanies(p.sourceCompanyCode, p.targetCompanyCode)
+  await assertCompaniesInScope(scope, [p.sourceCompanyCode, p.targetCompanyCode])
+  await assertAdjustableAccounts(p.templateType, p.accountCodes)
+  const batchIds = await activeBatchIds(p.templateType)
+  return { mode, filter, batchIds }
+}
+
+/** 跨公司重分类事务内核（创建与重新应用共用）：行转移 + 快照，由调用方在同一事务内写日志 */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function reclassifyCompanyInTx(tx: any, p: ReclassifyCompanyParams, mode: TransferMode, filter: FactFilter, batchIds: string[]): Promise<TransferResult> {
+  const ops = tableOps(tx, p.templateType)
+  const sourceRows = await ops.delegate.findMany({ where: ops.where(filter, batchIds, p.sourceCompanyCode) })
+  if (sourceRows.length === 0) throw errors.conflict('没有符合筛选条件的可重分类数据')
+  const targetRows = await ops.delegate.findMany({ where: ops.where(filter, batchIds, p.targetCompanyCode) })
+  const res = mode === 'all'
+    ? await transferAll(ops, sourceRows, targetRows, p.sourceCompanyCode, p.targetCompanyCode)
+    : await transferPartial(ops, sourceRows, planTransfers(sourceRows, mode, p.ratio, p.amount), targetRows, p.targetCompanyCode)
+  if (res.affected === 0) throw errors.conflict('没有符合筛选条件的可重分类数据')
+  return res
+}
+
+/** 科目调整前置校验（创建与重新应用共用）：模式推断/字段/公司/范围/科目/金额合法性 */
+async function validateAdjustSubject(p: AdjustSubjectParams, scope: Scope): Promise<{ mode: AdjustMode; valueType: SubjectValueType; periodFilter: FactFilter; batchIds: string[] }> {
+  const mode = resolveAdjustMode(p)
+  requireAdjustFields(p, mode)
+  const periodFilter = periodFilterOf(p.templateType, p.period)
+  if (!p.reason || !p.reason.trim()) throw errors.badRequest('请填写调整原因')
+  await validateCompanyExists(p.companyCode)
+  await assertCompaniesInScope(scope, [p.companyCode])
+  const valueType = await loadAndValidateAdjustSubjects(p.templateType, mode, mode === 'increase' ? undefined : p.sourceAccountCode, mode === 'decrease' ? undefined : p.targetAccountCode)
+  validateAdjustAmounts(p, mode, valueType)
+  const batchIds = await activeBatchIds(p.templateType)
+  return { mode, valueType, periodFilter, batchIds }
+}
+
 export const ReclassificationService = {
   async previewCompany(params: ReclassifyCompanyParams, scope: Scope): Promise<PreviewResult> {
     const mode = validateTransferParams(params)
@@ -748,23 +789,11 @@ export const ReclassificationService = {
     scope: Scope,
     ctx: AuditCtx,
   ): Promise<{ affectedRows: number; mergedRows: number; createdRows: number; transferValue: number }> {
-    const mode = validateTransferParams(params)
-    const filter: FactFilter = { ...periodFilterOf(params.templateType, params.period), accountCodes: params.accountCodes }
-    await validateCompanies(params.sourceCompanyCode, params.targetCompanyCode)
-    await assertCompaniesInScope(scope, [params.sourceCompanyCode, params.targetCompanyCode])
-    await assertAdjustableAccounts(params.templateType, params.accountCodes)
-    const batchIds = await activeBatchIds(params.templateType)
+    const { mode, filter, batchIds } = await validateCompanyReclassify(params, scope)
     if (batchIds.length === 0) throw errors.conflict('该模板类型暂无生效批次，无可重分类数据')
 
     const result = await prisma.$transaction(async (tx) => {
-      const ops = tableOps(tx, params.templateType)
-      const sourceRows = await ops.delegate.findMany({ where: ops.where(filter, batchIds, params.sourceCompanyCode) })
-      if (sourceRows.length === 0) throw errors.conflict('没有符合筛选条件的可重分类数据')
-      const targetRows = await ops.delegate.findMany({ where: ops.where(filter, batchIds, params.targetCompanyCode) })
-      const res = mode === 'all'
-        ? await transferAll(ops, sourceRows, targetRows, params.sourceCompanyCode, params.targetCompanyCode)
-        : await transferPartial(ops, sourceRows, planTransfers(sourceRows, mode, params.ratio, params.amount), targetRows, params.targetCompanyCode)
-      if (res.affected === 0) throw errors.conflict('没有符合筛选条件的可重分类数据')
+      const res = await reclassifyCompanyInTx(tx, params, mode, filter, batchIds)
       // 日志与数据变更同事务原子提交：任一失败整体回滚，避免"数据已生效但无日志"窗口
       await tx.reclassificationLog.create({
         data: {
@@ -856,15 +885,7 @@ export const ReclassificationService = {
     scope: Scope,
     ctx: AuditCtx,
   ): Promise<{ affectedRows: number; decreaseAmount: number; increaseAmount: number; netChange: number; mergedRows: number; createdRows: number }> {
-    const mode = resolveAdjustMode(params)
-    requireAdjustFields(params, mode)
-    const periodFilter = periodFilterOf(params.templateType, params.period)
-    if (!params.reason || !params.reason.trim()) throw errors.badRequest('请填写调整原因')
-    await validateCompanyExists(params.companyCode)
-    await assertCompaniesInScope(scope, [params.companyCode])
-    const valueType = await loadAndValidateAdjustSubjects(params.templateType, mode, mode === 'increase' ? undefined : params.sourceAccountCode, mode === 'decrease' ? undefined : params.targetAccountCode)
-    validateAdjustAmounts(params, mode, valueType)
-    const batchIds = await activeBatchIds(params.templateType)
+    const { mode, valueType, periodFilter, batchIds } = await validateAdjustSubject(params, scope)
     if (batchIds.length === 0) throw errors.conflict('该模板类型暂无生效批次，无可调整数据')
 
     const result = await prisma.$transaction(async (tx) => {
@@ -949,8 +970,8 @@ export const ReclassificationService = {
     const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, username: true } })
     const nameMap = new Map(users.map((u) => [u.id, u.username]))
     const items = rows.map((r) => {
-      // 行级快照仅供撤销使用，不随列表下发（控制体积）；以是否存在快照标记可撤销性
-      const { snapshot, ...detailRest } = (r.detail ?? {}) as Record<string, unknown>
+      // 行级快照与重放历史仅供撤销/审计使用，不随列表下发（控制体积）；以是否存在快照标记可撤销性
+      const { snapshot, history, ...detailRest } = (r.detail ?? {}) as Record<string, unknown>
       return {
         id: r.id,
         type: r.type,
@@ -1027,4 +1048,195 @@ export const ReclassificationService = {
     )
     return { restoredRows: restored }
   },
+}
+
+/** 重新应用目标日志类型 */
+export type ReapplyKind = 'company' | 'subject_adjust'
+/** 重新应用前的记录状态：reverted（已撤销）| invalidated（已失效） */
+export type ReapplyPreviousStatus = 'reverted' | 'invalidated'
+
+export interface ReapplyResult {
+  logId: string
+  /** 重新应用前的记录状态 */
+  previousStatus: ReapplyPreviousStatus
+  affectedRows: number
+  mergedRows: number
+  createdRows: number
+  /** company 类型：转移金额 */
+  transferValue?: number
+  /** subject_adjust 类型：调减/调增/净变动 */
+  decreaseAmount?: number
+  increaseAmount?: number
+  netChange?: number
+}
+
+/**
+ * 重新应用已撤销/已失效的重分类或科目调整记录：
+ * - 按提交参数（默认预填原参数，允许修改）在当前生效数据上重新执行正向操作；
+ * - 同一事务内更新原日志记录（不新建记录，id 与 createdAt 保持不变）：清空撤销/失效状态字段
+ *   （恢复"已生效/正常"态），按执行结果刷新分类相关字段（源/目标、期间、影响行数）与行级快照；
+ * - 原快照与撤销/失效轨迹整体移入 detail.history 留痕（历史数据保留，可供审计追溯）；
+ * - 数据变更、日志更新同事务原子提交；审计日志记录状态变更过程（previousStatus → normal）。
+ */
+export async function reapplyLog(
+  id: string,
+  kind: ReapplyKind,
+  params: ReclassifyCompanyParams | AdjustSubjectParams,
+  scope: Scope,
+  ctx: AuditCtx,
+): Promise<ReapplyResult> {
+  const log = await prisma.reclassificationLog.findUnique({ where: { id } })
+  if (!log) throw errors.notFound('重分类记录不存在')
+  if (log.type !== kind) throw errors.badRequest('日志类型与重新应用方式不匹配')
+  if (!log.revertedAt && !log.invalidatedAt) throw errors.conflict('该记录当前已生效，无需重新应用')
+  if (!log.templateType) throw errors.conflict('该记录缺少模板类型，无法重新应用')
+  const previousStatus: ReapplyPreviousStatus = log.invalidatedAt ? 'invalidated' : 'reverted'
+  const now = new Date()
+  const oldDetail = (log.detail ?? {}) as Record<string, unknown>
+  // 历史留痕：旧 detail（含行级快照）与撤销/失效轨迹整体归档，重放多次则依次追加
+  const historyEntry = {
+    at: now.toISOString(),
+    by: ctx.userId,
+    action: 'reapply',
+    status: previousStatus,
+    revertedAt: log.revertedAt ? log.revertedAt.toISOString() : null,
+    revertedBy: log.revertedBy,
+    invalidatedAt: log.invalidatedAt ? log.invalidatedAt.toISOString() : null,
+    invalidatedBy: log.invalidatedBy,
+    invalidatedReason: log.invalidatedReason,
+    affectedRows: log.affectedRows,
+    detail: oldDetail,
+  }
+  const history = Array.isArray(oldDetail.history) ? [...(oldDetail.history as unknown[]), historyEntry] : [historyEntry]
+
+  if (kind === 'company') {
+    const p = params as ReclassifyCompanyParams
+    const { mode, filter, batchIds } = await validateCompanyReclassify(p, scope)
+    if (batchIds.length === 0) throw errors.conflict('该模板类型暂无生效批次，无可重分类数据')
+    const result = await prisma.$transaction(async (tx) => {
+      const res = await reclassifyCompanyInTx(tx, p, mode, filter, batchIds)
+      await tx.reclassificationLog.update({
+        where: { id },
+        data: {
+          templateType: p.templateType,
+          sourceCompany: p.sourceCompanyCode,
+          targetCompany: p.targetCompanyCode,
+          sourceSubject: null,
+          targetSubject: null,
+          period: p.period,
+          periodFrom: p.period,
+          periodTo: p.period,
+          affectedRows: res.affected,
+          revertedAt: null,
+          revertedBy: null,
+          invalidatedAt: null,
+          invalidatedBy: null,
+          invalidatedReason: null,
+          detail: {
+            transferMode: mode,
+            ratio: p.ratio ?? null,
+            amount: p.amount ?? null,
+            transferValue: res.transferValue,
+            mergedRows: res.merged,
+            createdRows: res.created,
+            accountCodes: p.accountCodes ?? null,
+            snapshot: res.snapshot,
+            history,
+          } as never,
+        },
+      })
+      return res
+    })
+    await recordAudit(
+      {
+        userId: ctx.userId,
+        module: 'data',
+        action: 'reclassify',
+        targetId: id,
+        detail: {
+          kind: 'reapply',
+          logType: 'company',
+          templateType: p.templateType,
+          previousStatus,
+          status: 'normal',
+          transferMode: mode,
+          transferValue: result.transferValue,
+          affectedRows: result.affected,
+        },
+      },
+      ctx.traceId,
+    )
+    return { logId: id, previousStatus, affectedRows: result.affected, mergedRows: result.merged, createdRows: result.created, transferValue: result.transferValue }
+  }
+
+  const p = params as AdjustSubjectParams
+  const { mode, valueType, periodFilter, batchIds } = await validateAdjustSubject(p, scope)
+  if (batchIds.length === 0) throw errors.conflict('该模板类型暂无生效批次，无可调整数据')
+  const result = await prisma.$transaction(async (tx) => {
+    const res = await adjustSubjectInTx(tx, p, mode, valueType, periodFilter, batchIds)
+    const net = round2(res.increased - res.decreased)
+    await tx.reclassificationLog.update({
+      where: { id },
+      data: {
+        templateType: p.templateType,
+        sourceCompany: p.companyCode,
+        targetCompany: null,
+        sourceSubject: mode === 'increase' ? null : p.sourceAccountCode,
+        targetSubject: mode === 'decrease' ? null : (p.targetAccountCode ?? null),
+        period: p.period,
+        periodFrom: p.period,
+        periodTo: p.period,
+        affectedRows: res.affected,
+        revertedAt: null,
+        revertedBy: null,
+        invalidatedAt: null,
+        invalidatedBy: null,
+        invalidatedReason: null,
+        detail: {
+          adjustMode: mode,
+          valueType,
+          decreaseAmount: res.decreased,
+          increaseAmount: res.increased,
+          netChange: net,
+          reason: p.reason.trim(),
+          mergedRows: res.merged,
+          createdRows: res.created,
+          snapshot: res.snapshot,
+          history,
+        } as never,
+      },
+    })
+    return { res, net }
+  })
+  await recordAudit(
+    {
+      userId: ctx.userId,
+      module: 'data',
+      action: 'reclassify',
+      targetId: id,
+      detail: {
+        kind: 'reapply',
+        logType: 'subject_adjust',
+        templateType: p.templateType,
+        previousStatus,
+        status: 'normal',
+        adjustMode: mode,
+        decreaseAmount: result.res.decreased,
+        increaseAmount: result.res.increased,
+        netChange: result.net,
+        affectedRows: result.res.affected,
+      },
+    },
+    ctx.traceId,
+  )
+  return {
+    logId: id,
+    previousStatus,
+    affectedRows: result.res.affected,
+    mergedRows: result.res.merged,
+    createdRows: result.res.created,
+    decreaseAmount: result.res.decreased,
+    increaseAmount: result.res.increased,
+    netChange: result.net,
+  }
 }

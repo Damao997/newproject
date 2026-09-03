@@ -898,6 +898,25 @@ class ApiClient {
     return this.request({ method: 'POST', url: `/data/reclassify/logs/${id}/revert` })
   }
 
+  /** 重新应用已撤销/已失效的跨公司重分类：更新原日志记录（恢复"正常"态），不新建记录 */
+  async reapplyReclassifyCompany(id: string, data: {
+    templateType: string; sourceCompanyCode: string; targetCompanyCode: string
+    accountCodes?: string[]; period: string
+    transferMode?: 'all' | 'ratio' | 'amount'; ratio?: number; amount?: number
+  }): Promise<{ logId: string; previousStatus: 'reverted' | 'invalidated'; affectedRows: number; mergedRows: number; createdRows: number; transferValue: number }> {
+    return this.request({ method: 'POST', url: `/data/reclassify/logs/${id}/reapply/company`, data })
+  }
+
+  /** 重新应用已撤销/已失效的科目调整（含预算调整）：更新原日志记录（恢复"正常"态），不新建记录 */
+  async reapplyAdjustSubject(id: string, data: {
+    templateType: string; companyCode: string
+    adjustMode?: 'both' | 'decrease' | 'increase'
+    sourceAccountCode?: string; targetAccountCode?: string
+    decreaseAmount?: number; increaseAmount?: number; period: string; reason: string
+  }): Promise<{ logId: string; previousStatus: 'reverted' | 'invalidated'; affectedRows: number; decreaseAmount: number; increaseAmount: number; netChange: number; mergedRows: number; createdRows: number }> {
+    return this.request({ method: 'POST', url: `/data/reclassify/logs/${id}/reapply/subject`, data })
+  }
+
   async getConsolidationAdjustments(params?: FilterParams): Promise<PaginatedResponse<ConsolidationAdjustment>> {
     return this.request({ method: 'GET', url: '/data/consolidation/adjustments', params })
   }
@@ -910,7 +929,7 @@ class ApiClient {
   }
 
   async createConsolidationAdjustment(data: {
-    templateType: 'operating' | 'static'
+    templateType: 'operating' | 'static' | 'cashflow'
     summaryCompanyCode: string
     accountCode: string
     period: string

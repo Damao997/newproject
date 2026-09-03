@@ -19,6 +19,7 @@ import {
   useAvailablePeriods,
   usePreviewAdjustSubject,
   useAdjustSubject,
+  useReapplyAdjustSubject,
 } from '@/hooks/api-queries'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { formatMoney, formatQuantity, cn } from '@/lib/utils'
@@ -28,8 +29,8 @@ import { TEMPLATE_LABEL, FeedbackAlert, PreviewStats, SubjectPicker, SectionTitl
 interface ReclassifySubjectDialogProps {
   open: boolean
   onClose: () => void
-  /** 预填模板类型（来自指标页当前标签） */
-  defaultTemplateType?: 'operating' | 'static'
+  /** 预填模板类型（模板选择器提供经营/静态/现金流三选） */
+  defaultTemplateType?: 'operating' | 'static' | 'cashflow'
   /** 预填公司（来自指标页当前主体） */
   defaultCompany?: string
   /** 完整预填参数（来自失效/已撤销日志的「重新应用」或只读查看）：父级以 key 强制重挂载使其生效 */
@@ -40,6 +41,8 @@ interface ReclassifySubjectDialogProps {
   meta?: ReclassifyLogMeta
   /** 只读模式下还原的当时执行结果统计（来自日志 detail，如调减/调增金额、净变动、新建行数） */
   result?: PreviewStatItem[]
+  /** 重新应用模式：传入原日志 id，提交时更新原日志记录（恢复"正常"态），不新建记录 */
+  reapplyLogId?: string
 }
 
 export interface ReclassifySubjectPreset {
@@ -79,7 +82,7 @@ const ADJUST_MODE_LABEL: Record<AdjustMode, string> = {
  * 金额单位与事实数据一致（万元）。期间按单月必选（与后端口径一致）；
  * 本年累计由查询时按财年实时聚合，自动反映调整结果。
  */
-export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = 'operating', defaultCompany, preset, readonly = false, meta, result }: ReclassifySubjectDialogProps) {
+export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = 'operating', defaultCompany, preset, readonly = false, meta, result, reapplyLogId }: ReclassifySubjectDialogProps) {
   const [templateType, setTemplateType] = useState<string>(preset?.templateType ?? defaultTemplateType)
   const [companyCode, setCompanyCode] = useState<string>(preset?.companyCode ?? defaultCompany ?? '')
   const [adjustMode, setAdjustMode] = useState<AdjustMode>(preset?.adjustMode ?? 'both')
@@ -102,8 +105,9 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
   // 下拉选项跟随「显示简称」开关；确认弹窗文案仍用全称，保证高危操作确认的严谨性
   const { displayNameMap } = useCompanyDisplayName()
 
-  // 科目候选：静态模板取静态科目，否则取经营科目；比率类（公式计算）与 calc/display 类不可直接调整，从候选中排除
-  const subjectType = templateType === 'static' ? 'static' : 'operating'
+  // 科目候选：静态→静态科目树、现金流→现金流科目树、其余→经营科目树（与后端 subjectTypeOf 口径一致）；
+  // 比率类（公式计算）与 calc/display 类不可直接调整，从候选中排除
+  const subjectType = templateType === 'cashflow' ? 'cashflow' : templateType === 'static' ? 'static' : 'operating'
   const { data: subjectsData } = useSubjects({ type: subjectType, pageSize: 1000 })
   const subjectOptions = useMemo(
     () => (subjectsData?.items ?? []).filter((s) => s.valueType !== 'ratio' && s.dataType !== 'calc' && s.dataType !== 'display'),
@@ -129,6 +133,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
 
   const previewMutation = usePreviewAdjustSubject()
   const adjustMutation = useAdjustSubject()
+  const reapplyMutation = useReapplyAdjustSubject()
 
   const buildPayload = () => ({
     templateType,
@@ -229,24 +234,27 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
     const actionText = adjustMode === 'increase'
       ? `「${targetName}」调增 ${fmt(preview.increaseAmount, activeQty)}`
       : `「${sourceName}」调减 ${fmt(preview.decreaseAmount, activeQty)}${adjustMode === 'both' && targetName ? `，「${targetName}」调增 ${fmt(preview.increaseAmount, activeQty)}` : ''}`
+    const reapplyNote = reapplyLogId ? '提交后将更新原调整记录状态为已生效（不新建记录）。' : ''
     const ok = await confirm({
-      title: '确认科目间调整',
-      description: `将把「${companyName}」的${TEMPLATE_LABEL[templateType]}中${actionText}${netText}。此操作将影响看板与指标且不可撤销，确认继续？`,
+      title: reapplyLogId ? '确认重新应用科目调整' : '确认科目间调整',
+      description: `将把「${companyName}」的${TEMPLATE_LABEL[templateType]}中${actionText}${netText}。${reapplyNote}此操作将影响看板与指标，确认继续？`,
       danger: true,
-      confirmText: '确认调整',
+      confirmText: reapplyLogId ? '确认重新应用' : '确认调整',
     })
     if (!ok) return
     setError(null)
     try {
-      const res = await adjustMutation.mutateAsync(buildPayload())
+      const res = reapplyLogId
+        ? await reapplyMutation.mutateAsync({ id: reapplyLogId, data: buildPayload() })
+        : await adjustMutation.mutateAsync(buildPayload())
       const doneParts = [
         res.decreaseAmount > 0 ? `调减 ${fmt(res.decreaseAmount, activeQty)}` : '',
         res.increaseAmount > 0 ? `调增 ${fmt(res.increaseAmount, activeQty)}` : '',
       ].filter(Boolean).join('，')
-      setDone(`调整完成：${doneParts}，涉及 ${res.affectedRows} 条明细${res.createdRows > 0 ? `，新建 ${res.createdRows} 条` : ''}。`)
+      setDone(`${reapplyLogId ? '重新应用完成' : '调整完成'}：${doneParts}，涉及 ${res.affectedRows} 条明细${res.createdRows > 0 ? `，新建 ${res.createdRows} 条` : ''}${reapplyLogId ? '，原记录已恢复为已生效状态。' : '。'}`)
       setPreview(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '调整失败')
+      setError(err instanceof Error ? err.message : reapplyLogId ? '重新应用失败' : '调整失败')
     }
   }
 
@@ -283,10 +291,12 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-1.5">
-            {readonly ? '科目调整详情' : '科目间金额调整'}
+            {readonly ? '科目调整详情' : reapplyLogId ? '重新应用科目调整' : '科目间金额调整'}
             <TitleHint text={readonly
               ? '原始操作参数只读展示'
-              : '同一公司内按选定方式调整科目金额：可双向调整（调减+调增）、仅调减（如修正重复计算）或仅调增（如补录遗漏）；金额类科目单位为万元，数量类按整数调整。'
+              : reapplyLogId
+                ? '在最新数据上重新执行原调整（参数可修改），提交后更新原记录状态为已生效，不新建记录。'
+                : '同一公司内按选定方式调整科目金额：可双向调整（调减+调增）、仅调减（如修正重复计算）或仅调增（如补录遗漏）；金额类科目单位为万元，数量类按整数调整。'
             } />
           </DialogTitle>
           {readonly && meta && <ReadonlyLogMeta meta={meta} />}
@@ -536,8 +546,8 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
               >
                 {previewMutation.isPending ? '预览中...' : '预览影响'}
               </Button>
-              <Button variant="destructive" onClick={handleSubmit} disabled={!preview || preview.affectedRows === 0 || !reason.trim() || adjustMutation.isPending}>
-                {adjustMutation.isPending ? '调整中...' : '执行调整'}
+              <Button variant="destructive" onClick={handleSubmit} disabled={!preview || preview.affectedRows === 0 || !reason.trim() || adjustMutation.isPending || reapplyMutation.isPending}>
+                {adjustMutation.isPending || reapplyMutation.isPending ? (reapplyLogId ? '重新应用中...' : '调整中...') : reapplyLogId ? '重新应用' : '执行调整'}
               </Button>
             </>
           )}

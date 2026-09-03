@@ -15,7 +15,7 @@ import { ExpenseAnalysisService } from '../services/ExpenseAnalysisService'
 import { SubjectBudgetConfigService } from '../services/SubjectBudgetConfigService'
 import { BudgetRatioService } from '../services/BudgetRatioService'
 import { IndicatorsService } from '../services/IndicatorsService'
-import { ReclassificationService } from '../services/ReclassificationService'
+import { ReclassificationService, reapplyLog } from '../services/ReclassificationService'
 import { ConsolidationService } from '../services/ConsolidationService'
 import { fyLabelOfDate } from '../lib/period'
 import { fixUploadFilename } from '../lib/sanitize'
@@ -560,14 +560,24 @@ router.post('/reclassify/logs/:id/revert', requirePermission('data:reclassify:co
   sendOk(res, await ReclassificationService.revertLog(req.params.id as string, scopeOf(req.authUser as AuthUserContext), ctxOf(req)))
 }))
 
+// 重新应用已撤销/已失效的跨公司重分类：更新原日志记录（清撤销/失效状态恢复"正常"、刷新快照与历史留痕），不新建记录
+router.post('/reclassify/logs/:id/reapply/company', requirePermission('data:reclassify:company', 'update'), asyncHandler(async (req, res) => {
+  sendOk(res, await reapplyLog(req.params.id as string, 'company', companyReclassifyBody(req.body ?? {}), scopeOf(req.authUser as AuthUserContext), ctxOf(req)))
+}))
+
+// 重新应用已撤销/已失效的科目调整（含预算调整）：同上，更新原日志记录
+router.post('/reclassify/logs/:id/reapply/subject', requirePermission('data:reclassify:subject', 'update'), asyncHandler(async (req, res) => {
+  sendOk(res, await reapplyLog(req.params.id as string, 'subject_adjust', adjustSubjectBody(req.body ?? {}), scopeOf(req.authUser as AuthUserContext), ctxOf(req)))
+}))
+
 // ===== 汇总抵消调整（内部公司间交易在汇总口径的抵消，单体报表不受影响）=====
-// 支持经营/静态两模板（现金流有独立 cashflow 模板记录，经现金流查询链路叠加）
-const CONSOLIDATION_TEMPLATES = ['operating', 'static']
+// 支持经营/静态/现金流三模板：现金流抵消记录（templateType=cashflow）由现金流聚合树四维叠加
+const CONSOLIDATION_TEMPLATES = ['operating', 'static', 'cashflow']
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function consolidationAdjustBody(b: any) {
   if (!b.summaryCompanyCode || !b.accountCode) throw errors.badRequest('汇总主体与科目必填')
-  if (!b.templateType || !CONSOLIDATION_TEMPLATES.includes(b.templateType)) throw errors.badRequest('模板类型不合法（支持经营/静态数据）')
+  if (!b.templateType || !CONSOLIDATION_TEMPLATES.includes(b.templateType)) throw errors.badRequest('模板类型不合法（支持经营/静态/现金流量表）')
   if (typeof b.period !== 'string' || !PERIOD_RE.test(b.period)) throw errors.badRequest('请选择调整期间（单月 YYYY-MM）')
   const amount = Number(b.amount)
   if (!Number.isFinite(amount) || amount === 0) throw errors.badRequest('调整金额必须为非 0 数值（万元，正=调增、负=调减）')

@@ -235,7 +235,7 @@ export interface ReclassifyLog {
 /** 汇总抵消调整记录：在汇总主体（如 ET0001）聚合口径上按科目/期间叠加抵消金额，单体报表不受影响 */
 export interface ConsolidationAdjustment {
   id: string
-  templateType: 'operating'
+  templateType: 'operating' | 'static' | 'cashflow'
   summaryCompanyCode: string
   summaryCompanyName: string
   accountCode: string

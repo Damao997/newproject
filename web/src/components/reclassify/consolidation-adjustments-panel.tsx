@@ -64,7 +64,10 @@ export function ConsolidationAdjustmentsPanel() {
         </span>
       ),
     },
-    { key: 'operator', header: '操作人' },
+    // 操作人列宽固定 12 个英文字符（约 6 个汉字）：用户名正常展示，UUID 等长值截断省略，hover 见全称
+    { key: 'operator', header: '操作人', render: (r) => (
+      <span className="block max-w-[12ch] truncate" title={r.operator}>{r.operator}</span>
+    ) },
     {
       key: 'actions', header: '操作', align: 'right',
       render: (r) => (
@@ -84,7 +87,7 @@ export function ConsolidationAdjustmentsPanel() {
   ]
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {message && (
         <p className={cn('text-xs', message.includes('失败') ? 'text-destructive' : 'text-muted-foreground')}>{message}</p>
       )}
@@ -92,6 +95,7 @@ export function ConsolidationAdjustmentsPanel() {
         columns={columns}
         data={items}
         rowKey={(r) => r.id}
+        density="compact"
         emptyText={isFetching ? '加载中…' : '暂无汇总抵消调整记录'}
         onRowClick={toggleExpanded}
         expandedKeys={expandedKeys}
