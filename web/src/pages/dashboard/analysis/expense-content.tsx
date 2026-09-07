@@ -1,14 +1,18 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { AlertTriangle, RefreshCw } from 'lucide-react'
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
+import { AlertTriangle, Columns3, RefreshCw } from 'lucide-react'
 import { useExpenseAnalysis } from '@/hooks/api-queries'
+import { AnalysisPageSkeleton } from '@/components/ui/skeleton-blocks'
 import { totalMetrics } from '../budget-total'
-import { ExpenseAnalysisCard } from '../expense-analysis-card'
+import { ExpenseAnalysisCard, EXPENSE_COLUMN_GROUPS, EXPENSE_COLUMN_META } from '../expense-analysis-card'
 import { cn, formatMoneyWan } from '@/lib/utils'
+import { DeltaTag } from '@/components/ui/delta-tag'
 import { getChartSeries } from '@/lib/chart-theme'
+import { usePageStore } from '@/stores/pageStateStore'
 import { useThemeStore } from '@/stores/themeStore'
 
 interface ExpenseContentProps {
@@ -61,14 +65,6 @@ function StatTile({ label, value, unit, foot, accent, valueClass }: {
   )
 }
 
-/** 同比 chip：费用类红涨绿跌（数值越大越警示），持平灰 */
-function yoyText(v: number): { text: string; cls: string } {
-  if (v === 0) return { text: '→ 持平', cls: 'text-muted-foreground' }
-  return v > 0
-    ? { text: `↑ ${Math.abs(v * 100).toFixed(1)}%`, cls: 'text-finance-red' }
-    : { text: `↓ ${Math.abs(v * 100).toFixed(1)}%`, cls: 'text-finance-green' }
-}
-
 /**
  * 运营费用分析页（真实数据：useExpenseAnalysis，跟随看板主体/期间筛选）：
  * - 顶部 4 个 KPI 磁贴：本月费用合计（含同比 chip）/ 累计费用合计（含财年同比 chip）/ 累计预算使用率 / 超支科目数；
@@ -78,6 +74,8 @@ function yoyText(v: number): { text: string; cls: string } {
 export function ExpenseContent({ period, companyCode }: ExpenseContentProps) {
   const sidebarStyle = useThemeStore((s) => s.sidebarStyle)
   const [amountMode, setAmountMode] = useState<AmountMode>('month')
+  const hiddenExpenseColumns = usePageStore((s) => s.dashboard.hiddenExpenseColumns)
+  const setDashboard = usePageStore((s) => s.setDashboard)
   const { data, isLoading, isError, refetch } = useExpenseAnalysis({ period, companyCode })
   const rows = useMemo(() => data?.rows ?? [], [data])
   const total = useMemo(() => totalMetrics(rows), [rows])
@@ -108,19 +106,7 @@ export function ExpenseContent({ period, companyCode }: ExpenseContentProps) {
     }, [])
   }, [slices, pieTotal])
 
-  if (isLoading) {
-    return (
-      <div className="animate-fade-in space-y-4">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="skeleton h-[108px] rounded-card" />
-          ))}
-        </div>
-        <div className="skeleton h-[280px] rounded-card" />
-        <div className="skeleton h-[260px] rounded-card" />
-      </div>
-    )
-  }
+  if (isLoading) return <AnalysisPageSkeleton blocks={[280, 260]} />
 
   if (isError && rows.length === 0) {
     return (
@@ -145,9 +131,6 @@ export function ExpenseContent({ period, companyCode }: ExpenseContentProps) {
       />
     )
   }
-
-  const monthYoy = yoyText(total.monthYoy)
-  const ytdYoy = yoyText(total.ytdYoy)
 
   return (
     <div className="animate-fade-in space-y-4">
@@ -199,7 +182,7 @@ export function ExpenseContent({ period, companyCode }: ExpenseContentProps) {
             <h3 className="text-base font-semibold text-foreground">
               费用结构占比
               <span className="ml-2 text-xs font-normal text-muted-foreground">
-                按映射科目金额 Top5 + 其他 · {amountMode === 'month' ? '本月口径' : '财年累计口径'}
+                Top5 + 其他费用 · {amountMode === 'month' ? '本月口径' : '累计口径'}
               </span>
             </h3>
             <Tabs value={amountMode} onValueChange={(v) => setAmountMode(v as AmountMode)}>
@@ -247,13 +230,13 @@ export function ExpenseContent({ period, companyCode }: ExpenseContentProps) {
       {/* 同比摘要条（Σ口径重算，与明细表合计行同源） */}
       <Card className="border border-border shadow-antd-1">
         <CardContent className="flex flex-wrap items-center gap-x-8 gap-y-2 px-5 py-4 text-sm">
-          <span className="text-muted-foreground">
+          <span className="inline-flex items-center gap-1 text-muted-foreground">
             本月同比：
-            <span className={cn('font-num font-semibold', monthYoy.cls)}>{monthYoy.text}</span>
+            <DeltaTag value={total.monthYoy} />
           </span>
-          <span className="text-muted-foreground">
+          <span className="inline-flex items-center gap-1 text-muted-foreground">
             财年累计同比：
-            <span className={cn('font-num font-semibold', ytdYoy.cls)}>{ytdYoy.text}</span>
+            <DeltaTag value={total.ytdYoy} />
           </span>
           <span className="text-muted-foreground">
             本月预算：
@@ -262,14 +245,47 @@ export function ExpenseContent({ period, companyCode }: ExpenseContentProps) {
         </CardContent>
       </Card>
 
-      {/* 运营费用明细表（月度 6 列 + 累计 6 列 + 预警红绿灯） */}
+      {/* 运营费用明细表（月度 7 列含环比 + 累计 6 列 + 预警红绿灯；数据列可经「列设置」隐藏，选择持久化） */}
       <Card className="border border-border shadow-antd-1">
         <CardContent className="px-5 py-5">
-          <div className="mb-3 flex items-baseline gap-2">
-            <h3 className="text-base font-semibold text-foreground">运营费用明细</h3>
-            <span className="text-xs text-muted-foreground">月度完成情况 / 财年累计完成情况 · 单位：万元</span>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-baseline gap-2">
+              <h3 className="text-base font-semibold text-foreground">运营费用明细</h3>
+              <span className="text-xs text-muted-foreground">月度完成情况 / 财年累计完成情况 · 单位：万元</span>
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <Columns3 className="mr-1 h-3.5 w-3.5" /> 列设置
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                {EXPENSE_COLUMN_GROUPS.map((group, gi) => (
+                  <Fragment key={group.key}>
+                    {gi > 0 && <DropdownMenuSeparator />}
+                    <DropdownMenuLabel className="text-xs text-muted-foreground">{group.label}</DropdownMenuLabel>
+                    {EXPENSE_COLUMN_META.filter((c) => c.group === group.key).map((col) => (
+                      <DropdownMenuCheckboxItem
+                        key={col.key}
+                        checked={!hiddenExpenseColumns.includes(col.key)}
+                        onCheckedChange={(checked) => {
+                          const next = checked
+                            ? hiddenExpenseColumns.filter((k) => k !== col.key)
+                            : [...hiddenExpenseColumns, col.key]
+                          // 至少保留一列数据列（全部隐藏则表格仅剩指标名称列，无意义）
+                          if (EXPENSE_COLUMN_META.length - next.length === 0) return
+                          setDashboard({ hiddenExpenseColumns: next })
+                        }}
+                      >
+                        {col.header}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </Fragment>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-          <ExpenseAnalysisCard period={period} companyCode={companyCode} />
+          <ExpenseAnalysisCard period={period} companyCode={companyCode} hiddenColumns={hiddenExpenseColumns} />
         </CardContent>
       </Card>
     </div>

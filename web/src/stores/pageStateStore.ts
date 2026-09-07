@@ -130,6 +130,8 @@ export interface DashboardState {
   trendMode: string
   /** 综合分析卡当前标签：'trend' | 'product' | 'subject' | 'expense' */
   analysisTab: string
+  /** 运营费用明细表隐藏的数据列 key 列表（默认全部显示） */
+  hiddenExpenseColumns: string[]
 }
 
 export interface InventoryState {
@@ -228,7 +230,7 @@ const defaultSalesmen: TransactionSalesmenState = {
   keyword: '',
 }
 
-const defaultDashboard: DashboardState = { period: '', dim: '', trendMetric: 'revenue', trendMode: 'month', analysisTab: 'trend' }
+const defaultDashboard: DashboardState = { period: '', dim: '', trendMetric: 'revenue', trendMode: 'month', analysisTab: 'trend', hiddenExpenseColumns: [] }
 
 // 默认主体：浙江省公司汇总（与往来总览 overview 默认口径一致；空数组=全部公司仍可显式选择）
 const defaultInventory: InventoryState = { companies: [DEFAULT_SUMMARY_CODE], period: '', categoryCode: '', keyword: '', detailDim: 'company' }

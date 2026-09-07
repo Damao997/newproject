@@ -5,7 +5,7 @@ import { PageContainer } from '@/components/layout/page-container'
 import { SubPageTabs } from '@/components/layout/sub-page-tabs'
 import { DASHBOARD_ANALYSIS_TABS } from '@/components/layout/module-tabs'
 import { useDashboardFilters } from '@/hooks/useDashboardFilters'
-import { KeyMetricsTable } from './key-metrics-table'
+import { CoreMetricsOverview } from './core-metrics-overview'
 import { AnalysisPlaceholder } from './analysis-placeholder'
 import { CategoryBudgetContent } from './analysis/category-budget-content'
 import { CashFlowContent } from './analysis/cash-flow-content'
@@ -13,6 +13,7 @@ import { ReceivableAgingContent } from './analysis/receivable-aging-content'
 import { ExpenseContent } from './analysis/expense-content'
 import { SubjectBudgetContent } from './analysis/subject-budget-content'
 import { InventoryAgingContent } from './analysis/inventory-aging-content'
+import { CoreMetricsContent } from './analysis/core-metrics-content'
 
 /** 经营分析子页类型：func=已迁移功能卡，placeholder=入口占位 */
 export type AnalysisVariantKey =
@@ -23,6 +24,7 @@ export type AnalysisVariantKey =
   | 'category-budget'
   | 'subject-budget'
   | 'expense'
+  | 'core-metrics'
 
 interface AnalysisPageProps {
   /** 路由入口决定的子页类型（/dashboard/analysis/:variant） */
@@ -69,10 +71,11 @@ export function AnalysisPage({ variant }: AnalysisPageProps) {
         switch (variant) {
           case 'key-metrics':
             return (
-              // 内容自适应高度：数据少时卡片贴内容（下边框紧贴表格末行），数据多时 flex 链压缩滚动容器、页面不滚动
-              <Card className="flex min-h-0 flex-col animate-fade-in border border-border shadow-sm">
-                <CardContent className="flex min-h-0 flex-col px-6 pt-6 pb-0">
-                  <KeyMetricsTable
+              // 视口撑满布局：CardContent 为内部滚动容器（表格 + 差距分析超出视口时卡片内滚动、页面不滚动不出框）；
+              // 数据少时 flex-1 撑满、内容贴顶部展示
+              <Card className="flex min-h-0 flex-1 flex-col animate-fade-in border border-border shadow-sm">
+                <CardContent className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pt-6 pb-0">
+                  <CoreMetricsOverview
                     period={currentPeriod || undefined}
                     companyCode={companyCode}
                   />
@@ -116,6 +119,17 @@ export function AnalysisPage({ variant }: AnalysisPageProps) {
               <Card className="animate-fade-in border border-border shadow-sm">
                 <CardContent className="px-6 py-6">
                   <ReceivableAgingContent
+                    period={currentPeriod || undefined}
+                    companyCode={companyCode}
+                  />
+                </CardContent>
+              </Card>
+            )
+          case 'core-metrics':
+            return (
+              <Card className="animate-fade-in border border-border shadow-sm">
+                <CardContent className="px-6 py-6">
+                  <CoreMetricsContent
                     period={currentPeriod || undefined}
                     companyCode={companyCode}
                   />

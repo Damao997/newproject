@@ -1,6 +1,6 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios'
 import { useAuthStore } from '@/stores/authStore'
-import type { ApiResponse, LoginRequest, LoginResponse, AutoLoginResponse, User, PaginatedResponse, FilterParams, BatchActivateCheckResult, KpiData, TrendData, DashboardAlert, ReceivableRow, ProductBudgetResponse, SubjectBudgetResponse, ExpenseAnalysisResponse, KeyMetricsResponse, ProductCategory, ProductCategoryCheckResult, KeyMetricsProduct, KeyMetricsProductCheckResult, ExpenseMapping, ExpenseMappingCheckResult, SubjectBudgetConfig, SubjectBudgetConfigCheckResult, BudgetRatio, ImportBatch, ImportDiff, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, ConsolidationAdjustment, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData } from '@/types'
+import type { ApiResponse, LoginRequest, LoginResponse, AutoLoginResponse, User, PaginatedResponse, FilterParams, BatchActivateCheckResult, KpiData, TrendData, DashboardAlert, ReceivableRow, ProductBudgetResponse, SubjectBudgetResponse, ExpenseAnalysisResponse, KeyMetricsResponse, ProductMetricsResponse, ProductCategory, ProductCategoryCheckResult, KeyMetricsProduct, KeyMetricsProductCheckResult, ExpenseMapping, ExpenseMappingCheckResult, SubjectBudgetConfig, SubjectBudgetConfigCheckResult, BudgetRatio, ImportBatch, ImportDiff, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, ConsolidationAdjustment, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData } from '@/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
@@ -368,17 +368,6 @@ class ApiClient {
     })
   }
 
-  async getDashboardTrend(params: {
-    months?: number
-    compareType?: 'yoy' | 'mom'
-  }): Promise<TrendData[]> {
-    return this.request({
-      method: 'GET',
-      url: '/dashboard/trend',
-      params,
-    })
-  }
-
   /** 品类预算达成表（单期间）：收入/毛利品类的预算、本月/累计金额、达成率与同比 */
   async getProductBudget(params?: { period?: string; companyCode?: string }): Promise<ProductBudgetResponse> {
     return this.request({
@@ -411,6 +400,15 @@ class ApiClient {
     return this.request({
       method: 'GET',
       url: '/dashboard/analysis/key-metrics',
+      params,
+    })
+  }
+
+  /** 品类核心指标分析（单期间）：产品配置全行（含无数据行）收入/毛利两组口径 + 整体合计 */
+  async getProductMetrics(params?: { period?: string; companyCode?: string }): Promise<ProductMetricsResponse> {
+    return this.request({
+      method: 'GET',
+      url: '/dashboard/analysis/product-metrics',
       params,
     })
   }

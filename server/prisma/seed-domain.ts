@@ -2,7 +2,6 @@ import { PrismaClient } from '@prisma/client'
 import { decorateTree, rawOperatingAnalysis, rawStaticAnalysis, rawCashflowAnalysis, type DecoratedSubject } from './seed-data/subject-trees'
 import { transactionAccounts } from './seed-data/transaction-accounts'
 import { OPERATING_DIMS, STATIC_DIMS } from '../src/lib/metric-values'
-import { buildLegacyMappingMigration } from '../src/services/ExpenseAnalysisService'
 
 /**
  * 领域种子：期间维度 + 科目体系 + 指标。
@@ -39,23 +38,35 @@ const PRODUCT_CATEGORIES = [
   { code: 'premium', name: '优选产品', subjectKeyword: '优选产品', sortOrder: 3 },
   { code: 'appliance', name: '家用电器（含净水）', subjectKeyword: '家用电器', sortOrder: 4 },
   { code: 'livable', name: '宜居产品', subjectKeyword: '宜居产品', sortOrder: 5 },
-  { code: 'promotion', name: '宣传推广', subjectKeyword: '宣传推广', sortOrder: 6 },
-  { code: 'renovation', name: '维修改造业务', subjectKeyword: '维修改造业务', sortOrder: 7 },
-  { code: 'newProducts', name: '新产品及其它', subjectKeyword: '新产品及其它', sortOrder: 8 },
-  { code: 'inspection', name: '安检业务', subjectKeyword: '安检业务', sortOrder: 9 },
-  { code: 'directWater', name: '直饮水业务', subjectKeyword: '直饮水业务', sortOrder: 10 },
+  // 服务类子项自 6 起编排（整体 +1，相对顺序不变），为关键指标产品配置的「服务类」合计行腾出 sortOrder=6
+  { code: 'promotion', name: '宣传推广', subjectKeyword: '宣传推广', sortOrder: 7 },
+  { code: 'renovation', name: '维修改造业务', subjectKeyword: '维修改造业务', sortOrder: 8 },
+  { code: 'newProducts', name: '新产品及其它', subjectKeyword: '新产品及其它', sortOrder: 9 },
+  { code: 'inspection', name: '安检业务', subjectKeyword: '安检业务', sortOrder: 10 },
+  { code: 'directWater', name: '直饮水业务', subjectKeyword: '直饮水业务', sortOrder: 11 },
 ]
 
 /**
  * 关键指标产品配置（壹品慧关键指标表「按产品分」明细，独立于品类配置）：
  * 初始数据复制品类配置的产品线（名称/关键词同源），后续在看板管理「产品配置」独立维护。
+ * 另含「服务类」合计行：科目树无「服务类」汇总节点，用多关键词并集求和
+ * （宣传推广+维修改造+安检+技术服务，逗号分隔；「技术服务」暂无对应科目，命中为空不报错），
+ * 排序置于服务类子项（宣传推广 7 / 维修改造 8 / 安检 10）之前，配合「其中：」名称约定实现缩进层级。
  */
-const KEY_METRICS_PRODUCTS = PRODUCT_CATEGORIES.map((pc) => ({
-  code: `km_${pc.code}`,
-  name: pc.name,
-  subjectKeyword: pc.subjectKeyword,
-  sortOrder: pc.sortOrder,
-}))
+const KEY_METRICS_PRODUCTS = [
+  ...PRODUCT_CATEGORIES.map((pc) => ({
+    code: `km_${pc.code}`,
+    name: pc.name,
+    subjectKeyword: pc.subjectKeyword,
+    sortOrder: pc.sortOrder,
+  })),
+  {
+    code: 'km_services',
+    name: '服务类',
+    subjectKeyword: '宣传推广,维修改造,安检,技术服务',
+    sortOrder: 6,
+  },
+]
 
 /**
  * 运营费用分析默认映射：费用 > 壹品慧费用 > 运营费用 下 19 个叶子科目一对一
@@ -234,11 +245,12 @@ export async function seedDomain(prisma: PrismaClient): Promise<void> {
   // 6) 计算类指标展示公式（供聚合层计算层执行，如 毛利 = 收入 - 成本）
   await seedCalcMetricFormulas(prisma)
 
-  // 6-1) 运营费用映射（运营费用分析，按 code 幂等：默认叶子科目一对一，管理员可归并/停用）。
-  // 统一编码改造：默认映射编码为 EXP_ 数字序号；旧格式（科目编码 PL 前缀）默认映射自动迁移为
-  // 统一编码（原归并/停用状态保留，旧行标记墓碑），目标编码已存在（含墓碑）时不覆盖/不复活。
-  // 仅创建缺失的映射，不覆盖管理员对既有映射的归并（subjectCodes）与停用（status）修改。
-  // 注：删除为软删除（墓碑，见 ExpenseAnalysisService.remove），被管理员删除的默认映射不随 seed 复活。
+  // 6-1) 运营费用映射（运营费用分析，仅空表初始化：默认叶子科目一对一）。
+  // 加固（2026-09-04 事故复盘）：旧逻辑按「编码不存在则补建默认」执行，管理员归并维护后（如仅保留
+  // EXP_001~010），seed 会把默认清单剩余项以单科目形式补回（仓储/研发/折旧/财务费用等重复计入，
+  // 运营费用预算虚增）。现改为：表内存在任何活跃映射（含旧格式 PL 编码行）即视为管理员已维护，
+  // seed 完全不介入（不补建、不迁移）；仅在无活跃映射（空表或全墓碑）时初始化默认配置。
+  // 注：删除为软删除（墓碑，见 ExpenseAnalysisService.remove），被管理员删除过的编码不随 seed 复活。
   const feeSubjects = await prisma.accountSubject.findMany({
     where: { subjectType: 'operating', category: '壹品慧费用', status: 'active' },
     select: { code: true, name: true },
@@ -247,37 +259,20 @@ export async function seedDomain(prisma: PrismaClient): Promise<void> {
   const expenseMappings = EXPENSE_SUBJECT_NAMES
     .filter((n) => feeNameToCode.has(n))
     .map((n, i) => ({ code: `EXP_${String(i + 1).padStart(3, '0')}`, name: n, subjectCodes: [feeNameToCode.get(n) as string], sortOrder: i + 1 }))
-  const mappingRows = await prisma.expenseSubjectMapping.findMany({ select: { id: true, code: true, name: true, subjectCodes: true, sortOrder: true, status: true, deletedAt: true } })
-  // 排除墓碑（软删除）code：管理员删除的默认映射不随 seed 复活（无墓碑标记时方按默认配置创建）
-  const existingCodes = new Set(mappingRows.filter((m) => !m.deletedAt).map((m) => m.code))
-  const tombstoneCodes = new Set(mappingRows.filter((m) => m.deletedAt).map((m) => m.code))
-  // 旧格式迁移计划：目标编码与默认映射序号对齐（同一序号保留管理员对内容的归并/停用修改），超出默认数量的旧行顺延编号
-  const defaultCodes = expenseMappings.map((em) => em.code)
-  const migrationPlan = buildLegacyMappingMigration(mappingRows).map((item, i) => ({
-    ...item,
-    targetCode: defaultCodes[i] ?? item.targetCode,
-  }))
-  const migrationTargets = new Set(migrationPlan.map((m) => m.targetCode))
-  const toCreate = expenseMappings.filter((em) => !existingCodes.has(em.code) && !tombstoneCodes.has(em.code) && !migrationTargets.has(em.code))
-  for (const em of toCreate) {
-    await prisma.expenseSubjectMapping.create({
-      data: { code: em.code, name: em.name, subjectCodes: em.subjectCodes, sortOrder: em.sortOrder, status: 'active' },
-    })
+  const mappingRows = await prisma.expenseSubjectMapping.findMany({ select: { code: true, deletedAt: true } })
+  const activeMappings = mappingRows.filter((m) => !m.deletedAt)
+  if (activeMappings.length > 0) {
+    console.log(`[seed] 运营费用映射 既有 ${activeMappings.length} 条活跃映射，跳过默认初始化（管理员口径优先） 完成`)
+  } else {
+    const tombstoneCodes = new Set(mappingRows.filter((m) => m.deletedAt).map((m) => m.code))
+    const toCreate = expenseMappings.filter((em) => !tombstoneCodes.has(em.code))
+    for (const em of toCreate) {
+      await prisma.expenseSubjectMapping.create({
+        data: { code: em.code, name: em.name, subjectCodes: em.subjectCodes, sortOrder: em.sortOrder, status: 'active' },
+      })
+    }
+    console.log(`[seed] 运营费用映射 初始化 ${toCreate.length} 条（墓碑 ${tombstoneCodes.size} 个编码不复活） 完成`)
   }
-  let migrated = 0
-  for (const item of migrationPlan) {
-    const { legacy, targetCode } = item
-    // 旧行标记墓碑（幂等：重复 seed 时旧行已墓碑，buildLegacyMappingMigration 不再包含）
-    await prisma.expenseSubjectMapping.update({ where: { id: legacy.id }, data: { deletedAt: new Date() } })
-    // 目标编码已存在（非墓碑=管理员新体系映射、墓碑=管理员删除过）均不覆盖/不复活
-    if (mappingRows.some((r) => r.code === targetCode)) continue
-    await prisma.expenseSubjectMapping.create({
-      data: { code: targetCode, name: legacy.name, subjectCodes: legacy.subjectCodes, sortOrder: legacy.sortOrder, status: legacy.status === 'inactive' ? 'inactive' : 'active' },
-    })
-    migrated++
-  }
-  console.log(`[seed] 运营费用映射 新增 ${toCreate.length} 条（既有 ${existingCodes.size} 条保留） 完成`)
-  if (migrated > 0) console.log(`[seed] 运营费用映射 旧格式迁移 ${migrated} 条 -> EXP_ 统一编码 完成`)
 
   // 7) 往来会计科目主数据（集团 ERP 科目表中六大往来相关科目，供往来分析科目筛选器）
   for (let i = 0; i < transactionAccounts.length; i++) {

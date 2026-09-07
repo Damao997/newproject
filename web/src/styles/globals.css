@@ -354,15 +354,37 @@
 }
 
 @layer utilities {
+  /* 骨架屏：静态底块 + ::after 高光扫过。
+   * 动画走 transform（合成器线程，零重绘），替代旧 background-position 每帧重绘方案，
+   * 大量骨架块同时动画（如 7×12 表格 96 格）时 CPU/功耗显著更低；
+   * overflow:hidden 让高光被 rounded-* 圆角裁剪。 */
   .skeleton {
-    background: linear-gradient(
-      90deg,
-      hsl(var(--muted)) 25%,
-      hsl(var(--border)) 50%,
-      hsl(var(--muted)) 75%
-    );
-    background-size: 200% 100%;
-    animation: shimmer 1.5s ease-in-out infinite;
+    position: relative;
+    overflow: hidden;
+    background-color: hsl(var(--muted));
+  }
+
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, hsl(var(--border)), transparent);
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  }
+
+  @keyframes skeleton-shimmer {
+    to {
+      transform: translateX(100%);
+    }
+  }
+
+  /* 尊重"减少动态效果"偏好：流光伪元素直接隐藏，骨架静止为纯色块 */
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton::after {
+      animation: none;
+      opacity: 0;
+    }
   }
 
   /* 登录页输入框报错态：悬停（未聚焦）时保持红边框，不被基类 hover:border-primary 覆盖；聚焦时让位给常态灰边框 */

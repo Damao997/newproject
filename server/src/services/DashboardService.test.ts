@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { changeRate, rateOf, findInCategory, monthlyBudgetSeries, budgetAnnualTotal, fallbackBudgetSeries, ytdBudgetSeries, ytdBudgetOf, mapAlertRow, alertScopeWhere, productMetric, matchProductCategories, matchExpenseMappings, keyMetricsGroup } from './DashboardService'
+import { changeRate, rateOf, findInCategory, monthlyBudgetSeries, budgetAnnualTotal, fallbackBudgetSeries, ytdBudgetSeries, ytdBudgetOf, mapAlertRow, alertScopeWhere, productMetric, matchProductCategories, matchExpenseMappings, attachExpenseMom, keyMetricsGroup } from './DashboardService'
 import { OPERATING_DIMS } from '../lib/metric-values'
 import { splitMonthlyBudget } from './BudgetRatioService'
 import type { ValueNode } from './AggregationService'
@@ -449,21 +449,62 @@ describe('DashboardService 纯函数', () => {
       expect(covered[1].subjects).toEqual([])
       expect(covered[2].subjects).toEqual(['零值品类收入'])
     })
+
+    it('keepEmpty=true 保留全 0 行且行序=配置顺序（品类核心指标分析全量展示）', () => {
+      const cats = [
+        { code: 'a', name: '有数据品类', subjectKeyword: '有数据' },
+        { code: 'b', name: '无匹配品类', subjectKeyword: '不存在' },
+        { code: 'c', name: '零值品类', subjectKeyword: '零值' },
+      ]
+      const incomeRoots = [
+        income('有数据品类收入', 3, 10, 120),
+        income('零值品类收入', 3, 0, 0),
+      ]
+      const { rows } = matchProductCategories(cats, incomeRoots, new Map(), null, undefined, true)
+      expect(rows.map((r) => r.category)).toEqual(['有数据品类', '无匹配品类', '零值品类'])
+      // 无匹配行全 0 口径（monthRate=null 前端显示「—」）
+      expect(rows[1].income.monthActual).toBe(0)
+      expect(rows[1].income.budget).toBe(0)
+      expect(rows[1].income.monthRate).toBeNull()
+    })
+
+    it('subjectKeyword 逗号分隔多关键词：命中科目并集去重求和（服务类合计场景）', () => {
+      const cats = [
+        { code: 'svc', name: '服务类', subjectKeyword: '宣传推广,维修改造, 安检 ,不存在,维修改造' },
+      ]
+      const incomeRoots = [
+        income('宣传推广收入', 2, 10, 120),
+        income('维修改造业务收入', 2, 20, 240),
+        income('安检业务收入', 2, 5, 60),
+      ]
+      const profitByName = new Map([
+        ['宣传推广毛利', profit('宣传推广毛利', 3)],
+        ['维修改造业务毛利', profit('维修改造业务毛利', 8)],
+      ])
+      const { rows, covered } = matchProductCategories(cats, incomeRoots, profitByName)
+      // 收入 = 10+20+5=35（半角/全角逗号与空格容忍；重复关键词「维修改造」去重只计一次；「不存在」忽略）
+      expect(rows[0].income.monthActual).toBe(35)
+      expect(rows[0].income.budget).toBe(420)
+      // 毛利镜像并集求和 = 3+8=11
+      expect(rows[0].profit.monthActual).toBe(11)
+      expect(covered[0].subjects).toEqual(['宣传推广收入', '维修改造业务收入', '安检业务收入'])
+    })
   })
 
-  describe('matchExpenseMappings 运营费用映射匹配', () => {
-    const fee = (code: string, name: string, monthActual: number, budget: number, samePeriod: number, ytd: number, ytdSame: number): ValueNode =>
-      node({
-        code, name, level: 4, category: '费用',
-        values: {
-          [OPERATING_DIMS.ACTUAL_MONTH]: monthActual,
-          [OPERATING_DIMS.BUDGET_AMOUNT]: budget,
-          [OPERATING_DIMS.SAME_PERIOD_ACTUAL]: samePeriod,
-          [OPERATING_DIMS.YTD_ACTUAL]: ytd,
-          [OPERATING_DIMS.SAME_PERIOD_YTD]: ytdSame,
-        },
-      })
+  /** 费用类科目节点（供运营费用映射/环比测试构造树） */
+  const fee = (code: string, name: string, monthActual: number, budget: number, samePeriod: number, ytd: number, ytdSame: number): ValueNode =>
+    node({
+      code, name, level: 4, category: '费用',
+      values: {
+        [OPERATING_DIMS.ACTUAL_MONTH]: monthActual,
+        [OPERATING_DIMS.BUDGET_AMOUNT]: budget,
+        [OPERATING_DIMS.SAME_PERIOD_ACTUAL]: samePeriod,
+        [OPERATING_DIMS.YTD_ACTUAL]: ytd,
+        [OPERATING_DIMS.SAME_PERIOD_YTD]: ytdSame,
+      },
+    })
 
+  describe('matchExpenseMappings 运营费用映射匹配', () => {
     it('多科目映射各维度求和（金额/预算/使用率/同比）', () => {
       const mappings = [{ code: 'labor', name: '人力成本', subjectCodes: ['HR_A', 'HR_B'] }]
       const tree = [
@@ -544,10 +585,44 @@ describe('DashboardService 纯函数', () => {
     })
   })
 
-  describe('keyMetricsGroup 关键指标口径组（壹品慧关键指标表 14 列）', () => {
+  describe('attachExpenseMom 运营费用环比合并', () => {
+    it('按 code 对齐上期行，补 monthPrev 与 monthMom 环比率', () => {
+      const rows = matchExpenseMappings([{ code: 'labor', name: '人力成本', subjectCodes: ['A'] }], [
+        fee('A', '科目A', 100, 1200, 80, 900, 800),
+      ])
+      const prevRows = matchExpenseMappings([{ code: 'labor', name: '人力成本', subjectCodes: ['A'] }], [
+        fee('A', '科目A', 80, 1100, 70, 850, 750),
+      ])
+      const [row] = attachExpenseMom(rows, prevRows)
+      expect(row.monthPrev).toBe(80)
+      expect(row.monthMom).toBe(0.25) // (100-80)/80
+    })
+    it('上期映射行缺失（上月无数据/被 hasData 过滤）时 monthPrev 兜底 0、monthMom 兜底 0', () => {
+      const rows = matchExpenseMappings([{ code: 'labor', name: '人力成本', subjectCodes: ['A'] }], [
+        fee('A', '科目A', 100, 1200, 80, 900, 800),
+      ])
+      const [row] = attachExpenseMom(rows, [])
+      expect(row.monthPrev).toBe(0)
+      expect(row.monthMom).toBe(0)
+    })
+    it('上期金额为 0 基数时环比兜底 0（不除零）', () => {
+      const rows = matchExpenseMappings([{ code: 'labor', name: '人力成本', subjectCodes: ['A'] }], [
+        fee('A', '科目A', 100, 1200, 80, 900, 800),
+      ])
+      const prevRows = matchExpenseMappings([{ code: 'labor', name: '人力成本', subjectCodes: ['A'] }], [
+        fee('A', '科目A', 0, 1200, 0, 900, 800),
+      ])
+      const [row] = attachExpenseMom(rows, prevRows)
+      expect(row.monthPrev).toBe(0)
+      expect(row.monthMom).toBe(0)
+    })
+  })
+
+  describe('keyMetricsGroup 关键指标口径组（壹品慧关键指标表 15 列）', () => {
     const base = {
       annualBudget: 1200,
       monthBudget: 100,
+      ytdBudget: 300,
       actual: 110,
       prevActual: 100,
       same: 100,
@@ -565,18 +640,20 @@ describe('DashboardService 纯函数', () => {
       expect(g.monthSame).toBe(100)
       expect(g.monthBudget).toBe(100)
     })
-    it('年度：累计同比变动=累计-同期累计、完成率=累计/年度预算', () => {
+    it('年度：累计同比变动=累计-同期累计、完成率=累计/年度预算、累计预算透传 ytdBudget', () => {
       const g = keyMetricsGroup(base)
       expect(g.ytdChange).toBe(100) // 500 - 400
       expect(g.ytdYoy).toBe(0.25) // 100/400
       expect(g.annualRate).toBe(41.67) // 500/1200 × 100
       expect(g.annualBudget).toBe(1200)
+      expect(g.ytdBudget).toBe(300)
     })
-    it('无预算（现金流板块）：monthBudget/monthRate/annualBudget/annualRate 为 null，金额列不受影响', () => {
-      const g = keyMetricsGroup({ ...base, annualBudget: null, monthBudget: null })
+    it('无预算（现金流板块）：monthBudget/ytdBudget/monthRate/annualBudget/annualRate 为 null，金额列不受影响', () => {
+      const g = keyMetricsGroup({ ...base, annualBudget: null, monthBudget: null, ytdBudget: null })
       expect(g.monthBudget).toBeNull()
       expect(g.monthRate).toBeNull()
       expect(g.annualBudget).toBeNull()
+      expect(g.ytdBudget).toBeNull()
       expect(g.annualRate).toBeNull()
       expect(g.monthActual).toBe(110)
       expect(g.ytdYoy).toBe(0.25)
@@ -587,9 +664,14 @@ describe('DashboardService 纯函数', () => {
       expect(g.monthMom).toBe(0)
       expect(g.ytdYoy).toBe(0)
     })
-    it('年度预算 0：完成率为 null（前端显示「—」）', () => {
+    it('年度预算 0：完成率与累计预算为 null（前端显示「—」）', () => {
       const g = keyMetricsGroup({ ...base, annualBudget: 0 })
       expect(g.annualRate).toBeNull()
+      expect(g.ytdBudget).toBeNull()
+    })
+    it('ytdBudget 未传：有预算时回退 0（调用方占比前缀和缺失场景），无预算仍为 null', () => {
+      expect(keyMetricsGroup({ ...base, ytdBudget: undefined }).ytdBudget).toBe(0)
+      expect(keyMetricsGroup({ ...base, annualBudget: null, monthBudget: null, ytdBudget: undefined }).ytdBudget).toBeNull()
     })
   })
 })

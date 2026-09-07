@@ -11,9 +11,11 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { KpiSparkline } from './kpi-sparkline'
+import { SummaryBreakdownPopover } from '@/components/summary/summary-breakdown'
 import { ACHIEVEMENT_RATE_THRESHOLDS } from '@/lib/constants'
 import { formatMoneyWan, formatPercent } from '@/lib/utils'
 import { cn } from '@/lib/utils'
+import type { MemberBreakdown } from '@/hooks/use-summary-member-values'
 import type { KpiData } from '@/types'
 
 interface KpiCardProps {
@@ -22,6 +24,26 @@ interface KpiCardProps {
   index?: number
   /** 钻取回调：有值时卡片整体可点击（跳转指标分析等） */
   onClick?: () => void
+  /**
+   * 汇总主体成员明细（仅看板汇总口径传入，可选）：按 KPI 标题定位成员树根类目取各成员值，
+   * hover 大数字区展示成员公司明细；缺省时渲染路径不变（单体/全部口径零行为变化）。
+   */
+  breakdown?: {
+    getMemberValues: (kpiTitle: string) => MemberBreakdown | undefined
+  } | null
+}
+
+/**
+ * KPI 标题 → 成员树类目定位（复刻后端 DashboardService.metricNodes 匹配口径：
+ * 收入/毛利/回款按 level0 类目；净利润=「经营成果」类目 + 子树内名称关键字 DFS，
+ * 命中一级子科目「壹品慧净利润」（"净利润"不是 level0 段名）。
+ * 顺序敏感：净利润含"利润"须在"毛利"前判定（"毛利"不含"净"无冲突，兜底归收入）。
+ */
+export function kpiRootMatcher(title: string): { category: string; name?: string } {
+  if (/毛利/.test(title)) return { category: '壹品慧毛利' }
+  if (/净利|利润/.test(title)) return { category: '经营成果', name: '净利润' }
+  if (/回款|收款/.test(title)) return { category: '壹品慧回款' }
+  return { category: '壹品慧收入' }
 }
 
 /** 达成率展示：null（无预算）显示 "–" */
@@ -55,12 +77,14 @@ function iconForTitle(title: string): LucideIcon {
  * 布局：图标色块 + 标题（hover 淡入钻取箭头）→ 大数字区（本月合计 + 月度达成率分级色）
  * → 财年内月度趋势迷你图（KpiSparkline）→ 分隔线 → 小字区（累计/同比/累计达成率）。
  */
-export function KpiCard({ data, index = 0, onClick }: KpiCardProps) {
+export function KpiCard({ data, index = 0, onClick, breakdown }: KpiCardProps) {
   // 红涨绿跌（A 股/国内财报习惯）：正数红 finance.red / 负数绿 finance.green / 持平灰；方向由箭头图标表达，数值不再重复加 "+" 前缀
   const isPositive = data.yoy > 0
   const isFlat = data.yoy === 0
   const Icon = iconForTitle(data.title)
   const hasTrend = data.trend.length > 1
+  // 汇总主体成员明细：hover 大数字区展示各成员公司 本月实际/本年累计（数据由看板页预取注入）
+  const memberBreakdown = breakdown?.getMemberValues(data.title)
 
   return (
     <AntdCard
@@ -89,22 +113,50 @@ export function KpiCard({ data, index = 0, onClick }: KpiCardProps) {
           )}
         </div>
 
-        {/* 大数字区：本月合计 + 月度达成率（分级色） */}
+        {/* 大数字区：本月合计 + 月度达成率（分级色）；汇总口径时大数字悬浮展示成员公司明细 */}
         <div className="mb-3 flex items-end justify-between gap-2">
-          <div className="min-w-0">
-            <Statistic
-              value={formatMoneyWan(data.monthActual)}
-              valueStyle={{
-                fontSize: 24,
-                fontWeight: 700,
-                lineHeight: 1.2,
-                letterSpacing: '-0.01em',
-                color: 'var(--foreground)',
-                fontVariantNumeric: 'tabular-nums',
-              }}
-            />
-            <span className="text-micro text-muted-foreground/70">本月合计（万元）</span>
-          </div>
+          {memberBreakdown ? (
+            <SummaryBreakdownPopover
+              title={data.title}
+              columns={[
+                { label: '本月实际', pick: (v) => v.actual, summaryValue: data.monthActual },
+                { label: '本年累计', pick: (v) => v.ytd, summaryValue: data.ytdActual },
+              ]}
+              rows={memberBreakdown.rows}
+              loading={memberBreakdown.loading}
+              failedCount={memberBreakdown.failedCount}
+            >
+              <div className="min-w-0">
+                <Statistic
+                  value={formatMoneyWan(data.monthActual)}
+                  valueStyle={{
+                    fontSize: 24,
+                    fontWeight: 700,
+                    lineHeight: 1.2,
+                    letterSpacing: '-0.01em',
+                    color: 'var(--foreground)',
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                />
+                <span className="text-micro text-muted-foreground/70">本月合计（万元）</span>
+              </div>
+            </SummaryBreakdownPopover>
+          ) : (
+            <div className="min-w-0">
+              <Statistic
+                value={formatMoneyWan(data.monthActual)}
+                valueStyle={{
+                  fontSize: 24,
+                  fontWeight: 700,
+                  lineHeight: 1.2,
+                  letterSpacing: '-0.01em',
+                  color: 'var(--foreground)',
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              />
+              <span className="text-micro text-muted-foreground/70">本月合计（万元）</span>
+            </div>
+          )}
           <div className="shrink-0 text-right">
             <span
               className={cn('font-num block text-lg font-bold leading-tight tracking-tight', rateColorClass(data.monthRate))}

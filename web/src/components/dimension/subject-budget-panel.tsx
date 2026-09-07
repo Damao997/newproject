@@ -70,6 +70,7 @@ export function SubjectBudgetPanel({ canCreate = false, canUpdate = false, canDe
     entityLabel: '主体配置',
     getName: (row) => row.companyName,
     removeOne: (row) => mutations.remove.mutateAsync(row.id),
+    confirm,
   })
 
   // 可新增候选：公司表 active 主体中尚未配置的

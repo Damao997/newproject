@@ -61,6 +61,7 @@ export function ProductConfigPanel({ canCreate = false, canUpdate = false, canDe
     entityLabel: '产品配置',
     getName: (row) => row.name,
     removeOne: (row) => mutations.remove.mutateAsync(row.id),
+    confirm,
   })
 
   const refresh = () => {
@@ -100,7 +101,8 @@ export function ProductConfigPanel({ canCreate = false, canUpdate = false, canDe
     setError(null)
     try {
       const payload = {
-        name: form.name.trim(),
+        // 名称保留前导空格（品类核心指标分析子项缩进约定），仅去尾部空白
+        name: form.name.trimEnd(),
         subjectKeyword: form.subjectKeyword.trim(),
         sortOrder: form.sortOrder ? Number(form.sortOrder) : 0,
         status: form.status,
@@ -150,7 +152,7 @@ export function ProductConfigPanel({ canCreate = false, canUpdate = false, canDe
       try {
         await mutations.create.mutateAsync({
           code: row.code.trim(),
-          name: row.name.trim(),
+          name: row.name.trimEnd(),
           subjectKeyword: row.subjectKeyword.trim(),
           sortOrder: row.sortOrder ? Number(row.sortOrder) : 0,
           status: row.status,
@@ -373,7 +375,7 @@ export function ProductConfigPanel({ canCreate = false, canUpdate = false, canDe
               <Input
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="如 厨房产品销售（不含净水及服务）"
+                placeholder="如 厨房产品销售（不含净水及服务）；子项可在名称前加空格实现缩进"
               />
             </div>
             <div className="space-y-1">
@@ -381,7 +383,7 @@ export function ProductConfigPanel({ canCreate = false, canUpdate = false, canDe
               <Input
                 value={form.subjectKeyword}
                 onChange={(e) => setForm((f) => ({ ...f, subjectKeyword: e.target.value }))}
-                placeholder="如 厨房产品销售"
+                placeholder="如 厨房产品销售；合计行可逗号分隔多个，如 宣传推广,维修改造,安检"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -427,7 +429,7 @@ export function ProductConfigPanel({ canCreate = false, canUpdate = false, canDe
         open={batchOpen}
         onOpenChange={setBatchOpen}
         title="批量新增产品配置"
-        description="逐行填写后一次性创建；编码不可与已有产品重复，匹配关键词对应经营科目树收入类别下的科目名。"
+        description="逐行填写后一次性创建；编码不可与已有产品重复，匹配关键词对应经营科目树收入类别下的科目名（合计行可逗号分隔多个关键词，取命中科目并集求和）。"
         createEmptyRow={() => ({ ...EMPTY_FORM })}
         validateRow={validateBatchRow}
         submitRows={submitBatchRows}
@@ -442,13 +444,13 @@ export function ProductConfigPanel({ canCreate = false, canUpdate = false, canDe
             <Input
               value={row.name}
               onChange={(e) => patch({ name: e.target.value })}
-              placeholder="产品名称 *"
+              placeholder="产品名称 *（前加空格=子项缩进）"
               aria-invalid={invalid && !row.name.trim()}
             />
             <Input
               value={row.subjectKeyword}
               onChange={(e) => patch({ subjectKeyword: e.target.value })}
-              placeholder="匹配关键词 *"
+              placeholder="匹配关键词 *（逗号分隔多个）"
               aria-invalid={invalid && !row.subjectKeyword.trim()}
             />
             <Input

@@ -75,6 +75,42 @@ const resultOf = (log: ReclassifyLog): PreviewStatItem[] => {
   ]
 }
 
+/** 从日志还原跨公司重分类原始参数（重新应用与只读详情共用） */
+const companyPresetOf = (log: ReclassifyLog): ReclassifyCompanyPreset => {
+  const d = log.detail
+  return {
+    templateType: (log.templateType as ReclassifyCompanyPreset['templateType']) ?? 'operating',
+    sourceCompanyCode: log.sourceCompany ?? '',
+    targetCompanyCode: log.targetCompany ?? '',
+    transferMode: d?.transferMode ?? 'all',
+    ratio: d?.ratio ?? undefined,
+    amount: d?.amount ?? undefined,
+    period: log.period ?? log.periodFrom ?? '',
+    accountCodes: d?.accountCodes ?? [],
+  }
+}
+
+/** 从日志还原科目/预算调整原始参数（重新应用与只读详情共用；subject 对话框另行补充 templateType） */
+const adjustPresetOf = (log: ReclassifyLog) => {
+  const d = log.detail
+  return {
+    companyCode: log.sourceCompany ?? '',
+    adjustMode: d?.adjustMode ?? 'both',
+    sourceAccountCode: log.sourceSubject,
+    targetAccountCode: log.targetSubject,
+    decreaseAmount: d?.decreaseAmount,
+    increaseAmount: d?.increaseAmount,
+    period: log.period ?? log.periodFrom ?? '',
+    reason: d?.reason,
+  }
+}
+
+/** subject 对话框 preset：调整参数 + 模板类型 */
+const subjectPresetOf = (log: ReclassifyLog): ReclassifySubjectPreset => ({
+  templateType: (log.templateType as ReclassifySubjectPreset['templateType']) ?? 'operating',
+  ...adjustPresetOf(log),
+})
+
 export default function DataReclassifyPage() {
   const { headerRef, headerHeight } = useStickyHeader()
   const { can } = usePermission()
@@ -92,58 +128,16 @@ export default function DataReclassifyPage() {
   /** 失效/已撤销记录「重新应用」：按日志类型预填原参数打开对话框，提交时更新原日志记录（不新建记录）
    *（company+budget 旧月度口径无编辑入口，面板不会回调） */
   const handleReapply = (log: ReclassifyLog) => {
-    const d = log.detail
-    const period = log.period ?? log.periodFrom ?? ''
     if (log.type === 'company') {
-      openDialog({
-        kind: 'company',
-        reapplyLogId: log.id,
-        preset: {
-          templateType: (log.templateType as 'operating' | 'static' | 'cashflow') ?? 'operating',
-          sourceCompanyCode: log.sourceCompany ?? '',
-          targetCompanyCode: log.targetCompany ?? '',
-          transferMode: d?.transferMode ?? 'all',
-          ratio: d?.ratio ?? undefined,
-          amount: d?.amount ?? undefined,
-          period,
-          accountCodes: d?.accountCodes ?? [],
-        },
-      })
+      openDialog({ kind: 'company', reapplyLogId: log.id, preset: companyPresetOf(log) })
       return
     }
     if (log.type === 'subject_adjust' && log.templateType === 'budget') {
-      openDialog({
-        kind: 'budget',
-        reapplyLogId: log.id,
-        preset: {
-          companyCode: log.sourceCompany ?? '',
-          adjustMode: d?.adjustMode ?? 'both',
-          sourceAccountCode: log.sourceSubject,
-          targetAccountCode: log.targetSubject,
-          decreaseAmount: d?.decreaseAmount,
-          increaseAmount: d?.increaseAmount,
-          period,
-          reason: d?.reason,
-        },
-      })
+      openDialog({ kind: 'budget', reapplyLogId: log.id, preset: adjustPresetOf(log) })
       return
     }
     if (log.type === 'subject_adjust') {
-      openDialog({
-        kind: 'subject',
-        reapplyLogId: log.id,
-        preset: {
-          templateType: (log.templateType as 'operating' | 'static' | 'cashflow' | 'budget') ?? 'operating',
-          companyCode: log.sourceCompany ?? '',
-          adjustMode: d?.adjustMode ?? 'both',
-          sourceAccountCode: log.sourceSubject,
-          targetAccountCode: log.targetSubject,
-          decreaseAmount: d?.decreaseAmount,
-          increaseAmount: d?.increaseAmount,
-          period,
-          reason: d?.reason,
-        },
-      })
+      openDialog({ kind: 'subject', reapplyLogId: log.id, preset: subjectPresetOf(log) })
     }
   }
 
@@ -154,14 +148,14 @@ export default function DataReclassifyPage() {
       || log.type === 'subject_adjust'
     if (!supported) return
     if (log.type === 'subject_adjust' && log.templateType === 'budget') {
-      openDialog({ kind: 'budget', readonly: true, meta: metaOf(log), result: resultOf(log) })
+      openDialog({ kind: 'budget', readonly: true, preset: adjustPresetOf(log), meta: metaOf(log), result: resultOf(log) })
       return
     }
     if (log.type === 'company') {
-      openDialog({ kind: 'company', readonly: true, meta: metaOf(log), result: resultOf(log) })
+      openDialog({ kind: 'company', readonly: true, preset: companyPresetOf(log), meta: metaOf(log), result: resultOf(log) })
       return
     }
-    openDialog({ kind: 'subject', readonly: true, meta: metaOf(log), result: resultOf(log) })
+    openDialog({ kind: 'subject', readonly: true, preset: subjectPresetOf(log), meta: metaOf(log), result: resultOf(log) })
   }
 
   return (

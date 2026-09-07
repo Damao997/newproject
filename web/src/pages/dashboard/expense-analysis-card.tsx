@@ -1,9 +1,12 @@
+import type { ReactNode } from 'react'
 import { useExpenseAnalysis } from '@/hooks/api-queries'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { TipLabel } from '@/components/ui/tip-label'
-import { totalMetrics } from './budget-total'
+import { totalExpenseMetrics } from './budget-total'
 import { RateBar } from '@/components/ui/rate-bar'
-import { formatMoneyWan, formatPercent, cn } from '@/lib/utils'
+import { ExpenseAlertLight } from '@/components/ui/alert-light'
+import { DeltaTag } from '@/components/ui/delta-tag'
+import { formatMoneyWan, cn } from '@/lib/utils'
 import type { ExpenseAnalysisRow } from '@/types'
 
 interface ExpenseAnalysisCardProps {
@@ -11,31 +14,8 @@ interface ExpenseAnalysisCardProps {
   period?: string
   /** 主体口径（跟随看板顶部筛选，单体/汇总主体编码） */
   companyCode?: string
-}
-
-/** 预警红绿灯圆点：使用率 <75 绿 / 75-100 黄 / >100 红；无预算（null）灰灯 */
-function RateLight({ rate }: { rate: number | null }) {
-  const cls = rate === null ? 'bg-muted-foreground/40'
-    : rate < 75 ? 'bg-success-strong'
-    : rate <= 100 ? 'bg-warning'
-    : 'bg-destructive'
-  return <span className={cn('inline-block h-2.5 w-2.5 rounded-full', cls)} title={rate === null ? '无预算' : `使用率 ${formatPercent(rate / 100)}`} />
-}
-
-/** 同比单元格：红涨绿跌（A 股/国内财报习惯），持平灰；正值不带 "+"，负值保留 "-" */
-function YoYBadge({ value }: { value: number }) {
-  const isFlat = value === 0
-  const isPositive = value > 0
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center text-sm font-medium',
-        isFlat ? 'text-muted-foreground' : isPositive ? 'text-finance-red' : 'text-finance-green',
-      )}
-    >
-      <span className="font-num">{value === 0 ? '-' : `${value < 0 ? '-' : ''}${(Math.abs(value) * 100).toFixed(1)}%`}</span>
-    </span>
-  )
+  /** 隐藏的数据列 key（「列设置」选择器持久化值；默认空 = 全部显示，指标名称列固定不可隐藏） */
+  hiddenColumns?: string[]
 }
 
 // 表头对齐《统一表格设计标准》：13px/500 黑字居中（数值列表头同样居中）；TD 保持右对齐 font-num
@@ -45,43 +25,88 @@ const TD_CLS = 'px-3 py-2 text-right font-num text-sm text-foreground'
 /** 单行指标组（ExpenseAnalysisRow 去掉 code/name 即指标组字段） */
 type MetricOf = Omit<ExpenseAnalysisRow, 'code' | 'name'>
 
+/** 列分组（双层表头第一层，供「列设置」选择器分组展示） */
+export const EXPENSE_COLUMN_GROUPS = [
+  { key: 'month', label: '月度完成情况' },
+  { key: 'ytd', label: '财年累计完成情况' },
+] as const
+
+export type ExpenseColumnGroup = (typeof EXPENSE_COLUMN_GROUPS)[number]['key']
+
+export type ExpenseColumnKey =
+  | 'month-budget' | 'month-actual' | 'month-rate' | 'month-alert' | 'month-same' | 'month-yoy' | 'month-mom'
+  | 'ytd-budget' | 'ytd-actual' | 'ytd-rate' | 'ytd-alert' | 'ytd-same' | 'ytd-yoy'
+
+export interface ExpenseColumnMeta {
+  key: ExpenseColumnKey
+  header: string
+  group: ExpenseColumnGroup
+  /** 表头悬浮提示（无则纯文本表头） */
+  tip?: string
+  /** 单元格内容居中（预警红绿灯列） */
+  center?: boolean
+}
+
+/** 运营费用明细表列元数据（key/标题/分组/提示）：表格渲染与「列设置」选择器共用 */
+export const EXPENSE_COLUMN_META: readonly ExpenseColumnMeta[] = [
+  { key: 'month-budget', header: '月度预算', group: 'month' },
+  { key: 'month-actual', header: '本月金额', group: 'month' },
+  { key: 'month-rate', header: '使用率', group: 'month', tip: '本月金额÷当月预算（月度）' },
+  { key: 'month-alert', header: '预警', group: 'month', tip: '按使用率红黄绿三档：<75 绿 / 75-100 黄 / >100 红', center: true },
+  { key: 'month-same', header: '同期金额', group: 'month' },
+  { key: 'month-yoy', header: '同比', group: 'month', tip: '（本期-去年同期）÷去年同期' },
+  { key: 'month-mom', header: '环比', group: 'month', tip: '（本月-上月）÷上月' },
+  { key: 'ytd-budget', header: '年度预算', group: 'ytd' },
+  { key: 'ytd-actual', header: '累计金额', group: 'ytd' },
+  { key: 'ytd-rate', header: '使用率', group: 'ytd', tip: '累计金额÷年度预算（累计）' },
+  { key: 'ytd-alert', header: '预警', group: 'ytd', tip: '按使用率红黄绿三档：<75 绿 / 75-100 黄 / >100 红', center: true },
+  { key: 'ytd-same', header: '同期累计金额', group: 'ytd' },
+  { key: 'ytd-yoy', header: '财年同比', group: 'ytd', tip: '（累计金额-同期累计）÷同期累计' },
+]
+
+/** 各数据列单元格渲染（与 EXPENSE_COLUMN_META 的 key 一一对应，Record 完备性由类型保证） */
+const CELL_RENDERERS: Record<ExpenseColumnKey, (m: MetricOf) => ReactNode> = {
+  'month-budget': (m) => formatMoneyWan(m.monthBudget ?? m.budget / 12),
+  'month-actual': (m) => formatMoneyWan(m.monthActual),
+  'month-rate': (m) => <RateBar rate={m.monthRate} />,
+  'month-alert': (m) => <ExpenseAlertLight rate={m.monthRate} />,
+  'month-same': (m) => formatMoneyWan(m.monthSame),
+  'month-yoy': (m) => <DeltaTag value={m.monthYoy} />,
+  'month-mom': (m) => <DeltaTag value={m.monthMom} />,
+  'ytd-budget': (m) => formatMoneyWan(m.budget),
+  'ytd-actual': (m) => formatMoneyWan(m.ytdActual),
+  'ytd-rate': (m) => <RateBar rate={m.ytdRate} />,
+  'ytd-alert': (m) => <ExpenseAlertLight rate={m.ytdCumRate} />,
+  'ytd-same': (m) => formatMoneyWan(m.ytdSame),
+  'ytd-yoy': (m) => <DeltaTag value={m.ytdYoy} />,
+}
+
 /**
- * 运营费用分析内容（综合分析卡「运营费用」页，单期间）：按映射配置（映射管理 > 运营费用映射）聚合的运营费用科目，
- * 同时展示月度完成情况（月度预算/本月金额/使用率/预警/同期金额/同比）与
+ * 运营费用分析内容（运营费用分析页，单期间）：按映射配置（映射管理 > 运营费用映射）聚合的运营费用科目，
+ * 同时展示月度完成情况（月度预算/本月金额/使用率/预警/同期金额/同比/环比）与
  * 财年累计完成情况（年度预算/累计金额/使用率/预警/同期累计金额/财年同比）。
  * 使用率以橙色进度条展示；预警按费用类红绿灯：使用率 <75 绿 / 75-100 黄 / >100 红，
- * 月度用月度使用率、累计用累计预算口径使用率（ytdCumRate）判断。主体口径跟随看板顶部筛选；
- * 外层 Card 由 AnalysisTabsCard 统一提供。
+ * 月度用月度使用率、累计用累计预算口径使用率（ytdCumRate）判断；同比/环比以红涨绿跌胶囊展示
+ * （环比 =（本月-上月）÷|上月|，上月金额与环比率由后端按上期经营树取数）。主体口径跟随看板顶部筛选；
+ * 外层 Card 由所在页面提供；数据列可通过 hiddenColumns 隐藏（「列设置」选择器，指标名称列固定显示）。
  */
-export function ExpenseAnalysisCard({ period, companyCode }: ExpenseAnalysisCardProps) {
+export function ExpenseAnalysisCard({ period, companyCode, hiddenColumns = [] }: ExpenseAnalysisCardProps) {
   const { data, isLoading } = useExpenseAnalysis({ period, companyCode })
   const rows = data?.rows ?? []
   const isEmpty = !isLoading && rows.length === 0
 
-  /** 月度完成情况 6 列（月度预算=占比拆分后的当月预算/本月金额/使用率/预警/同期金额/同比） */
-  const renderMonthCells = (m: MetricOf) => (
-    <>
-      <td className={TD_CLS}>{formatMoneyWan(m.monthBudget ?? m.budget / 12)}</td>
-      <td className={TD_CLS}>{formatMoneyWan(m.monthActual)}</td>
-      <td className={TD_CLS}><RateBar rate={m.monthRate} /></td>
-      <td className={cn(TD_CLS, 'text-center')}><RateLight rate={m.monthRate} /></td>
-      <td className={TD_CLS}>{formatMoneyWan(m.monthSame)}</td>
-      <td className={TD_CLS}><YoYBadge value={m.monthYoy} /></td>
-    </>
-  )
+  // 可见数据列（指标名称列固定显示不参与过滤）；累计组第一个可见列带左分隔线（该列被隐藏时随第一个可见列迁移）
+  const visibleCols = EXPENSE_COLUMN_META.filter((c) => !hiddenColumns.includes(c.key))
+  const monthColSpan = visibleCols.filter((c) => c.group === 'month').length
+  const ytdColSpan = visibleCols.filter((c) => c.group === 'ytd').length
+  const firstYtdIdx = visibleCols.findIndex((c) => c.group === 'ytd')
 
-  /** 财年累计完成情况 6 列（年度预算/累计金额/使用率/预警/同期累计金额/财年同比）；
-   * 预警按累计预算口径使用率（ytdCumRate）判断（费用类反向规则） */
-  const renderYtdCells = (m: MetricOf) => (
-    <>
-      <td className={cn(TD_CLS, 'border-l border-border/60')}>{formatMoneyWan(m.budget)}</td>
-      <td className={TD_CLS}>{formatMoneyWan(m.ytdActual)}</td>
-      <td className={TD_CLS}><RateBar rate={m.ytdRate} /></td>
-      <td className={cn(TD_CLS, 'text-center')}><RateLight rate={m.ytdCumRate} /></td>
-      <td className={TD_CLS}>{formatMoneyWan(m.ytdSame)}</td>
-      <td className={TD_CLS}><YoYBadge value={m.ytdYoy} /></td>
-    </>
-  )
+  const renderCells = (m: MetricOf) =>
+    visibleCols.map((col, i) => (
+      <td key={col.key} className={cn(TD_CLS, col.center && 'text-center', i === firstYtdIdx && 'border-l border-border/60')}>
+        {CELL_RENDERERS[col.key](m)}
+      </td>
+    ))
 
   return (
     <TooltipProvider>
@@ -96,22 +121,15 @@ export function ExpenseAnalysisCard({ period, companyCode }: ExpenseAnalysisCard
               <thead>
                 <tr className="border-b border-border">
                   <th rowSpan={2} className="text-left w-[10em]">指标名称</th>
-                  <th colSpan={6} className="text-center font-semibold">月度完成情况</th>
-                  <th colSpan={6} className="text-center font-semibold">财年累计完成情况</th>
+                  <th colSpan={monthColSpan} className="text-center font-semibold">月度完成情况</th>
+                  <th colSpan={ytdColSpan} className="text-center font-semibold">财年累计完成情况</th>
                 </tr>
                 <tr>
-                  <th className={TH_CLS}>月度预算</th>
-                  <th className={TH_CLS}>本月金额</th>
-                  <th className={TH_CLS}><TipLabel label="使用率" tip="本月金额÷当月预算（月度）" /></th>
-                  <th className={TH_CLS}><TipLabel label="预警" tip="按使用率红黄绿三档：<75 绿 / 75-100 黄 / >100 红" /></th>
-                  <th className={TH_CLS}>同期金额</th>
-                  <th className={TH_CLS}><TipLabel label="同比" tip="（本期-去年同期）÷去年同期" /></th>
-                  <th className={cn(TH_CLS, 'border-l border-border')}>年度预算</th>
-                  <th className={TH_CLS}>累计金额</th>
-                  <th className={TH_CLS}><TipLabel label="使用率" tip="累计金额÷年度预算（累计）" /></th>
-                  <th className={TH_CLS}><TipLabel label="预警" tip="按使用率红黄绿三档：<75 绿 / 75-100 黄 / >100 红" /></th>
-                  <th className={TH_CLS}>同期累计金额</th>
-                  <th className={TH_CLS}><TipLabel label="财年同比" tip="（累计金额-同期累计）÷同期累计" /></th>
+                  {visibleCols.map((col, i) => (
+                    <th key={col.key} className={cn(TH_CLS, i === firstYtdIdx && 'border-l border-border')}>
+                      {col.tip ? <TipLabel label={col.header} tip={col.tip} /> : col.header}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -132,8 +150,7 @@ export function ExpenseAnalysisCard({ period, companyCode }: ExpenseAnalysisCard
                           <span className="block w-[10em] truncate">{name}</span>
                         )}
                       </td>
-                      {renderMonthCells(metric)}
-                      {renderYtdCells(metric)}
+                      {renderCells(metric)}
                     </tr>
                   )
                 })}
@@ -141,12 +158,11 @@ export function ExpenseAnalysisCard({ period, companyCode }: ExpenseAnalysisCard
               {rows.length > 0 && (
                 <tfoot>
                   {(() => {
-                    const total = totalMetrics(rows)
+                    const total = totalExpenseMetrics(rows)
                     return (
                       <tr className="border-t-2 border-border bg-muted/40 font-semibold">
                         <td className="px-3 py-2 text-left text-sm font-semibold text-foreground">合计</td>
-                        {renderMonthCells(total)}
-                        {renderYtdCells(total)}
+                        {renderCells(total)}
                       </tr>
                     )
                   })()}

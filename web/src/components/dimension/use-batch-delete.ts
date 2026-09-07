@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useConfirm } from '@/components/ui/confirm-dialog'
+import type { ConfirmOptions } from '@/components/ui/confirm-dialog'
 import type { BatchOpMessageData } from './batch-rows-dialog'
 
 interface BatchDeleteOptions<T> {
@@ -9,6 +9,11 @@ interface BatchDeleteOptions<T> {
   getName: (row: T) => string
   /** 单条删除（复用面板现有 remove mutation） */
   removeOne: (row: T) => Promise<unknown>
+  /**
+   * 确认框函数：必须传入调用方自身 useConfirm() 的 confirm
+   * （其 element 已在面板 JSX 渲染；hook 内部自建实例的对话框无法渲染，await 将永久挂起）
+   */
+  confirm: (options: ConfirmOptions) => Promise<boolean>
 }
 
 /**
@@ -16,8 +21,7 @@ interface BatchDeleteOptions<T> {
  * 失败项不中断整体流程，完成后汇总成功/失败明细并清空选择。
  * 无后端批量端点，纯前端循环实现（与 BatchRowsDialog 同一口径）。
  */
-export function useBatchDelete<T>({ entityLabel, getName, removeOne }: BatchDeleteOptions<T>) {
-  const { confirm } = useConfirm()
+export function useBatchDelete<T>({ entityLabel, getName, removeOne, confirm }: BatchDeleteOptions<T>) {
   const [selectedKeys, setSelectedKeys] = useState<Set<string | number>>(new Set())
   const [running, setRunning] = useState(false)
   const [message, setMessage] = useState<BatchOpMessageData | null>(null)

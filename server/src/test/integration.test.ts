@@ -108,21 +108,24 @@ describe('服务层集成（真实 DB）', () => {
     expect(first).toHaveProperty('collectionActual')
   })
 
-  it('壹品慧关键指标表：损益+现金流板块行齐全，13 列口径字段完整', async () => {
+  it('壹品慧关键指标表：损益+现金流+经营指标板块行齐全，15 列口径字段完整', async () => {
     if (!dbReady) return
     const km = await DashboardService.getKeyMetrics(ADMIN_SCOPE)
     expect(km.rows.map((r) => r.key)).toEqual([
       'income', 'profit', 'expense', 'finance', 'netProfit',
       'fcf', 'operating', 'investing', 'financing',
+      'laborEff', 'expenseEff',
     ])
-    // 14 列口径字段：金额/百分比为数值；预算类允许 null（无预算）
-    const keys14 = ['monthBudget', 'monthActual', 'monthSame', 'monthChange', 'monthYoy', 'monthMomChange', 'monthMom', 'monthRate', 'annualBudget', 'ytdActual', 'ytdSame', 'ytdChange', 'ytdYoy', 'annualRate'] as const
+    // 15 列口径字段：金额/百分比为数值；预算类允许 null（无预算）
+    const keys15 = ['monthBudget', 'monthActual', 'monthSame', 'monthChange', 'monthYoy', 'monthMomChange', 'monthMom', 'monthRate', 'annualBudget', 'ytdBudget', 'ytdActual', 'ytdSame', 'ytdChange', 'ytdYoy', 'annualRate'] as const
     for (const row of km.rows) {
-      for (const k of keys14) {
+      for (const k of keys15) {
         expect(typeof row.values[k], `${row.key}.${k}`).toBe(typeof row.values[k] === 'number' ? 'number' : typeof null)
       }
       expect(row.label.length).toBeGreaterThan(0)
       expect(row.category.length).toBeGreaterThan(0)
+      // 行值类型（金额/数量/比率）：劳效比/费效比为 ratio，其余默认 amount
+      expect(row.valueType, `${row.key}.valueType`).toBe(row.key === 'laborEff' || row.key === 'expenseEff' ? 'ratio' : 'amount')
     }
     // 产品明细（收入/毛利行）：有数据时名称 + 收入/毛利两组口径
     for (const key of ['income', 'profit']) {
@@ -153,6 +156,44 @@ describe('服务层集成（真实 DB）', () => {
     expect(cfSubject?.name).toBe('自由现金流')
     const cfMetric = await prisma.metric.findUnique({ where: { code: 'CF04' } })
     expect(cfMetric?.formula).toBe('{CF01} - {CF0202}')
+    // 比率行（劳效比/费效比）不可加：预算不做月度占比拆分，月度/累计预算直接取年度目标值（无预算同步为 null）
+    for (const key of ['laborEff', 'expenseEff']) {
+      const row = km.rows.find((r) => r.key === key)
+      expect(row).toBeTruthy()
+      const v = row!.values
+      if (v.annualBudget === null || v.annualBudget === 0) {
+        expect(v.monthBudget).toBeNull()
+        expect(v.ytdBudget).toBeNull()
+      } else {
+        expect(v.monthBudget).toBeCloseTo(v.annualBudget!, 2)
+        expect(v.ytdBudget).toBeCloseTo(v.annualBudget!, 2)
+      }
+    }
+  })
+
+  it('品类核心指标分析：产品配置全行（含无数据行）+ 合计=整体收入/毛利节点', async () => {
+    if (!dbReady) return
+    const pm = await DashboardService.getProductMetrics(ADMIN_SCOPE)
+    expect(pm.dimension).toBe('product')
+    // 行 = active 产品配置全量（keepEmpty 保留无数据行），顺序 = sortOrder
+    const configs = await prisma.keyMetricsProduct.findMany({ where: { status: 'active' }, orderBy: { sortOrder: 'asc' } })
+    expect(pm.rows.map((r) => r.name)).toEqual(configs.map((c) => c.name))
+    expect(pm.rows.map((r) => r.code)).toEqual(configs.map((c) => c.code))
+    // 每行收入/毛利两组口径字段齐全
+    for (const row of pm.rows) {
+      expect(typeof row.income.ytdActual, `${row.name}.income.ytdActual`).toBe('number')
+      expect(typeof row.profit.ytdActual, `${row.name}.profit.ytdActual`).toBe('number')
+      expect(typeof row.income.ytdSame, `${row.name}.income.ytdSame`).toBe('number')
+    }
+    // 合计 = 整体「壹品慧收入」「壹品慧毛利」节点（与关键指标表行口径一致，非产品行求和）
+    const km = await DashboardService.getKeyMetrics(ADMIN_SCOPE, { period: pm.period })
+    const incomeRow = km.rows.find((r) => r.key === 'income')
+    const profitRow = km.rows.find((r) => r.key === 'profit')
+    expect(incomeRow).toBeTruthy()
+    expect(profitRow).toBeTruthy()
+    expect(pm.totals.income.ytdActual).toBeCloseTo(incomeRow!.values.ytdActual, 2)
+    expect(pm.totals.profit.ytdActual).toBeCloseTo(profitRow!.values.ytdActual, 2)
+    expect(pm.totals.income.annualBudget).toBe(incomeRow!.values.annualBudget)
   })
 
   it('现金流预算：年度预算导入后关键指标表现金流板块预算/完成率生效（净额由公式推导）', async () => {

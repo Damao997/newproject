@@ -38,6 +38,14 @@ interface MetricTreeProps {
   density?: 'default' | 'dense' | 'compact'
   /** 隐藏的值列 key 列表 */
   hiddenColumns?: string[]
+  /**
+   * 汇总主体悬浮明细（可选）：仅汇总口径传入。renderPopover 包裹金额列单元格内容，
+   * hover 展示各成员公司数值；缺省/null 时渲染路径与原来完全一致（单体/全部口径零行为变化）。
+   * 仅金额列（amount）且非展示类（display）科目启用；同比/达成率列不启用。
+   */
+  summaryBreakdown?: {
+    renderPopover: (node: SubjectNode, colKey: string, summaryValue: number, content: ReactNode) => ReactNode
+  } | null
 }
 
 /** 涨跌彩色变化值（红涨绿跌、无箭头、等宽数字居中）：统一按相对增长率百分比显示；零值显示 '-' */
@@ -56,6 +64,13 @@ const GROUP_HEAD_H = 44
 const ROW_PAD: Record<'default' | 'dense' | 'compact', string> = {
   default: 'py-2',
   dense: 'py-1.5',
+  compact: 'py-1',
+}
+
+/** 现金流量表行距整体收窄一档（default → py-1.5），密度切换仍在收窄后的档位间生效 */
+const CASHFLOW_ROW_PAD: Record<'default' | 'dense' | 'compact', string> = {
+  default: 'py-1.5',
+  dense: 'py-1',
   compact: 'py-1',
 }
 
@@ -101,13 +116,14 @@ export const STATIC_COLUMNS: MetricColumn[] = [
   { key: 'yoy', header: '变动率', minWidth: 80, kind: 'pct' },
 ]
 
-/** 现金流量值列（单行表头，无分组；本月/同期/本年累计/同期累计/同比） */
+/** 现金流量值列（单行表头，无分组；本月/同比/本年累计/同期累计/累计同比） */
 export const CASHFLOW_COLUMNS: MetricColumn[] = [
   { key: 'actual', header: '本月金额', minWidth: 112, kind: 'amount', primary: true },
   { key: 'samePeriod', header: '同期金额', minWidth: 112, kind: 'amount', secondary: true },
+  { key: 'yoy', header: '同比', minWidth: 80, kind: 'pct' },
   { key: 'ytd', header: '本年累计', minWidth: 112, kind: 'amount', primary: true },
   { key: 'samePeriodYtd', header: '同期累计', minWidth: 112, kind: 'amount', secondary: true },
-  { key: 'yoy', header: '同比', minWidth: 80, kind: 'pct' },
+  { key: 'ytdYoy', header: '累计同比', minWidth: 80, kind: 'pct' },
 ]
 
 /** 数值单元格：按列配置渲染（金额/数量/比率分型格式化；同比红涨绿跌；达成率进度条 + 条内居中的百分比）。
@@ -118,6 +134,8 @@ function renderValueCells(
   valueType?: SubjectNode['valueType'],
   rowPad = ROW_PAD.default,
   dataType?: SubjectNode['dataType'],
+  summaryBreakdown?: MetricTreeProps['summaryBreakdown'],
+  node?: SubjectNode,
 ) {
   const fmt = (v: number) => formatMetricValue(v, valueType)
   const yoyOf = (key: string, value: MetricValue) => (key === 'ytdYoy' ? calcYtdYoy(value) : calcYoy(value))
@@ -131,7 +149,12 @@ function renderValueCells(
     let content: ReactNode = '—'
     if (mv && dataType !== 'display') {
       if (col.kind === 'amount') {
-        content = fmt(mv[col.key as 'budget' | 'actual' | 'samePeriod' | 'ytd' | 'samePeriodYtd'])
+        const raw = mv[col.key as 'budget' | 'actual' | 'samePeriod' | 'ytd' | 'samePeriodYtd']
+        content = fmt(raw)
+        // 汇总主体口径：金额列包一层成员明细悬浮浮层（renderPopover 由页面注入，缺省零变化）
+        if (summaryBreakdown && node) {
+          content = summaryBreakdown.renderPopover(node, col.key, raw, content)
+        }
       } else if (col.kind === 'pct') {
         content = <ChangeText value={yoyOf(col.key, mv)} />
       } else {
@@ -227,6 +250,7 @@ function MetricRows({
   analyzeDisabled,
   analyzeHint,
   rowPad,
+  summaryBreakdown,
 }: {
   nodes: SubjectNode[]
   depth: number
@@ -238,6 +262,7 @@ function MetricRows({
   analyzeDisabled?: boolean
   analyzeHint?: string
   rowPad: string
+  summaryBreakdown?: MetricTreeProps['summaryBreakdown']
 }) {
   return (
     <>
@@ -257,7 +282,7 @@ function MetricRows({
                 analyzeHint={analyzeHint}
                 rowPad={rowPad}
               />
-              {renderValueCells(valueMap.get(node.code), columns, node.valueType, rowPad, node.dataType)}
+              {renderValueCells(valueMap.get(node.code), columns, node.valueType, rowPad, node.dataType, summaryBreakdown, node)}
             </tr>
             {hasChildren && isExpanded && (
               <MetricRows
@@ -271,6 +296,7 @@ function MetricRows({
                 analyzeDisabled={analyzeDisabled}
                 analyzeHint={analyzeHint}
                 rowPad={rowPad}
+                summaryBreakdown={summaryBreakdown}
               />
             )}
           </Fragment>
@@ -303,11 +329,12 @@ export function MetricTree({
   onSortChange,
   density,
   hiddenColumns,
+  summaryBreakdown,
 }: MetricTreeProps) {
   const isOperating = variant === 'operating'
   const isCashflow = variant === 'cashflow'
-  // 密度 → 数据行纵向内边距（py-2 / py-1.5 / py-1，对齐 DataTable 三档）
-  const rowPad = ROW_PAD[density ?? 'default']
+  // 密度 → 数据行纵向内边距（现金流量表整体收窄一档，对齐 DataTable 三档）
+  const rowPad = (isCashflow ? CASHFLOW_ROW_PAD : ROW_PAD)[density ?? 'default']
   // 列显隐：隐藏列不渲染表头与数据行（分组表头 colSpan 同步按可见列数）
   const valueCols = (isOperating ? OPERATING_COLUMNS : isCashflow ? CASHFLOW_COLUMNS : STATIC_COLUMNS).filter((c) => !hiddenColumns?.includes(c.key))
   const visibleGroups = isOperating
@@ -460,6 +487,7 @@ export function MetricTree({
                 analyzeDisabled={analyzeDisabled}
                 analyzeHint={analyzeHint}
                 rowPad={rowPad}
+                summaryBreakdown={summaryBreakdown}
               />
             )}
           </tbody>

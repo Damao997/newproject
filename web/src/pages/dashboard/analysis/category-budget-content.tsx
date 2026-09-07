@@ -5,8 +5,11 @@ import { RankBadge } from '@/components/ui/rank-badge'
 import { Button } from '@/components/ui/button'
 import { AlertTriangle, RefreshCw } from 'lucide-react'
 import { useProductBudget } from '@/hooks/api-queries'
+import { AnalysisPageSkeleton } from '@/components/ui/skeleton-blocks'
 import { totalOf } from '../budget-total'
 import { ProductBudgetCard } from '../product-budget-card'
+import { GapAnalysisPanel } from '../core-metrics-gap-analysis'
+import { buildCategoryGapAnalysisItems } from './category-gap-analysis'
 import { cn, formatMoneyWan } from '@/lib/utils'
 import { getChartSeries } from '@/lib/chart-theme'
 import { useThemeStore } from '@/stores/themeStore'
@@ -99,6 +102,7 @@ export function CategoryBudgetContent({ period, companyCode }: CategoryBudgetCon
   const { data, isLoading, isError, refetch } = useProductBudget({ period, companyCode })
   const rows = useMemo(() => data?.rows ?? [], [data])
   const total = useMemo(() => totalOf(rows), [rows])
+  const analysisItems = useMemo(() => buildCategoryGapAnalysisItems(rows), [rows])
   const ranked = useMemo(
     () =>
       [...rows]
@@ -123,22 +127,7 @@ export function CategoryBudgetContent({ period, companyCode }: CategoryBudgetCon
   }, [rows, palette])
   const pieTotal = pieSlices.reduce((s, x) => s + x.value, 0)
 
-  if (isLoading) {
-    return (
-      <div className="animate-fade-in space-y-4">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="skeleton h-[108px] rounded-card" />
-          ))}
-        </div>
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <div className="skeleton h-[280px] rounded-card" />
-          <div className="skeleton h-[280px] rounded-card" />
-        </div>
-        <div className="skeleton h-[240px] rounded-card" />
-      </div>
-    )
-  }
+  if (isLoading) return <AnalysisPageSkeleton blocks={[[280, 280], 240]} />
 
   if (isError && rows.length === 0) {
     return (
@@ -254,14 +243,16 @@ export function CategoryBudgetContent({ period, companyCode }: CategoryBudgetCon
         </Card>
       </div>
 
-      {/* 品类预算达成明细表（复用看板同源卡片：月度/累计切换 + 预警灯 + 同比） */}
+      {/* 品类预算达成明细表（复用看板同源卡片：月度/累计切换 + 预警灯 + 同比）+ 差距分析 */}
       <Card className="border border-border shadow-antd-1">
         <CardContent className="px-5 py-5">
           <div className="mb-3 flex items-baseline gap-2">
-            <h3 className="text-base font-semibold text-foreground">品类预算 vs 实际明细</h3>
-            <span className="text-xs text-muted-foreground">品类 / 预算 / 金额 / 达成率 / 预警 / 同比 · 单位：万元</span>
+            <h3 className="text-base font-semibold text-foreground">品类预算达成明细</h3>
+            <span className="text-xs text-muted-foreground">单位：万元</span>
           </div>
           <ProductBudgetCard period={period} companyCode={companyCode} />
+          {/* 差距分析：由品类数据模板化自动生成，随期间/主体筛选联动 */}
+          {analysisItems.length > 0 && <GapAnalysisPanel items={analysisItems} className="mt-5" />}
         </CardContent>
       </Card>
     </div>

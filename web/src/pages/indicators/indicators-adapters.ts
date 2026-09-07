@@ -66,8 +66,8 @@ export function exportKeysFor(subjectType: IndicatorSubjectType): readonly strin
     return ['budget', 'actual', 'samePeriod', 'yoy', 'ytd', 'samePeriodYtd', 'ytdYoy', 'achievement'] as const
   }
   if (subjectType === 'cashflow') {
-    // 现金流量分支：本月/同期/本年累计/同期累计/同比
-    return ['actual', 'samePeriod', 'ytd', 'samePeriodYtd', 'yoy'] as const
+    // 现金流量分支：本月/同比/本年累计/同期累计/累计同比（列顺序与表格一致）
+    return ['actual', 'samePeriod', 'yoy', 'ytd', 'samePeriodYtd', 'ytdYoy'] as const
   }
   // 静态分支：本期/同期/变动率
   return ['actual', 'samePeriod', 'yoy'] as const

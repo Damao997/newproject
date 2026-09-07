@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { KpiCard } from '@/components/charts/kpi-card'
@@ -12,6 +12,8 @@ import { InventoryPieCard } from './inventory-pie-card'
 import { QuickEntries } from './quick-entries'
 import { ExpenseStructureCard } from './expense-structure-card'
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react'
+import { useSummaryMemberValues, type MemberBreakdown } from '@/hooks/use-summary-member-values'
+import { kpiRootMatcher } from '@/components/charts/kpi-card'
 import type { KpiData } from '@/types'
 
 export default function DashboardPage() {
@@ -32,6 +34,25 @@ export default function DashboardPage() {
   // keepPreviousData 下期间/主体切换的后台刷新态（非首屏加载）
   const isRefreshing = isFetching && !isLoading
   const isEmpty = !isLoading && !isError && kpiData.length === 0
+
+  // ---- 汇总主体 KPI 悬浮明细（成员公司数值）：仅当前主体为汇总主体时启用 ----
+  // 成员树并行预取（/indicators/operating 同参同 key，挂载即后台拉取，hover 时命中缓存零等待）
+  const isSummaryScope = data?.companyType === 'summary' && !!companyCode
+  const summaryMembers = useSummaryMemberValues({
+    variant: 'operating',
+    period: currentPeriod || undefined,
+    summaryCode: isSummaryScope ? companyCode ?? null : null,
+  })
+  // KPI 标题 → 成员树 level0 类目定位（kpiRootMatcher 与后端 metricNodes 口径一致）
+  const kpiBreakdown = useMemo(() => {
+    if (!isSummaryScope || !summaryMembers.enabled) return null
+    return {
+      getMemberValues: (kpiTitle: string) => {
+        const m = kpiRootMatcher(kpiTitle)
+        return summaryMembers.getMemberRoots(m.category, m.name)
+      },
+    }
+  }, [isSummaryScope, summaryMembers])
 
   // 后端降级（请求主体越权/不存在而被替换）时同步实际生效主体，防止下拉空白
   useEffect(() => {
@@ -71,6 +92,7 @@ export default function DashboardPage() {
         currentPeriod={currentPeriod}
         handleKpiClick={handleKpiClick}
         companyCode={companyCode}
+        kpiBreakdown={kpiBreakdown}
         isLoading={isLoading}
         isError={isError}
         onRetry={refetch}
@@ -86,6 +108,10 @@ interface DashboardViewProps {
   currentPeriod: string
   handleKpiClick: () => void
   companyCode: string | undefined
+  /** 汇总主体 KPI 悬浮明细数据源（仅汇总口径非空，见 DashboardPage） */
+  kpiBreakdown?: {
+    getMemberValues: (kpiTitle: string) => MemberBreakdown | undefined
+  } | null
   isLoading?: boolean
   isError?: boolean
   onRetry?: () => void
@@ -98,6 +124,7 @@ function DashboardView(props: DashboardViewProps) {
     currentPeriod,
     handleKpiClick,
     companyCode,
+    kpiBreakdown,
     isLoading = false,
     isError = false,
     onRetry,
@@ -131,7 +158,7 @@ function DashboardView(props: DashboardViewProps) {
       {kpiData.length > 0 && (
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
           {kpiData.map((kpi, i) => (
-            <KpiCard key={kpi.title + '-' + i} data={kpi} index={i} onClick={handleKpiClick} />
+            <KpiCard key={kpi.title + '-' + i} data={kpi} index={i} onClick={handleKpiClick} breakdown={kpiBreakdown} />
           ))}
         </div>
       )}

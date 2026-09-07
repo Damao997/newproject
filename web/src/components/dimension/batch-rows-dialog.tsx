@@ -46,13 +46,14 @@ interface BatchRowsDialogProps<T> {
   description?: ReactNode
   /** 新建一行的初始值 */
   createEmptyRow: () => T
-  /** 单行字段渲染；invalid=true 时字段应呈现错误态（行级错误显示在行尾） */
+  /** 单行字段渲染；invalid=true 时字段应呈现错误态（行级错误显示在行尾）；allRows 供行间互斥过滤等场景 */
   renderRowFields: (
     row: T,
     index: number,
     patch: (patch: Partial<T>) => void,
     invalid: boolean,
     submitting: boolean,
+    allRows: T[],
   ) => ReactNode
   /** 行级校验：返回错误文案；null 表示通过（allRows 用于行间重复校验） */
   validateRow: (row: T, index: number, allRows: T[]) => string | null
@@ -192,7 +193,7 @@ export function BatchRowsDialog<T>({
                     </Button>
                   </div>
                 </div>
-                {renderRowFields(row, index, (p) => patchRow(index, p), invalid, submitting)}
+                {renderRowFields(row, index, (p) => patchRow(index, p), invalid, submitting, rows)}
               </div>
             )
           })}

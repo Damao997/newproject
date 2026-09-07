@@ -397,7 +397,7 @@ export interface KeyMetricsProductCheckResult {
   missingProfitMirror: string[]
 }
 
-/** 壹品慧关键指标表单组口径：月度 8 列 + 年度 6 列（金额万元；百分比为百分数值；null=无预算/无数据源显示「—」） */
+/** 壹品慧关键指标表单组口径：月度 8 列 + 年度 7 列（金额万元；百分比为百分数值；null=无预算/无数据源显示「—」） */
 export interface KeyMetricsGroup {
   /** 月度预算（占比拆分后的当月值；现金流等无预算行为 null） */
   monthBudget: number | null
@@ -417,6 +417,8 @@ export interface KeyMetricsGroup {
   monthRate: number | null
   /** 年度预算（现金流等无预算行为 null） */
   annualBudget: number | null
+  /** 本年累计预算 = 财年预算 × 年初至当期占比前缀和（无预算 null） */
+  ytdBudget: number | null
   /** 本年累计（年初至本期） */
   ytdActual: number
   /** 同期累计（上年年初至上年同期） */
@@ -429,11 +431,12 @@ export interface KeyMetricsGroup {
   annualRate: number | null
 }
 
-/** 关键指标表行：key=行标识；label=展示名；category=分类列；products=产品明细（仅收入/毛利行） */
+/** 关键指标表行：key=行标识；label=展示名；category=分类列；valueType=值类型（金额/数量/比率，格式化口径）；products=产品明细（仅收入/毛利行） */
 export interface KeyMetricsRow {
   key: string
   label: string
   category: string
+  valueType: 'amount' | 'quantity' | 'ratio'
   products: { name: string; income: KeyMetricsGroup; profit: KeyMetricsGroup }[]
   values: KeyMetricsGroup
 }
@@ -446,6 +449,26 @@ export interface KeyMetricsResponse {
   companyName: string | null
   companyType: 'single' | 'summary' | null
   degraded: boolean
+}
+
+/** 品类核心指标分析行：产品配置 code/name + 收入/毛利各一组口径（含无数据行，全 0 列显示「—」） */
+export interface ProductMetricsRow {
+  code: string
+  name: string
+  income: KeyMetricsGroup
+  profit: KeyMetricsGroup
+}
+
+/** 品类核心指标分析接口响应：rows=产品配置全行（sortOrder 序）；totals=整体收入/毛利节点（非行求和） */
+export interface ProductMetricsResponse {
+  period: string
+  dimension: 'product'
+  companyCode: string | null
+  companyName: string | null
+  companyType: 'single' | 'summary' | null
+  degraded: boolean
+  rows: ProductMetricsRow[]
+  totals: { income: KeyMetricsGroup; profit: KeyMetricsGroup }
 }
 
 /** 运营费用映射（运营费用分析：展示指标 ↔ 经营科目编码集合） */
@@ -474,8 +497,8 @@ export interface ExpenseMappingCheckResult {
   brokenCodes: string[]
 }
 
-/** 运营费用分析行：展示指标（映射配置）+ 单组口径值（字段平铺） */
-export type ExpenseAnalysisRow = { code: string; name: string } & ProductBudgetMetric
+/** 运营费用分析行：展示指标（映射配置）+ 单组口径值（字段平铺）；monthPrev 上月实际金额（供合计行环比按 Σ金额重算）、monthMom 环比率 */
+export type ExpenseAnalysisRow = { code: string; name: string; monthPrev: number; monthMom: number } & ProductBudgetMetric
 
 /** 运营费用分析接口响应（companyCode/companyName/companyType/degraded 为看板实际生效主体，越权时自动降级） */
 export interface ExpenseAnalysisResponse {

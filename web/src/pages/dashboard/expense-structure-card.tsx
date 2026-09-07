@@ -74,7 +74,7 @@ export function ExpenseStructureCard({ period, companyCode }: ExpenseStructureCa
         <div>
           <CardTitle className="text-base font-semibold">费用结构</CardTitle>
           <p className="mt-1 text-xs text-muted-foreground">
-            {period ? `期间 ${period} · ` : ''}本月费用 Top5 科目
+            {period ? `期间 ${period} · ` : ''}
           </p>
         </div>
         <Button

@@ -60,6 +60,7 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
     entityLabel: '品类配置',
     getName: (row) => row.name,
     removeOne: (row) => mutations.remove.mutateAsync(row.id),
+    confirm,
   })
 
   const refresh = () => {

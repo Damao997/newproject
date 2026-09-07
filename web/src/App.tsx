@@ -17,6 +17,7 @@ const DashboardAnalysisInventoryAgingPage = lazy(() => import('@/pages/dashboard
 const DashboardAnalysisCategoryBudgetPage = lazy(() => import('@/pages/dashboard/analysis/category-budget'))
 const DashboardAnalysisSubjectBudgetPage = lazy(() => import('@/pages/dashboard/analysis/subject-budget'))
 const DashboardAnalysisExpensePage = lazy(() => import('@/pages/dashboard/analysis/expense'))
+const DashboardAnalysisCoreMetricsPage = lazy(() => import('@/pages/dashboard/analysis/core-metrics'))
 // 财务指标：三个子路由共用完整版指标页（科目树/筛选/交叉表/分析抽屉/AI 概览/导出/列设置），按路由传 subjectType
 function lazyIndicatorPage(subjectType: 'operating' | 'static' | 'cashflow') {
   return lazy(async () => {
@@ -122,7 +123,7 @@ function App() {
                 {/* 根路径：权限感知首页（无匹配权限 → /no-access） */}
                 <Route index element={<HomeRedirect />} />
                 <Route path="dashboard" element={<RequirePermission resource="dashboard" action="view"><DashboardPage /></RequirePermission>} />
-                {/* 首页看板 · 经营分析：壹品慧关键指标表（默认）/ 壹品慧业务现金流分析 / 应收账款账龄分析表 / 存货库龄分析表 / 品类预算达成 / 公司预算达成 / 运营费用 */}
+                {/* 首页看板 · 经营分析：壹品慧关键指标表（默认）/ 壹品慧业务现金流分析 / 应收账款账龄分析表 / 存货库龄分析表 / 品类预算达成 / 公司预算达成 / 运营费用 / 核心指标分析 */}
                 <Route path="dashboard/analysis/key-metrics" element={<RequirePermission resource="dashboard" action="view"><DashboardAnalysisKeyMetricsPage /></RequirePermission>} />
                 <Route path="dashboard/analysis/cash-flow" element={<RequirePermission resource="dashboard" action="view"><DashboardAnalysisCashFlowPage /></RequirePermission>} />
                 <Route path="dashboard/analysis/receivable-aging" element={<RequirePermission resource="dashboard" action="view"><DashboardAnalysisReceivableAgingPage /></RequirePermission>} />
@@ -130,6 +131,7 @@ function App() {
                 <Route path="dashboard/analysis/category-budget" element={<RequirePermission resource="dashboard" action="view"><DashboardAnalysisCategoryBudgetPage /></RequirePermission>} />
                 <Route path="dashboard/analysis/subject-budget" element={<RequirePermission resource="dashboard" action="view"><DashboardAnalysisSubjectBudgetPage /></RequirePermission>} />
                 <Route path="dashboard/analysis/expense" element={<RequirePermission resource="dashboard" action="view"><DashboardAnalysisExpensePage /></RequirePermission>} />
+                <Route path="dashboard/analysis/core-metrics" element={<RequirePermission resource="dashboard" action="view"><DashboardAnalysisCoreMetricsPage /></RequirePermission>} />
                 {/* 财务指标：根路径按旧 query 或默认重定向到子页 */}
                 <Route path="indicators" element={<RequirePermission resource="indicators" action="view"><LegacyQueryRedirect /></RequirePermission>} />
                 <Route path="indicators/operating" element={<RequirePermission resource="indicators" action="view"><IndicatorsOperatingPage /></RequirePermission>} />

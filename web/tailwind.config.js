@@ -252,7 +252,6 @@ export default {
         "fade-in": "fade-in 0.3s ease-out forwards",
         "fade-in-scale": "fade-in-scale 0.25s ease-out forwards",
         "slide-in": "slide-in 0.3s ease-out forwards",
-        shimmer: "shimmer 1.5s ease-in-out infinite",
       },
     },
   },

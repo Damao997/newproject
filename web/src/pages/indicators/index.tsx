@@ -23,6 +23,9 @@ import type { SubjectNode } from '@/types'
 import { IndicatorFilterBar } from './indicator-filter-bar'
 import { useIndicatorExport, flattenForExport } from './use-indicator-export'
 import { adapt, collectExpandableCodes, buildColumnsFor } from './indicators-adapters'
+import { useSummaryMemberValues } from '@/hooks/use-summary-member-values'
+import { SummaryBreakdownPopover } from '@/components/summary/summary-breakdown'
+import type { MetricValue } from '@/lib/metric-values'
 
 /**
  * 财务指标页（经营/静态/现金流共用实现）：按科目层级查看指标数据。
@@ -127,6 +130,42 @@ export function IndicatorPage({ subjectType, description }: { subjectType: 'oper
   const isFetching = isOperating ? operatingQuery.isFetching : isCashflow ? cashflowQuery.isFetching : staticQuery.isFetching
   // 去重分类口径下无法回溯的记录数（批次已替换/缺快照；现金流无重分类口径）
   const skippedReclassifyLogs = (isOperating ? operatingQuery.data?.skippedReclassifyLogs : staticQuery.data?.skippedReclassifyLogs) ?? 0
+
+  // ---- 汇总主体悬浮明细（成员公司数值）：仅全局选中单一汇总主体时启用 ----
+  const isSummaryScope = useMemo(
+    () => !!companyCode && (companies ?? []).some((c) => c.code === companyCode && c.type === 'summary'),
+    [companies, companyCode],
+  )
+  // 成员树并行预取（与主查询同 key 同参，挂载即后台拉取，hover 时命中缓存零等待）
+  const summaryMembers = useSummaryMemberValues({
+    variant: activeTab,
+    period,
+    summaryCode: isSummaryScope ? companyCode ?? null : null,
+    excludeReclassify,
+  })
+  // 列 key → MetricValue 字段（adapt 归一后同名）；列名从当前 tab 列配置取（悬浮标题用）
+  const summaryBreakdown = useMemo(() => {
+    if (!isSummaryScope || !summaryMembers.enabled) return null
+    const colHeaders = new Map(buildColumnsFor(activeTab).map((c) => [c.key, c.header]))
+    return {
+      renderPopover: (node: SubjectNode, colKey: string, summaryValue: number, content: React.ReactNode) => {
+        const breakdown = summaryMembers.getMemberValues(node.code)
+        const colHeader = colHeaders.get(colKey) ?? colKey
+        return (
+          <SummaryBreakdownPopover
+            title={`${node.name} · ${colHeader}`}
+            columns={[{ label: colHeader, pick: (v: MetricValue) => v[colKey as keyof MetricValue] as number, summaryValue }]}
+            rows={breakdown?.rows}
+            loading={breakdown?.loading}
+            failedCount={breakdown?.failedCount}
+            valueType={node.valueType}
+          >
+            {content}
+          </SummaryBreakdownPopover>
+        )
+      },
+    }
+  }, [isSummaryScope, summaryMembers, activeTab])
 
   const { nodes: activeTree, map: activeValueMap } = useMemo(() => adapt(activeItems, activeTab), [activeItems, activeTab])
   const activeExpandable = useMemo(() => collectExpandableCodes(activeTree), [activeTree])
@@ -323,13 +362,13 @@ export function IndicatorPage({ subjectType, description }: { subjectType: 'oper
             /* 加载骨架：保持表格占位高度，避免内容区塌陷再撑回导致跳动 */
             <div className="py-3">
               <div className="flex gap-3">
-                {Array.from({ length: isOperating ? 10 : isCashflow ? 7 : 5 }).map((_, c) => (
+                {Array.from({ length: isOperating ? 10 : isCashflow ? 8 : 5 }).map((_, c) => (
                   <Skeleton key={c} className="h-11 flex-1" />
                 ))}
               </div>
               {Array.from({ length: 6 }).map((_, r) => (
                 <div key={r} className="mt-2 flex gap-3">
-                  {Array.from({ length: isOperating ? 10 : isCashflow ? 7 : 5 }).map((_, c) => (
+                  {Array.from({ length: isOperating ? 10 : isCashflow ? 8 : 5 }).map((_, c) => (
                     <Skeleton key={c} className="h-10 flex-1" />
                   ))}
                 </div>
@@ -362,6 +401,7 @@ export function IndicatorPage({ subjectType, description }: { subjectType: 'oper
                 onSortChange={setSort}
                 density={density}
                 hiddenColumns={hiddenColumns}
+                summaryBreakdown={summaryBreakdown}
               />
             </div>
           )}

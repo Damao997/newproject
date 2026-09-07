@@ -5,6 +5,8 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { AlertTriangle, ArrowRight, RefreshCw } from 'lucide-react'
 import { useCashflowIndicators, type CashflowRow } from '@/hooks/api-queries'
+import { AnalysisPageSkeleton } from '@/components/ui/skeleton-blocks'
+import { DeltaTag } from '@/components/ui/delta-tag'
 import { cn, formatMoneyWan } from '@/lib/utils'
 
 interface CashFlowContentProps {
@@ -39,14 +41,6 @@ function StatTile({ label, value, unit, foot, accent, valueClass }: {
       <span className="text-xs text-muted-foreground">{foot}</span>
     </div>
   )
-}
-
-/** 同比文案：现金流为正向指标，红涨绿跌（A 股习惯），持平灰 */
-function yoyChip(v: number): { text: string; cls: string } {
-  if (v === 0) return { text: '→ 持平', cls: 'text-muted-foreground' }
-  return v > 0
-    ? { text: `↑ ${Math.abs(v * 100).toFixed(1)}%`, cls: 'text-finance-red' }
-    : { text: `↓ ${Math.abs(v * 100).toFixed(1)}%`, cls: 'text-finance-green' }
 }
 
 /** 在科目树中按名称查找行（含跨层查找，取首个命中） */
@@ -137,19 +131,7 @@ export function CashFlowContent({ period, companyCode }: CashFlowContentProps) {
   ]
   const actMax = Math.max(...activityRows.map((r) => Math.max(Math.abs(r.current), Math.abs(r.ytd))), 0)
 
-  if (isLoading) {
-    return (
-      <div className="animate-fade-in space-y-4">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="skeleton h-[108px] rounded-card" />
-          ))}
-        </div>
-        <div className="skeleton h-[220px] rounded-card" />
-        <div className="skeleton h-[240px] rounded-card" />
-      </div>
-    )
-  }
+  if (isLoading) return <AnalysisPageSkeleton blocks={[220, 240]} />
 
   if (isError && !data) {
     return (
@@ -204,7 +186,7 @@ export function CashFlowContent({ period, companyCode }: CashFlowContentProps) {
       {/* 顶部工具条：口径摘要 + 指标分析深链 */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          {period ? `期间 ${period} · ` : ''}现金流量表口径 · 本月 / 同期 / 财年累计 · 单位：万元
+          {period ? `期间 ${period} · ` : ''}单位：万元
         </p>
         <Button asChild variant="outline" size="sm" className="h-8 gap-1">
           <Link to="/indicators/cashflow">
@@ -248,23 +230,21 @@ export function CashFlowContent({ period, companyCode }: CashFlowContentProps) {
           label="自由现金流"
           value={formatMoneyWan(fcf.ytd)}
           unit="万"
-          foot={`本月 ${formatMoneyWan(fcf.current)}万 · 经营净额 − 投资流出`}
+          foot={`本月 ${formatMoneyWan(fcf.current)}万 `}
           accent={fcf.ytd >= 0 ? 'before:bg-success-500' : 'before:bg-destructive'}
           valueClass={fcf.ytd < 0 ? 'text-destructive' : undefined}
         />
       </div>
 
-      {/* 三大活动净现金流对比（本月 vs 累计，正负分色横向条） */}
+      {/* 净现金流对比（本月 vs 累计，正负分色横向条） */}
       <Card className="border border-border shadow-antd-1">
         <CardContent className="p-5">
           <h3 className="mb-3 text-base font-semibold text-foreground">
-            三大活动净现金流对比
-            <span className="ml-2 text-xs font-normal text-muted-foreground">正=净流入（绿）/ 负=净流出（红）· 单位：万元</span>
+            净现金流对比
+            <span className="ml-2 text-xs font-normal text-muted-foreground"> 单位：万元</span>
           </h3>
           <div className="space-y-4">
             {activityRows.map((r) => {
-              const monthYoy = yoyChip(yoyOf(r.current, r.samePeriod))
-              const ytdYoy = yoyChip(yoyOf(r.ytd, r.samePeriodYtd))
               const bar = (v: number) => ({
                 width: `${actMax > 0 ? Math.max(Math.abs(v) > 0 ? 2 : 0, (Math.abs(v) / actMax) * 100) : 0}%`,
               })
@@ -279,7 +259,7 @@ export function CashFlowContent({ period, companyCode }: CashFlowContentProps) {
                   </div>
                   <span className="text-right text-xs text-muted-foreground">
                     本月 <span className={cn('font-num font-semibold', r.current >= 0 ? 'text-foreground' : 'text-destructive')}>{formatMoneyWan(r.current)}</span>
-                    <span className={cn('ml-1 inline-block font-num', monthYoy.cls)}>{monthYoy.text}</span>
+                    <DeltaTag className="ml-1" value={yoyOf(r.current, r.samePeriod)} />
                   </span>
                   <div className="h-2.5 overflow-hidden rounded-full bg-muted">
                     <div
@@ -289,14 +269,14 @@ export function CashFlowContent({ period, companyCode }: CashFlowContentProps) {
                   </div>
                   <span className="text-right text-xs text-muted-foreground">
                     累计 <span className={cn('font-num font-semibold', r.ytd >= 0 ? 'text-foreground' : 'text-destructive')}>{formatMoneyWan(r.ytd)}</span>
-                    <span className={cn('ml-1 inline-block font-num', ytdYoy.cls)}>{ytdYoy.text}</span>
+                    <DeltaTag className="ml-1" value={yoyOf(r.ytd, r.samePeriodYtd)} />
                   </span>
                 </div>
               )
             })}
           </div>
           <p className="mt-3 text-xs text-muted-foreground">
-            现金流指标为单期间口径（本月/同期/累计/同期累计），无逐月序列；如需逐月趋势请前往现金流指标分析。
+            现金流指标为单期间口径，无逐月序列；如需逐月趋势请前往现金流指标分析。
           </p>
         </CardContent>
       </Card>
@@ -306,7 +286,7 @@ export function CashFlowContent({ period, companyCode }: CashFlowContentProps) {
         <CardContent className="p-5">
           <h3 className="mb-3 text-base font-semibold text-foreground">
             现金流明细
-            <span className="ml-2 text-xs font-normal text-muted-foreground">本月 / 同比 / 累计 / 累计同比 · 单位：万元</span>
+            <span className="ml-2 text-xs font-normal text-muted-foreground">  单位：万元</span>
           </h3>
           <div className="overflow-x-auto">
             <table className="data-table-report data-table-report--striped">
@@ -322,10 +302,7 @@ export function CashFlowContent({ period, companyCode }: CashFlowContentProps) {
                 </tr>
               </thead>
               <tbody>
-                {detailRows.map((r) => {
-                  const myoy = yoyChip(r.m.yoy)
-                  const yyoy = yoyChip(r.m.ytdYoy)
-                  return (
+                {detailRows.map((r) => (
                     <tr key={r.name} className={cn(!r.indent && 'font-semibold')}>
                       <td className={cn('text-left text-body text-foreground', r.indent && 'pl-8 font-normal text-muted-foreground')}>
                         {r.name}
@@ -334,15 +311,14 @@ export function CashFlowContent({ period, companyCode }: CashFlowContentProps) {
                         {formatMoneyWan(r.m.current)}
                       </td>
                       <td className="text-right font-num text-sm text-muted-foreground">{formatMoneyWan(r.m.samePeriod)}</td>
-                      <td className={cn('text-right font-num text-sm', myoy.cls)}>{myoy.text}</td>
+                      <td className="text-right"><DeltaTag value={r.m.yoy / 100} /></td>
                       <td className={cn('text-right font-num text-sm', r.m.ytd < 0 && 'text-destructive')}>
                         {formatMoneyWan(r.m.ytd)}
                       </td>
                       <td className="text-right font-num text-sm text-muted-foreground">{formatMoneyWan(r.m.samePeriodYtd)}</td>
-                      <td className={cn('text-right font-num text-sm', yyoy.cls)}>{yyoy.text}</td>
+                      <td className="text-right"><DeltaTag value={r.m.ytdYoy / 100} /></td>
                     </tr>
-                  )
-                })}
+                  ))}
               </tbody>
             </table>
           </div>

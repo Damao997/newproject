@@ -100,3 +100,31 @@ export function TableSkeleton({ rows = 6, columns = 5 }: { rows?: number; column
     </div>
   )
 }
+
+/**
+ * 分析子页骨架（经营分析 7 个子页统一的加载态）：
+ * 顶部 4 个 KPI 磁贴（断点与各子页实际磁贴网格一致：sm:2 / lg:4）+ 内容块。
+ * blocks 中 number 为单整块高度，[number, number] 为两列网格（lg 断点分栏）中的两块高度。
+ */
+export function AnalysisPageSkeleton({ blocks }: { blocks: Array<number | [number, number]> }) {
+  return (
+    <div className="animate-fade-in space-y-4" role="status" aria-label="内容加载中">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="skeleton h-[108px] rounded-card" />
+        ))}
+      </div>
+      {blocks.map((b, i) =>
+        Array.isArray(b) ? (
+          <div key={i} className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {b.map((h, j) => (
+              <div key={j} className="skeleton rounded-card" style={{ height: h }} />
+            ))}
+          </div>
+        ) : (
+          <div key={i} className="skeleton rounded-card" style={{ height: b }} />
+        ),
+      )}
+    </div>
+  )
+}

@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dialog'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { TipLabel } from '@/components/ui/tip-label'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { useExpenseMappings, useExpenseMappingCheck, useExpenseMappingMutations } from '@/hooks/api-queries'
 import { api } from '@/lib/api'
@@ -77,6 +78,7 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
     entityLabel: '运营费用映射',
     getName: (row) => row.name,
     removeOne: (row) => mutations.remove.mutateAsync(row.id),
+    confirm,
   })
 
   const refresh = () => {
@@ -178,6 +180,16 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
   // 顺序同为 sortOrder 升序，与 list 等价且信息更全；fallback（check 未返回）仅作加载期兜底
   const rows = (check?.mappings ?? mappings ?? []) as ExpenseMappingCheckResult['mappings']
   const hasWarnings = (check?.uncoveredSubjects.length ?? 0) > 0 || (check?.brokenCodes.length ?? 0) > 0
+
+  // 已被引用科目（仅启用中映射，编辑时排除自身以保留勾选态）：候选列表中不再展示
+  const usedSubjectCodes = useMemo(() => {
+    const used = new Set<string>()
+    for (const m of rows) {
+      if (m.status !== 'active' || m.id === editing?.id) continue
+      for (const c of m.subjectCodes) used.add(c)
+    }
+    return used
+  }, [rows, editing?.id])
 
   // 批量新增行校验：名称必填 + 至少 1 个科目 + 行间/已有列表名称查重
   const validateBatchRow = (row: BatchMappingRow, _index: number, allRows: BatchMappingRow[]): string | null => {
@@ -369,7 +381,7 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">映射编码（系统自动生成，创建后不可修改）</Label>
+                <TipLabel label={<span className="text-xs text-muted-foreground">映射编码</span>} tip="系统自动生成，创建后不可修改" />
                 <Input
                   value={form.code}
                   readOnly
@@ -388,16 +400,22 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
               </div>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">引用科目（可多选，选中科目汇总为一行；标注"暂无数据"的科目导入数据/预算后才会在看板展示）</Label>
+              <TipLabel
+                label={<span className="text-xs text-muted-foreground">引用科目</span>}
+                tip={'可多选，选中科目汇总为一行；标注"暂无数据"的科目导入数据/预算后才会在看板展示（已被其他映射引用的科目不在此列出）'}
+              />
               <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-border p-3">
                 {(check?.candidates?.length ?? 0) === 0 && (
                   <p className="text-xs text-muted-foreground">未检测到运营费用科目（科目树中可能尚未配置「费用 &gt; 壹品慧费用 &gt; 运营费用」）</p>
                 )}
-                {(check?.candidates ?? []).map((group) => (
+                {(check?.candidates ?? []).map((group) => {
+                  const available = group.items.filter((item) => !usedSubjectCodes.has(item.code))
+                  if (available.length === 0) return null
+                  return (
                   <div key={group.group}>
                     <p className="mb-1.5 text-xs font-medium text-foreground">{group.group}</p>
                     <div className="grid grid-cols-2 gap-1">
-                      {group.items.map((item) => {
+                      {available.map((item) => {
                         const selected = form.subjectCodes.includes(item.code)
                         return (
                           <label
@@ -421,7 +439,11 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
                       })}
                     </div>
                   </div>
-                ))}
+                  )
+                })}
+                {(check?.candidates?.length ?? 0) > 0 && check?.candidates?.every((g) => g.items.every((i) => usedSubjectCodes.has(i.code))) && (
+                  <p className="text-xs text-muted-foreground">全部候选科目均已被其他映射引用</p>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -471,7 +493,7 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
         createEmptyRow={() => ({ ...EMPTY_BATCH_ROW })}
         validateRow={validateBatchRow}
         submitRows={submitBatchRows}
-        renderRowFields={(row, _index, patch, invalid) => (
+        renderRowFields={(row, _index, patch, invalid, _submitting, allRows) => (
           <div className="grid grid-cols-2 gap-2 md:grid-cols-12">
             <div className="md:col-span-4">
               <Input
@@ -497,11 +519,16 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
                   {(check?.candidates?.length ?? 0) === 0 && (
                     <p className="p-2 text-xs text-muted-foreground">未检测到运营费用科目（科目树中可能尚未配置「费用 &gt; 壹品慧费用 &gt; 运营费用」）</p>
                   )}
-                  {(check?.candidates ?? []).map((group) => (
+                  {(check?.candidates ?? []).map((group) => {
+                    // 排除已被启用映射引用 + 批量内其他行已选的科目（行间互斥）
+                    const occupied = new Set(allRows.filter((r) => r !== row).flatMap((r) => r.subjectCodes))
+                    const available = group.items.filter((item) => !usedSubjectCodes.has(item.code) && !occupied.has(item.code))
+                    if (available.length === 0) return null
+                    return (
                     <div key={group.group} className="mb-2">
                       <p className="mb-1 text-xs font-medium text-foreground">{group.group}</p>
                       <div className="space-y-1">
-                        {group.items.map((item) => {
+                        {available.map((item) => {
                           const selected = row.subjectCodes.includes(item.code)
                           return (
                             <label
@@ -531,7 +558,14 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
                         })}
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
+                  {(check?.candidates?.length ?? 0) > 0 && (() => {
+                    const occupied = new Set([...usedSubjectCodes, ...allRows.filter((r) => r !== row).flatMap((r) => r.subjectCodes)])
+                    return check?.candidates?.every((g) => g.items.every((i) => occupied.has(i.code))) ? (
+                      <p className="p-2 text-xs text-muted-foreground">全部候选科目均已被引用或已在其他行选择</p>
+                    ) : null
+                  })()}
                 </PopoverContent>
               </Popover>
             </div>

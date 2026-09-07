@@ -41,8 +41,6 @@ export interface ExpenseMappingCheckResult {
   brokenCodes: string[]
 }
 
-/** 旧格式映射编码（历史一对一映射曾以科目编码入库，仅供建立迁移计划时识别，新建不再允许） */
-const SUBJECT_CODE_RE = /^PL[0-9]+$/
 /** 映射编码：EXP_ 前缀 + 小写英文/数字/下划线（含统一自动编码 EXP_001） */
 const CUSTOM_CODE_RE = /^EXP_[a-z0-9][a-z0-9_]*$/
 /** 统一自动编码的数字序号部分（EXP_001 → 001） */
@@ -68,35 +66,6 @@ export function nextExpenseMappingCode(rows: MappingCodeRow[]): string {
     if (m) max = Math.max(max, Number(m[1]))
   }
   return `EXP_${String(max + 1).padStart(3, '0')}`
-}
-
-/** 旧格式映射行（buildLegacyMappingMigration 输入，expenseSubjectMapping 行子集） */
-export type LegacyMappingRow = {
-  id: string
-  code: string
-  name: string
-  subjectCodes: string[]
-  sortOrder: number
-  status: string
-  deletedAt: Date | null
-}
-
-/** 旧格式迁移计划项：legacy=被迁移的旧行，targetCode=分配的统一编码 */
-export interface LegacyMappingMigration {
-  legacy: LegacyMappingRow
-  targetCode: string
-}
-
-/**
- * 旧默认映射迁移计划（统一编码改造）：code 为科目编码（PL 前缀）的非墓碑映射视为旧 seed 默认映射，
- * 按 sortOrder 升序分配 EXP_001 起统一编码；归并（subjectCodes）/停用（status）等管理员修改原样保留。
- * 墓碑行 / EXP_ 自定义编码不参与迁移（后者本就不在默认集合中）。
- */
-export function buildLegacyMappingMigration(rows: LegacyMappingRow[]): LegacyMappingMigration[] {
-  const legacy = rows
-    .filter((r) => r.deletedAt === null && SUBJECT_CODE_RE.test(r.code))
-    .sort((a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code))
-  return legacy.map((r, i) => ({ legacy: r, targetCode: `EXP_${String(i + 1).padStart(3, '0')}` }))
 }
 
 /** 科目树节点（check 场景仅用 code/name/children 定位候选） */

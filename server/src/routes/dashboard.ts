@@ -1,4 +1,4 @@
-﻿import { Router } from 'express'
+import { Router } from 'express'
 import { authenticate } from '../middleware/auth'
 import { attachScope } from '../middleware/attach-scope'
 import { requirePermission } from '../middleware/permission'
@@ -78,6 +78,15 @@ router.get('/expense-analysis', requirePermission('dashboard:view', 'view'), asy
 
 router.get('/analysis/key-metrics', requirePermission('dashboard:view', 'view'), asyncHandler(async (req, res) => {
   const data = await DashboardService.getKeyMetrics(scopeOf(req.authUser as AuthUserContext), {
+    period: req.query.period as string | undefined,
+    companyCode: req.query.companyCode as string | undefined,
+  })
+  sendOk(res, data)
+}))
+
+// 品类核心指标分析（产品配置全行 + 整体合计；dimension 预留渠道扩展，当前仅 product）
+router.get('/analysis/product-metrics', requirePermission('dashboard:view', 'view'), asyncHandler(async (req, res) => {
+  const data = await DashboardService.getProductMetrics(scopeOf(req.authUser as AuthUserContext), {
     period: req.query.period as string | undefined,
     companyCode: req.query.companyCode as string | undefined,
   })

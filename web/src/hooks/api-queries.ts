@@ -104,6 +104,20 @@ export function useKeyMetrics(params: { period?: string; companyCode?: string })
   })
 }
 
+/** 品类核心指标分析：产品配置全行 + 整体合计（单期间 + 可选主体），period 未定时不发请求 */
+export function useProductMetrics(params: { period?: string; companyCode?: string }) {
+  return useQuery({
+    queryKey: ['dashboard', 'product-metrics', params.period ?? '', params.companyCode ?? ''] as const,
+    queryFn: () => api.getProductMetrics({
+      ...(params.period ? { period: params.period } : {}),
+      ...(params.companyCode ? { companyCode: params.companyCode } : {}),
+    }),
+    enabled: !!params.period,
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
 // ---------------- 品类配置（品类预算达成分析，数据维护） ----------------
 export function useProductCategories() {
   return useQuery({
@@ -944,16 +958,6 @@ export function useUpdateRolePermissionsBatch() {
     mutationFn: (vars: { roleIds: string[]; permissions: { resource: string; action: string }[] }) =>
       api.updatePermissionsBatch(vars.roleIds, vars.permissions as never),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'roles'] }),
-  })
-}
-
-/** 财年月度趋势（近 N 月，授权范围全主体口径，与看板趋势卡一致）：关键指标表热力/趋势/磁贴 sparkline 数据源 */
-export function useDashboardTrend(params: { months?: number } = {}) {
-  return useQuery({
-    queryKey: ['dashboard', 'trend', params.months ?? 12] as const,
-    queryFn: () => api.getDashboardTrend({ months: params.months }),
-    placeholderData: keepPreviousData,
-    staleTime: 5 * 60 * 1000,
   })
 }
 

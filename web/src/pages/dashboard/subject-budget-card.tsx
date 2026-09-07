@@ -6,6 +6,7 @@ import { useSubjectBudget } from '@/hooks/api-queries'
 import { totalOf } from './budget-total'
 import { RateBar } from '@/components/ui/rate-bar'
 import { AlertLight } from '@/components/ui/alert-light'
+import { DeltaTag } from '@/components/ui/delta-tag'
 import { formatMoneyWan, cn } from '@/lib/utils'
 import type { ProductBudgetMetric } from '@/types'
 
@@ -20,22 +21,6 @@ interface SubjectBudgetCardProps {
 
 /** 金额口径：本月实际 / 本年累计（预算口径随金额口径联动：月度=占比拆分后的当月预算，累计=年度预算总额） */
 type AmountMode = 'month' | 'ytd'
-
-/** 同比单元格：红涨绿跌（A 股/国内财报习惯），持平灰；正值不带 "+"，负值保留 "-" */
-function YoYBadge({ value }: { value: number }) {
-  const isFlat = value === 0
-  const isPositive = value > 0
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center text-sm font-medium',
-        isFlat ? 'text-muted-foreground' : isPositive ? 'text-finance-red' : 'text-finance-green',
-      )}
-    >
-      <span className="font-num">{value === 0 ? '-' : `${value < 0 ? '-' : ''}${(Math.abs(value) * 100).toFixed(1)}%`}</span>
-    </span>
-  )
-}
 
 // 表头对齐《统一表格设计标准》：13px/500 黑字居中（数值列表头同样居中）；TD 保持右对齐 font-num
 const TH_CLS = 'px-3 py-2 text-center text-body font-medium text-foreground'
@@ -132,17 +117,17 @@ export function SubjectBudgetCard({ period, companyCode, mode = 'single' }: Subj
                       <td className={TD_CLS}>{formatMoneyWan(income.amount)}</td>
                       <td className={TD_CLS}><RateBar rate={income.rate} /></td>
                       <td className={cn(TD_CLS, 'text-center')}><AlertLight rate={income.alertRate} /></td>
-                      <td className={TD_CLS}><YoYBadge value={income.yoy} /></td>
+                      <td className={TD_CLS}><DeltaTag value={income.yoy} /></td>
                       <td className={cn(TD_CLS, 'border-l border-border/60')}>{formatMoneyWan(profit.budget)}</td>
                       <td className={TD_CLS}>{formatMoneyWan(profit.amount)}</td>
                       <td className={TD_CLS}><RateBar rate={profit.rate} /></td>
                       <td className={cn(TD_CLS, 'text-center')}><AlertLight rate={profit.alertRate} /></td>
-                      <td className={TD_CLS}><YoYBadge value={profit.yoy} /></td>
+                      <td className={TD_CLS}><DeltaTag value={profit.yoy} /></td>
                       <td className={cn(TD_CLS, 'border-l border-border/60')}>{formatMoneyWan(netProfit.budget)}</td>
                       <td className={TD_CLS}>{formatMoneyWan(netProfit.amount)}</td>
                       <td className={TD_CLS}><RateBar rate={netProfit.rate} /></td>
                       <td className={cn(TD_CLS, 'text-center')}><AlertLight rate={netProfit.alertRate} /></td>
-                      <td className={TD_CLS}><YoYBadge value={netProfit.yoy} /></td>
+                      <td className={TD_CLS}><DeltaTag value={netProfit.yoy} /></td>
                     </tr>
                   )
                 })}
@@ -161,19 +146,19 @@ export function SubjectBudgetCard({ period, companyCode, mode = 'single' }: Subj
                         <td className={cn(TD_CLS, 'font-semibold')}>{formatMoneyWan(income.amount)}</td>
                         <td className={TD_CLS}><RateBar rate={income.rate} /></td>
                         <td className={cn(TD_CLS, 'text-center')}><AlertLight rate={income.alertRate} /></td>
-                        <td className={cn(TD_CLS, 'font-semibold')}><YoYBadge value={income.yoy} /></td>
+                        <td className={cn(TD_CLS, 'font-semibold')}><DeltaTag value={income.yoy} /></td>
                         <td className={cn(TD_CLS, 'border-l border-border/60 font-semibold')}>{formatMoneyWan(profit.budget)}</td>
                         <td className={cn(TD_CLS, 'font-semibold')}>{formatMoneyWan(profit.amount)}</td>
                         <td className={TD_CLS}><RateBar rate={profit.rate} /></td>
                         <td className={cn(TD_CLS, 'text-center')}><AlertLight rate={profit.alertRate} /></td>
-                        <td className={cn(TD_CLS, 'font-semibold')}><YoYBadge value={profit.yoy} /></td>
+                        <td className={cn(TD_CLS, 'font-semibold')}><DeltaTag value={profit.yoy} /></td>
                         {netProfit && (
                           <>
                             <td className={cn(TD_CLS, 'border-l border-border/60 font-semibold')}>{formatMoneyWan(netProfit.budget)}</td>
                             <td className={cn(TD_CLS, 'font-semibold')}>{formatMoneyWan(netProfit.amount)}</td>
                             <td className={TD_CLS}><RateBar rate={netProfit.rate} /></td>
                             <td className={cn(TD_CLS, 'text-center')}><AlertLight rate={netProfit.alertRate} /></td>
-                            <td className={cn(TD_CLS, 'font-semibold')}><YoYBadge value={netProfit.yoy} /></td>
+                            <td className={cn(TD_CLS, 'font-semibold')}><DeltaTag value={netProfit.yoy} /></td>
                           </>
                         )}
                       </tr>

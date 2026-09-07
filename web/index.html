@@ -10,13 +10,72 @@
     <meta name="theme-color" content="#F97316" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>浙江壹品慧经营分析平台</title>
+    <!-- 首屏静态骨架：JS bundle 加载完成前即显示，消除白屏；
+         纯内联样式 + 硬编码色值（此时 globals.css/Tailwind 未加载，不可引用 CSS 变量），
+         动画走 transform 合成器（零重绘）；React createRoot 挂载时自动清空 #root 完成替换。
+         色值对齐 globals.css：--page #f0f2f5 / --muted #edeef2 / --primary #ff830f。 -->
+    <style>
+      .boot-skeleton {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        background: #f0f2f5;
+      }
+      .boot-logo {
+        width: 64px;
+        height: 64px;
+        border-radius: 16px;
+        background: #ff830f;
+        box-shadow: 0 6px 20px rgba(255, 131, 15, 0.35);
+        color: #fff;
+        font: 600 30px/64px 'Microsoft YaHei', '微软雅黑', system-ui, sans-serif;
+        text-align: center;
+        user-select: none;
+      }
+      .boot-line {
+        position: relative;
+        overflow: hidden;
+        border-radius: 6px;
+        background: #edeef2;
+      }
+      .boot-line::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        transform: translateX(-100%);
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+        animation: boot-shimmer 1.4s ease-in-out infinite;
+      }
+      .boot-line--lg { width: 180px; height: 16px; }
+      .boot-line--sm { width: 116px; height: 10px; }
+      @keyframes boot-shimmer {
+        to { transform: translateX(100%); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .boot-line::after {
+          animation: none;
+          opacity: 0;
+        }
+      }
+    </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- 正文字体已统一微软雅黑（系统字体），仅保留公式/编码等宽字体 JetBrains Mono -->
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot-skeleton" role="status" aria-label="页面加载中">
+        <div class="boot-logo">慧</div>
+        <div class="boot-line boot-line--lg"></div>
+        <div class="boot-line boot-line--sm"></div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -368,7 +368,13 @@ const EMPTY_CASHFLOW: Record<string, number> = {
   [CASHFLOW_DIMS.BUDGET_AMOUNT]: 0,
 }
 
-export function buildTree(subjects: SubjectRow[], leafValues: Map<string, Record<string, number>>, emptyDims: Record<string, number>): ValueNode[] {
+export function buildTree(
+  subjects: SubjectRow[],
+  leafValues: Map<string, Record<string, number>>,
+  emptyDims: Record<string, number>,
+  /** 存在自身直填事实行的科目码集合（数据类父级直填优先判定依据；缺省视为无直填行） */
+  directCodes?: Set<string>,
+): ValueNode[] {
   const byCode = new Map<string, ValueNode>()
   const roots: ValueNode[] = []
 
@@ -390,6 +396,8 @@ export function buildTree(subjects: SubjectRow[], leafValues: Map<string, Record
 
   // 后序：叶子取事实值，父节点 = 子求和
   // 展示类（display）只读展示、不参与计算：自身恒 0（不取事实值、不子级求和），子节点照常聚合
+  // 数据类父级直填优先：存在自身导入事实行时按行值展示（如总资产/总负债/权益净资产行，
+  // 避免「明细未填全导致父级被塌缩为子级部分和」），无直填行回退子求和；计算类父级口径不变（求和/公式重算）
   const dims = Object.keys(emptyDims)
   const aggregate = (node: ValueNode): void => {
     if (node.children.length === 0) {
@@ -400,6 +408,13 @@ export function buildTree(subjects: SubjectRow[], leafValues: Map<string, Record
     }
     for (const child of node.children) aggregate(child)
     if (node.dataType === 'display') return
+    if (node.dataType === 'data' && directCodes?.has(node.code)) {
+      const v = leafValues.get(node.code)
+      if (v) {
+        for (const d of dims) node.values[d] = round2(v[d] ?? 0)
+        return
+      }
+    }
     for (const d of dims) {
       node.values[d] = round2(node.children.reduce((sum, c) => sum + (c.values[d] ?? 0), 0))
     }
@@ -554,6 +569,8 @@ export const AggregationService = {
   async buildStaticTree(companyCodes: string[], period: string, opts?: BuildTreeOpts): Promise<ValueNode[]> {
     const subjects = await loadSubjects('static')
     const leafValues = new Map<string, Record<string, number>>()
+    // 数据类父级直填优先判定依据：仅统计存在自身导入事实行的科目（重分类/汇总抵消叠加值不算直填行）
+    const directCodes = new Set<string>()
     const setDim = (acc: string, dim: string, v: number): void => {
       const rec = leafValues.get(acc) ?? { ...EMPTY_STATIC }
       rec[dim] = v
@@ -591,6 +608,7 @@ export const AggregationService = {
           monthSum.set(k, (monthSum.get(k) ?? 0) + Number(g._sum.value ?? 0))
         }
         for (const acc of new Set(grouped.map((g) => g.accountCode))) {
+          directCodes.add(acc)
           for (const [dim, tPeriod] of dimTargets) {
             const v = monthSum.get(`${acc}|${tPeriod}`)
             if (v !== undefined) setDim(acc, dim, v)
@@ -630,7 +648,7 @@ export const AggregationService = {
         }
       }
     }
-    const tree = buildTree(subjects, leafValues, EMPTY_STATIC)
+    const tree = buildTree(subjects, leafValues, EMPTY_STATIC, directCodes)
     const calc = await loadCalcFormulas('static')
     /**
      * 跨树依赖契约：当静态计算类科目引用经营科目（PL_ 前缀）时，需调用 buildOperatingTree

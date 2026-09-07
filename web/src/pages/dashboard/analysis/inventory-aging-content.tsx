@@ -5,6 +5,8 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { AlertTriangle, ArrowRight, Info, RefreshCw } from 'lucide-react'
 import { useInventoryDetails, useInventoryOverview } from '@/hooks/api-queries'
+import { AnalysisPageSkeleton } from '@/components/ui/skeleton-blocks'
+import { DeltaTag } from '@/components/ui/delta-tag'
 import { cn, formatMoneyWan } from '@/lib/utils'
 import { getChartSeries } from '@/lib/chart-theme'
 import { useThemeStore } from '@/stores/themeStore'
@@ -43,12 +45,10 @@ function StatTile({ label, value, unit, foot, accent, valueClass }: {
   )
 }
 
-/** 同比增减（%）：存货为占用类指标，增长红（占用上升）、下降绿 */
-function yoyChip(v: number): { text: string; cls: string } {
-  if (!Number.isFinite(v) || v === 0) return { text: '→ 持平', cls: 'text-muted-foreground' }
-  return v > 0
-    ? { text: `↑ ${Math.abs(v).toFixed(1)}%`, cls: 'text-finance-red' }
-    : { text: `↓ ${Math.abs(v).toFixed(1)}%`, cls: 'text-finance-green' }
+/** 同比（总额）：（本期 − 同期）/ |同期|，小数比率（存货为占用类指标，增长红=占用上升） */
+function yoyRatio(current: number, samePeriod: number): number {
+  const base = Math.abs(samePeriod)
+  return base ? (current - samePeriod) / base : 0
 }
 
 /**
@@ -68,26 +68,15 @@ export function InventoryAgingContent({ period, companyCode }: InventoryAgingCon
   const categories = useMemo(() => data?.categories ?? [], [data])
   const palette = getChartSeries(sidebarStyle)
 
-  // 同比（总额）：（本期 − 同期）/ |同期|，百分数
+  // 同比（总额）：（本期 − 同期）/ |同期|，小数比率
   const totalYoy = useMemo(() => {
     if (!data) return 0
-    const base = Math.abs(data.total.samePeriod)
-    return base ? ((data.total.current - data.total.samePeriod) / base) * 100 : 0
+    return yoyRatio(data.total.current, data.total.samePeriod)
   }, [data])
   const maxCategory = useMemo(() => categories.reduce((m, c) => Math.max(m, c.current), 0), [categories])
 
   if (isLoading || (detailLoading && !detailData)) {
-    return (
-      <div className="animate-fade-in space-y-4">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="skeleton h-[108px] rounded-card" />
-          ))}
-        </div>
-        <div className="skeleton h-[280px] rounded-card" />
-        <div className="skeleton h-[260px] rounded-card" />
-      </div>
-    )
+    return <AnalysisPageSkeleton blocks={[280, 260]} />
   }
 
   if (isError && !data) {
@@ -136,7 +125,7 @@ export function InventoryAgingContent({ period, companyCode }: InventoryAgingCon
           label="库存总额"
           value={formatMoneyWan(data.total.current)}
           unit="万"
-          foot={`${period ? `期间 ${period} · ` : ''}同比 ${totalYoy === 0 ? '持平' : `${totalYoy > 0 ? '+' : ''}${totalYoy.toFixed(1)}%`}`}
+          foot={`${period ? `期间 ${period} · ` : ''}同比 ${totalYoy === 0 ? '持平' : `${totalYoy > 0 ? '+' : ''}${(totalYoy * 100).toFixed(1)}%`}`}
           accent="before:bg-info-500"
         />
         <StatTile
@@ -173,9 +162,7 @@ export function InventoryAgingContent({ period, companyCode }: InventoryAgingCon
             <EmptyState compact className="py-10" title="暂无品类数据" />
           ) : (
             <div className="space-y-2.5">
-              {categories.map((c, i) => {
-                const chip = yoyChip(c.yoy)
-                return (
+              {categories.map((c, i) => (
                   <div key={c.code} className="flex items-center gap-3">
                     <span
                       className="inline-block h-2.5 w-2.5 shrink-0 rounded-[2px]"
@@ -198,18 +185,20 @@ export function InventoryAgingContent({ period, companyCode }: InventoryAgingCon
                     <span className="w-[56px] shrink-0 text-right font-num text-xs text-muted-foreground">
                       {c.share.toFixed(1)}%
                     </span>
-                    <span className={cn('w-[64px] shrink-0 text-right font-num text-xs', chip.cls)}>{chip.text}</span>
+                    <span className="w-[76px] shrink-0 text-right">
+                      {/* 库存接口 yoy 为百分数（×100），转小数传入 */}
+                      <DeltaTag value={c.yoy / 100} />
+                    </span>
                   </div>
-                )
-              })}
+                ))}
               {/* 合计行 */}
               <div className="flex items-center gap-3 border-t-2 border-border pt-2.5 font-semibold">
                 <span className="w-[9em] shrink-0 text-body">合计</span>
                 <div className="flex-1" />
                 <span className="w-[80px] shrink-0 text-right font-num text-body">{formatMoneyWan(data.total.current)}</span>
                 <span className="w-[56px] shrink-0 text-right font-num text-xs text-muted-foreground">100.0%</span>
-                <span className={cn('w-[64px] shrink-0 text-right font-num text-xs', yoyChip(totalYoy).cls)}>
-                  {yoyChip(totalYoy).text}
+                <span className="w-[76px] shrink-0 text-right">
+                  <DeltaTag value={totalYoy} />
                 </span>
               </div>
             </div>
@@ -222,7 +211,7 @@ export function InventoryAgingContent({ period, companyCode }: InventoryAgingCon
         <CardContent className="p-5">
           <h3 className="mb-3 text-base font-semibold text-foreground">
             公司 × 品类明细
-            <span className="ml-2 text-xs font-normal text-muted-foreground">本期 / 年初 / 同期 / 同比 · 共 {detailRows.length} 行 · 单位：万元</span>
+            <span className="ml-2 text-xs font-normal text-muted-foreground"> {detailRows.length} 行 · 单位：万元</span>
           </h3>
           {detailRows.length === 0 ? (
             <EmptyState compact className="py-10" title="暂无明细数据" />
@@ -240,9 +229,7 @@ export function InventoryAgingContent({ period, companyCode }: InventoryAgingCon
                   </tr>
                 </thead>
                 <tbody>
-                  {detailRows.map((r) => {
-                    const chip = yoyChip(r.yoy)
-                    return (
+                  {detailRows.map((r) => (
                       <tr key={`${r.companyCode}-${r.categoryCode}`}>
                         <td className="max-w-[12em] truncate text-left text-body text-foreground" title={r.companyName}>
                           {r.companyShortName ?? r.companyName}
@@ -251,10 +238,10 @@ export function InventoryAgingContent({ period, companyCode }: InventoryAgingCon
                         <td className="text-right font-num text-sm text-foreground">{formatMoneyWan(r.current)}</td>
                         <td className="text-right font-num text-sm text-muted-foreground">{formatMoneyWan(r.yearStart)}</td>
                         <td className="text-right font-num text-sm text-muted-foreground">{formatMoneyWan(r.samePeriod)}</td>
-                        <td className={cn('text-right font-num text-sm', chip.cls)}>{chip.text}</td>
+                        {/* 库存接口 yoy 为百分数（×100），转小数传入 */}
+                        <td className="text-right"><DeltaTag value={r.yoy / 100} /></td>
                       </tr>
-                    )
-                  })}
+                    ))}
                 </tbody>
               </table>
             </div>

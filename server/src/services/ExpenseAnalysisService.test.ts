@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { basePrisma } from '../lib/prisma'
-import { expenseCandidates, expenseMappingHealth, isValidMappingCode, nextExpenseMappingCode, buildLegacyMappingMigration } from './ExpenseAnalysisService'
+import { expenseCandidates, expenseMappingHealth, isValidMappingCode, nextExpenseMappingCode } from './ExpenseAnalysisService'
 import type { SubjectRow, MappingRow } from './ExpenseAnalysisService'
 import { ExpenseAnalysisService } from './ExpenseAnalysisService'
 
@@ -144,50 +144,6 @@ describe('ExpenseAnalysisService 运营费用映射', () => {
 
     it('超 999 自然扩位', () => {
       expect(nextExpenseMappingCode([row('EXP_999')])).toBe('EXP_1000')
-    })
-  })
-
-  describe('buildLegacyMappingMigration 旧格式迁移计划', () => {
-    const row = (code: string, sortOrder: number, extra: Partial<Parameters<typeof buildLegacyMappingMigration>[0][number]> = {}) => ({
-      id: `id-${code}`,
-      code,
-      name: `名称-${code}`,
-      subjectCodes: [code],
-      sortOrder,
-      status: 'active' as const,
-      deletedAt: null as Date | null,
-      ...extra,
-    })
-
-    it('旧 PL 编码映射按 sortOrder 升序编号 EXP_001 起', () => {
-      const plan = buildLegacyMappingMigration([row('PL05010102', 2), row('PL05010101', 1)])
-      expect(plan.map((p) => p.targetCode)).toEqual(['EXP_001', 'EXP_002'])
-      expect(plan[0].legacy.code).toBe('PL05010101')
-      expect(plan[0].legacy.sortOrder).toBe(1)
-    })
-
-    it('归并/停用状态保留（subjectCodes 多科目、status inactive）', () => {
-      const plan = buildLegacyMappingMigration([
-        row('PL05010101', 1, { subjectCodes: ['PL05010101', 'PL05010102'], status: 'inactive' }),
-      ])
-      expect(plan).toHaveLength(1)
-      expect(plan[0].legacy.subjectCodes).toEqual(['PL05010101', 'PL05010102'])
-      expect(plan[0].legacy.status).toBe('inactive')
-    })
-
-    it('墓碑行 / EXP_ 自定义 / 非费用科目编码不参与迁移', () => {
-      const plan = buildLegacyMappingMigration([
-        row('PL05010101', 1, { deletedAt: new Date() }),
-        row('EXP_rd_expense', 2),
-        row('PL02', 3),
-      ])
-      expect(plan).toHaveLength(1)
-      expect(plan[0].legacy.code).toBe('PL02')
-    })
-
-    it('无旧格式行返回空计划', () => {
-      expect(buildLegacyMappingMigration([])).toEqual([])
-      expect(buildLegacyMappingMigration([row('EXP_001', 1)])).toEqual([])
     })
   })
 

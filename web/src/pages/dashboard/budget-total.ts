@@ -84,3 +84,10 @@ export function totalMetrics(rows: ProductBudgetMetric[]): ProductBudgetMetric {
     ytdYoy: yoyRate(ytdActual, ytdSame),
   }
 }
+
+/** 运营费用合计（含环比）：金额/预算沿用 totalMetrics，环比按 Σ金额重算（Σ本月-Σ上月)/|Σ上月|，与同比合计口径一致 */
+export function totalExpenseMetrics(rows: (ProductBudgetMetric & { monthPrev: number })[]): ProductBudgetMetric & { monthPrev: number; monthMom: number } {
+  const total = totalMetrics(rows)
+  const monthPrev = round2(rows.reduce((s, r) => s + (r.monthPrev ?? 0), 0))
+  return { ...total, monthPrev, monthMom: yoyRate(total.monthActual, monthPrev) }
+}

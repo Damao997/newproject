@@ -71,15 +71,16 @@ export function useIndicatorExport(opts: {
         })
         setExportMsg(`已导出：${filename}`)
       } else if (opts.subjectType === 'cashflow') {
-        // 现金流量分支：本月/同期/本年累计/同期累计/同比，跳过隐藏列
+        // 现金流量分支：本月/同比/本年累计/同期累计/累计同比，跳过隐藏列
         const keys = exportKeysFor('cashflow').filter((k) => !opts.getHiddenColumns().includes(k))
         const rows = flat.map(({ row, depth }) => {
           const f = row as CashflowRow
           // 展示类（display）只读展示：导出值列统一写「—」（口径同 browse/后端 maskDisplayRows）
           const cols: Record<string, string | number> = f.dataType === 'display'
-            ? { actual: '—', samePeriod: '—', ytd: '—', samePeriodYtd: '—', yoy: '—' }
+            ? { actual: '—', samePeriod: '—', ytd: '—', samePeriodYtd: '—', yoy: '—', ytdYoy: '—' }
             : { actual: fmtVal(f.current, f.valueType), samePeriod: fmtVal(f.samePeriod, f.valueType),
-                ytd: fmtVal(f.ytd, f.valueType), samePeriodYtd: fmtVal(f.samePeriodYtd, f.valueType), yoy: fmtYoy(f.yoy) }
+                yoy: fmtYoy(f.yoy), ytd: fmtVal(f.ytd, f.valueType), samePeriodYtd: fmtVal(f.samePeriodYtd, f.valueType),
+                ytdYoy: fmtYoy(f.ytdYoy) }
           return { account: `${'　'.repeat(depth)}${f.name}`, ...Object.fromEntries(keys.map((k) => [k, cols[k]])) }
         })
         const filename = `财务指标_现金流量表${scopeSuffix}_${new Date().toISOString().slice(0, 10)}.xlsx`
@@ -89,8 +90,8 @@ export function useIndicatorExport(opts: {
           columns: [
             { header: '科目', key: 'account', width: 40 },
             ...keys.map((k) => ({
-              header: k === 'actual' ? '本月金额(万)' : k === 'samePeriod' ? '同期金额(万)' : k === 'ytd' ? '本年累计(万)' : k === 'samePeriodYtd' ? '同期累计(万)' : '同比',
-              key: k, width: k === 'yoy' ? 10 : 14,
+              header: k === 'actual' ? '本月金额(万)' : k === 'samePeriod' ? '同期金额(万)' : k === 'ytd' ? '本年累计(万)' : k === 'samePeriodYtd' ? '同期累计(万)' : k === 'ytdYoy' ? '累计同比' : '同比',
+              key: k, width: (k === 'yoy' || k === 'ytdYoy') ? 10 : 14,
             })),
           ],
           rows,

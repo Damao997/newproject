@@ -78,9 +78,10 @@ export const ProductConfigService = {
 
   async create(input: { code: string; name: string; subjectKeyword: string; sortOrder?: number; status?: string }, ctx: AuditCtx): Promise<KeyMetricsProductDto> {
     const code = String(input.code ?? '').trim()
-    const name = String(input.name ?? '').trim()
+    // 名称保留前导空白（半角/全角空格 = 品类核心指标分析子项缩进约定），仅去尾部空白；纯空白名称拒绝
+    const name = String(input.name ?? '').replace(/\s+$/, '')
     const subjectKeyword = String(input.subjectKeyword ?? '').trim()
-    if (!code || !name || !subjectKeyword) throw errors.badRequest('产品编码、名称与匹配关键词必填')
+    if (!code || !name.trim() || !subjectKeyword) throw errors.badRequest('产品编码、名称与匹配关键词必填')
     const exists = await prisma.keyMetricsProduct.findUnique({ where: { code } })
     if (exists) throw errors.conflict('产品编码已存在')
     const created = await prisma.keyMetricsProduct.create({
@@ -99,11 +100,11 @@ export const ProductConfigService = {
   async update(id: string, input: { name?: string; subjectKeyword?: string; sortOrder?: number; status?: string }, ctx: AuditCtx): Promise<KeyMetricsProductDto> {
     const found = await prisma.keyMetricsProduct.findUnique({ where: { id } })
     if (!found) throw errors.notFound('产品配置不存在')
-    // code 不可变（被关键指标表展示引用）
+    // code 不可变（被关键指标表展示引用）；名称保留前导空白（子项缩进约定），仅去尾部空白
     const updated = await prisma.keyMetricsProduct.update({
       where: { id },
       data: {
-        ...(input.name !== undefined ? { name: String(input.name).trim() } : {}),
+        ...(input.name !== undefined ? { name: String(input.name).replace(/\s+$/, '') } : {}),
         ...(input.subjectKeyword !== undefined ? { subjectKeyword: String(input.subjectKeyword).trim() } : {}),
         ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
         ...(input.status === 'active' || input.status === 'inactive' ? { status: input.status } : {}),
@@ -144,7 +145,12 @@ export const ProductConfigService = {
     return {
       products: rows,
       uncoveredSubjects: uncovered,
-      brokenKeywords: rows.filter((r) => r.matchedSubjects.length === 0).map((r) => r.subjectKeyword),
+      // 失效关键词逐个检测：多关键词配置（逗号分隔）下仅报告无命中的关键词（部分命中不算整体失效）
+      brokenKeywords: rows.flatMap((r) => {
+        const matched = coveredMap.get(r.name)?.subjects ?? []
+        return r.subjectKeyword.split(/[,，]/).map((k) => k.trim()).filter(Boolean)
+          .filter((kw) => !matched.some((s) => s.includes(kw)))
+      }),
       missingProfitMirror: rows.filter((r) => r.matchedSubjects.length > 0 && !r.profitOk).map((r) => r.name),
     }
   },

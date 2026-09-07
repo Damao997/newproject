@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AlertTriangle, ArrowRight, ChevronDown, ChevronUp, FileText, RefreshCw } from 'lucide-react'
 import { useDashboardReceivables, useTransactionAging } from '@/hooks/api-queries'
+import { AnalysisPageSkeleton } from '@/components/ui/skeleton-blocks'
 import { usePageStore } from '@/stores/pageStateStore'
 import { AGING_GROUPS, AgingStackBar } from '@/pages/transactions/shared'
 import { cn, formatMoneyWan, formatWan } from '@/lib/utils'
@@ -105,12 +106,14 @@ type DistributionView = 'company' | 'customer'
 /**
  * 应收账款账龄分析页（真实数据，跟随看板主体/期间筛选）：
  * - useDashboardReceivables：应收期末余额按主体分布（横向条），可与按客户分布（aging counterparty 聚合，外部客户+关联方）切换；
+ *   主体分布恒按单体行展示（与首页应收账款分析卡口径一致）：单体=自身一行，汇总主体由后端展开为成员公司各行；
  * - useTransactionAging（transactionType=应收账款 / groupBy=company）：8 段账龄汇总（KPI 磁贴 + 分布条 + 主体明细表）；
  * - 单体筛选（company:X）时账龄查询限定该主体；汇总主体（summary:X）按成员公司展开过滤（后端 expandSummaries）；全部口径按数据权限内单体公司统计；
  * - 深链入口：前往往来账龄分析（/transactions/aging）。
  */
 export function ReceivableAgingContent({ period, companyCode }: ReceivableAgingContentProps) {
   const dim = usePageStore((s) => s.dashboard.dim)
+  // mode 仅用于账龄区块展示文案（KPI 脚注 / 明细表汇总说明），不参与主体分布查询（见下 useDashboardReceivables）
   const mode: 'single' | 'summary' = dim.startsWith('summary:') ? 'summary' : 'single'
   // 主体口径：单体公司与汇总主体均限定账龄查询范围（汇总主体由后端 normalizeCompanies → expandSummaries
   // 展开为成员单体过滤）；dim='all'/空 = 全部主体，不传参保持数据权限口径
@@ -124,9 +127,11 @@ export function ReceivableAgingContent({ period, companyCode }: ReceivableAgingC
     setExpanded(false)
   }
 
+  // 主体分布恒按单体行：mode 固定 'single'——单体=自身一行，汇总主体由后端 resolveCompanyCodes
+  // 展开为成员公司各行（与首页应收账款分析卡一致），不走汇总聚合分支
   const { data: receivableData, isLoading: receivableLoading, isError: receivableError } = useDashboardReceivables({
     period,
-    mode,
+    mode: 'single',
     companyCode,
   })
   const { data: agingRows, isLoading: agingLoading, isError: agingError, refetch } = useTransactionAging(
@@ -179,21 +184,7 @@ export function ReceivableAgingContent({ period, companyCode }: ReceivableAgingC
   const isError = receivableError || agingError
   const isEmpty = !isLoading && !isError && receivableRows.length === 0 && (agingRows ?? []).length === 0
 
-  if (isLoading) {
-    return (
-      <div className="animate-fade-in space-y-4">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="skeleton h-[108px] rounded-card" />
-          ))}
-        </div>
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <div className="skeleton h-[280px] rounded-card" />
-          <div className="skeleton h-[280px] rounded-card" />
-        </div>
-      </div>
-    )
-  }
+  if (isLoading) return <AnalysisPageSkeleton blocks={[[280, 280]]} />
 
   if (isError) {
     return (
@@ -215,7 +206,7 @@ export function ReceivableAgingContent({ period, companyCode }: ReceivableAgingC
       {/* 顶部工具条：口径摘要 + 往来账龄深链 */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          {period ? `期间 ${period} · ` : ''}应收期末余额按主体分布 · 8 段账龄结构（口径与往来账龄分析一致）
+          {period ? `期间 ${period} · ` : ''}
         </p>
         <Button asChild variant="outline" size="sm" className="h-8 gap-1">
           <Link to="/transactions/aging">
@@ -274,7 +265,7 @@ export function ReceivableAgingContent({ period, companyCode }: ReceivableAgingC
                   <h3 className="text-base font-semibold text-foreground">
                     {view === 'company' ? '应收余额按主体分布' : '应收余额按客户分布'}
                     <span className="ml-2 text-xs font-normal text-muted-foreground">
-                      单位：万元 · 期末余额{view === 'customer' ? ' · 外部客户+关联方' : ''}
+                      单位：万元 · 期末余额{view === 'customer' ? ' ·' : ''}
                     </span>
                   </h3>
                   <Tabs value={view} onValueChange={switchView}>
@@ -338,9 +329,9 @@ export function ReceivableAgingContent({ period, companyCode }: ReceivableAgingC
             <Card className="border border-border shadow-antd-1">
               <CardContent className="p-5">
                 <h3 className="mb-3 text-base font-semibold text-foreground">
-                  账龄结构（8 段）
+                  账龄结构
                   <span className="ml-2 text-xs font-normal text-muted-foreground">
-                    合计 {formatWan(agingClosingTotal)}万 · 应收账款口径
+                    合计 {formatWan(agingClosingTotal)}万 
                   </span>
                 </h3>
                 {(agingRows ?? []).length === 0 ? (
@@ -385,7 +376,7 @@ export function ReceivableAgingContent({ period, companyCode }: ReceivableAgingC
             <CardContent className="p-5">
               <h3 className="mb-3 text-base font-semibold text-foreground">
                 主体账龄明细
-                <span className="ml-2 text-xs font-normal text-muted-foreground">期末余额 / 8 段账龄 / 分布 · 单位：万元</span>
+                <span className="ml-2 text-xs font-normal text-muted-foreground">期末余额 · 单位：万元</span>
               </h3>
               {(agingRows ?? []).length === 0 ? (
                 <EmptyState compact className="py-10" title="暂无明细数据" />

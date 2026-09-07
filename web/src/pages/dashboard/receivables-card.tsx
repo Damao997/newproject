@@ -130,7 +130,7 @@ export function ReceivablesCard({ period, companyCode }: ReceivablesCardProps) {
             应收账款分析
           </CardTitle>
           <p className="mt-1 text-xs text-muted-foreground">
-            {period ? `期间 ${period} · ` : ''}单位：万元 · 金额：应收期末余额（万元）
+            {period ? `期间 ${period} · ` : ''}单位：万元 
           </p>
         </div>
         <Button variant="ghost" size="sm" className="gap-1 text-primary" onClick={gotoTransactions}>

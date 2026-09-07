@@ -1,4 +1,4 @@
-﻿/* eslint-disable react/only-export-components -- compareRaw/类型导出供 pro-table-inner 与使用方复用，属模块能力而非组件 */
+/* eslint-disable react/only-export-components -- compareRaw/类型导出供 pro-table-inner 与使用方复用，属模块能力而非组件 */
 import { Fragment, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -337,7 +337,7 @@ export function DataTable<T>({
               })}
             </tr>
           </thead>
-          <tbody>
+          <tbody aria-busy={loading || undefined}>
             {loading ? (
               // 骨架行：.skeleton shimmer 与 skeleton-blocks 一致，避免加载态布局抖动
               Array.from({ length: loadingRows }).map((_, i) => (

@@ -10,7 +10,10 @@ import { cn } from "@/lib/utils"
  *
  * 关键映射：
  * - 受控 open/onOpenChange 透传（antd 同签名）；
- * - trigger 固定 "click"（Radix 默认点击开合；antd 默认 hover，必须显式覆盖）；
+ * - trigger 默认 "click"（Radix 默认点击开合；antd 默认 hover，必须显式覆盖）；
+ *   可选 "hover" 或数组（如 ['hover','focus']，供悬浮明细等键盘可达场景）；
+ *   hover 模式下显式设置 mouseEnterDelay/mouseLeaveDelay=100ms（antd 默认），
+ *   由门面受控包装的 onOpenChange 透传内部 state，开合行为与原生一致；
  * - PopoverContent 的 align/side → antd placement；className 由内容 wrapper div 承载
  *   （antd 内层 padding 置零，调用方的宽度与内边距类完全生效）；
  * - 无箭头（对齐 Radix 默认）。
@@ -28,6 +31,8 @@ interface PopoverProps {
   open?: boolean
   defaultOpen?: boolean
   onOpenChange?: (open: boolean) => void
+  /** 触发方式：默认 'click'（兼容既有调用方）；'hover' / 数组（可含 'focus'）用于悬浮明细 */
+  trigger?: 'click' | 'hover' | Array<'click' | 'hover' | 'focus'>
   children?: React.ReactNode
 }
 
@@ -38,7 +43,7 @@ function toPlacement(side: 'top' | 'bottom' | 'left' | 'right', align: 'start' |
   return align === 'start' ? 'rightTop' : align === 'end' ? 'rightBottom' : 'right'
 }
 
-const Popover = ({ open, defaultOpen, onOpenChange, children }: PopoverProps) => {
+const Popover = ({ open, defaultOpen, onOpenChange, trigger = 'click', children }: PopoverProps) => {
   const [internalOpen, setInternalOpen] = React.useState(defaultOpen ?? false)
   const isOpen = open !== undefined ? open : internalOpen
   const setOpen = React.useCallback(
@@ -49,8 +54,8 @@ const Popover = ({ open, defaultOpen, onOpenChange, children }: PopoverProps) =>
     [onOpenChange, open],
   )
 
-  // ---- 声明式子组件收集 ----
-  let trigger: React.ReactNode
+  // ---- 声明式子组件收集（triggerEl 为 PopoverTrigger 的子元素，避免与 trigger prop 重名） ----
+  let triggerEl: React.ReactNode
   let contentChildren: React.ReactNode
   let contentClassName: string | undefined
   let align: 'start' | 'center' | 'end' = 'center'
@@ -59,7 +64,7 @@ const Popover = ({ open, defaultOpen, onOpenChange, children }: PopoverProps) =>
   React.Children.forEach(children, (child) => {
     if (!React.isValidElement(child)) return
     if (child.type === PopoverTrigger) {
-      trigger = (child.props as { children?: React.ReactNode }).children
+      triggerEl = (child.props as { children?: React.ReactNode }).children
     } else if (child.type === PopoverContent) {
       const p = child.props as PopoverContentProps
       contentChildren = p.children
@@ -73,7 +78,10 @@ const Popover = ({ open, defaultOpen, onOpenChange, children }: PopoverProps) =>
     <AntdPopover
       open={isOpen}
       onOpenChange={setOpen}
-      trigger="click"
+      trigger={trigger}
+      // hover 模式延迟 100ms（antd 默认）：悬停约 100ms 开、移开 100ms 关，配合缓存数据保证 <300ms 响应
+      mouseEnterDelay={0.1}
+      mouseLeaveDelay={0.1}
       placement={toPlacement(side, align)}
       arrow={false}
       // 内层 padding 置零：调用方 className 的宽度与内边距类完全生效（原 Radix 语义）
@@ -81,7 +89,7 @@ const Popover = ({ open, defaultOpen, onOpenChange, children }: PopoverProps) =>
       styles={{ body: { padding: 0 } }}
       content={<div className={cn(contentClassName)}>{contentChildren}</div>}
     >
-      {trigger as React.ReactNode}
+      {triggerEl as React.ReactNode}
     </AntdPopover>
   )
 }
