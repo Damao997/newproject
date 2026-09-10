@@ -28,6 +28,19 @@ const ALLOWED_ATTR = [
 ]
 
 /**
+ * 图片 src 白名单钩子：仅允许站内相对路径（/api/v1/uploads/...）与 data: 内联，
+ * 禁外链 http(s)（与后端 sanitizeRichText 的 img 协议白名单对齐，纵深防御）。
+ */
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.tagName === 'IMG') {
+    const src = node.getAttribute('src')
+    if (src && !src.startsWith('/') && !src.startsWith('data:')) {
+      node.removeAttribute('src')
+    }
+  }
+})
+
+/**
  * 净化 HTML 字符串以安全展示。
  *
  * 移除 script / iframe / on* 事件属性 / javascript: 协议等危险内容。

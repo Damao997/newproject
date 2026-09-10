@@ -204,6 +204,51 @@ const USERS: UserSeed[] = [
   { username: 'analyst.it', displayName: '财务分析师-赵六', roleCode: 'finance_analyst_it', password: 'Analyst2026@' },
 ]
 
+/** 系统预置报告模板（结构模板：章节骨架蓝图，TPL_S_ 前缀锁定不可删除） */
+const SYSTEM_REPORT_TEMPLATES = [
+  {
+    code: 'TPL_S_MONTHLY',
+    name: '月度经营分析报告',
+    description: '通用月度经营分析骨架：概况 → 收入 → 成本毛利 → 费用 → 现金流 → 风险与建议',
+    sections: [
+      { title: '一、经营概况', content: '' },
+      { title: '二、收入分析', content: '' },
+      { title: '三、成本与毛利分析', content: '' },
+      { title: '四、费用分析', content: '' },
+      { title: '五、现金流状况', content: '' },
+      { title: '六、风险提示与建议', content: '' },
+    ],
+  },
+  {
+    code: 'TPL_S_SPECIAL',
+    name: '专项分析报告',
+    description: '单主题专项分析骨架：背景 → 数据表现 → 原因 → 结论建议',
+    sections: [
+      { title: '一、背景与目的', content: '' },
+      { title: '二、数据表现', content: '' },
+      { title: '三、原因分析', content: '' },
+      { title: '四、结论与建议', content: '' },
+    ],
+  },
+  {
+    code: 'TPL_S_BLANK',
+    name: '空白报告',
+    description: '不预置章节，从零开始（可配合 AI 生成章节）',
+    sections: [],
+  },
+]
+
+async function seedReportTemplates(): Promise<void> {
+  for (const t of SYSTEM_REPORT_TEMPLATES) {
+    await prisma.reportTemplate.upsert({
+      where: { code: t.code },
+      update: { name: t.name, description: t.description, structure: { sections: t.sections } },
+      create: { code: t.code, name: t.name, description: t.description, structure: { sections: t.sections } },
+    })
+  }
+  console.log(`[seed] 系统报告模板 ${SYSTEM_REPORT_TEMPLATES.length} 套 完成`)
+}
+
 async function main(): Promise<void> {
   const bcryptCost = Number(process.env.BCRYPT_COST || 12)
 
@@ -211,6 +256,9 @@ async function main(): Promise<void> {
 
   // 1) 公司主体 + 汇总映射（从映射 Excel 导入）
   await seedCompaniesAndMapping(prisma)
+
+  // 1.5) 系统报告模板（结构骨架，幂等 upsert）
+  await seedReportTemplates()
 
   // 2) 角色 + 权限（预置角色 is_system=true 锁定）
   for (const r of ROLES) {

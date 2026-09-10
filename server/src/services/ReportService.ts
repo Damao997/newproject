@@ -1,9 +1,10 @@
-﻿import { prisma } from '../lib/prisma'
+import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { sanitizeRichText, richTextToPlainText } from '../lib/sanitize'
 import { resolveScope } from '../middleware/scope'
 import { currentScope } from '../middleware/scope-context'
 import { SubjectAnalysisService, resolveScopeCompanyCodes, OVERVIEW_SUBJECT_CODE, OVERVIEW_SUBJECT_NAME, ALL_COMPANY_CODE, ALL_COMPANY_NAME, type AnalysisDTO } from './SubjectAnalysisService'
+import { IndicatorsService } from './IndicatorsService'
 import type { AuthUserContext } from '../types/express'
 
 /**
@@ -95,6 +96,11 @@ const STATUS_TRANSITIONS: Record<string, string[]> = {
   archived: ['draft'],
 }
 
+/** 系统预置模板 code 前缀（seed 写入，不可删除） */
+const SYSTEM_TEMPLATE_PREFIX = 'TPL_S_'
+/** 用户自定义模板 code 前缀 */
+const CUSTOM_TEMPLATE_PREFIX = 'TPL_U_'
+
 /** 仅草稿可编辑（章节增删/生成/存版本/回退） */
 function assertDraft(report: { status: string }): void {
   if (report.status !== 'draft') {
@@ -161,9 +167,9 @@ function toListItem(r: {
 export const ReportService = {
   /**
    * 列表（分页，scope 收敛）。status 未指定时默认排除已归档；status='all' 返回全部。
-   * 支持 keyword 按标题模糊搜索。
+   * 支持 keyword 按标题模糊搜索；sortBy（updatedAt/title/currentVersion 白名单）+ sortOrder 排序。
    */
-  async list(scope: Scope, params: { page?: number; pageSize?: number; status?: string; keyword?: string }): Promise<{ items: Omit<ReportView, 'sections'>[]; total: number; page: number; pageSize: number }> {
+  async list(scope: Scope, params: { page?: number; pageSize?: number; status?: string; keyword?: string; sortBy?: 'updatedAt' | 'title' | 'currentVersion'; sortOrder?: 'asc' | 'desc' }): Promise<{ items: Omit<ReportView, 'sections'>[]; total: number; page: number; pageSize: number }> {
     const page = Math.max(1, params.page ?? 1)
     const pageSize = Math.min(100, Math.max(1, params.pageSize ?? 20))
     const status = validStatus(params.status)
@@ -177,12 +183,17 @@ export const ReportService = {
       ...(keyword ? { title: { contains: keyword } } : {}),
     }
 
+    // 排序白名单映射（缺省按更新时间倒序）
+    const sortBy = params.sortBy === 'title' || params.sortBy === 'currentVersion' ? params.sortBy : 'updatedAt'
+    const orderDirection = params.sortOrder === 'asc' ? 'asc' : 'desc'
+    const orderBy = { [sortBy]: orderDirection }
+
     const s = currentScope() ?? (await resolveScope(prisma, scope))
     if (s.type === 'none') return { items: [], total: 0, page, pageSize }
 
     if (s.type === 'all') {
       const [rows, total] = await Promise.all([
-        prisma.report.findMany({ where, orderBy: { updatedAt: 'desc' }, skip: (page - 1) * pageSize, take: pageSize }),
+        prisma.report.findMany({ where, orderBy, skip: (page - 1) * pageSize, take: pageSize }),
         prisma.report.count({ where }),
       ])
       return { items: rows.map(toListItem), total, page, pageSize }
@@ -190,7 +201,7 @@ export const ReportService = {
 
     // 受限 scope：报告量级小，取回后在内存按主体授权过滤
     // 汇总主体的「全有或全无」判定已由 resolveScope 收敛进 summaryCodes，与详情校验口径一致
-    const rows = await prisma.report.findMany({ where, orderBy: { updatedAt: 'desc' } })
+    const rows = await prisma.report.findMany({ where, orderBy })
     const allowedSingles = new Set(s.companyCodes)
     const allowedSummaries = new Set(s.summaryCodes)
     const parsed = rows.map((r) => ({ row: r, cs: parseScope(r.companyScope) }))
@@ -258,8 +269,8 @@ export const ReportService = {
     })
   },
 
-  /** 创建报告（空章节，随后调用 generateSections；主体范围须落在用户 scope 内） */
-  async create(scope: Scope, input: { title: string; fiscalYear: string; period: string; companyScope: CompanyScope }, userId: string): Promise<ReportView> {
+  /** 创建报告（可选模板蓝图生成初始章节，随后可调用 generateSections；主体范围须落在用户 scope 内） */
+  async create(scope: Scope, input: { title: string; fiscalYear: string; period: string; companyScope: CompanyScope; templateCode?: string }, userId: string): Promise<ReportView> {
     if (!input.title?.trim() || !input.fiscalYear || !input.period || !input.companyScope?.code) {
       throw errors.badRequest('标题、财年、期间、主体范围为必填项')
     }
@@ -279,6 +290,9 @@ export const ReportService = {
         updatedBy: userId,
       },
     })
+    if (input.templateCode) {
+      await this.applyTemplate(report.id, input.templateCode)
+    }
     return this.getById(scope, report.id)
   },
 
@@ -529,5 +543,152 @@ export const ReportService = {
       generatedAt: new Date().toISOString(),
       sections: report.sections.map((s) => ({ title: s.title, content: s.content, plainText: richTextToPlainText(s.content), missing: s.missing })),
     }
+  },
+
+  // ============ 报告模板（结构模板：章节骨架蓝图，Notion 式复制而非参数化） ============
+
+  /** 模板蓝图结构（structure Json 的类型口径） */
+  async listTemplates(): Promise<{ items: { id: string; code: string; name: string; description: string | null; isSystem: boolean; sectionCount: number; createdAt: string }[] }> {
+    const rows = await prisma.reportTemplate.findMany({ orderBy: [{ createdAt: 'asc' }] })
+    return {
+      items: rows.map((t) => {
+        const structure = (t.structure ?? {}) as Record<string, unknown>
+        const sections = Array.isArray(structure.sections) ? structure.sections : []
+        return {
+          id: t.id,
+          code: t.code,
+          name: t.name,
+          description: t.description,
+          isSystem: t.code.startsWith(SYSTEM_TEMPLATE_PREFIX),
+          sectionCount: sections.length,
+          createdAt: t.createdAt.toISOString(),
+        }
+      }),
+    }
+  },
+
+  /** 从报告章节快照创建自定义模板（"另存为模板"）：引用章节的内容冻结为自由内容起点 */
+  async createTemplate(name: string, description: string | undefined, sections: Array<{ title: string; content?: string }>): Promise<{ id: string; code: string }> {
+    const trimmed = name?.trim()
+    if (!trimmed) throw errors.badRequest('模板名称为必填项')
+    if (!Array.isArray(sections) || sections.length > 50) throw errors.badRequest('章节蓝图为必填项（最多 50 章）')
+    const blueprints = sections.map((s) => ({
+      title: String(s.title ?? '').trim().slice(0, 200) || '自定义章节',
+      content: sanitizeRichText(String(s.content ?? '')),
+    }))
+    const code = `${CUSTOM_TEMPLATE_PREFIX}${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`
+    const row = await prisma.reportTemplate.create({
+      data: { code, name: trimmed.slice(0, 100), description: description?.trim()?.slice(0, 300) ?? null, structure: { sections: blueprints } as never },
+    })
+    return { id: row.id, code: row.code }
+  },
+
+  /** 删除模板（系统预置模板不可删，保证全员共用骨架稳定） */
+  async deleteTemplate(id: string): Promise<void> {
+    const row = await prisma.reportTemplate.findUnique({ where: { id } })
+    if (!row) throw errors.notFound('模板不存在')
+    if (row.code.startsWith(SYSTEM_TEMPLATE_PREFIX)) throw errors.badRequest('系统预置模板不可删除')
+    await prisma.reportTemplate.delete({ where: { id } })
+  },
+
+  /** 按模板蓝图创建报告章节（创建报告时套用；模板不存在静默跳过——模板删除不阻塞建报告） */
+  async applyTemplate(reportId: string, templateCode: string): Promise<number> {
+    const tpl = await prisma.reportTemplate.findUnique({ where: { code: templateCode } })
+    if (!tpl) return 0
+    const structure = (tpl.structure ?? {}) as Record<string, unknown>
+    const sections = Array.isArray(structure.sections)
+      ? (structure.sections as Array<{ title?: string; content?: string }>)
+      : []
+    if (sections.length === 0) return 0
+    await prisma.reportSection.createMany({
+      data: sections.map((s, i) => ({
+        reportId,
+        title: String(s.title ?? '').trim() || '自定义章节',
+        content: sanitizeRichText(String(s.content ?? '')),
+        orderNo: i + 1,
+      })),
+    })
+    return sections.length
+  },
+
+  // ============ 报告分享（只读 token 链接；仅已发布报告可分享） ============
+
+  /** 查询报告分享状态（须 reports:view + scope） */
+  async getShareStatus(scope: Scope, reportId: string): Promise<{ shareToken: string; expiresAt: string | null; viewCount: number; createdAt: string } | null> {
+    const report = await prisma.report.findUnique({ where: { id: reportId } })
+    if (!report) throw errors.notFound('报告不存在')
+    await assertReportInScope(scope, parseScope(report.companyScope))
+    const share = await prisma.reportShare.findFirst({ where: { reportId }, orderBy: { createdAt: 'desc' } })
+    if (!share) return null
+    return { shareToken: share.shareToken, expiresAt: share.expiresAt?.toISOString() ?? null, viewCount: share.viewCount, createdAt: share.createdAt.toISOString() }
+  },
+
+  /**
+   * 创建/更新分享（须 reports:update + scope；仅 published 报告）。
+   * 一报告一条活跃分享：默认沿用既有 token（链接稳定），regenerate=true 重置。
+   * expiresDays：null=永久；正整数=有效天数。
+   */
+  async createShare(scope: Scope, reportId: string, opts: { expiresDays?: number | null; regenerate?: boolean }, userId: string): Promise<{ shareToken: string; expiresAt: string | null; viewCount: number }> {
+    const report = await prisma.report.findUnique({ where: { id: reportId } })
+    if (!report) throw errors.notFound('报告不存在')
+    await assertReportInScope(scope, parseScope(report.companyScope))
+    if (report.status !== 'published') throw errors.badRequest('仅已发布的报告可分享，请先发布')
+    const expiresDays = opts.expiresDays
+    if (expiresDays !== null && expiresDays !== undefined && (!Number.isInteger(expiresDays) || expiresDays < 1 || expiresDays > 3650)) {
+      throw errors.badRequest('有效期须为 1-3650 的整数天数或永久')
+    }
+    const expiresAt = expiresDays ? new Date(Date.now() + expiresDays * 24 * 60 * 60 * 1000) : null
+    const existing = await prisma.reportShare.findFirst({ where: { reportId }, orderBy: { createdAt: 'desc' } })
+    if (existing && !opts.regenerate) {
+      const updated = await prisma.reportShare.update({ where: { id: existing.id }, data: { expiresAt, createdBy: userId } })
+      return { shareToken: updated.shareToken, expiresAt: updated.expiresAt?.toISOString() ?? null, viewCount: updated.viewCount }
+    }
+    if (existing) {
+      await prisma.reportShare.delete({ where: { id: existing.id } })
+    }
+    const created = await prisma.reportShare.create({ data: { reportId, expiresAt, createdBy: userId } })
+    return { shareToken: created.shareToken, expiresAt: created.expiresAt?.toISOString() ?? null, viewCount: created.viewCount }
+  },
+
+  /** 吊销分享（须 reports:update + scope） */
+  async revokeShare(scope: Scope, reportId: string): Promise<void> {
+    const report = await prisma.report.findUnique({ where: { id: reportId } })
+    if (!report) throw errors.notFound('报告不存在')
+    await assertReportInScope(scope, parseScope(report.companyScope))
+    await prisma.reportShare.deleteMany({ where: { reportId } })
+  },
+
+  /**
+   * 公开只读访问（无 JWT，token 即授权）：校验 token 有效性与有效期、报告仍为 published，
+   * 自增 viewCount 后返回实时只读内容（与引用章节实时 join 语义一致，内容随原文更新）。
+   */
+  async getSharedReport(token: string): Promise<ReportView> {
+    const share = await prisma.reportShare.findUnique({ where: { shareToken: token } })
+    if (!share) throw errors.notFound('分享链接不存在或已失效')
+    if (share.expiresAt && share.expiresAt.getTime() < Date.now()) throw errors.notFound('分享链接已过期')
+    const report = await prisma.report.findUnique({ where: { id: share.reportId } })
+    if (!report || report.status !== 'published') throw errors.notFound('分享的报告不存在或未发布')
+    await prisma.reportShare.update({ where: { id: share.id }, data: { viewCount: { increment: 1 } } })
+    const sections = await this.getSections(report.id)
+    return { ...toListItem(report), companyScope: parseScope(report.companyScope), sections }
+  },
+
+  // ============ 报告图表取数（chart Node 数据源；reports:view 权限 + scope 校验） ============
+
+  /**
+   * 图表数据：单公司×单科目×单期间的指标行（复用 IndicatorsService.getByCode 的取数与 scope 收敛）。
+   * 挂在 reports 路由下，使仅有 reports:view 的读者（部门经理/查看者）也能看到报告内嵌图表。
+   */
+  async getChartData(scope: Scope, input: { companyCode: string; subjectCode: string; subjectType: string; period: string }): Promise<Record<string, unknown>> {
+    if (!input.companyCode || !input.subjectCode || !input.period) {
+      throw errors.badRequest('公司、科目、期间为必填项')
+    }
+    const subjectType = input.subjectType === 'static' ? 'static' : input.subjectType === 'cashflow' ? 'cashflow' : 'operating'
+    const row = await IndicatorsService.getByCode(scope, input.subjectCode, {
+      companyCode: input.companyCode,
+      period: input.period,
+    })
+    // 行内补充口径标记，前端图表区分经营（实际/同期/预算）与静态（期末/年初/上年同期）
+    return { ...(row as unknown as Record<string, unknown>), subjectType }
   },
 }

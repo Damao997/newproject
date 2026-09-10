@@ -188,13 +188,14 @@ export default function LoginPage() {
     <div className="login-shell">
       {/* ========== 左侧：品牌区（仅桌面端 ≥1025px 显示，粉彩渐变随主题联动） ========== */}
       <aside className="login-side">
+        {/* 版本号在 stack 之外（同级）：absolute 定位锚定 .login-side，固定距底 30px，不参与居中布局流 */}
         <div className="login-brand-stack">
           <div className="login-brand">
             <img className="login-brand-logo" src="/logo.png" alt="浙江壹品慧" />
             <span className="login-brand-text">浙江壹品慧经营分析平台</span>
           </div>
-          <div className="login-version">V2026.08.1</div>
         </div>
+        <div className="login-version">V2026.1.3</div>
       </aside>
 
       {/* ========== 右侧：登录区（≤1024px 时品牌块并入表单上方，单栏布局） ========== */}

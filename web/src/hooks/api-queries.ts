@@ -1084,7 +1084,7 @@ export function useRestoreAnalysis() {
 }
 
 // ---------------- 分析报告：汇总报告 ----------------
-export function useReports(params: { page?: number; pageSize?: number; status?: string; keyword?: string } = {}) {
+export function useReports(params: { page?: number; pageSize?: number; status?: string; keyword?: string; sortBy?: 'updatedAt' | 'title' | 'currentVersion'; sortOrder?: 'asc' | 'desc' } = {}) {
   return useQuery({
     queryKey: ['reports', 'list', params] as const,
     queryFn: () => api.listReports(params),
@@ -1102,7 +1102,7 @@ export function useReport(id: string | null) {
 export function useCreateReport() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { title: string; fiscalYear: string; period: string; companyScope: { type: 'company' | 'summary'; code: string } }) =>
+    mutationFn: (data: { title: string; fiscalYear: string; period: string; companyScope: { type: 'company' | 'summary'; code: string }; templateCode?: string }) =>
       api.createReport(data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['reports', 'list'] }),
   })
@@ -1181,6 +1181,68 @@ export function useRollbackReportVersion() {
       qc.invalidateQueries({ queryKey: ['reports', 'detail', vars.id] })
       qc.invalidateQueries({ queryKey: ['reports', 'versions', vars.id] })
     },
+  })
+}
+
+// ---------------- 分析报告：模板 / 分享 / 图表 ----------------
+
+export function useReportTemplates() {
+  return useQuery({
+    queryKey: ['reports', 'templates'] as const,
+    queryFn: () => api.listReportTemplates(),
+  })
+}
+
+export function useCreateReportTemplate() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { name: string; description?: string; sections: { title: string; content?: string }[] }) =>
+      api.createReportTemplate(data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['reports', 'templates'] }),
+  })
+}
+
+export function useDeleteReportTemplate() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.deleteReportTemplate(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['reports', 'templates'] }),
+  })
+}
+
+/** 报告图表取数（chart Node 数据源，按参数精确缓存） */
+export function useReportChartData(params: { companyCode: string; subjectCode: string; subjectType: 'operating' | 'static' | 'cashflow'; period: string } | null) {
+  return useQuery({
+    queryKey: ['reports', 'chart-data', params] as const,
+    queryFn: () => api.getReportChartData(params as { companyCode: string; subjectCode: string; subjectType: 'operating' | 'static' | 'cashflow'; period: string }),
+    enabled: !!params && !!params.companyCode && !!params.subjectCode && !!params.period,
+    staleTime: 5 * 60 * 1000,
+    retry: false, // 数据缺失（科目无数据/越权）直接展示占位，不重试
+  })
+}
+
+export function useReportShare(id: string | null) {
+  return useQuery({
+    queryKey: ['reports', 'share', id] as const,
+    queryFn: () => api.getReportShare(id as string),
+    enabled: !!id,
+  })
+}
+
+export function useCreateReportShare() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { id: string; data: { expiresDays: number | null; regenerate?: boolean } }) =>
+      api.createReportShare(vars.id, vars.data),
+    onSuccess: (_d, vars) => qc.invalidateQueries({ queryKey: ['reports', 'share', vars.id] }),
+  })
+}
+
+export function useRevokeReportShare() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.revokeReportShare(id),
+    onSuccess: (_d, id) => qc.invalidateQueries({ queryKey: ['reports', 'share', id] }),
   })
 }
 

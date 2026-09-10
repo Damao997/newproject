@@ -501,11 +501,65 @@
   width: 100%;
   margin: 6px 0;
 }
+/* 表格横向滚动容器（TipTap TableView 生成 .tableWrapper；窄屏长表格不撑破版面） */
+.prose-editor .tableWrapper {
+  overflow-x: auto;
+  margin: 6px 0;
+}
 .prose-editor th,
 .prose-editor td {
   border: 1px solid hsl(var(--border));
   padding: 4px 8px;
   text-align: left;
+  min-width: 60px;
+  vertical-align: top;
+}
+.prose-editor th {
+  background: hsl(var(--muted));
+  font-weight: 600;
+}
+/* 表格编辑态：选中单元格底色 */
+.prose-editor .selectedCell {
+  background: hsl(var(--primary) / 0.08);
+}
+/* 插图：等比缩放不超版心 */
+.prose-editor img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  margin: 6px 0;
+}
+/* 高亮 mark：软黄色荧光笔效果 */
+.prose-editor mark {
+  background: rgba(250, 204, 21, 0.35);
+  padding: 0 2px;
+  border-radius: 2px;
+  color: inherit;
+}
+
+/* =========================================================
+ * 报告阅读视图打印样式（浏览器打印/另存 PDF 的兜底输出）
+ * 隐藏进度条/目录/操作按钮，正文黑白排版
+ * ========================================================= */
+@media print {
+  body {
+    background: #fff !important;
+  }
+  .prose-editor img {
+    max-width: 100% !important;
+  }
+  /* 表格避免跨页断行 */
+  .prose-editor tr,
+  .prose-editor .tableWrapper {
+    page-break-inside: avoid;
+  }
+  /* 链接打印后缀 URL（纸质可溯源） */
+  .prose-editor a[href^="/"]::after,
+  .prose-editor a[href^="http"]::after {
+    content: "（" attr(href) "）";
+    font-size: 10px;
+    color: #999;
+  }
 }
 .prose-editor code {
   background: hsl(var(--muted));
@@ -621,7 +675,7 @@
   white-space: nowrap;
 }
 
-/* 品牌区堆叠容器：把品牌块和版本号垂直居中 */
+/* 品牌块水平垂直居中容器（版本号已移出，absolute 定位锚定 .login-side，不参与居中布局流） */
 .login-brand-stack {
   position: relative;
   z-index: 1;
@@ -632,13 +686,20 @@
   gap: 18px;
 }
 
-/* 版本号（品牌块下方居中，主题深色弱化显示） */
+/* 版本号：absolute 固定于品牌区底部上方 30px（bottom 恒定，不随视口高度/品牌内容变动），
+ * left/right:0 + text-align:center 水平居中；z-index 抬到装饰光斑之上 */
 .login-version {
+  position: absolute;
+  bottom: 30px;
+  left: 0;
+  right: 0;
+  z-index: 1;
   font-size: 11px;
   letter-spacing: 2px;
   color: var(--login-brand-text);
   opacity: 0.6;
   font-weight: 400;
+  text-align: center;
 }
 
 /* 桌面端品牌块放大（.login-side 仅桌面端显示，≤768px 由响应式规则隐藏，移动端品牌块不受影响） */

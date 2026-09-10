@@ -1,8 +1,21 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios'
 import { useAuthStore } from '@/stores/authStore'
-import type { ApiResponse, LoginRequest, LoginResponse, AutoLoginResponse, User, PaginatedResponse, FilterParams, BatchActivateCheckResult, KpiData, TrendData, DashboardAlert, ReceivableRow, ProductBudgetResponse, SubjectBudgetResponse, ExpenseAnalysisResponse, KeyMetricsResponse, ProductMetricsResponse, ProductCategory, ProductCategoryCheckResult, KeyMetricsProduct, KeyMetricsProductCheckResult, ExpenseMapping, ExpenseMappingCheckResult, SubjectBudgetConfig, SubjectBudgetConfigCheckResult, BudgetRatio, ImportBatch, ImportDiff, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, ConsolidationAdjustment, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData } from '@/types'
+import type { ApiResponse, LoginRequest, LoginResponse, AutoLoginResponse, User, PaginatedResponse, FilterParams, BatchActivateCheckResult, KpiData, TrendData, DashboardAlert, ReceivableRow, ProductBudgetResponse, SubjectBudgetResponse, ExpenseAnalysisResponse, KeyMetricsResponse, ProductMetricsResponse, ProductCategory, ProductCategoryCheckResult, KeyMetricsProduct, KeyMetricsProductCheckResult, ExpenseMapping, ExpenseMappingCheckResult, SubjectBudgetConfig, SubjectBudgetConfigCheckResult, BudgetRatio, ImportBatch, ImportDiff, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, ConsolidationAdjustment, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData, ReportTemplateItem, ReportShareInfo, ReportChartDataRow } from '@/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+
+/**
+ * 携带 HTTP 状态码的业务错误：乐观锁 409 等场景须按状态码而非文案识别，
+ * 避免“匹配后端中文文案”在文案调整后失效。
+ */
+export class ApiError extends Error {
+  readonly status?: number
+  constructor(message: string, status?: number) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
 
 /**
  * 单飞刷新：并发 401 请求共享同一个 refresh 流程（单标签页内）。
@@ -252,25 +265,27 @@ class ApiClient {
     try {
       const response: AxiosResponse<ApiResponse<T>> = await this.client(config)
       if (response.data.code !== 0) {
-        throw new Error(response.data.message || '请求失败')
+        throw new ApiError(response.data.message || '请求失败', response.status)
       }
       return response.data.data
     } catch (err) {
+      // 已包装为 ApiError 的直接透传（保留状态码）
+      if (err instanceof ApiError) throw err
       const axiosErr = err as { response?: { status?: number; data?: { message?: string } }; code?: string }
+      const status = axiosErr.response?.status
       // 优先提取后端统一响应中的业务错误信息（HTTP 非 2xx 且响应为 JSON 时）
       const message = axiosErr.response?.data?.message
       if (message) {
-        throw new Error(message)
+        throw new ApiError(message, status)
       }
       // 有响应但无 message（如 nginx 413 HTML 错误页）：按状态码给出友好提示
-      const status = axiosErr.response?.status
       if (status) {
-        if (status === 413) throw new Error('文件过大，超过 50MB 上限')
-        throw new Error(`请求失败（HTTP ${status}）`)
+        if (status === 413) throw new ApiError('文件过大，超过 50MB 上限', status)
+        throw new ApiError(`请求失败（HTTP ${status}）`, status)
       }
       // 无响应：区分超时与网络层错误，避免暴露 axios 裸文案 "Network Error"
-      if (axiosErr.code === 'ECONNABORTED') throw new Error('请求超时，请重试')
-      throw new Error('网络连接异常，请检查网络后重试')
+      if (axiosErr.code === 'ECONNABORTED') throw new ApiError('请求超时，请重试')
+      throw new ApiError('网络连接异常，请检查网络后重试')
     }
   }
 
@@ -1259,7 +1274,7 @@ class ApiClient {
   }
 
   // ============ 分析报告：汇总报告 ============
-  async listReports(params: { page?: number; pageSize?: number; status?: string; keyword?: string }): Promise<{ items: ReportListItem[]; total: number; page: number; pageSize: number }> {
+  async listReports(params: { page?: number; pageSize?: number; status?: string; keyword?: string; sortBy?: 'updatedAt' | 'title' | 'currentVersion'; sortOrder?: 'asc' | 'desc' }): Promise<{ items: ReportListItem[]; total: number; page: number; pageSize: number }> {
     return this.request({ method: 'GET', url: '/reports', params })
   }
 
@@ -1267,7 +1282,7 @@ class ApiClient {
     return this.request({ method: 'GET', url: `/reports/${id}` })
   }
 
-  async createReport(data: { title: string; fiscalYear: string; period: string; companyScope: { type: 'company' | 'summary'; code: string } }): Promise<ReportDetail> {
+  async createReport(data: { title: string; fiscalYear: string; period: string; companyScope: { type: 'company' | 'summary'; code: string }; templateCode?: string }): Promise<ReportDetail> {
     return this.request({ method: 'POST', url: '/reports', data })
   }
 
@@ -1305,6 +1320,54 @@ class ApiClient {
 
   async exportReport(id: string, format: 'docx' | 'pdf'): Promise<ReportExportData> {
     return this.request({ method: 'GET', url: `/reports/${id}/export`, params: { format } })
+  }
+
+  /** 上传报告插图（jpg/png/webp/gif，≤50MB），返回站内相对 URL（经 /api/v1/uploads 静态服务） */
+  async uploadReportImage(file: File): Promise<{ url: string }> {
+    const formData = new FormData()
+    formData.append('file', file)
+    return this.request({
+      method: 'POST',
+      url: '/reports/uploads',
+      data: formData,
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  }
+
+  // ============ 分析报告：模板 / 分享 / 图表 ============
+
+  async listReportTemplates(): Promise<{ items: ReportTemplateItem[] }> {
+    return this.request({ method: 'GET', url: '/reports/templates' })
+  }
+
+  async createReportTemplate(data: { name: string; description?: string; sections: { title: string; content?: string }[] }): Promise<{ id: string; code: string }> {
+    return this.request({ method: 'POST', url: '/reports/templates', data })
+  }
+
+  async deleteReportTemplate(id: string): Promise<void> {
+    return this.request({ method: 'DELETE', url: `/reports/templates/${id}` })
+  }
+
+  /** 报告图表取数（chart Node 数据源；reports:view 即可读） */
+  async getReportChartData(params: { companyCode: string; subjectCode: string; subjectType: 'operating' | 'static' | 'cashflow'; period: string }): Promise<ReportChartDataRow> {
+    return this.request({ method: 'POST', url: '/reports/chart-data', data: params })
+  }
+
+  async getReportShare(id: string): Promise<ReportShareInfo | null> {
+    return this.request({ method: 'GET', url: `/reports/${id}/share` })
+  }
+
+  async createReportShare(id: string, data: { expiresDays: number | null; regenerate?: boolean }): Promise<ReportShareInfo> {
+    return this.request({ method: 'POST', url: `/reports/${id}/share`, data })
+  }
+
+  async revokeReportShare(id: string): Promise<void> {
+    return this.request({ method: 'DELETE', url: `/reports/${id}/share` })
+  }
+
+  /** 公开分享访问（无 JWT，token 即授权；已登录用户携带 token 亦无影响——公开端点不校验） */
+  async getSharedReport(token: string): Promise<ReportDetail> {
+    return this.request({ method: 'GET', url: `/reports/shared/${token}` })
   }
 
   // ============ 往来分析 ============

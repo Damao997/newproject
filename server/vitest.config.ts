@@ -7,6 +7,8 @@ export default defineConfig({
     globals: true,
     // DB 集成测试共享同一库，禁用文件级并行避免状态竞争
     fileParallelism: false,
+    // 真实 DB 夹具准备/清理（beforeAll/afterAll）在数据量增长后可能超过 10s 默认值
+    hookTimeout: 30_000,
     include: ['src/**/*.test.ts'],
     setupFiles: ['src/test/setup.ts'],
     coverage: {

@@ -24,10 +24,10 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     return
   }
 
-  // multer 上传错误（文件超限等）→ 400
+  // multer 上传错误（文件超限等）→ 400（导入 200MB / 报告图片 50MB，按端点各自上限）
   if (err instanceof Error && err.name === 'MulterError') {
     const code = (err as { code?: string }).code
-    const message = code === 'LIMIT_FILE_SIZE' ? '文件超过 200MB 上限' : '文件上传失败'
+    const message = code === 'LIMIT_FILE_SIZE' ? '文件超过大小上限' : '文件上传失败'
     logger.warn(traceId, `MulterError ${code}: ${message}`)
     sendFail(res, 400, message, 400)
     return

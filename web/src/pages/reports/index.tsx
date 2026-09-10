@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type Ref } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  FileText, CheckCircle2, Archive, Search, Plus, Pencil, MoreHorizontal, Trash2, Download, Loader2, RefreshCw, FileDown,
+  FileText, CheckCircle2, Archive, Search, Plus, Pencil, MoreHorizontal, Trash2, Download, Loader2, RefreshCw, FileDown, BookOpen,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -30,7 +30,7 @@ import { usePermission } from '@/hooks/usePermission'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import {
   useReports, useCreateReport, useUpdateReport, useDeleteReport,
-  useCompanies, useAvailablePeriods,
+  useCompanies, useAvailablePeriods, useReportTemplates,
 } from '@/hooks/api-queries'
 import { REPORT_STATUS_LABEL, REPORT_STATUS_BADGE_VARIANT } from '@/lib/constants'
 import { api } from '@/lib/api'
@@ -44,6 +44,7 @@ import { cn } from '@/lib/utils'
  */
 
 type StatusFilter = '' | 'draft' | 'published' | 'archived'
+type SortOption = 'updatedAt-desc' | 'updatedAt-asc' | 'title-asc' | 'title-desc' | 'currentVersion-desc' | 'currentVersion-asc'
 
 const STATUS_TABS: { value: StatusFilter; label: string }[] = [
   { value: '', label: '全部报告' },
@@ -52,11 +53,25 @@ const STATUS_TABS: { value: StatusFilter; label: string }[] = [
   { value: 'archived', label: '已归档' },
 ]
 
-/** 状态流转下一态（状态机：draft↔published、draft/published→archived、archived→draft） */
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: 'updatedAt-desc', label: '最近更新' },
+  { value: 'updatedAt-asc', label: '最早更新' },
+  { value: 'title-asc', label: '标题 A→Z' },
+  { value: 'title-desc', label: '标题 Z→A' },
+  { value: 'currentVersion-desc', label: '版本号 高→低' },
+  { value: 'currentVersion-asc', label: '版本号 低→高' },
+]
+
+/** 主操作（卡片按钮）：draft→发布、published→归档、archived→恢复草稿 */
 const NEXT_STATUS: Record<string, { status: string; label: string }> = {
   draft: { status: 'published', label: '发布' },
   published: { status: 'archived', label: '归档' },
   archived: { status: 'draft', label: '恢复为草稿' },
+}
+
+/** 次要状态操作（更多菜单）：published 支持撤回为草稿直达（后端状态机 draft↔published 本就允许） */
+const EXTRA_STATUS: Record<string, { status: string; label: string }[]> = {
+  published: [{ status: 'draft', label: '撤回为草稿' }],
 }
 
 export default function ReportsPage() {
@@ -98,14 +113,18 @@ function ReportsList({ filterRef, stickyTop }: ReportsListProps) {
 
   const [keyword, setKeyword] = useState('')
   const [status, setStatus] = useState<StatusFilter>('')
+  const [sortBy, setSortBy] = useState<SortOption>('updatedAt-desc')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(12)
 
+  const [sortField, sortDirection] = sortBy.split('-') as ['updatedAt' | 'title' | 'currentVersion', 'asc' | 'desc']
   const { data, isLoading, isError, error, refetch } = useReports({
     page,
     pageSize,
     status: status || undefined,
     keyword: keyword.trim() || undefined,
+    sortBy: sortField,
+    sortOrder: sortDirection,
   })
   const items = data?.items ?? []
   const total = data?.total ?? 0
@@ -126,12 +145,10 @@ function ReportsList({ filterRef, stickyTop }: ReportsListProps) {
 
   const resetPage = () => setPage(1)
 
-  const handleStatusChange = async (report: ReportListItem) => {
-    const next = NEXT_STATUS[report.status]
-    if (!next) return
+  const handleStatusChange = async (report: ReportListItem, target: { status: string; label: string }) => {
     try {
-      await updateReport.mutateAsync({ id: report.id, data: { status: next.status } })
-      flash(`已${next.label}`)
+      await updateReport.mutateAsync({ id: report.id, data: { status: target.status } })
+      flash(`已${target.label}`)
     } catch (e) {
       flash((e as Error).message || '状态更新失败', 'error')
     }
@@ -180,6 +197,16 @@ function ReportsList({ filterRef, stickyTop }: ReportsListProps) {
               className="h-8 pl-8 text-sm"
             />
           </div>
+          <Select value={sortBy} onValueChange={(v) => { setSortBy(v as SortOption); resetPage() }}>
+            <SelectTrigger className="h-8 w-[150px] text-sm" aria-label="排序方式">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SORT_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <div className="ml-auto flex items-center gap-2">
             <Button variant="fused" size="sm" onClick={() => refetch()}>
               <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> 刷新
@@ -249,9 +276,9 @@ function ReportsList({ filterRef, stickyTop }: ReportsListProps) {
                   canUpdate={canUpdate}
                   canDelete={canDelete}
                   canExport={canExport}
-                  onEdit={() => navigate(`/reports/${r.id}/edit`)}
+                  onEdit={() => navigate(r.status === 'draft' ? `/reports/${r.id}/edit` : `/reports/${r.id}/read`)}
                   onRename={() => setRenaming(r)}
-                  onStatusChange={() => handleStatusChange(r)}
+                  onStatusChange={(target) => handleStatusChange(r, target)}
                   onDelete={() => handleDelete(r)}
                   onExport={(fmt) => handleExport(r, fmt)}
                 />
@@ -305,12 +332,13 @@ function ReportCard({
   canExport: boolean
   onEdit: () => void
   onRename: () => void
-  onStatusChange: () => void
+  onStatusChange: (target: { status: string; label: string }) => void
   onDelete: () => void
   onExport: (format: 'docx' | 'pdf') => void
 }) {
   const { getDisplayName } = useCompanyDisplayName()
   const nextStatus = NEXT_STATUS[item.status]
+  const extraStatuses = EXTRA_STATUS[item.status] ?? []
   const scopeName = getDisplayName(item.companyScope.code, item.companyScope.name ?? item.companyScope.code)
   const scopeTypeLabel = item.companyScope.type === 'summary' ? '汇总主体' : '单体公司'
 
@@ -338,10 +366,14 @@ function ReportCard({
       </div>
       <div className="mt-3 flex items-center gap-2">
         <Button size="sm" variant="fused" className="h-7 flex-1 px-2 text-xs" onClick={onEdit}>
-          <Pencil className="mr-1 h-3.5 w-3.5" /> 编辑
+          {item.status === 'draft' ? (
+            <><Pencil className="mr-1 h-3.5 w-3.5" /> 编辑</>
+          ) : (
+            <><BookOpen className="mr-1 h-3.5 w-3.5" /> 阅读</>
+          )}
         </Button>
         {canUpdate && nextStatus && (
-          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={statusUpdating} onClick={onStatusChange}>
+          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={statusUpdating} onClick={() => onStatusChange(nextStatus)}>
             {statusUpdating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : nextStatus.label}
           </Button>
         )}
@@ -357,6 +389,11 @@ function ReportCard({
                 <Pencil className="mr-2 h-4 w-4" /> 重命名
               </DropdownMenuItem>
             )}
+            {canUpdate && extraStatuses.map((t) => (
+              <DropdownMenuItem key={t.status} disabled={statusUpdating} onClick={() => onStatusChange(t)}>
+                <RefreshCw className="mr-2 h-4 w-4" /> {t.label}
+              </DropdownMenuItem>
+            ))}
             {canExport && (
               <>
                 <DropdownMenuItem onClick={() => onExport('docx')} disabled={exporting}>
@@ -404,7 +441,7 @@ function StatusTag({ status }: { status: string }) {
   )
 }
 
-/** 新建报告：标题 + 期间（财年自动取期间年份）+ 报告主体（单体/汇总） */
+/** 新建报告：标题 + 期间（财年自动取期间年份）+ 报告主体（单体/汇总）+ 可选模板 */
 function CreateReportDialog({ open, onClose, onCreated }: {
   open: boolean
   onClose: () => void
@@ -415,21 +452,26 @@ function CreateReportDialog({ open, onClose, onCreated }: {
   const createReport = useCreateReport()
   const { data: companies } = useCompanies()
   const { data: periodsData } = useAvailablePeriods()
+  const { data: templatesData } = useReportTemplates()
+  const templates = useMemo(() => templatesData?.items ?? [], [templatesData])
   const periods = useMemo(() => [...(periodsData?.periods ?? [])].sort((a, b) => b.localeCompare(a)), [periodsData])
 
   const [title, setTitle] = useState('')
   const [period, setPeriod] = useState('')
   const [scopeType, setScopeType] = useState<'company' | 'summary'>('company')
   const [scopeCode, setScopeCode] = useState('')
+  const [templateCode, setTemplateCode] = useState('none')
   const [error, setError] = useState<string | null>(null)
   const resetRef = useRef(0)
 
+  // 注意：后端 companyDto 的 type 实际值为 'entity' | 'summary'（本页选择器的 'company' 为历史口径，此处映射）
   const scopeCompanies = useMemo(
-    () => (companies ?? []).filter((c) => c.type === scopeType),
+    () => (companies ?? []).filter((c) => c.type === (scopeType === 'company' ? 'entity' : 'summary')),
     [companies, scopeType],
   )
   const fiscalYear = period ? period.slice(0, 4) : ''
   const canSubmit = canCreate && title.trim() && period && scopeCode
+  const selectedTemplate = templates.find((t) => t.code === templateCode)
 
   // 打开时重置表单（open 翻转沿触发）
   useEffect(() => {
@@ -439,6 +481,7 @@ function CreateReportDialog({ open, onClose, onCreated }: {
       setPeriod('')
       setScopeType('company')
       setScopeCode('')
+      setTemplateCode('none')
       setError(null)
     }
   }, [open])
@@ -452,6 +495,7 @@ function CreateReportDialog({ open, onClose, onCreated }: {
         fiscalYear,
         period,
         companyScope: { type: scopeType, code: scopeCode },
+        templateCode: templateCode === 'none' ? undefined : templateCode,
       })
       onCreated(title.trim())
     } catch (e) {
@@ -504,6 +548,23 @@ function CreateReportDialog({ open, onClose, onCreated }: {
                 </SelectContent>
               </Select>
             </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>报告模板</Label>
+            <Select value={templateCode} onValueChange={setTemplateCode}>
+              <SelectTrigger className="h-9 w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">不使用模板（从空白开始）</SelectItem>
+                {templates.map((t) => (
+                  <SelectItem key={t.code} value={t.code}>
+                    {t.name}（{t.sectionCount} 章{t.isSystem ? ' · 系统' : ''}）
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedTemplate?.description && (
+              <p className="text-caption text-muted-foreground">{selectedTemplate.description}</p>
+            )}
           </div>
           {period && (
             <p className="text-caption text-muted-foreground">财年：{fiscalYear}（自动取期间年份）</p>

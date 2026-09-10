@@ -1032,3 +1032,39 @@ export interface ReportExportData {
   generatedAt: string
   sections: { title: string; content: string; plainText: string; missing: boolean }[]
 }
+
+// ============ 报告模板 / 分享 / 图表（二期） ============
+
+/** 报告模板列表项（结构模板：章节骨架蓝图） */
+export interface ReportTemplateItem {
+  id: string
+  code: string
+  name: string
+  description: string | null
+  isSystem: boolean
+  sectionCount: number
+  createdAt: string
+}
+
+/** 报告分享状态（无分享时为 null） */
+export interface ReportShareInfo {
+  shareToken: string
+  expiresAt: string | null
+  viewCount: number
+  createdAt: string
+}
+
+/** 报告图表取数行（经营/现金流：实际/同期/预算；静态：期末/年初/上年同期） */
+export interface ReportChartDataRow {
+  subjectType: 'operating' | 'static' | 'cashflow'
+  name?: string
+  code?: string
+  budget?: number | null
+  actual?: number | null
+  samePeriod?: number | null
+  yoy?: number | null
+  achievement?: number | null
+  current?: number | null
+  yearStart?: number | null
+  lastYearStart?: number | null
+}

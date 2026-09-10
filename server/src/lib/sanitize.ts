@@ -24,7 +24,8 @@ const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
   td: ['colspan', 'rowspan', 'align'],
   col: ['span', 'width'],
   colgroup: ['span', 'width'],
-  '*': ['data-ai-suggested'],
+  // data-chart-*：报告内嵌图表节点（TipTap chart Node）的参数序列化属性
+  '*': ['data-ai-suggested', 'data-chart', 'data-chart-company', 'data-chart-subject', 'data-chart-subject-type', 'data-chart-period', 'data-chart-title'],
 }
 
 export function sanitizeRichText(input: unknown): string {
@@ -33,7 +34,9 @@ export function sanitizeRichText(input: unknown): string {
     allowedTags: ALLOWED_TAGS,
     allowedAttributes: ALLOWED_ATTRIBUTES,
     allowedSchemes: ['http', 'https', 'mailto', 'data'],
-    allowedSchemesByTag: { img: ['http', 'https', 'data'] },
+    // 图片仅允许站内相对路径（上传端点返回 /api/v1/uploads/...）与 data: 内联；
+    // 禁外链 http(s)，防外链图片探测内网资源存在性（优化方案 §9.2）
+    allowedSchemesByTag: { img: ['data'] },
     // 链接强制 noopener，避免 reverse tabnabbing
     transformTags: {
       a: sanitizeHtml.simpleTransform('a', { rel: 'noopener noreferrer', target: '_blank' }),

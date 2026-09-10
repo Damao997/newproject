@@ -7,6 +7,7 @@ import { errorHandler, notFoundHandler } from './middleware/error-handler'
 import { sendOk } from './lib/response'
 import { basePrisma } from './lib/prisma'
 import { logger } from './lib/logger'
+import { REPORT_IMAGE_DIR } from './lib/uploads'
 import authRouter from './routes/auth'
 import dashboardRouter from './routes/dashboard'
 import indicatorsRouter from './routes/indicators'
@@ -14,6 +15,7 @@ import dataRouter from './routes/data'
 import adminRouter from './routes/admin'
 import aiRouter from './routes/ai'
 import reportsRouter from './routes/reports'
+import reportsPublicRouter from './routes/reports-public'
 import transactionsRouter from './routes/transactions'
 import inventoryRouter from './routes/inventory'
 import toolsRouter from './routes/tools'
@@ -59,6 +61,17 @@ export function createApp(): Application {
     }
     sendOk(res, { service: 'up', db, time: new Date().toISOString() })
   })
+
+  // 报告插图静态服务：uuid 文件名不可枚举，与 /health 一样不经通用限流
+  // （报告页一次加载多张图片会迅速耗尽 100 次/分钟配额；helmet CSP imgSrc 'self' 已放行同源图片）
+  app.use(
+    '/api/v1/uploads/report-images',
+    express.static(REPORT_IMAGE_DIR, { maxAge: '30d', immutable: true, index: false, dotfiles: 'ignore' }),
+  )
+
+  // 报告公开分享（GET /api/v1/reports/shared/:token）：免 JWT（token 即授权），
+  // 注册于通用限流与鉴权 reports 路由之前，自带独立限流（20 次/分/IP）+ 审计
+  app.use('/api/v1/reports', reportsPublicRouter)
 
   // 通用限流（100 次/分钟）作用于业务 API
   app.use('/api/v1', generalRateLimiter)

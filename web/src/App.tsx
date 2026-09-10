@@ -38,6 +38,8 @@ const InventoryPage = lazy(() => import('@/pages/inventory'))
 const ReportsPage = lazy(() => import('@/pages/reports'))
 const ReportsAnalysesPage = lazy(() => import('@/pages/reports/analyses'))
 const ReportEditor = lazy(() => import('@/pages/reports/report-editor').then((m) => ({ default: m.ReportEditor })))
+const ReportReader = lazy(() => import('@/pages/reports/report-reader').then((m) => ({ default: m.ReportReader })))
+const SharedReportPage = lazy(() => import('@/pages/reports/shared-report').then((m) => ({ default: m.SharedReportPage })))
 const ToolsLookupPage = lazy(() => import('@/pages/tools/enterprise-lookup'))
 const DataBrowsePage = lazy(() => import('@/pages/data/browse'))
 const DataImportPage = lazy(() => import('@/pages/data/import'))
@@ -119,6 +121,8 @@ function App() {
             >
               <Routes>
               <Route path="/login" element={<LoginPage />} />
+              {/* 报告公开分享页（/shared/:token）：免登录，token 即授权（MainLayout 之外） */}
+              <Route path="/shared/:token" element={<SharedReportPage />} />
               <Route path="/" element={<MainLayout />}>
                 {/* 根路径：权限感知首页（无匹配权限 → /no-access） */}
                 <Route index element={<HomeRedirect />} />
@@ -153,6 +157,8 @@ function App() {
                 <Route path="reports/analyses" element={<RequirePermission resource="reports" action="view"><ReportsAnalysesPage /></RequirePermission>} />
                 <Route path="reports/editor/:reportId" element={<RequirePermission resource="reports" action="view"><ReportEditor /></RequirePermission>} />
                 <Route path="reports/:reportId/edit" element={<RequirePermission resource="reports" action="view"><ReportEditor /></RequirePermission>} />
+                {/* 报告阅读视图：编制/阅读态分离（已发布默认进入；Power BI 式只读浏览） */}
+                <Route path="reports/:reportId/read" element={<RequirePermission resource="reports" action="view"><ReportReader /></RequirePermission>} />
                 <Route path="tools" element={<RequirePermission resource="tools" action="view"><LegacyQueryRedirect /></RequirePermission>} />
                 <Route path="tools/enterprise-lookup" element={<RequirePermission resource="tools" action="view"><ToolsLookupPage /></RequirePermission>} />
                 {/* 数据管理：根路径按旧 query 或默认重定向到数据浏览 */}

@@ -1,4 +1,7 @@
-﻿import { Router } from 'express'
+import { Router } from 'express'
+import fs from 'fs'
+import { randomUUID } from 'crypto'
+import multer from 'multer'
 import { authenticate } from '../middleware/auth'
 import { attachScope } from '../middleware/attach-scope'
 import { requirePermission } from '../middleware/permission'
@@ -8,6 +11,7 @@ import { errors } from '../lib/errors'
 import { recordAudit, clientIp } from '../middleware/audit'
 import { SubjectAnalysisService } from '../services/SubjectAnalysisService'
 import { ReportService } from '../services/ReportService'
+import { REPORT_IMAGE_DIR, REPORT_IMAGE_PUBLIC_BASE, REPORT_IMAGE_MIME_EXT } from '../lib/uploads'
 import type { AuthUserContext } from '../types/express'
 
 /**
@@ -20,6 +24,25 @@ const router = Router()
 function scopeOf(authUser: AuthUserContext) {
   return { companyCode: authUser.companyCode, scopeValue: authUser.scopeValue, dataScopeCodes: authUser.dataScopeCodes }
 }
+
+/** 报告插图上传：磁盘存储 + MIME 白名单 + 50MB 上限；文件名为 uuid（防枚举/防路径拼接） */
+const reportImageUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => {
+      fs.mkdirSync(REPORT_IMAGE_DIR, { recursive: true })
+      cb(null, REPORT_IMAGE_DIR)
+    },
+    filename: (_req, file, cb) => {
+      const ext = REPORT_IMAGE_MIME_EXT[file.mimetype] ?? '.bin'
+      cb(null, `${randomUUID()}${ext}`)
+    },
+  }),
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    // 非白名单类型静默拒绝（req.file 为空），由处理器返回 400，避免 fileFilter 抛错落入兜底 500
+    cb(null, Boolean(REPORT_IMAGE_MIME_EXT[file.mimetype]))
+  },
+})
 
 router.use(authenticate, attachScope())
 
@@ -107,19 +130,108 @@ router.delete('/analyses/:id', requirePermission('reports:delete', 'delete'), as
 
 // ============ 汇总分析报告 ============
 
-// 列表（scope 收敛；status 未指定默认排除归档，'all' 返回全部；keyword 按标题搜索）
+// ---- 报告模板（结构模板：/templates 须置于 /:id 之前） ----
+
+// 模板列表（系统预置 + 用户自定义）
+router.get('/templates', requirePermission('reports:view', 'view'), asyncHandler(async (_req, res) => {
+  const data = await ReportService.listTemplates()
+  sendOk(res, data)
+}))
+
+// 从报告章节快照创建自定义模板（"另存为模板"）
+router.post('/templates', requirePermission('reports:create', 'create'), asyncHandler(async (req, res) => {
+  const authUser = req.authUser as AuthUserContext
+  const b = req.body ?? {}
+  const sections = Array.isArray(b.sections)
+    ? b.sections.map((s: { title?: unknown; content?: unknown }) => ({ title: String(s?.title ?? ''), content: typeof s?.content === 'string' ? s.content : '' }))
+    : []
+  const data = await ReportService.createTemplate(String(b.name ?? ''), typeof b.description === 'string' ? b.description : undefined, sections)
+  await recordAudit({ userId: authUser.userId, module: 'reports', action: 'template_create', targetId: data.id, detail: { code: data.code, sections: sections.length }, ip: clientIp(req) }, req.traceId)
+  sendOk(res, data, 'success', 201)
+}))
+
+// 删除自定义模板（系统模板不可删）
+router.delete('/templates/:id', requirePermission('reports:delete', 'delete'), asyncHandler(async (req, res) => {
+  const authUser = req.authUser as AuthUserContext
+  await ReportService.deleteTemplate(req.params.id as string)
+  await recordAudit({ userId: authUser.userId, module: 'reports', action: 'template_delete', targetId: req.params.id, ip: clientIp(req) }, req.traceId)
+  sendOk(res, null)
+}))
+
+// ---- 报告图表取数（chart Node 数据源；reports:view 即可读，无 indicators:view 依赖） ----
+
+router.post('/chart-data', requirePermission('reports:view', 'view'), asyncHandler(async (req, res) => {
+  const authUser = req.authUser as AuthUserContext
+  const b = req.body ?? {}
+  const data = await ReportService.getChartData(scopeOf(authUser), {
+    companyCode: String(b.companyCode ?? ''),
+    subjectCode: String(b.subjectCode ?? ''),
+    subjectType: String(b.subjectType ?? 'operating'),
+    period: String(b.period ?? ''),
+  })
+  sendOk(res, data)
+}))
+
+// ---- 报告分享（仅 published；公开访问端点见 routes/reports-public.ts） ----
+
+// 查询分享状态
+router.get('/:id/share', requirePermission('reports:view', 'view'), asyncHandler(async (req, res) => {
+  const authUser = req.authUser as AuthUserContext
+  const data = await ReportService.getShareStatus(scopeOf(authUser), req.params.id as string)
+  sendOk(res, data)
+}))
+
+// 创建/更新分享（expiresDays: null=永久；regenerate: 重置 token）
+router.post('/:id/share', requirePermission('reports:update', 'update'), asyncHandler(async (req, res) => {
+  const authUser = req.authUser as AuthUserContext
+  const b = req.body ?? {}
+  const rawDays = b.expiresDays
+  const data = await ReportService.createShare(
+    scopeOf(authUser),
+    req.params.id as string,
+    {
+      expiresDays: rawDays === null || rawDays === undefined ? null : Number(rawDays),
+      regenerate: b.regenerate === true,
+    },
+    authUser.userId,
+  )
+  await recordAudit({ userId: authUser.userId, module: 'reports', action: 'share_create', targetId: req.params.id, detail: { expiresDays: rawDays ?? 'permanent', regenerate: b.regenerate === true }, ip: clientIp(req) }, req.traceId)
+  sendOk(res, data)
+}))
+
+// 吊销分享
+router.delete('/:id/share', requirePermission('reports:update', 'update'), asyncHandler(async (req, res) => {
+  const authUser = req.authUser as AuthUserContext
+  await ReportService.revokeShare(scopeOf(authUser), req.params.id as string)
+  await recordAudit({ userId: authUser.userId, module: 'reports', action: 'share_revoke', targetId: req.params.id, ip: clientIp(req) }, req.traceId)
+  sendOk(res, null)
+}))
+
+// 上传报告插图（须置于 GET /:id 之前；返回站内相对 URL，静态服务见 app.ts）
+router.post('/uploads', requirePermission('reports:update', 'update'), reportImageUpload.single('file'), asyncHandler(async (req, res) => {
+  const authUser = req.authUser as AuthUserContext
+  if (!req.file) throw errors.badRequest('仅支持 jpg/png/webp/gif 图片格式')
+  const url = `${REPORT_IMAGE_PUBLIC_BASE}/${req.file.filename}`
+  await recordAudit({ userId: authUser.userId, module: 'reports', action: 'report_image_upload', detail: { filename: req.file.filename, size: req.file.size, mime: req.file.mimetype }, ip: clientIp(req) }, req.traceId)
+  sendOk(res, { url }, 'success', 201)
+}))
+
+// 列表（scope 收敛；status 未指定默认排除归档，'all' 返回全部；keyword 按标题搜索；sortBy/sortOrder 排序）
 router.get('/', requirePermission('reports:view', 'view'), asyncHandler(async (req, res) => {
   const authUser = req.authUser as AuthUserContext
+  const sortByRaw = req.query.sortBy as string | undefined
   const data = await ReportService.list(scopeOf(authUser), {
     page: req.query.page ? Number(req.query.page) : undefined,
     pageSize: req.query.pageSize ? Number(req.query.pageSize) : undefined,
     status: req.query.status as string | undefined,
     keyword: req.query.keyword as string | undefined,
+    sortBy: sortByRaw === 'updatedAt' || sortByRaw === 'title' || sortByRaw === 'currentVersion' ? sortByRaw : undefined,
+    sortOrder: req.query.sortOrder === 'asc' ? 'asc' : 'desc',
   })
   sendOk(res, data)
 }))
 
-// 创建
+// 创建（可选 templateCode 套用模板蓝图生成初始章节）
 router.post('/', requirePermission('reports:create', 'create'), asyncHandler(async (req, res) => {
   const authUser = req.authUser as AuthUserContext
   const b = req.body ?? {}
@@ -128,8 +240,9 @@ router.post('/', requirePermission('reports:create', 'create'), asyncHandler(asy
     fiscalYear: String(b.fiscalYear ?? ''),
     period: String(b.period ?? ''),
     companyScope: { type: b.companyScope?.type === 'summary' ? 'summary' : 'company', code: String(b.companyScope?.code ?? '') },
+    templateCode: typeof b.templateCode === 'string' && b.templateCode ? b.templateCode : undefined,
   }, authUser.userId)
-  await recordAudit({ userId: authUser.userId, module: 'reports', action: 'report_create', targetId: data.id, detail: { scope: data.companyScope.code }, ip: clientIp(req) }, req.traceId)
+  await recordAudit({ userId: authUser.userId, module: 'reports', action: 'report_create', targetId: data.id, detail: { scope: data.companyScope.code, templateCode: b.templateCode ?? null }, ip: clientIp(req) }, req.traceId)
   sendOk(res, data, 'success', 201)
 }))
 

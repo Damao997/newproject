@@ -24,8 +24,8 @@ import { IndicatorFilterBar } from './indicator-filter-bar'
 import { useIndicatorExport, flattenForExport } from './use-indicator-export'
 import { adapt, collectExpandableCodes, buildColumnsFor } from './indicators-adapters'
 import { useSummaryMemberValues } from '@/hooks/use-summary-member-values'
-import { SummaryBreakdownPopover } from '@/components/summary/summary-breakdown'
-import type { MetricValue } from '@/lib/metric-values'
+import { SummaryBreakdownPopover, PinnedSummaryCard, type PinnedCardState } from '@/components/summary/summary-breakdown'
+import { calcYoy, calcYtdYoy, type MetricValue } from '@/lib/metric-values'
 
 /**
  * 财务指标页（经营/静态/现金流共用实现）：按科目层级查看指标数据。
@@ -143,6 +143,21 @@ export function IndicatorPage({ subjectType, description }: { subjectType: 'oper
     summaryCode: isSummaryScope ? companyCode ?? null : null,
     excludeReclassify,
   })
+  // 固定卡（pin 的成员明细）：单例状态，数据按 subjectCode/colKey 每次渲染实时取（跟随刷新）；
+  // 口径切换（tab/公司/重分类）时数据源失效，自动关闭
+  const [pinnedCell, setPinnedCell] = useState<PinnedCardState | null>(null)
+  useEffect(() => { setPinnedCell(null) }, [activeTab, companyCode, excludeReclassify])
+
+  // 列 key → 同比取数：本月实际→本月同比、本年累计→累计同比（与主表 yoy/ytdYoy 列同口径）；预算/同期列无同比意义
+  const yoyPickFor = useCallback((colKey: string): ((v: MetricValue) => number) | undefined => {
+    if (colKey === 'actual') return calcYoy
+    if (colKey === 'ytd') return calcYtdYoy
+    return undefined
+  }, [])
+
+  const { nodes: activeTree, map: activeValueMap } = useMemo(() => adapt(activeItems, activeTab), [activeItems, activeTab])
+  const activeExpandable = useMemo(() => collectExpandableCodes(activeTree), [activeTree])
+
   // 列 key → MetricValue 字段（adapt 归一后同名）；列名从当前 tab 列配置取（悬浮标题用）
   const summaryBreakdown = useMemo(() => {
     if (!isSummaryScope || !summaryMembers.enabled) return null
@@ -151,24 +166,61 @@ export function IndicatorPage({ subjectType, description }: { subjectType: 'oper
       renderPopover: (node: SubjectNode, colKey: string, summaryValue: number, content: React.ReactNode) => {
         const breakdown = summaryMembers.getMemberValues(node.code)
         const colHeader = colHeaders.get(colKey) ?? colKey
+        const yoyPick = yoyPickFor(colKey)
+        // 汇总口径同比（合计行）：与主表该行 yoy 列一致
+        const summaryMv = activeValueMap.get(node.code)
+        const summaryYoy = yoyPick && summaryMv ? yoyPick(summaryMv) : undefined
         return (
           <SummaryBreakdownPopover
             title={`${node.name} · ${colHeader}`}
-            columns={[{ label: colHeader, pick: (v: MetricValue) => v[colKey as keyof MetricValue] as number, summaryValue }]}
+            columns={[{ label: colHeader, pick: (v: MetricValue) => v[colKey as keyof MetricValue] as number, summaryValue, yoy: yoyPick, summaryYoy }]}
             rows={breakdown?.rows}
             loading={breakdown?.loading}
             failedCount={breakdown?.failedCount}
             valueType={node.valueType}
+            onPin={(rect) =>
+              setPinnedCell({
+                subjectCode: node.code,
+                colKey,
+                title: `${node.name} · ${colHeader}`,
+                valueType: node.valueType,
+                x: rect.left,
+                y: rect.top,
+              })
+            }
           >
             {content}
           </SummaryBreakdownPopover>
         )
       },
     }
-  }, [isSummaryScope, summaryMembers, activeTab])
+  }, [isSummaryScope, summaryMembers, activeTab, activeValueMap, yoyPickFor])
 
-  const { nodes: activeTree, map: activeValueMap } = useMemo(() => adapt(activeItems, activeTab), [activeItems, activeTab])
-  const activeExpandable = useMemo(() => collectExpandableCodes(activeTree), [activeTree])
+  // 固定卡渲染数据：成员明细与汇总值实时取（跟随期间切换/数据刷新）；科目在当前树中已不存在时关闭
+  const pinnedCardNode = useMemo(() => {
+    if (!pinnedCell || !isSummaryScope) return null
+    const summaryMv = activeValueMap.get(pinnedCell.subjectCode)
+    if (!summaryMv) return null
+    const colHeader = buildColumnsFor(activeTab).find((c) => c.key === pinnedCell.colKey)?.header ?? pinnedCell.colKey
+    const yoyPick = yoyPickFor(pinnedCell.colKey)
+    const breakdown = summaryMembers.getMemberValues(pinnedCell.subjectCode)
+    return (
+      <PinnedSummaryCard
+        state={pinnedCell}
+        columns={[{
+          label: colHeader,
+          pick: (v: MetricValue) => v[pinnedCell.colKey as keyof MetricValue] as number,
+          summaryValue: summaryMv[pinnedCell.colKey as keyof MetricValue] as number,
+          yoy: yoyPick,
+          summaryYoy: yoyPick ? yoyPick(summaryMv) : undefined,
+        }]}
+        rows={breakdown?.rows}
+        loading={breakdown?.loading}
+        failedCount={breakdown?.failedCount}
+        onClose={() => setPinnedCell(null)}
+      />
+    )
+  }, [pinnedCell, isSummaryScope, activeValueMap, activeTab, summaryMembers, yoyPickFor])
 
   // 科目关键字过滤：命中节点保留整棵子树 + 祖先链；过滤时强制展开可见路径（清空后恢复用户展开态）
   const visibleTree = useMemo(() => filterTreeKeepSubtree(activeTree, subjectKeyword), [activeTree, subjectKeyword])
@@ -410,6 +462,9 @@ export function IndicatorPage({ subjectType, description }: { subjectType: 'oper
 
       {/* 单项分析抽屉 */}
       <AnalysisDrawer open={analysisTarget !== null} target={analysisTarget} onClose={() => setAnalysisTarget(null)} />
+
+      {/* 固定的成员明细卡（pin）：portal 到 body 置顶悬浮，可拖拽；不占页面布局 */}
+      {pinnedCardNode}
     </PageContainer>
   )
 }

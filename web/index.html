@@ -13,7 +13,7 @@
     <!-- 首屏静态骨架：JS bundle 加载完成前即显示，消除白屏；
          纯内联样式 + 硬编码色值（此时 globals.css/Tailwind 未加载，不可引用 CSS 变量），
          动画走 transform 合成器（零重绘）；React createRoot 挂载时自动清空 #root 完成替换。
-         色值对齐 globals.css：--page #f0f2f5 / --muted #edeef2 / --primary #ff830f。 -->
+         色值对齐 globals.css：--page #f0f2f5 / --muted #edeef2。 -->
     <style>
       .boot-skeleton {
         position: fixed;
@@ -27,15 +27,11 @@
         background: #f0f2f5;
       }
       .boot-logo {
-        width: 64px;
-        height: 64px;
-        border-radius: 16px;
-        background: #ff830f;
-        box-shadow: 0 6px 20px rgba(255, 131, 15, 0.35);
-        color: #fff;
-        font: 600 30px/64px 'Microsoft YaHei', '微软雅黑', system-ui, sans-serif;
-        text-align: center;
+        width: 79px;
+        height: 79px;
+        object-fit: contain;
         user-select: none;
+        -webkit-user-drag: none;
       }
       .boot-line {
         position: relative;
@@ -71,7 +67,7 @@
   <body>
     <div id="root">
       <div class="boot-skeleton" role="status" aria-label="页面加载中">
-        <div class="boot-logo">慧</div>
+        <img class="boot-logo" src="/logo.png" alt="壹品慧" draggable="false" />
         <div class="boot-line boot-line--lg"></div>
         <div class="boot-line boot-line--sm"></div>
       </div>
