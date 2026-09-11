@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>催收计划 · 经营数据分析平台</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; }
+  .shell-side { background: #001529; color: rgba(255, 255, 255, 0.85); display: flex; flex-direction: column; }
+  .shell-side-logo { height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); color: #fff; }
+  .shell-side-logo-mark { width: 32px; height: 32px; background: var(--color-primary); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 16px; }
+  .shell-side-logo-text { font-size: 15px; font-weight: 600; }
+  .shell-side-nav { padding: 12px 0; flex: 1; overflow-y: auto; }
+  .shell-nav-group-title { padding: 12px 28px 8px; color: rgba(255, 255, 255, 0.35); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .shell-nav-item { display: flex; align-items: center; gap: 12px; padding: 0 20px; height: 40px; color: rgba(255, 255, 255, 0.75); cursor: pointer; transition: all 0.2s; border-left: 3px solid transparent; font-size: 14px; text-decoration: none; }
+  .shell-nav-item:hover { color: #fff; background: rgba(255, 255, 255, 0.04); }
+  .shell-nav-item.is-active { background: var(--color-primary); color: #fff; border-left-color: #fff; }
+  .shell-nav-ic { width: 18px; flex-shrink: 0; color: rgba(255, 255, 255, 0.55); }
+  .shell-nav-item:hover .shell-nav-ic { color: #fff; }
+
+  .shell-header { background: #fff; border-bottom: 1px solid var(--antd-gray-3); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .shell-header-l { display: flex; align-items: center; gap: 16px; }
+  .shell-header-r { display: flex; align-items: center; gap: 16px; }
+  .period-pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; background: var(--antd-gray-2); border-radius: var(--radius-medium); color: var(--color-foreground); font-size: 13px; cursor: pointer; }
+  .period-pill:hover { background: var(--antd-gray-3); }
+  .user-chip { display: flex; align-items: center; gap: 10px; padding: 4px 10px 4px 4px; border-radius: 20px; cursor: pointer; }
+  .user-chip:hover { background: var(--antd-gray-2); }
+  .user-chip-name { font-size: 13px; font-weight: 500; }
+  .user-chip-role { font-size: 11px; color: var(--color-text-tertiary); }
+
+  .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px; }
+  .section { background: #fff; border: 1px solid var(--antd-gray-3); border-radius: var(--radius-large); padding: 20px; }
+  .section h3 { font-size: 16px; font-weight: 600; margin: 0; }
+  .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+
+  /* ── 新增 .antd-collection-timeline 垂直时间线 ── */
+  .antd-collection-timeline {
+    position: relative;
+    padding: 8px 0 8px 0;
+  }
+  .tl-step {
+    position: relative;
+    padding-left: 32px;
+    padding-bottom: 26px;
+  }
+  .tl-step:last-child { padding-bottom: 0; }
+  .tl-step::before {
+    content: "";
+    position: absolute;
+    left: 11px;
+    top: 26px;
+    bottom: -2px;
+    width: 2px;
+    background: var(--antd-gray-3);
+  }
+  .tl-step:last-child::before { display: none; }
+  .tl-step .dot {
+    position: absolute;
+    left: 0; top: 4px;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: var(--color-card);
+    border: 2px solid var(--antd-gray-4);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    font-weight: 600;
+    z-index: 1;
+  }
+  .tl-step.is-pending .dot { border-color: var(--antd-gray-4); color: var(--color-text-tertiary); background: var(--antd-gray-2); }
+  .tl-step.is-progress .dot { border-color: var(--color-primary); color: var(--color-primary); box-shadow: 0 0 0 4px rgba(22, 119, 255, 0.1); }
+  .tl-step.is-progress::before { background: var(--color-primary); }
+  .tl-step.is-done .dot { border-color: var(--antd-state-success); background: var(--antd-state-success); color: #fff; }
+  .tl-step.is-done::before { background: var(--antd-state-success); }
+  .tl-step.is-overdue .dot { border-color: var(--antd-state-error); background: var(--antd-state-error); color: #fff; }
+  .tl-step.is-overdue::before { background: var(--antd-state-error); }
+  .tl-step .step-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-foreground);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .tl-step .step-label .count {
+    background: var(--antd-gray-2);
+    color: var(--color-text-secondary);
+    padding: 0 6px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 400;
+  }
+
+  .tl-cards {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  .tl-card {
+    background: var(--antd-gray-2);
+    border-radius: var(--radius-medium);
+    padding: 12px 14px;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+  }
+  .tl-card:hover { border-color: var(--color-primary); background: var(--antd-brand-50); }
+  .tl-card-row { display: flex; align-items: center; gap: 8px; }
+  .tl-card-name { font-size: 13px; font-weight: 500; flex: 1; color: var(--color-foreground); }
+  .tl-card-amount { font-size: 14px; font-weight: 600; font-family: var(--antd-font-family-mono); font-variant-numeric: tabular-nums; color: var(--color-foreground); }
+  .tl-card-meta { font-size: 11px; color: var(--color-text-tertiary); margin-top: 6px; display: flex; gap: 12px; }
+
+  .table-tools { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .table-tools .left { display: flex; gap: 8px; align-items: center; }
+  .table-tools .right { display: flex; gap: 8px; }
+</style>
+</head>
+<body>
+<div class="antd-page">
+  <aside class="shell-side" style="grid-column: 1;">
+    <div class="shell-side-logo">
+      <div class="shell-side-logo-mark">J</div>
+      <div class="shell-side-logo-text">经营分析平台</div>
+    </div>
+    <nav class="shell-side-nav">
+      <div class="shell-nav-group-title">主数据</div>
+      <a class="shell-nav-item" href="dashboard.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        首页看板
+      </a>
+      <a class="shell-nav-item" href="indicators-operating.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+        财务指标
+      </a>
+      <a class="shell-nav-item is-active" href="transactions-overview.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+        往来分析
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        存货管理
+      </a>
+      <a class="shell-nav-item" href="reports-list.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+        分析报告
+      </a>
+
+      <div class="shell-nav-group-title">业务工具</div>
+      <a class="shell-nav-item" href="enterprise-lookup.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        企业信息查询
+      </a>
+
+      <div class="shell-nav-group-title">数据管理</div>
+      <a class="shell-nav-item" href="data-import.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        数据导入
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h12"/></svg>
+        重分类管理
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        维度管理
+      </a>
+
+      <div class="shell-nav-group-title">系统</div>
+      <a class="shell-nav-item" href="admin-users.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><circle cx="17" cy="7" r="3"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
+        用户管理
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+        角色权限
+      </a>
+    </nav>
+  </aside>
+
+  <main class="antd-content">
+    <header class="shell-header">
+      <div class="shell-header-l">
+        <div class="antd-breadcrumb">
+          <a>往来分析</a>
+          <span class="sep">/</span>
+          <span class="current">催收计划</span>
+        </div>
+      </div>
+      <div class="shell-header-r">
+        <div class="antd-select" style="min-width: 160px;">浙江壹品慧生活集团</div>
+        <div class="period-pill">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          2026 财年 · 8月
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <button class="antd-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          刷新
+        </button>
+        <div class="user-chip">
+          <div class="antd-avatar" style="background: var(--antd-brand-100); color: var(--color-primary);">张</div>
+          <div>
+            <div class="user-chip-name">张伟</div>
+            <div class="user-chip-role">财务总监</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="antd-content-body">
+      <!-- PageHead -->
+      <div class="antd-page-head">
+        <div>
+          <div class="antd-page-head-title">催收计划</div>
+          <div class="antd-page-head-desc">按状态组织催收任务，逾期任务优先介入</div>
+        </div>
+        <div class="antd-page-head-actions">
+          <button class="antd-btn">批量指派</button>
+          <button class="antd-btn antd-btn-primary">+ 新建催收计划</button>
+        </div>
+      </div>
+
+      <!-- 3 个 stat-tile -->
+      <div class="stat-row">
+        <div class="antd-stat-tile">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">待执行</span>
+            <span class="antd-stat-tile-icon">待</span>
+          </div>
+          <div class="antd-stat-tile-value">18<span class="unit">单</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-flat">→ 0%</span>
+            <span class="antd-text-tertiary antd-fs-sm">¥ 86.4 万</span>
+          </div>
+        </div>
+        <div class="antd-stat-tile is-cyan">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">执行中</span>
+            <span class="antd-status antd-status-processing" style="margin-left:0;">执行中</span>
+          </div>
+          <div class="antd-stat-tile-value">9<span class="unit">单</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-up">↑ 2</span>
+            <span class="antd-text-tertiary antd-fs-sm">¥ 42.6 万</span>
+          </div>
+        </div>
+        <div class="antd-stat-tile is-orange antd-emphasis-warm-strong">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">逾期</span>
+            <span class="antd-stat-tile-icon">逾</span>
+          </div>
+          <div class="antd-stat-tile-value" style="color: var(--antd-orange-700);">5<span class="unit">单</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-up">↑ 1</span>
+            <span class="antd-text-tertiary antd-fs-sm">¥ 18.4 万</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 催收时间线 -->
+      <div class="section" style="margin-bottom: 16px;">
+        <div class="section-head">
+          <h3>催收时间线</h3>
+          <span class="antd-overline">按状态分组</span>
+        </div>
+        <div class="antd-collection-timeline">
+          <div class="tl-step is-pending">
+            <div class="dot">1</div>
+            <div class="step-label">待执行 <span class="count">18 单</span><span class="antd-pill is-gray">9 月</span></div>
+            <div class="tl-cards">
+              <div class="tl-card">
+                <div class="tl-card-row"><div class="antd-avatar" style="width:24px;height:24px;font-size:11px;">绿</div><div class="tl-card-name">杭州绿城物业 9 月物业费</div></div>
+                <div class="tl-card-amount">¥ 48.6 万</div>
+                <div class="tl-card-meta"><span>计划日 2026-09-05</span><span>负责人 王芳</span></div>
+              </div>
+              <div class="tl-card">
+                <div class="tl-card-row"><div class="antd-avatar" style="width:24px;height:24px;font-size:11px;background:var(--antd-orange-100);color:var(--antd-orange-500);">雅</div><div class="tl-card-name">宁波雅戈尔置业 工程尾款</div></div>
+                <div class="tl-card-amount">¥ 22.4 万</div>
+                <div class="tl-card-meta"><span>计划日 2026-09-10</span><span>负责人 李娜</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="tl-step is-progress">
+            <div class="dot">2</div>
+            <div class="step-label">执行中 <span class="count">9 单</span><span class="antd-pill is-blue">进行中</span></div>
+            <div class="tl-cards">
+              <div class="tl-card">
+                <div class="tl-card-row"><div class="antd-avatar" style="width:24px;height:24px;font-size:11px;">万</div><div class="tl-card-name">金华万科物业 增值服务结算</div></div>
+                <div class="tl-card-amount">¥ 18.6 万</div>
+                <div class="tl-card-meta"><span>已联系 3 次</span><span>承诺 2026-08-30 回款</span><span>王芳</span></div>
+              </div>
+              <div class="tl-card">
+                <div class="tl-card-row"><div class="antd-avatar" style="width:24px;height:24px;font-size:11px;background:#722ed122;color:#722ed1;">龙</div><div class="tl-card-name">温州龙湖智慧 月度服务费</div></div>
+                <div class="tl-card-amount">¥ 15.4 万</div>
+                <div class="tl-card-meta"><span>已联系 1 次</span><span>等待财务审批</span><span>陈勇</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="tl-step is-done">
+            <div class="dot">3</div>
+            <div class="step-label">已完成 <span class="count">42 单</span><span class="antd-pill is-green">已结清</span></div>
+            <div class="tl-cards">
+              <div class="tl-card">
+                <div class="tl-card-row"><div class="antd-avatar" style="width:24px;height:24px;font-size:11px;background:var(--antd-state-success-bg);color:var(--antd-state-success);">碧</div><div class="tl-card-name">绍兴碧桂园生活 · 8 月已结清</div></div>
+                <div class="tl-card-amount" style="color: var(--antd-state-success);">¥ 14.2 万</div>
+                <div class="tl-card-meta"><span>完成日 2026-08-22</span><span>提前 3 天</span><span>王芳</span></div>
+              </div>
+              <div class="tl-card">
+                <div class="tl-card-row"><div class="antd-avatar" style="width:24px;height:24px;font-size:11px;background:var(--antd-state-success-bg);color:var(--antd-state-success);">招</div><div class="tl-card-name">嘉兴招商局物业 · 8 月已结清</div></div>
+                <div class="tl-card-amount" style="color: var(--antd-state-success);">¥ 12.1 万</div>
+                <div class="tl-card-meta"><span>完成日 2026-08-20</span><span>按计划</span><span>李娜</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="tl-step is-overdue">
+            <div class="dot">4</div>
+            <div class="step-label">逾期 <span class="count">5 单</span><span class="antd-pill is-orange">需介入</span></div>
+            <div class="tl-cards">
+              <div class="tl-card" style="background: var(--antd-state-error-bg); border-color: var(--antd-state-error-border);">
+                <div class="tl-card-row"><div class="antd-avatar" style="width:24px;height:24px;font-size:11px;background:var(--antd-state-error-bg);color:var(--antd-state-error);">舟</div><div class="tl-card-name">舟山普陀物业 · 逾期 12 天</div></div>
+                <div class="tl-card-amount" style="color: var(--antd-state-error);">¥ 6.2 万</div>
+                <div class="tl-card-meta"><span style="color: var(--antd-state-error);">原计划 2026-08-14</span><span>负责人 赵敏</span></div>
+              </div>
+              <div class="tl-card" style="background: var(--antd-state-error-bg); border-color: var(--antd-state-error-border);">
+                <div class="tl-card-row"><div class="antd-avatar" style="width:24px;height:24px;font-size:11px;background:var(--antd-state-error-bg);color:var(--antd-state-error);">丽</div><div class="tl-card-name">丽水绿城生活 · 逾期 7 天</div></div>
+                <div class="tl-card-amount" style="color: var(--antd-state-error);">¥ 4.8 万</div>
+                <div class="tl-card-meta"><span style="color: var(--antd-state-error);">原计划 2026-08-19</span><span>负责人 王芳</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 催收计划明细表 -->
+      <div class="section">
+        <div class="section-head">
+          <h3>催收计划明细</h3>
+          <div class="antd-flex">
+            <span class="antd-tag antd-tag-default">32 条</span>
+            <a class="antd-card-extra" href="#">导出 →</a>
+          </div>
+        </div>
+        <div class="table-tools">
+          <div class="left">
+            <div class="antd-select" style="min-width: 120px;">全部状态</div>
+            <div class="antd-select" style="min-width: 120px;">全部负责人</div>
+          </div>
+          <div class="right">
+            <button class="antd-btn antd-btn-sm">列设置</button>
+          </div>
+        </div>
+        <table class="antd-table antd-table-bordered antd-table-zebra antd-table-density-compact">
+          <thead>
+            <tr>
+              <th>客户</th>
+              <th>计划金额</th>
+              <th>计划日期</th>
+              <th>负责人</th>
+              <th>账龄段</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><div class="antd-fw-600">杭州绿城物业</div><div class="antd-fs-sm antd-text-tertiary">物业服务</div></td>
+              <td class="num antd-fw-600">¥ 48.6 万</td>
+              <td>2026-09-05</td>
+              <td><div class="antd-flex"><div class="antd-avatar" style="width:22px;height:22px;font-size:10px;">王</div>王芳</div></td>
+              <td><span class="antd-tag">90+ 天</span></td>
+              <td><span class="antd-pill is-gray">待执行</span></td>
+              <td><a class="antd-card-extra" href="#">详情</a></td>
+            </tr>
+            <tr>
+              <td><div class="antd-fw-600">宁波雅戈尔置业</div><div class="antd-fs-sm antd-text-tertiary">工程款</div></td>
+              <td class="num antd-fw-600">¥ 36.4 万</td>
+              <td>2026-09-10</td>
+              <td><div class="antd-flex"><div class="antd-avatar" style="width:22px;height:22px;font-size:10px;background:var(--antd-orange-100);color:var(--antd-orange-500);">李</div>李娜</div></td>
+              <td><span class="antd-tag antd-tag-warning">61-90 天</span></td>
+              <td><span class="antd-pill is-gray">待执行</span></td>
+              <td><a class="antd-card-extra" href="#">详情</a></td>
+            </tr>
+            <tr>
+              <td><div class="antd-fw-600">金华万科物业</div><div class="antd-fs-sm antd-text-tertiary">增值服务</div></td>
+              <td class="num antd-fw-600">¥ 28.2 万</td>
+              <td>2026-08-30</td>
+              <td><div class="antd-flex"><div class="antd-avatar" style="width:22px;height:22px;font-size:10px;">王</div>王芳</div></td>
+              <td><span class="antd-tag antd-tag-warning">61-90 天</span></td>
+              <td><span class="antd-pill is-blue">执行中</span></td>
+              <td><a class="antd-card-extra" href="#">详情</a></td>
+            </tr>
+            <tr>
+              <td><div class="antd-fw-600">温州龙湖智慧服务</div><div class="antd-fs-sm antd-text-tertiary">物业服务</div></td>
+              <td class="num antd-fw-600">¥ 24.5 万</td>
+              <td>2026-09-01</td>
+              <td><div class="antd-flex"><div class="antd-avatar" style="width:22px;height:22px;font-size:10px;background:#722ed122;color:#722ed1;">陈</div>陈勇</div></td>
+              <td><span class="antd-tag">31-60 天</span></td>
+              <td><span class="antd-pill is-blue">执行中</span></td>
+              <td><a class="antd-card-extra" href="#">详情</a></td>
+            </tr>
+            <tr>
+              <td><div class="antd-fw-600">绍兴碧桂园生活</div><div class="antd-fs-sm antd-text-tertiary">增值服务</div></td>
+              <td class="num antd-fw-600">¥ 21.8 万</td>
+              <td>2026-08-22</td>
+              <td><div class="antd-flex"><div class="antd-avatar" style="width:22px;height:22px;font-size:10px;">王</div>王芳</div></td>
+              <td><span class="antd-tag antd-tag-success">0-30 天</span></td>
+              <td><span class="antd-pill is-green">已完成</span></td>
+              <td><a class="antd-card-extra" href="#">详情</a></td>
+            </tr>
+            <tr>
+              <td><div class="antd-fw-600">嘉兴招商局物业</div><div class="antd-fs-sm antd-text-tertiary">工程款</div></td>
+              <td class="num antd-fw-600">¥ 18.6 万</td>
+              <td>2026-08-20</td>
+              <td><div class="antd-flex"><div class="antd-avatar" style="width:22px;height:22px;font-size:10px;background:var(--antd-orange-100);color:var(--antd-orange-500);">李</div>李娜</div></td>
+              <td><span class="antd-tag antd-tag-success">0-30 天</span></td>
+              <td><span class="antd-pill is-green">已完成</span></td>
+              <td><a class="antd-card-extra" href="#">详情</a></td>
+            </tr>
+            <tr>
+              <td><div class="antd-fw-600">舟山普陀物业</div><div class="antd-fs-sm antd-text-tertiary">物业服务</div></td>
+              <td class="num antd-fw-600" style="color: var(--antd-state-error);">¥ 6.2 万</td>
+              <td style="color: var(--antd-state-error);">2026-08-14</td>
+              <td><div class="antd-flex"><div class="antd-avatar" style="width:22px;height:22px;font-size:10px;background:var(--antd-state-error-bg);color:var(--antd-state-error);">赵</div>赵敏</div></td>
+              <td><span class="antd-tag antd-tag-error">90+ 天</span></td>
+              <td><span class="antd-pill is-red">逾期 12 天</span></td>
+              <td><a class="antd-card-extra" href="#">介入</a></td>
+            </tr>
+            <tr>
+              <td><div class="antd-fw-600">丽水绿城生活</div><div class="antd-fs-sm antd-text-tertiary">商品销售</div></td>
+              <td class="num antd-fw-600" style="color: var(--antd-state-error);">¥ 4.8 万</td>
+              <td style="color: var(--antd-state-error);">2026-08-19</td>
+              <td><div class="antd-flex"><div class="antd-avatar" style="width:22px;height:22px;font-size:10px;">王</div>王芳</div></td>
+              <td><span class="antd-tag antd-tag-error">90+ 天</span></td>
+              <td><span class="antd-pill is-orange">逾期 7 天</span></td>
+              <td><a class="antd-card-extra" href="#">介入</a></td>
+            </tr>
+            <tr>
+              <td><div class="antd-fw-600">衢州龙湖智慧</div><div class="antd-fs-sm antd-text-tertiary">物业服务</div></td>
+              <td class="num antd-fw-600" style="color: var(--antd-state-error);">¥ 3.6 万</td>
+              <td style="color: var(--antd-state-error);">2026-08-21</td>
+              <td><div class="antd-flex"><div class="antd-avatar" style="width:22px;height:22px;font-size:10px;background:var(--antd-orange-100);color:var(--antd-orange-500);">李</div>李娜</div></td>
+              <td><span class="antd-tag antd-tag-warning">61-90 天</span></td>
+              <td><span class="antd-pill is-orange">逾期 5 天</span></td>
+              <td><a class="antd-card-extra" href="#">介入</a></td>
+            </tr>
+            <tr>
+              <td><div class="antd-fw-600">台州世茂天成</div><div class="antd-fs-sm antd-text-tertiary">增值服务</div></td>
+              <td class="num antd-fw-600" style="color: var(--antd-state-error);">¥ 2.4 万</td>
+              <td style="color: var(--antd-state-error);">2026-08-23</td>
+              <td><div class="antd-flex"><div class="antd-avatar" style="width:22px;height:22px;font-size:10px;background:#722ed122;color:#722ed1;">陈</div>陈勇</div></td>
+              <td><span class="antd-tag antd-tag-warning">61-90 天</span></td>
+              <td><span class="antd-pill is-orange">逾期 3 天</span></td>
+              <td><a class="antd-card-extra" href="#">介入</a></td>
+            </tr>
+            <tr>
+              <td><div class="antd-fw-600">湖州保利物业</div><div class="antd-fs-sm antd-text-tertiary">物业服务</div></td>
+              <td class="num antd-fw-600" style="color: var(--antd-state-error);">¥ 1.4 万</td>
+              <td style="color: var(--antd-state-error);">2026-08-25</td>
+              <td><div class="antd-flex"><div class="antd-avatar" style="width:22px;height:22px;font-size:10px;background:var(--antd-state-error-bg);color:var(--antd-state-error);">赵</div>赵敏</div></td>
+              <td><span class="antd-tag antd-tag-error">90+ 天</span></td>
+              <td><span class="antd-pill is-orange">逾期 1 天</span></td>
+              <td><a class="antd-card-extra" href="#">介入</a></td>
+            </tr>
+            <tr>
+              <td><div class="antd-fw-600">嘉兴南湖服务中心</div><div class="antd-fs-sm antd-text-tertiary">物业服务</div></td>
+              <td class="num antd-fw-600">¥ 9.1 万</td>
+              <td>2026-09-12</td>
+              <td><div class="antd-flex"><div class="antd-avatar" style="width:22px;height:22px;font-size:10px;background:#722ed122;color:#722ed1;">陈</div>陈勇</div></td>
+              <td><span class="antd-tag">31-60 天</span></td>
+              <td><span class="antd-pill is-gray">待执行</span></td>
+              <td><a class="antd-card-extra" href="#">详情</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

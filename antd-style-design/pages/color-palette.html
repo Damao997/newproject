@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>色板总览 · 蓝 / 橙 / 灰 · 财年经营数据分析平台</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; background: var(--antd-gray-cool-3); }
+  .swatch-shell { max-width: 1440px; margin: 0 auto; padding: 40px 56px 64px; }
+
+  /* 顶部标题区 */
+  .swatch-head { margin-bottom: 24px; }
+  .swatch-head h1 {
+    font-size: 28px; font-weight: 600; color: var(--antd-gray-cool-12);
+    margin: 0 0 8px;
+  }
+  .swatch-head p {
+    color: var(--antd-gray-cool-9); font-size: 14px; line-height: 1.7;
+    margin: 0; max-width: 760px;
+  }
+
+  /* 三色 hero 对比卡 */
+  .swatch-compare {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+    margin-bottom: 28px;
+  }
+  .swatch-compare-card {
+    border-radius: 10px; padding: 22px 24px; color: #fff;
+    display: flex; flex-direction: column; justify-content: space-between;
+    min-height: 132px;
+  }
+  .swatch-compare-card.is-blue   { background: linear-gradient(135deg, var(--antd-brand-700), var(--antd-brand-500)); }
+  .swatch-compare-card.is-orange { background: linear-gradient(135deg, var(--antd-orange-700), var(--antd-orange-500)); }
+  .swatch-compare-card.is-gray   { background: linear-gradient(135deg, var(--antd-gray-cool-11), var(--antd-gray-cool-8)); }
+  .swatch-compare-card h3 { margin: 0 0 6px; font-size: 15px; font-weight: 600; opacity: 0.95; }
+  .swatch-compare-card p { margin: 0; font-size: 12px; line-height: 1.6; opacity: 0.85; }
+  .swatch-compare-stat { font-size: 26px; font-weight: 700; letter-spacing: 0.5px; margin-top: 14px; }
+  .swatch-compare-stat small { font-size: 12px; font-weight: 500; opacity: 0.85; margin-left: 6px; }
+
+  /* Tab 容器 */
+  .swatch-tabs {
+    background: #fff;
+    border: 1px solid var(--antd-gray-cool-5);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .swatch-tabs-nav {
+    display: flex;
+    border-bottom: 1px solid var(--antd-gray-cool-5);
+    padding: 0 12px;
+    background: var(--antd-gray-cool-2);
+    gap: 4px;
+  }
+  .swatch-tab {
+    padding: 14px 20px 12px;
+    font-size: 14px; font-weight: 500;
+    color: var(--antd-gray-cool-9);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    display: inline-flex; align-items: center; gap: 8px;
+    user-select: none;
+  }
+  .swatch-tab:hover { color: var(--antd-brand-500); }
+  .swatch-tab.is-active {
+    color: var(--antd-brand-500);
+    border-bottom-color: var(--antd-brand-500);
+    background: #fff;
+  }
+  .swatch-tab-dot {
+    width: 8px; height: 8px; border-radius: 2px;
+  }
+  .swatch-tab.is-orange.is-active { color: var(--antd-orange-600); border-bottom-color: var(--antd-orange-500); }
+  .swatch-tab.is-orange:hover { color: var(--antd-orange-600); }
+  .swatch-tab.is-gray.is-active  { color: var(--antd-gray-cool-11); border-bottom-color: var(--antd-gray-cool-8); }
+  .swatch-tab.is-gray:hover { color: var(--antd-gray-cool-11); }
+  .swatch-tab-meta {
+    margin-left: auto; padding: 14px 12px 12px;
+    font-size: 12px; color: var(--antd-gray-cool-8);
+  }
+  .swatch-tab-meta strong { color: var(--antd-gray-cool-10); font-weight: 600; }
+
+  .swatch-tab-panel { display: none; padding: 28px 32px 36px; }
+  .swatch-tab-panel.is-active { display: block; }
+
+  /* 面板通用 */
+  .swatch-family {
+    background: #fff; border: 1px solid var(--antd-gray-cool-5);
+    border-radius: 12px; padding: 24px 28px 28px; margin-bottom: 20px;
+  }
+  .swatch-family-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .swatch-family-title { display: flex; align-items: center; gap: 12px; }
+  .swatch-family-dot { width: 12px; height: 12px; border-radius: 3px; }
+  .swatch-family-name { font-size: 16px; font-weight: 600; color: var(--antd-gray-cool-12); }
+  .swatch-family-meta { font-size: 12px; color: var(--antd-gray-cool-8); }
+  .swatch-family-role {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; padding: 4px 10px; border-radius: 999px;
+  }
+  .role-blue   { background: var(--antd-brand-50);   color: var(--antd-brand-700);   border: 1px solid var(--antd-brand-200); }
+  .role-orange { background: var(--antd-orange-bg);  color: var(--antd-orange-700);  border: 1px solid var(--antd-orange-border); }
+  .role-gray   { background: var(--antd-gray-cool-3);color: var(--antd-gray-cool-10);border: 1px solid var(--antd-gray-cool-5); }
+
+  .swatch-grid-10 { display: grid; grid-template-columns: repeat(10, 1fr); gap: 10px; }
+  .swatch-grid-12 { display: grid; grid-template-columns: repeat(12, 1fr); gap: 8px; }
+  .swatch {
+    border-radius: 8px; overflow: hidden;
+    border: 1px solid var(--antd-gray-cool-5); background: #fff;
+  }
+  .swatch-color {
+    height: 86px; display: flex; align-items: flex-end; justify-content: space-between;
+    padding: 8px 10px; font-size: 11px; font-weight: 600; letter-spacing: 0.5px;
+  }
+  .swatch-color.is-light { color: var(--antd-gray-cool-12); }
+  .swatch-color.is-dark  { color: #fff; }
+  .swatch-meta {
+    padding: 8px 10px 10px; font-size: 11px; color: var(--antd-gray-cool-8);
+    border-top: 1px solid var(--antd-gray-cool-5);
+  }
+  .swatch-meta strong {
+    display: block; color: var(--antd-gray-cool-12);
+    font-size: 12px; margin-bottom: 2px; font-weight: 600;
+  }
+
+  /* 落地场景 */
+  .swatch-deriv {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+  }
+  .swatch-deriv-card {
+    background: var(--antd-gray-cool-3);
+    border: 1px solid var(--antd-gray-cool-5);
+    border-radius: 8px; padding: 14px;
+  }
+  .swatch-deriv-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .swatch-deriv-dot {
+    width: 26px; height: 26px; border-radius: 6px;
+    border: 1px solid rgba(0,0,0,0.06);
+  }
+  .swatch-deriv-name { font-size: 13px; font-weight: 600; color: var(--antd-gray-cool-12); }
+  .swatch-deriv-meta { font-size: 11px; color: var(--antd-gray-cool-8); margin-top: 2px; }
+  .swatch-deriv-usage { font-size: 12px; color: var(--antd-gray-cool-9); line-height: 1.6; }
+
+  .swatch-subtitle {
+    font-size: 12px; color: var(--antd-gray-cool-8); margin: 0 0 10px;
+  }
+  .swatch-rule {
+    margin-top: 20px; padding-top: 20px;
+    border-top: 1px dashed var(--antd-gray-cool-5);
+  }
+  .swatch-rule h3 { margin: 0 0 10px; font-size: 14px; color: var(--antd-gray-cool-12); }
+  .swatch-rule table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
+  .swatch-rule th, .swatch-rule td {
+    text-align: left; padding: 10px 12px;
+    border-bottom: 1px solid var(--antd-gray-cool-5);
+  }
+  .swatch-rule th { font-weight: 600; color: var(--antd-gray-cool-10); background: var(--antd-gray-cool-3); font-size: 12px; }
+  .swatch-rule td { color: var(--antd-gray-cool-10); }
+  .swatch-rule tr:last-child td { border-bottom: none; }
+</style>
+</head>
+<body>
+<div class="swatch-shell">
+  <div class="swatch-head">
+    <h1>色板总览 · 蓝 / 橙 / 灰</h1>
+    <p>本页面用 Tab 切换展示项目当前完整色板体系。品牌主色「蓝」承担主操作 / 链接 / 选中；强调色「橙」承担业务高亮 / Top 排名 / 重点 KPI；中性色「灰」承担文本层级、表格斑马纹、分割与背景。三套色板协同覆盖 8 个核心页面。</p>
+  </div>
+
+  <!-- 三色 hero 对比卡 -->
+  <div class="swatch-compare">
+    <div class="swatch-compare-card is-blue">
+      <div>
+        <h3>Ant Design 蓝 · 品牌主色</h3>
+        <p>主操作按钮、链接、选中态、进度条、聚焦环</p>
+      </div>
+      <div class="swatch-compare-stat">#1677ff <small>·  brand-500</small></div>
+    </div>
+    <div class="swatch-compare-card is-orange">
+      <div>
+        <h3>强调橙 · 业务高亮</h3>
+        <p>Top KPI、专题报告、生成中、新业务线、rank-1</p>
+      </div>
+      <div class="swatch-compare-stat">#fa8c16 <small>·  orange-500</small></div>
+    </div>
+    <div class="swatch-compare-card is-gray">
+      <div>
+        <h3>冷灰 · 中性层级</h3>
+        <p>文本层级、表格斑马纹、分割线、卡片背景</p>
+      </div>
+      <div class="swatch-compare-stat">#5b6472 <small>·  cool-9</small></div>
+    </div>
+  </div>
+
+  <!-- Tab 容器 -->
+  <div class="swatch-tabs">
+    <div class="swatch-tabs-nav" role="tablist">
+      <div class="swatch-tab is-blue is-active" data-tab="blue" role="tab">
+        <span class="swatch-tab-dot" style="background: var(--antd-brand-500);"></span>
+        蓝 · Brand
+      </div>
+      <div class="swatch-tab is-orange" data-tab="orange" role="tab">
+        <span class="swatch-tab-dot" style="background: var(--antd-orange-500);"></span>
+        橙 · Emphasis
+      </div>
+      <div class="swatch-tab is-gray" data-tab="gray" role="tab">
+        <span class="swatch-tab-dot" style="background: var(--antd-gray-cool-8);"></span>
+        灰 · Neutral
+      </div>
+      <div class="swatch-tab-meta"><strong>3</strong> 套色板 · 共 <strong>32</strong> 级色阶</div>
+    </div>
+
+    <!-- ========== 蓝色板 ========== -->
+    <div class="swatch-tab-panel is-active" data-panel="blue" role="tabpanel">
+      <div class="swatch-family">
+        <div class="swatch-family-head">
+          <div class="swatch-family-title">
+            <span class="swatch-family-dot" style="background: var(--antd-brand-500);"></span>
+            <span class="swatch-family-name">Ant Design 蓝（Brand）</span>
+            <span class="swatch-family-meta">10 级 · 50 → 900</span>
+          </div>
+          <span class="swatch-family-role role-blue">品牌主色 · Primary</span>
+        </div>
+        <div class="swatch-grid-10">
+          <div class="swatch"><div class="swatch-color is-light" style="background: var(--antd-brand-50);">50</div><div class="swatch-meta"><strong>#e6f4ff</strong>hover 底 / 浅色块</div></div>
+          <div class="swatch"><div class="swatch-color is-light" style="background: var(--antd-brand-100);">100</div><div class="swatch-meta"><strong>#bae0ff</strong>chip / 标识</div></div>
+          <div class="swatch"><div class="swatch-color is-light" style="background: var(--antd-brand-200);">200</div><div class="swatch-meta"><strong>#91caff</strong>边框 / 描边</div></div>
+          <div class="swatch"><div class="swatch-color is-light" style="background: var(--antd-brand-300);">300</div><div class="swatch-meta"><strong>#69b1ff</strong>图表次色</div></div>
+          <div class="swatch"><div class="swatch-color is-light" style="background: var(--antd-brand-400);">400</div><div class="swatch-meta"><strong>#4096ff</strong>hover 主色</div></div>
+          <div class="swatch"><div class="swatch-color is-dark"  style="background: var(--antd-brand-500);">500</div><div class="swatch-meta"><strong>#1677ff</strong>主色（默认）</div></div>
+          <div class="swatch"><div class="swatch-color is-dark"  style="background: var(--antd-brand-600);">600</div><div class="swatch-meta"><strong>#0958d9</strong>按下 / 激活</div></div>
+          <div class="swatch"><div class="swatch-color is-dark"  style="background: var(--antd-brand-700);">700</div><div class="swatch-meta"><strong>#003eb3</strong>重点标题</div></div>
+          <div class="swatch"><div class="swatch-color is-dark"  style="background: var(--antd-brand-800);">800</div><div class="swatch-meta"><strong>#002c8c</strong>深色主题</div></div>
+          <div class="swatch"><div class="swatch-color is-dark"  style="background: var(--antd-brand-900);">900</div><div class="swatch-meta"><strong>#001d66</strong>最深文本</div></div>
+        </div>
+      </div>
+      <div class="swatch-family">
+        <div class="swatch-family-head">
+          <div class="swatch-family-title">
+            <span class="swatch-family-dot" style="background: var(--antd-brand-500);"></span>
+            <span class="swatch-family-name">落地场景 · 8 页通用</span>
+            <span class="swatch-family-meta">主操作 / 链接 / 选中 / Tab / 图表</span>
+          </div>
+        </div>
+        <div class="swatch-deriv">
+          <div class="swatch-deriv-card">
+            <div class="swatch-deriv-card-head">
+              <div class="swatch-deriv-dot" style="background: var(--antd-brand-500);"></div>
+              <div>
+                <div class="swatch-deriv-name">主操作按钮</div>
+                <div class="swatch-deriv-meta">brand-500 填充 / 白字</div>
+              </div>
+            </div>
+            <div class="swatch-deriv-usage">「查询」「导出」「登录」「保存」等关键操作。</div>
+          </div>
+          <div class="swatch-deriv-card">
+            <div class="swatch-deriv-card-head">
+              <div class="swatch-deriv-dot" style="background: var(--antd-brand-600);"></div>
+              <div>
+                <div class="swatch-deriv-name">按下 / 激活态</div>
+                <div class="swatch-deriv-meta">brand-600 · active 状态</div>
+              </div>
+            </div>
+            <div class="swatch-deriv-usage">按钮 active、Tab 选中、菜单 current，确保按下时比默认更深一档。</div>
+          </div>
+          <div class="swatch-deriv-card">
+            <div class="swatch-deriv-card-head">
+              <div class="swatch-deriv-dot" style="background: var(--antd-brand-50); border-color: var(--antd-brand-200);"></div>
+              <div>
+                <div class="swatch-deriv-name">选中背景</div>
+                <div class="swatch-deriv-meta">brand-50 + 文字 brand-500</div>
+              </div>
+            </div>
+            <div class="swatch-deriv-usage">表格行 selected、表单聚焦环、Tag 选中；表头 hover 与斑马纹也复用 brand-50/cool-4。</div>
+          </div>
+          <div class="swatch-deriv-card">
+            <div class="swatch-deriv-card-head">
+              <div class="swatch-deriv-dot" style="background: var(--antd-brand-100);"></div>
+              <div>
+                <div class="swatch-deriv-name">链接 / 文字</div>
+                <div class="swatch-deriv-meta">brand-500 · 表格内链 / 面包屑</div>
+              </div>
+            </div>
+            <div class="swatch-deriv-usage">「查看明细」「编辑」「导出 CSV」等次级操作文字，与主按钮形成层级。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 橙色板 ========== -->
+    <div class="swatch-tab-panel" data-panel="orange" role="tabpanel">
+      <div class="swatch-family">
+        <div class="swatch-family-head">
+          <div class="swatch-family-title">
+            <span class="swatch-family-dot" style="background: var(--antd-orange-500);"></span>
+            <span class="swatch-family-name">强调橙（Orange）</span>
+            <span class="swatch-family-meta">10 级 · 50 → 900</span>
+          </div>
+          <span class="swatch-family-role role-orange">业务高亮 · Emphasis</span>
+        </div>
+        <div class="swatch-grid-10">
+          <div class="swatch"><div class="swatch-color is-light" style="background: var(--antd-orange-50);">50</div><div class="swatch-meta"><strong>#fff7e6</strong>暖底 / pill 背景</div></div>
+          <div class="swatch"><div class="swatch-color is-light" style="background: var(--antd-orange-100);">100</div><div class="swatch-meta"><strong>#ffe7ba</strong>次级填充</div></div>
+          <div class="swatch"><div class="swatch-color is-light" style="background: var(--antd-orange-200);">200</div><div class="swatch-meta"><strong>#ffd591</strong>spark 弱色</div></div>
+          <div class="swatch"><div class="swatch-color is-light" style="background: var(--antd-orange-300);">300</div><div class="swatch-meta"><strong>#ffc069</strong>边框 / 描边</div></div>
+          <div class="swatch"><div class="swatch-color is-light" style="background: var(--antd-orange-400);">400</div><div class="swatch-meta"><strong>#ffa940</strong>hover 暖色</div></div>
+          <div class="swatch"><div class="swatch-color is-dark"  style="background: var(--antd-orange-500);">500</div><div class="swatch-meta"><strong>#fa8c16</strong>强调橙主色</div></div>
+          <div class="swatch"><div class="swatch-color is-dark"  style="background: var(--antd-orange-600);">600</div><div class="swatch-meta"><strong>#d46b08</strong>强文字</div></div>
+          <div class="swatch"><div class="swatch-color is-dark"  style="background: var(--antd-orange-700);">700</div><div class="swatch-meta"><strong>#ad4e00</strong>暗色标签</div></div>
+          <div class="swatch"><div class="swatch-color is-dark"  style="background: var(--antd-orange-800);">800</div><div class="swatch-meta"><strong>#873800</strong>深色</div></div>
+          <div class="swatch"><div class="swatch-color is-dark"  style="background: var(--antd-orange-900);">900</div><div class="swatch-meta"><strong>#612500</strong>最深</div></div>
+        </div>
+      </div>
+      <div class="swatch-family">
+        <div class="swatch-family-head">
+          <div class="swatch-family-title">
+            <span class="swatch-family-dot" style="background: var(--antd-orange-500);"></span>
+            <span class="swatch-family-name">落地场景 · 6 页</span>
+            <span class="swatch-family-meta">Top KPI / 排名 / 状态</span>
+          </div>
+        </div>
+        <div class="swatch-deriv">
+          <div class="swatch-deriv-card">
+            <div class="swatch-deriv-card-head">
+              <div class="swatch-deriv-dot" style="background: var(--antd-orange-500);"></div>
+              <div>
+                <div class="swatch-deriv-name">rank-1 / Top KPI</div>
+                <div class="swatch-deriv-meta">orange-500 · 强调暖</div>
+              </div>
+            </div>
+            <div class="swatch-deriv-usage">dashboard「本月营业收入」、transactions「Top 10 客户」#1。</div>
+          </div>
+          <div class="swatch-deriv-card">
+            <div class="swatch-deriv-card-head">
+              <div class="swatch-deriv-dot" style="background: var(--antd-orange-200);"></div>
+              <div>
+                <div class="swatch-deriv-name">生成中状态</div>
+                <div class="swatch-deriv-meta">orange-50 底 + orange-600 字</div>
+              </div>
+            </div>
+            <div class="swatch-deriv-usage">reports-list、data-import「生成中 / 解析中 / 部分成功」等进度态。</div>
+          </div>
+          <div class="swatch-deriv-card">
+            <div class="swatch-deriv-card-head">
+              <div class="swatch-deriv-dot" style="background: var(--antd-orange-200);"></div>
+              <div>
+                <div class="swatch-deriv-name">mini-bar / spark</div>
+                <div class="swatch-deriv-meta">orange-200 弱 / orange-500 实</div>
+              </div>
+            </div>
+            <div class="swatch-deriv-usage">indicators 行内 mini-bar、data-import 解析进度条 is-orange 变体。</div>
+          </div>
+          <div class="swatch-deriv-card">
+            <div class="swatch-deriv-card-head">
+              <div class="swatch-deriv-dot" style="background: var(--antd-orange-100);"></div>
+              <div>
+                <div class="swatch-deriv-name">emphasis-warm 卡</div>
+                <div class="swatch-deriv-meta">橙 → 白渐变 + 橙边框</div>
+              </div>
+            </div>
+            <div class="swatch-deriv-usage">dashboard 重点 KPI 卡、login 横幅，淡橙渐变让卡片跳出来。</div>
+          </div>
+        </div>
+        <div class="swatch-rule">
+          <h3>橙 vs 黄 vs 红 · 边界规则</h3>
+          <table>
+            <thead>
+              <tr><th style="width:18%;">色</th><th style="width:18%;">主色值</th><th>语义</th><th>落地</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="antd-pill is-orange">强调橙</span></td>
+                <td>#fa8c16</td>
+                <td>业务高亮：Top1 / 新业务线 / 专题报告 / 进度中</td>
+                <td>dashboard、indicators、transactions、data-import、reports-list、login</td>
+              </tr>
+              <tr>
+                <td><span class="antd-pill" style="background:#fffbe6; color:#d48806; border:1px solid #ffe58f;">警告黄</span></td>
+                <td>#faad14</td>
+                <td>风险告警：注意 / 待处理 / 接近阈值</td>
+                <td>仅用于"未达预期 / 即将超期"等警告语境</td>
+              </tr>
+              <tr>
+                <td><span class="antd-pill is-red">错误红</span></td>
+                <td>#ff4d4f</td>
+                <td>失败 / 异常 / 阻断</td>
+                <td>失败任务、错误状态、强制警示</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 灰色板 ========== -->
+    <div class="swatch-tab-panel" data-panel="gray" role="tabpanel">
+      <div class="swatch-family">
+        <div class="swatch-family-head">
+          <div class="swatch-family-title">
+            <span class="swatch-family-dot" style="background: var(--antd-gray-6);"></span>
+            <span class="swatch-family-name">暖灰（Warm Gray）</span>
+            <span class="swatch-family-meta">10 级 · 兼容 antd 默认</span>
+          </div>
+          <span class="swatch-family-role role-gray">中性层级 · 暖灰</span>
+        </div>
+        <p class="swatch-subtitle">所有 antd v5 默认组件（Button / Input / Card）使用的灰阶，迁移兼容 0 成本。</p>
+        <div class="swatch-grid-10">
+          <div class="swatch"><div class="swatch-color is-light" style="background: #fafafa; border: 1px solid var(--antd-gray-cool-5);">1</div><div class="swatch-meta"><strong>#fafafa</strong>gray-1 极浅底</div></div>
+          <div class="swatch"><div class="swatch-color is-light" style="background: #f5f5f5; border: 1px solid var(--antd-gray-cool-5);">2</div><div class="swatch-meta"><strong>#f5f5f5</strong>gray-2 弱底</div></div>
+          <div class="swatch"><div class="swatch-color is-light" style="background: #f0f0f0; border: 1px solid var(--antd-gray-cool-5);">3</div><div class="swatch-meta"><strong>#f0f0f0</strong>gray-3 分割</div></div>
+          <div class="swatch"><div class="swatch-color is-light" style="background: #d9d9d9;">4</div><div class="swatch-meta"><strong>#d9d9d9</strong>gray-4 边框</div></div>
+          <div class="swatch"><div class="swatch-color is-light" style="background: #bfbfbf;">5</div><div class="swatch-meta"><strong>#bfbfbf</strong>gray-5 禁用</div></div>
+          <div class="swatch"><div class="swatch-color is-dark"  style="background: #8c8c8c;">6</div><div class="swatch-meta"><strong>#8c8c8c</strong>gray-6 副文本</div></div>
+          <div class="swatch"><div class="swatch-color is-dark"  style="background: #595959;">7</div><div class="swatch-meta"><strong>#595959</strong>gray-7 次文本</div></div>
+          <div class="swatch"><div class="swatch-color is-dark"  style="background: #434343;">8</div><div class="swatch-meta"><strong>#434343</strong>gray-8</div></div>
+          <div class="swatch"><div class="swatch-color is-dark"  style="background: #262626;">9</div><div class="swatch-meta"><strong>#262626</strong>gray-9 标题</div></div>
+          <div class="swatch"><div class="swatch-color is-dark"  style="background: #1f1f1f;">10</div><div class="swatch-meta"><strong>#1f1f1f</strong>gray-10 主文本</div></div>
+        </div>
+      </div>
+      <div class="swatch-family">
+        <div class="swatch-family-head">
+          <div class="swatch-family-title">
+            <span class="swatch-family-dot" style="background: var(--antd-gray-cool-8);"></span>
+            <span class="swatch-family-name">冷灰（Cool Gray）</span>
+            <span class="swatch-family-meta">12 级 · 数据场景专用</span>
+          </div>
+          <span class="swatch-family-role role-gray">中性层级 · 冷灰</span>
+        </div>
+        <p class="swatch-subtitle">细密的 12 级冷灰：cool-3 页面底、cool-4 斑马纹、cool-5 边框、cool-7 禁用、cool-9 副文本、cool-10 标题、cool-12 主文本。</p>
+        <div class="swatch-grid-12">
+          <div class="swatch"><div class="swatch-color is-light" style="background: var(--antd-gray-cool-1);  border: 1px solid var(--antd-gray-cool-5);">1</div><div class="swatch-meta"><strong>#ffffff</strong>cool-1 卡片</div></div>
+          <div class="swatch"><div class="swatch-color is-light" style="background: var(--antd-gray-cool-2);  border: 1px solid var(--antd-gray-cool-5);">2</div><div class="swatch-meta"><strong>#fcfcfd</strong>cool-2</div></div>
+          <div class="swatch"><div class="swatch-color is-light" style="background: var(--antd-gray-cool-3);  border: 1px solid var(--antd-gray-cool-5);">3</div><div class="swatch-meta"><strong>#f8f9fa</strong>cool-3 页面底</div></div>
+          <div class="swatch"><div class="swatch-color is-light" style="background: var(--antd-gray-cool-4);  border: 1px solid var(--antd-gray-cool-5);">4</div><div class="swatch-meta"><strong>#f1f3f5</strong>cool-4 斑马纹</div></div>
+          <div class="swatch"><div class="swatch-color is-light" style="background: var(--antd-gray-cool-5);">5</div><div class="swatch-meta"><strong>#e6e8eb</strong>cool-5 边框</div></div>
+          <div class="swatch"><div class="swatch-color is-light" style="background: var(--antd-gray-cool-6);">6</div><div class="swatch-meta"><strong>#d9dce0</strong>cool-6 弱分割</div></div>
+          <div class="swatch"><div class="swatch-color is-light" style="background: var(--antd-gray-cool-7);">7</div><div class="swatch-meta"><strong>#b8bcc4</strong>cool-7 禁用</div></div>
+          <div class="swatch"><div class="swatch-color is-dark"  style="background: var(--antd-gray-cool-8);">8</div><div class="swatch-meta"><strong>#8c93a0</strong>cool-8 副文本</div></div>
+          <div class="swatch"><div class="swatch-color is-dark"  style="background: var(--antd-gray-cool-9);">9</div><div class="swatch-meta"><strong>#5b6472</strong>cool-9 次文本</div></div>
+          <div class="swatch"><div class="swatch-color is-dark"  style="background: var(--antd-gray-cool-10);">10</div><div class="swatch-meta"><strong>#3a4250</strong>cool-10 标题</div></div>
+          <div class="swatch"><div class="swatch-color is-dark"  style="background: var(--antd-gray-cool-11);">11</div><div class="swatch-meta"><strong>#232a36</strong>cool-11 深</div></div>
+          <div class="swatch"><div class="swatch-color is-dark"  style="background: var(--antd-gray-cool-12);">12</div><div class="swatch-meta"><strong>#11161f</strong>cool-12 主文本</div></div>
+        </div>
+      </div>
+      <div class="swatch-family">
+        <div class="swatch-family-head">
+          <div class="swatch-family-title">
+            <span class="swatch-family-dot" style="background: var(--antd-gray-cool-8);"></span>
+            <span class="swatch-family-name">落地场景 · 8 页通用</span>
+            <span class="swatch-family-meta">文本 / 背景 / 边框 / 斑马纹</span>
+          </div>
+        </div>
+        <div class="swatch-deriv">
+          <div class="swatch-deriv-card">
+            <div class="swatch-deriv-card-head">
+              <div class="swatch-deriv-dot" style="background: var(--antd-gray-cool-12);"></div>
+              <div>
+                <div class="swatch-deriv-name">主文本 / 标题</div>
+                <div class="swatch-deriv-meta">cool-12 · #11161f</div>
+              </div>
+            </div>
+            <div class="swatch-deriv-usage">所有 H1/H2、表格内主文字、KPI 数值；保证 AAA 对比度（≥ 12:1）。</div>
+          </div>
+          <div class="swatch-deriv-card">
+            <div class="swatch-deriv-card-head">
+              <div class="swatch-deriv-dot" style="background: var(--antd-gray-cool-9);"></div>
+              <div>
+                <div class="swatch-deriv-name">次文本 / 说明</div>
+                <div class="swatch-deriv-meta">cool-9 · #5b6472</div>
+              </div>
+            </div>
+            <div class="swatch-deriv-usage">副标题、表头 label、说明文字；满足 AA 对比度（≥ 4.5:1）。</div>
+          </div>
+          <div class="swatch-deriv-card">
+            <div class="swatch-deriv-card-head">
+              <div class="swatch-deriv-dot" style="background: var(--antd-gray-cool-4); border-color: var(--antd-gray-cool-5);"></div>
+              <div>
+                <div class="swatch-deriv-name">斑马纹 / 弱底</div>
+                <div class="swatch-deriv-meta">cool-4 · #f1f3f5</div>
+              </div>
+            </div>
+            <div class="swatch-deriv-usage">表格 nth-child(even) 行底、stat-tile 内浅色背景、empty 状态占位。</div>
+          </div>
+          <div class="swatch-deriv-card">
+            <div class="swatch-deriv-card-head">
+              <div class="swatch-deriv-dot" style="background: var(--antd-gray-cool-5);"></div>
+              <div>
+                <div class="swatch-deriv-name">边框 / 分割</div>
+                <div class="swatch-deriv-meta">cool-5 · #e6e8eb</div>
+              </div>
+            </div>
+            <div class="swatch-deriv-usage">卡片边框、表格外框、输入框 border；行内分割使用更细的 cool-6。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // 极简 Tab 切换
+  (function () {
+    var tabs = document.querySelectorAll('.swatch-tab');
+    var panels = document.querySelectorAll('.swatch-tab-panel');
+    tabs.forEach(function (t) {
+      t.addEventListener('click', function () {
+        var key = t.getAttribute('data-tab');
+        tabs.forEach(function (x) { x.classList.toggle('is-active', x === t); });
+        panels.forEach(function (p) {
+          p.classList.toggle('is-active', p.getAttribute('data-panel') === key);
+        });
+      });
+    });
+  })();
+</script>
+</body>
+</html>

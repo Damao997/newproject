@@ -1,0 +1,751 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>设计令牌 · Design Tokens · 财年经营数据分析平台</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; background: var(--antd-gray-cool-3); }
+
+  /* 文档外壳：单页文档式（无 side shell） */
+  .doc-shell {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 40px 56px 64px;
+  }
+
+  /* 顶部标题区 */
+  .doc-head { margin-bottom: 32px; }
+  .doc-head h1 {
+    font-size: 28px; font-weight: 600;
+    color: var(--antd-gray-cool-12);
+    margin: 0 0 8px;
+  }
+  .doc-head p {
+    color: var(--antd-gray-cool-9);
+    font-size: 14px; line-height: 1.7;
+    margin: 0; max-width: 880px;
+  }
+  .doc-head code {
+    background: var(--antd-gray-cool-4);
+    padding: 1px 6px; border-radius: 3px;
+    font-family: var(--antd-font-family-mono);
+    font-size: 12.5px;
+    color: var(--antd-orange-700);
+  }
+
+  /* 文档 section = 白底卡 */
+  .doc-section {
+    background: #fff;
+    border: 1px solid var(--antd-gray-cool-5);
+    border-radius: 12px;
+    padding: 28px 32px 32px;
+    margin-bottom: 20px;
+  }
+  .doc-section > .antd-overline { margin-bottom: 8px; }
+  .doc-section > h2 {
+    font-size: 20px; font-weight: 600;
+    color: var(--antd-gray-cool-12);
+    margin: 0 0 6px;
+  }
+  .doc-section > h2 + .doc-section-desc {
+    color: var(--antd-gray-cool-9);
+    font-size: 13px;
+    margin: 0 0 24px;
+  }
+
+  /* 分组小标题 */
+  .doc-group { margin-top: 28px; }
+  .doc-group:first-of-type { margin-top: 8px; }
+  .doc-group h3 {
+    font-size: 15px; font-weight: 600;
+    color: var(--antd-gray-cool-12);
+    margin: 0 0 12px;
+  }
+
+  /* —— 允许新增的 1 个工具类 —— */
+  .antd-spec-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    border-bottom: 1px dashed var(--color-row-divider);
+  }
+  .antd-spec-row:last-child { border-bottom: none; }
+
+  /* 色板单元格（每个 token 一行） */
+  .spec-swatch {
+    width: 56px; height: 36px;
+    border-radius: 6px;
+    border: 1px solid rgba(0,0,0,.04);
+    flex-shrink: 0;
+  }
+  .spec-swatch-meta {
+    flex: 1; display: flex; align-items: center; gap: 14px;
+    font-size: 12.5px; color: var(--antd-gray-cool-9);
+  }
+  .spec-swatch-token {
+    font-family: var(--antd-font-family-mono);
+    font-size: 12.5px;
+    color: var(--antd-gray-cool-12);
+    font-weight: 500;
+    min-width: 220px;
+  }
+  .spec-swatch-hex {
+    font-family: var(--antd-font-family-mono);
+    font-size: 12px;
+    color: var(--antd-gray-cool-8);
+    min-width: 80px;
+  }
+  .spec-swatch-role {
+    font-size: 12px;
+    color: var(--antd-gray-cool-9);
+  }
+
+  /* 状态色 4 套 */
+  .spec-state-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px;
+  }
+  .spec-state-card {
+    border: 1px solid var(--antd-gray-cool-5);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .spec-state-head {
+    padding: 10px 14px;
+    font-size: 13px; font-weight: 600;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .spec-state-head .pill-token {
+    font-family: var(--antd-font-family-mono);
+    font-size: 11px; color: var(--antd-gray-cool-8);
+    margin-left: auto; font-weight: 400;
+  }
+  .spec-state-body {
+    padding: 12px 14px;
+    background: var(--antd-gray-cool-2);
+  }
+  .spec-state-body .antd-spec-row {
+    background: #fff; border: 1px solid var(--antd-gray-cool-5);
+    border-radius: 6px; margin-bottom: 6px;
+    padding: 8px 12px;
+  }
+  .spec-state-body .antd-spec-row:last-child { margin-bottom: 0; }
+
+  /* 字号演示 */
+  .spec-type-row {
+    display: flex; align-items: baseline; gap: 18px;
+    padding: 14px 12px;
+    border-bottom: 1px dashed var(--color-row-divider);
+  }
+  .spec-type-row:last-child { border-bottom: none; }
+  .spec-type-token {
+    font-family: var(--antd-font-family-mono);
+    font-size: 12px; color: var(--antd-gray-cool-8);
+    min-width: 160px;
+  }
+  .spec-type-px {
+    font-family: var(--antd-font-family-mono);
+    font-size: 12px; color: var(--antd-gray-cool-8);
+    min-width: 56px;
+  }
+  .spec-type-sample {
+    color: var(--antd-gray-cool-12);
+    font-weight: 500;
+  }
+  .spec-type-desc {
+    margin-left: auto;
+    font-size: 12px; color: var(--antd-gray-cool-9);
+    text-align: right;
+  }
+
+  /* 间距方块 */
+  .spec-space-grid {
+    display: grid; grid-template-columns: repeat(9, 1fr);
+    gap: 12px;
+  }
+  .spec-space-cell {
+    text-align: center;
+  }
+  .spec-space-block {
+    background: var(--antd-brand-100);
+    border-radius: 4px;
+    margin: 0 auto 8px;
+    height: 24px;
+  }
+  .spec-space-token {
+    font-family: var(--antd-font-family-mono);
+    font-size: 11.5px; color: var(--antd-gray-cool-12);
+    font-weight: 500;
+  }
+  .spec-space-px {
+    font-family: var(--antd-font-family-mono);
+    font-size: 11px; color: var(--antd-gray-cool-8);
+  }
+
+  /* 圆角方块 */
+  .spec-radius-grid {
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    gap: 16px;
+  }
+  .spec-radius-cell { text-align: center; }
+  .spec-radius-block {
+    width: 72px; height: 72px;
+    background: linear-gradient(135deg, var(--antd-brand-200), var(--antd-brand-500));
+    margin: 0 auto 10px;
+  }
+  .spec-radius-token {
+    font-family: var(--antd-font-family-mono);
+    font-size: 12px; color: var(--antd-gray-cool-12);
+    font-weight: 500;
+  }
+  .spec-radius-px {
+    font-size: 11.5px; color: var(--antd-gray-cool-8);
+  }
+
+  /* 阴影 */
+  .spec-shadow-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+  .spec-shadow-cell {
+    background: #fff; padding: 24px;
+    border-radius: 12px; text-align: center;
+  }
+  .spec-shadow-card {
+    width: 96px; height: 96px;
+    background: #fff;
+    border-radius: 10px;
+    margin: 0 auto 16px;
+  }
+  .spec-shadow-cell.sm .spec-shadow-card { box-shadow: var(--antd-shadow-sm); }
+  .spec-shadow-cell.md .spec-shadow-card { box-shadow: var(--antd-shadow-md); }
+  .spec-shadow-cell.lg .spec-shadow-card { box-shadow: var(--antd-shadow-lg); }
+  .spec-shadow-token {
+    font-family: var(--antd-font-family-mono);
+    font-size: 12px; color: var(--antd-gray-cool-12);
+    font-weight: 500;
+  }
+  .spec-shadow-note {
+    font-size: 11.5px; color: var(--antd-gray-cool-8);
+    margin-top: 4px;
+  }
+
+  /* 动效 */
+  .spec-anim-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+  .spec-anim-cell {
+    border: 1px solid var(--antd-gray-cool-5);
+    border-radius: 8px; padding: 18px 16px;
+    text-align: center;
+  }
+  .spec-anim-name {
+    font-size: 12.5px; color: var(--antd-gray-cool-12);
+    font-weight: 600; margin-bottom: 4px;
+  }
+  .spec-anim-key {
+    font-family: var(--antd-font-family-mono);
+    font-size: 11px; color: var(--antd-gray-cool-8);
+    margin-bottom: 12px;
+  }
+  .spec-anim-demo {
+    height: 56px; display: flex; align-items: center; justify-content: center;
+  }
+  .spec-anim-cell .doc-dot { width: 12px; height: 12px; }
+  .spec-anim-cell .doc-dot.is-pulse {
+    background: var(--color-primary);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  .spec-anim-cell .skel-line {
+    width: 70%; height: 10px; border-radius: 4px;
+    background: linear-gradient(90deg, var(--antd-gray-2) 25%, var(--antd-gray-3) 37%, var(--antd-gray-2) 63%);
+    background-size: 400% 100%;
+    animation: skel 1.4s ease infinite;
+  }
+  .spec-anim-cell .fade-box {
+    width: 80%; height: 10px; border-radius: 4px;
+    background: var(--antd-brand-500);
+    animation: fadeIn 0.2s ease-out;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(2px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* 三个 hover 按钮 */
+  .spec-hover-row {
+    display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+    margin-top: 8px;
+  }
+  .spec-hover-1 {
+    transition: transform 0.2s cubic-bezier(0.645, 0.045, 0.355, 1);
+  }
+  .spec-hover-1:hover { transform: scale(1.05); }
+  .spec-hover-2 {
+    transition: background 0.2s, box-shadow 0.2s;
+  }
+  .spec-hover-2:active {
+    background: var(--antd-brand-600);
+    box-shadow: inset 0 2px 4px rgba(0,0,0,.1);
+  }
+  .spec-hover-3 {
+    position: relative;
+    transition: color 0.2s;
+  }
+  .spec-hover-3::after {
+    content: "";
+    position: absolute; left: 12px; right: 12px; bottom: 4px;
+    height: 2px; background: var(--antd-brand-500);
+    transform: scaleX(0); transform-origin: left;
+    transition: transform 0.2s cubic-bezier(0.645, 0.045, 0.355, 1);
+  }
+  .spec-hover-3:hover { color: var(--color-primary); }
+  .spec-hover-3:hover::after { transform: scaleX(1); }
+
+  /* antd-overline 颜色微调 */
+  .doc-section > .antd-overline { color: var(--antd-gray-cool-8); }
+</style>
+</head>
+<body>
+<div class="doc-shell">
+
+  <!-- ============ 顶部标题 ============ -->
+  <div class="doc-head">
+    <h1>设计令牌 · Design Tokens &amp; Typography</h1>
+    <p>本页面是设计 ↔ 开发的 token 字典：色板 / 字号 / 间距 / 圆角 / 阴影 / 动效。所有 token 通过 <code>var(--antd-*)</code> 暴露，对应 antd v5 <code>&lt;ConfigProvider theme={{token: {...}}}&gt;</code> 中的 <code>theme.token</code> 字段，迁移零成本。</p>
+  </div>
+
+  <!-- ============ 01 色板矩阵 ============ -->
+  <section class="doc-section">
+    <span class="antd-overline">01 · Color Palette</span>
+    <h2>色板矩阵</h2>
+    <p class="doc-section-desc">品牌蓝 10 级、橙色 10 级、冷灰 12 级、中性 10 级、状态 4 套（每套 = 主色 + bg + border）。全部用 <code>--antd-*</code> 变量，对应 antd ConfigProvider theme.token.colorPrimary / colorInfo / colorSuccess 等。</p>
+
+    <!-- 品牌蓝 -->
+    <div class="doc-group">
+      <h3>品牌蓝 · Brand · 10 级（50 → 900）</h3>
+      <div class="antd-card" style="border:1px solid var(--antd-gray-cool-5); border-radius:8px; overflow:hidden;">
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-brand-50);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-brand-50</span><span class="spec-swatch-hex">#e6f4ff</span><span class="spec-swatch-role">hover 底 / 浅色块 / 选中</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-brand-100);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-brand-100</span><span class="spec-swatch-hex">#bae0ff</span><span class="spec-swatch-role">chip / 标识</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-brand-200);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-brand-200</span><span class="spec-swatch-hex">#91caff</span><span class="spec-swatch-role">边框 / 描边</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-brand-300);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-brand-300</span><span class="spec-swatch-hex">#69b1ff</span><span class="spec-swatch-role">图表次色</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-brand-400);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-brand-400</span><span class="spec-swatch-hex">#4096ff</span><span class="spec-swatch-role">hover 主色</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-brand-500);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-brand-500</span><span class="spec-swatch-hex">#1677ff</span><span class="spec-swatch-role">主色（默认）→ colorPrimary</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-brand-600);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-brand-600</span><span class="spec-swatch-hex">#0958d9</span><span class="spec-swatch-role">按下 / 激活</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-brand-700);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-brand-700</span><span class="spec-swatch-hex">#003eb3</span><span class="spec-swatch-role">重点标题</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-brand-800);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-brand-800</span><span class="spec-swatch-hex">#002c8c</span><span class="spec-swatch-role">深色主题</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-brand-900);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-brand-900</span><span class="spec-swatch-hex">#001d66</span><span class="spec-swatch-role">最深文本</span></div></div>
+      </div>
+    </div>
+
+    <!-- 橙色 -->
+    <div class="doc-group">
+      <h3>强调橙 · Orange · 10 级（50 → 900）</h3>
+      <div class="antd-card" style="border:1px solid var(--antd-gray-cool-5); border-radius:8px; overflow:hidden;">
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-orange-50);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-orange-50</span><span class="spec-swatch-hex">#fff7e6</span><span class="spec-swatch-role">暖底 / pill 背景</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-orange-100);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-orange-100</span><span class="spec-swatch-hex">#ffe7ba</span><span class="spec-swatch-role">次级填充</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-orange-200);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-orange-200</span><span class="spec-swatch-hex">#ffd591</span><span class="spec-swatch-role">spark 弱色</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-orange-300);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-orange-300</span><span class="spec-swatch-hex">#ffc069</span><span class="spec-swatch-role">边框 / 描边</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-orange-400);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-orange-400</span><span class="spec-swatch-hex">#ffa940</span><span class="spec-swatch-role">hover 暖色</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-orange-500);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-orange-500</span><span class="spec-swatch-hex">#fa8c16</span><span class="spec-swatch-role">强调橙主色 · rank-1 / Top KPI</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-orange-600);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-orange-600</span><span class="spec-swatch-hex">#d46b08</span><span class="spec-swatch-role">强文字</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-orange-700);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-orange-700</span><span class="spec-swatch-hex">#ad4e00</span><span class="spec-swatch-role">暗色标签</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-orange-800);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-orange-800</span><span class="spec-swatch-hex">#873800</span><span class="spec-swatch-role">深色</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-orange-900);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-orange-900</span><span class="spec-swatch-hex">#612500</span><span class="spec-swatch-role">最深</span></div></div>
+      </div>
+    </div>
+
+    <!-- 冷灰 12 级 -->
+    <div class="doc-group">
+      <h3>冷灰 · Cool Gray · 12 级（1 → 12）</h3>
+      <div class="antd-card" style="border:1px solid var(--antd-gray-cool-5); border-radius:8px; overflow:hidden;">
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-gray-cool-1); border:1px solid var(--antd-gray-cool-5);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-gray-cool-1</span><span class="spec-swatch-hex">#ffffff</span><span class="spec-swatch-role">cool-1 卡片底</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-gray-cool-2); border:1px solid var(--antd-gray-cool-5);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-gray-cool-2</span><span class="spec-swatch-hex">#fcfcfd</span><span class="spec-swatch-role">cool-2</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-gray-cool-3); border:1px solid var(--antd-gray-cool-5);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-gray-cool-3</span><span class="spec-swatch-hex">#f8f9fa</span><span class="spec-swatch-role">cool-3 页面底</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-gray-cool-4); border:1px solid var(--antd-gray-cool-5);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-gray-cool-4</span><span class="spec-swatch-hex">#f1f3f5</span><span class="spec-swatch-role">cool-4 斑马纹</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-gray-cool-5);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-gray-cool-5</span><span class="spec-swatch-hex">#e6e8eb</span><span class="spec-swatch-role">cool-5 边框</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-gray-cool-6);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-gray-cool-6</span><span class="spec-swatch-hex">#d9dce0</span><span class="spec-swatch-role">cool-6 弱分割</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-gray-cool-7);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-gray-cool-7</span><span class="spec-swatch-hex">#b8bcc4</span><span class="spec-swatch-role">cool-7 禁用</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-gray-cool-8);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-gray-cool-8</span><span class="spec-swatch-hex">#8c93a0</span><span class="spec-swatch-role">cool-8 副文本</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-gray-cool-9);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-gray-cool-9</span><span class="spec-swatch-hex">#5b6472</span><span class="spec-swatch-role">cool-9 次文本</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-gray-cool-10);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-gray-cool-10</span><span class="spec-swatch-hex">#3a4250</span><span class="spec-swatch-role">cool-10 标题</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-gray-cool-11);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-gray-cool-11</span><span class="spec-swatch-hex">#232a36</span><span class="spec-swatch-role">cool-11 深</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-gray-cool-12);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-gray-cool-12</span><span class="spec-swatch-hex">#11161f</span><span class="spec-swatch-role">cool-12 主文本</span></div></div>
+      </div>
+    </div>
+
+    <!-- 中性 10 级 -->
+    <div class="doc-group">
+      <h3>中性灰 · Warm Gray · 10 级（1 → 10）</h3>
+      <div class="antd-card" style="border:1px solid var(--antd-gray-cool-5); border-radius:8px; overflow:hidden;">
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-gray-1); border:1px solid var(--antd-gray-cool-5);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-gray-1</span><span class="spec-swatch-hex">#fafafa</span><span class="spec-swatch-role">极浅底</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-gray-2); border:1px solid var(--antd-gray-cool-5);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-gray-2</span><span class="spec-swatch-hex">#f5f5f5</span><span class="spec-swatch-role">弱底</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-gray-3); border:1px solid var(--antd-gray-cool-5);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-gray-3</span><span class="spec-swatch-hex">#f0f0f0</span><span class="spec-swatch-role">分割</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-gray-4);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-gray-4</span><span class="spec-swatch-hex">#d9d9d9</span><span class="spec-swatch-role">边框</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-gray-5);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-gray-5</span><span class="spec-swatch-hex">#bfbfbf</span><span class="spec-swatch-role">禁用</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-gray-6);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-gray-6</span><span class="spec-swatch-hex">#8c8c8c</span><span class="spec-swatch-role">副文本</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-gray-7);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-gray-7</span><span class="spec-swatch-hex">#595959</span><span class="spec-swatch-role">次文本</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-gray-8);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-gray-8</span><span class="spec-swatch-hex">#434343</span><span class="spec-swatch-role">warm-8</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-gray-9);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-gray-9</span><span class="spec-swatch-hex">#262626</span><span class="spec-swatch-role">标题</span></div></div>
+        <div class="antd-spec-row"><div class="spec-swatch" style="background: var(--antd-gray-10);"></div><div class="spec-swatch-meta"><span class="spec-swatch-token">--antd-gray-10</span><span class="spec-swatch-hex">#1f1f1f</span><span class="spec-swatch-role">主文本</span></div></div>
+      </div>
+    </div>
+
+    <!-- 状态 4 套 -->
+    <div class="doc-group">
+      <h3>状态色 · State · 4 套（主色 + bg + border）</h3>
+      <div class="spec-state-grid">
+
+        <div class="spec-state-card">
+          <div class="spec-state-head" style="background: var(--antd-state-success-bg); color: var(--antd-state-success); border-bottom: 1px solid var(--antd-state-success-border);">
+            success
+            <span class="pill-token">colorSuccess</span>
+          </div>
+          <div class="spec-state-body">
+            <div class="antd-spec-row">
+              <div class="spec-swatch" style="background: var(--antd-state-success);"></div>
+              <div class="spec-swatch-meta">
+                <span class="spec-swatch-token">--antd-state-success</span>
+                <span class="spec-swatch-hex">#52c41a</span>
+              </div>
+            </div>
+            <div class="antd-spec-row">
+              <div class="spec-swatch" style="background: var(--antd-state-success-bg); border:1px solid var(--antd-state-success-border);"></div>
+              <div class="spec-swatch-meta">
+                <span class="spec-swatch-token">--antd-state-success-bg</span>
+                <span class="spec-swatch-hex">#f6ffed</span>
+              </div>
+            </div>
+            <div class="antd-spec-row">
+              <div class="spec-swatch" style="background: var(--antd-state-success-border);"></div>
+              <div class="spec-swatch-meta">
+                <span class="spec-swatch-token">--antd-state-success-border</span>
+                <span class="spec-swatch-hex">#b7eb8f</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="spec-state-card">
+          <div class="spec-state-head" style="background: var(--antd-state-warning-bg); color: var(--antd-state-warning); border-bottom: 1px solid var(--antd-state-warning-border);">
+            warning
+            <span class="pill-token">colorWarning</span>
+          </div>
+          <div class="spec-state-body">
+            <div class="antd-spec-row">
+              <div class="spec-swatch" style="background: var(--antd-state-warning);"></div>
+              <div class="spec-swatch-meta">
+                <span class="spec-swatch-token">--antd-state-warning</span>
+                <span class="spec-swatch-hex">#faad14</span>
+              </div>
+            </div>
+            <div class="antd-spec-row">
+              <div class="spec-swatch" style="background: var(--antd-state-warning-bg); border:1px solid var(--antd-state-warning-border);"></div>
+              <div class="spec-swatch-meta">
+                <span class="spec-swatch-token">--antd-state-warning-bg</span>
+                <span class="spec-swatch-hex">#fffbe6</span>
+              </div>
+            </div>
+            <div class="antd-spec-row">
+              <div class="spec-swatch" style="background: var(--antd-state-warning-border);"></div>
+              <div class="spec-swatch-meta">
+                <span class="spec-swatch-token">--antd-state-warning-border</span>
+                <span class="spec-swatch-hex">#ffe58f</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="spec-state-card">
+          <div class="spec-state-head" style="background: var(--antd-state-error-bg); color: var(--antd-state-error); border-bottom: 1px solid var(--antd-state-error-border);">
+            error
+            <span class="pill-token">colorError</span>
+          </div>
+          <div class="spec-state-body">
+            <div class="antd-spec-row">
+              <div class="spec-swatch" style="background: var(--antd-state-error);"></div>
+              <div class="spec-swatch-meta">
+                <span class="spec-swatch-token">--antd-state-error</span>
+                <span class="spec-swatch-hex">#ff4d4f</span>
+              </div>
+            </div>
+            <div class="antd-spec-row">
+              <div class="spec-swatch" style="background: var(--antd-state-error-bg); border:1px solid var(--antd-state-error-border);"></div>
+              <div class="spec-swatch-meta">
+                <span class="spec-swatch-token">--antd-state-error-bg</span>
+                <span class="spec-swatch-hex">#fff2f0</span>
+              </div>
+            </div>
+            <div class="antd-spec-row">
+              <div class="spec-swatch" style="background: var(--antd-state-error-border);"></div>
+              <div class="spec-swatch-meta">
+                <span class="spec-swatch-token">--antd-state-error-border</span>
+                <span class="spec-swatch-hex">#ffccc7</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="spec-state-card">
+          <div class="spec-state-head" style="background: var(--antd-state-info-bg); color: var(--antd-state-info); border-bottom: 1px solid var(--antd-state-info-border);">
+            info
+            <span class="pill-token">colorInfo</span>
+          </div>
+          <div class="spec-state-body">
+            <div class="antd-spec-row">
+              <div class="spec-swatch" style="background: var(--antd-state-info);"></div>
+              <div class="spec-swatch-meta">
+                <span class="spec-swatch-token">--antd-state-info</span>
+                <span class="spec-swatch-hex">#1677ff</span>
+              </div>
+            </div>
+            <div class="antd-spec-row">
+              <div class="spec-swatch" style="background: var(--antd-state-info-bg); border:1px solid var(--antd-state-info-border);"></div>
+              <div class="spec-swatch-meta">
+                <span class="spec-swatch-token">--antd-state-info-bg</span>
+                <span class="spec-swatch-hex">#e6f4ff</span>
+              </div>
+            </div>
+            <div class="antd-spec-row">
+              <div class="spec-swatch" style="background: var(--antd-state-info-border);"></div>
+              <div class="spec-swatch-meta">
+                <span class="spec-swatch-token">--antd-state-info-border</span>
+                <span class="spec-swatch-hex">#91caff</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 02 字号矩阵 ============ -->
+  <section class="doc-section">
+    <span class="antd-overline">02 · Typography</span>
+    <h2>字号矩阵</h2>
+    <p class="doc-section-desc">xs(12) / sm(13) / base(14) / lg(16) / xl(18) / 2xl(20) / 3xl(24) / 4xl(30) / 5xl(38)。对应 antd theme.token.fontSize。所有字号都是行高 1.5715 下的实际值，避免使用 4xl / 5xl 整段文本。</p>
+
+    <div class="antd-card" style="border:1px solid var(--antd-gray-cool-5); border-radius:8px; overflow:hidden;">
+      <div class="spec-type-row">
+        <span class="spec-type-token">--antd-font-size-xs</span>
+        <span class="spec-type-px">12px</span>
+        <span class="spec-type-sample" style="font-size: var(--antd-font-size-xs);">辅助说明 / 标签内字</span>
+        <span class="spec-type-desc">用于 tag / pill / 表格副文本</span>
+      </div>
+      <div class="spec-type-row">
+        <span class="spec-type-token">--antd-font-size-sm</span>
+        <span class="spec-type-px">13px</span>
+        <span class="spec-type-sample" style="font-size: var(--antd-font-size-sm);">次级正文 / 表头说明</span>
+        <span class="spec-type-desc">用于表头、描述、kpi-label</span>
+      </div>
+      <div class="spec-type-row">
+        <span class="spec-type-token">--antd-font-size / base</span>
+        <span class="spec-type-px">14px</span>
+        <span class="spec-type-sample" style="font-size: var(--antd-font-size);">主体正文 / 表格行</span>
+        <span class="spec-type-desc">默认正文，业务页 80% 场景</span>
+      </div>
+      <div class="spec-type-row">
+        <span class="spec-type-token">--antd-font-size-lg</span>
+        <span class="spec-type-px">16px</span>
+        <span class="spec-type-sample" style="font-size: var(--antd-font-size-lg);">加强正文 / 卡片标题</span>
+        <span class="spec-type-desc">card-title / 强调字段</span>
+      </div>
+      <div class="spec-type-row">
+        <span class="spec-type-token">--antd-font-size-xl</span>
+        <span class="spec-type-px">18px</span>
+        <span class="spec-type-sample" style="font-size: var(--antd-font-size-xl);">弹窗标题 / 区块标题</span>
+        <span class="spec-type-desc">Modal 标题、Section h3</span>
+      </div>
+      <div class="spec-type-row">
+        <span class="spec-type-token">--antd-font-size-2xl</span>
+        <span class="spec-type-px">20px</span>
+        <span class="spec-type-sample" style="font-size: var(--antd-font-size-2xl);">页面标题 / 业务页 h1</span>
+        <span class="spec-type-desc">page-head-title</span>
+      </div>
+      <div class="spec-type-row">
+        <span class="spec-type-token">--antd-font-size-3xl</span>
+        <span class="spec-type-px">24px</span>
+        <span class="spec-type-sample" style="font-size: var(--antd-font-size-3xl);">大数字 / 重要数字</span>
+        <span class="spec-type-desc">专题大数字、统计大数</span>
+      </div>
+      <div class="spec-type-row">
+        <span class="spec-type-token">--antd-font-size-4xl</span>
+        <span class="spec-type-px">30px</span>
+        <span class="spec-type-sample" style="font-size: var(--antd-font-size-4xl);">核心 KPI 数字</span>
+        <span class="spec-type-desc">antd-kpi-value / 强调 stat</span>
+      </div>
+      <div class="spec-type-row">
+        <span class="spec-type-token">--antd-font-size-5xl</span>
+        <span class="spec-type-px">38px</span>
+        <span class="spec-type-sample" style="font-size: var(--antd-font-size-5xl);">超大数字 / 营销展示</span>
+        <span class="spec-type-desc">专题封面、报告头图</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 03 间距矩阵 ============ -->
+  <section class="doc-section">
+    <span class="antd-overline">03 · Spacing</span>
+    <h2>间距矩阵</h2>
+    <p class="doc-section-desc">8pt 网格 · space-1~9（4/8/12/16/20/24/32/40/48）。对应 antd theme.token.padding / margin。组件内 padding、卡片间距、列表项间距必须走这 9 档，禁止自造 7/10/15 px 等。</p>
+
+    <div class="spec-space-grid">
+      <div class="spec-space-cell">
+        <div class="spec-space-block" style="width: 4px;"></div>
+        <div class="spec-space-token">--antd-space-1</div>
+        <div class="spec-space-px">4 px</div>
+      </div>
+      <div class="spec-space-cell">
+        <div class="spec-space-block" style="width: 8px;"></div>
+        <div class="spec-space-token">--antd-space-2</div>
+        <div class="spec-space-px">8 px</div>
+      </div>
+      <div class="spec-space-cell">
+        <div class="spec-space-block" style="width: 12px;"></div>
+        <div class="spec-space-token">--antd-space-3</div>
+        <div class="spec-space-px">12 px</div>
+      </div>
+      <div class="spec-space-cell">
+        <div class="spec-space-block" style="width: 16px;"></div>
+        <div class="spec-space-token">--antd-space-4</div>
+        <div class="spec-space-px">16 px</div>
+      </div>
+      <div class="spec-space-cell">
+        <div class="spec-space-block" style="width: 20px;"></div>
+        <div class="spec-space-token">--antd-space-5</div>
+        <div class="spec-space-px">20 px</div>
+      </div>
+      <div class="spec-space-cell">
+        <div class="spec-space-block" style="width: 24px;"></div>
+        <div class="spec-space-token">--antd-space-6</div>
+        <div class="spec-space-px">24 px</div>
+      </div>
+      <div class="spec-space-cell">
+        <div class="spec-space-block" style="width: 32px;"></div>
+        <div class="spec-space-token">--antd-space-7</div>
+        <div class="spec-space-px">32 px</div>
+      </div>
+      <div class="spec-space-cell">
+        <div class="spec-space-block" style="width: 40px;"></div>
+        <div class="spec-space-token">--antd-space-8</div>
+        <div class="spec-space-px">40 px</div>
+      </div>
+      <div class="spec-space-cell">
+        <div class="spec-space-block" style="width: 48px;"></div>
+        <div class="spec-space-token">--antd-space-9</div>
+        <div class="spec-space-px">48 px</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 04 圆角与阴影 ============ -->
+  <section class="doc-section">
+    <span class="antd-overline">04 · Radius &amp; Shadow</span>
+    <h2>圆角与阴影</h2>
+    <p class="doc-section-desc">圆角 5 档（xs 2 / sm 4 / md 6 / lg 8 / full 9999）。阴影 3 档（sm / md / lg），仅浮动层使用，常规卡片不用阴影。对应 antd theme.token.borderRadius / boxShadow。</p>
+
+    <div class="doc-group">
+      <h3>圆角 · Radius · 5 档</h3>
+      <div class="spec-radius-grid">
+        <div class="spec-radius-cell">
+          <div class="spec-radius-block" style="border-radius: var(--antd-radius-xs);"></div>
+          <div class="spec-radius-token">--antd-radius-xs</div>
+          <div class="spec-radius-px">2 px · 小型标签 / 角标</div>
+        </div>
+        <div class="spec-radius-cell">
+          <div class="spec-radius-block" style="border-radius: var(--antd-radius-sm);"></div>
+          <div class="spec-radius-token">--antd-radius-sm</div>
+          <div class="spec-radius-px">4 px · 排名徽章 / chip</div>
+        </div>
+        <div class="spec-radius-cell">
+          <div class="spec-radius-block" style="border-radius: var(--antd-radius-md);"></div>
+          <div class="spec-radius-token">--antd-radius-md</div>
+          <div class="spec-radius-px">6 px · 按钮 / 输入 / Tag</div>
+        </div>
+        <div class="spec-radius-cell">
+          <div class="spec-radius-block" style="border-radius: var(--antd-radius-lg);"></div>
+          <div class="spec-radius-token">--antd-radius-lg</div>
+          <div class="spec-radius-px">8 px · 卡片 / 弹窗</div>
+        </div>
+        <div class="spec-radius-cell">
+          <div class="spec-radius-block" style="border-radius: var(--antd-radius-full);"></div>
+          <div class="spec-radius-token">--antd-radius-full</div>
+          <div class="spec-radius-px">9999 px · 胶囊 / 头像 / 圆点</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="doc-group">
+      <h3>阴影 · Shadow · 3 档</h3>
+      <div class="spec-shadow-grid">
+        <div class="spec-shadow-cell sm">
+          <div class="spec-shadow-card"></div>
+          <div class="spec-shadow-token">--antd-shadow-sm</div>
+          <div class="spec-shadow-note">轻微浮起 · 下拉菜单 / tooltip</div>
+        </div>
+        <div class="spec-shadow-cell md">
+          <div class="spec-shadow-card"></div>
+          <div class="spec-shadow-token">--antd-shadow-md</div>
+          <div class="spec-shadow-note">中度浮起 · 弹窗 / stat-tile hover</div>
+        </div>
+        <div class="spec-shadow-cell lg">
+          <div class="spec-shadow-card"></div>
+          <div class="spec-shadow-token">--antd-shadow-lg</div>
+          <div class="spec-shadow-note">强浮起 · Drawer / 重要弹窗</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 05 动效矩阵 ============ -->
+  <section class="doc-section">
+    <span class="antd-overline">05 · Motion</span>
+    <h2>动效矩阵</h2>
+    <p class="doc-section-desc">关键帧 3 个：pulse（状态点呼吸）、skel（骨架闪烁）、fade-in（淡入 0.2s）。transition 0.2s 缓动（cubic-bezier 0.645, 0.045, 0.355, 1）覆盖 hover 缩放、按钮 active 反馈、tab 切换 underline。3 个 hover 按钮分别演示 0.2s 缓动。</p>
+
+    <div class="doc-group">
+      <h3>关键帧 · Keyframes · 3 个</h3>
+      <div class="spec-anim-grid">
+        <div class="spec-anim-cell">
+          <div class="spec-anim-name">pulse</div>
+          <div class="spec-anim-key">@keyframes pulse · 1.4s</div>
+          <div class="spec-anim-demo">
+            <span class="doc-dot is-pulse"></span>
+          </div>
+        </div>
+        <div class="spec-anim-cell">
+          <div class="spec-anim-name">skel · skeleton</div>
+          <div class="spec-anim-key">@keyframes skel · 1.4s ease infinite</div>
+          <div class="spec-anim-demo">
+            <div class="skel-line"></div>
+          </div>
+        </div>
+        <div class="spec-anim-cell">
+          <div class="spec-anim-name">fade-in</div>
+          <div class="spec-anim-key">@keyframes fadeIn · 0.2s</div>
+          <div class="spec-anim-demo">
+            <div class="fade-box"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="doc-group">
+      <h3>transition 0.2s 缓动 · 3 种用法</h3>
+      <p style="font-size: 12.5px; color: var(--antd-gray-cool-9); margin: 0 0 14px;">
+        所有交互过渡统一用 <code style="font-family:var(--antd-font-family-mono);">cubic-bezier(0.645, 0.045, 0.355, 1)</code>，时长 <code>0.2s</code>。
+      </p>
+      <div class="spec-hover-row">
+        <button class="antd-btn antd-btn-primary spec-hover-1">① Hover 缩放 1.05</button>
+        <button class="antd-btn antd-btn-primary spec-hover-2">② Active 按下反馈</button>
+        <button class="antd-btn spec-hover-3">③ Tab 切换 underline</button>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

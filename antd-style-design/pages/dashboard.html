@@ -1,0 +1,651 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>首页看板 · 经营数据分析平台</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; }
+  .shell-side {
+    background: #001529;
+    color: rgba(255, 255, 255, 0.85);
+    display: flex; flex-direction: column;
+  }
+  .shell-side-logo {
+    height: 64px;
+    display: flex; align-items: center; gap: 12px;
+    padding: 0 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    color: #fff;
+  }
+  .shell-side-logo-mark {
+    width: 32px; height: 32px;
+    background: var(--color-primary);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 700; font-size: 16px;
+  }
+  .shell-side-logo-text { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
+  .shell-side-nav { padding: 12px 0; flex: 1; overflow-y: auto; }
+  .shell-nav-group-title {
+    padding: 12px 28px 8px;
+    color: rgba(255, 255, 255, 0.35);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .shell-nav-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 0 20px;
+    height: 40px;
+    color: rgba(255, 255, 255, 0.75);
+    cursor: pointer;
+    transition: all 0.2s;
+    border-left: 3px solid transparent;
+    font-size: 14px;
+  }
+  .shell-nav-item:hover { color: #fff; background: rgba(255, 255, 255, 0.04); }
+  .shell-nav-item.is-active {
+    background: var(--color-primary);
+    color: #fff;
+    border-left-color: #fff;
+  }
+  .shell-nav-item.is-active .shell-nav-ic { color: #fff; }
+  .shell-nav-ic { width: 18px; flex-shrink: 0; color: rgba(255, 255, 255, 0.55); }
+  .shell-nav-item:hover .shell-nav-ic { color: #fff; }
+
+  .shell-header {
+    background: #fff;
+    border-bottom: 1px solid var(--antd-gray-3);
+    padding: 0 24px;
+    height: 56px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 10;
+  }
+  .shell-header-l { display: flex; align-items: center; gap: 16px; }
+  .shell-header-r { display: flex; align-items: center; gap: 16px; }
+
+  .period-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    height: 32px;
+    padding: 0 12px;
+    background: var(--antd-gray-2);
+    border-radius: var(--radius-medium);
+    color: var(--color-foreground);
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .period-pill:hover { background: var(--antd-gray-3); }
+
+  .user-chip {
+    display: flex; align-items: center; gap: 10px;
+    padding: 4px 10px 4px 4px;
+    border-radius: 20px;
+    cursor: pointer;
+  }
+  .user-chip:hover { background: var(--antd-gray-2); }
+  .user-chip-name { font-size: 13px; font-weight: 500; }
+  .user-chip-role { font-size: 11px; color: var(--color-text-tertiary); }
+
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .kpi-card {
+    background: #fff;
+    border: 1px solid var(--antd-gray-3);
+    border-radius: var(--radius-large);
+    padding: 20px;
+    position: relative;
+  }
+  .kpi-card::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 16px; bottom: 16px;
+    width: 3px;
+    background: var(--color-primary);
+    border-radius: 0 2px 2px 0;
+  }
+  .kpi-card.kpi-success::before { background: var(--antd-state-success); }
+  .kpi-card.kpi-warning::before { background: var(--antd-state-warning); }
+  .kpi-card.kpi-error::before   { background: var(--antd-state-error); }
+  .kpi-card.kpi-info::before    { background: var(--antd-state-info); }
+  .kpi-spark { margin-top: 8px; height: 36px; }
+  .kpi-extra { color: var(--color-text-tertiary); font-size: 12px; margin-top: 4px; }
+
+  .grid-2 { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+  .section { background: #fff; border: 1px solid var(--antd-gray-3); border-radius: var(--radius-large); padding: 20px; }
+  .section h3 { font-size: 16px; font-weight: 600; margin: 0; }
+  .section h3 .badge { font-size: 12px; font-weight: 400; color: var(--color-text-tertiary); margin-left: 8px; }
+  .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+
+  .chart-area { height: 280px; position: relative; }
+  .chart-legend { display: flex; gap: 16px; font-size: 12px; color: var(--color-text-secondary); }
+  .chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .chart-legend .dot { width: 10px; height: 10px; border-radius: 2px; }
+
+  .ring-row { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; }
+  .ring-label { flex: 1; }
+  .ring-label-name { font-size: 13px; color: var(--color-foreground); }
+  .ring-label-meta { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
+  .ring-pct { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 56px; text-align: right; }
+
+  .quick-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  .quick-card {
+    background: var(--antd-brand-50);
+    border: 1px solid var(--antd-brand-100);
+    border-radius: var(--radius-medium);
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .quick-card:hover { border-color: var(--color-primary); transform: translateY(-1px); }
+  .quick-card-ic {
+    width: 32px; height: 32px;
+    background: #fff;
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--color-primary);
+    margin-bottom: 8px;
+  }
+  .quick-card-name { font-size: 14px; font-weight: 500; color: var(--color-foreground); }
+  .quick-card-desc { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
+
+  .act-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px dashed var(--antd-gray-3);
+  }
+  .act-row:last-child { border-bottom: none; }
+  .act-time { color: var(--color-text-tertiary); font-size: 12px; min-width: 60px; font-variant-numeric: tabular-nums; }
+  .act-text { font-size: 13px; color: var(--color-foreground); flex: 1; }
+  .act-user { color: var(--color-text-tertiary); font-size: 12px; }
+
+  /* 简易折线 SVG */
+  .spark-svg { width: 100%; height: 100%; }
+  .spark-svg path { fill: none; stroke: var(--color-primary); stroke-width: 1.5; }
+  .spark-svg .fill { fill: var(--antd-brand-50); stroke: none; }
+
+  /* 趋势图 */
+  .trend-svg { width: 100%; height: 100%; }
+  .trend-grid line { stroke: var(--antd-gray-3); stroke-width: 1; stroke-dasharray: 2 2; }
+  .trend-axis text { font-size: 11px; fill: var(--color-text-tertiary); }
+  .trend-line-1 { fill: none; stroke: var(--color-primary); stroke-width: 2; }
+  .trend-line-2 { fill: none; stroke: var(--antd-state-success); stroke-width: 2; }
+  .trend-line-3 { fill: none; stroke: var(--antd-state-warning); stroke-width: 2; }
+  .trend-area-1 { fill: rgba(22, 119, 255, 0.08); }
+  .trend-bar { fill: rgba(22, 119, 255, 0.18); }
+  .trend-bar.is-plan { fill: rgba(250, 173, 20, 0.35); }
+
+  .pie-wrap { display: flex; align-items: center; gap: 20px; }
+  .pie-svg { width: 140px; height: 140px; flex-shrink: 0; }
+  .pie-legend { flex: 1; }
+  .pie-legend-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 13px; }
+  .pie-legend-row .swatch { width: 8px; height: 8px; border-radius: 2px; }
+  .pie-legend-row .name { flex: 1; color: var(--color-foreground); }
+  .pie-legend-row .val { color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+
+  .budget-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px dashed var(--antd-gray-3);
+  }
+  .budget-row:last-child { border-bottom: none; }
+  .budget-name { width: 120px; font-size: 13px; color: var(--color-foreground); }
+  .budget-bar { flex: 1; }
+  .budget-value { min-width: 120px; text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .budget-pct { min-width: 48px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--color-text-tertiary); }
+</style>
+</head>
+<body>
+<div class="antd-page">
+  <aside class="shell-side" style="grid-column: 1;">
+    <div class="shell-side-logo">
+      <div class="shell-side-logo-mark">J</div>
+      <div class="shell-side-logo-text">经营分析平台</div>
+    </div>
+    <nav class="shell-side-nav">
+      <div class="shell-nav-group-title">主数据</div>
+      <a class="shell-nav-item is-active" data-dom-id="nav-dashboard" href="dashboard.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        首页看板
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-indicators" href="indicators-operating.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+        财务指标
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-transactions" href="transactions-overview.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+        往来分析
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-inventory" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        存货管理
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-reports" href="reports-list.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+        分析报告
+      </a>
+
+      <div class="shell-nav-group-title">业务工具</div>
+      <a class="shell-nav-item" data-dom-id="nav-tools" href="enterprise-lookup.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        企业信息查询
+      </a>
+
+      <div class="shell-nav-group-title">数据管理</div>
+      <a class="shell-nav-item" data-dom-id="nav-data" href="data-import.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        数据导入
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-reclassify" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h12"/></svg>
+        重分类管理
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-dim" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        维度管理
+      </a>
+
+      <div class="shell-nav-group-title">系统</div>
+      <a class="shell-nav-item" data-dom-id="nav-users" href="admin-users.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><circle cx="17" cy="7" r="3"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
+        用户管理
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-roles" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+        角色权限
+      </a>
+    </nav>
+  </aside>
+
+  <main class="antd-content">
+    <header class="shell-header">
+      <div class="shell-header-l">
+        <div class="antd-breadcrumb">
+          <span>首页</span>
+          <span class="sep">/</span>
+          <span class="current">经营看板</span>
+        </div>
+      </div>
+      <div class="shell-header-r">
+        <div class="antd-select" style="min-width: 160px;">浙江壹品慧生活集团</div>
+        <div class="period-pill">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          2026 财年 · 8月
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <button class="antd-btn" data-dom-id="refresh">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          刷新
+        </button>
+        <div class="user-chip">
+          <div class="antd-avatar" style="background: var(--antd-brand-100); color: var(--color-primary);">张</div>
+          <div>
+            <div class="user-chip-name">张伟</div>
+            <div class="user-chip-role">财务总监</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="antd-content-body">
+      <!-- 数据时效条（橙色强调） -->
+      <div class="antd-stale-bar antd-mb-4">
+        <span class="dot"></span>
+        <span class="antd-fw-600">数据更新于 8 分钟前</span>
+        <span class="text-secondary">下一批次同步：今日 18:00 · 已完成 92% 采集</span>
+        <a class="antd-card-extra" href="#" style="margin-left: var(--antd-space-4);">查看同步日志 →</a>
+      </div>
+
+      <!-- 关键指标 KPI · 升级为 stat-tile 网格（Top1 用强调橙） -->
+      <div class="antd-row" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--antd-space-4); margin-bottom: var(--antd-space-5);">
+        <div class="antd-stat-tile is-orange antd-emphasis-warm-strong">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label"><span class="antd-rank-badge is-1">1</span>本月营业收入 · Top</span>
+            <span class="antd-stat-tile-icon">¥</span>
+          </div>
+          <div class="antd-stat-tile-value">1,284.6<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-down">↑ 12.4%</span>
+            <span class="antd-text-tertiary antd-fs-sm">同比</span>
+            <div class="antd-stat-tile-spark">
+              <span style="height:30%"></span><span style="height:50%"></span><span style="height:42%"></span><span style="height:60%"></span><span style="height:55%"></span><span style="height:72%"></span><span style="height:68%"></span><span style="height:80%"></span><span style="height:74%"></span><span style="height:88%"></span><span style="height:82%"></span><span style="height:96%"></span>
+            </div>
+          </div>
+        </div>
+        <div class="antd-stat-tile is-green">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label"><span class="antd-rank-badge is-2">2</span>累计毛利</span>
+            <span class="antd-stat-tile-icon">毛利</span>
+          </div>
+          <div class="antd-stat-tile-value">462.3<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-down">↑ 8.7%</span>
+            <span class="antd-text-tertiary antd-fs-sm">同比</span>
+            <div class="antd-stat-tile-spark">
+              <span style="height:25%"></span><span style="height:32%"></span><span style="height:40%"></span><span style="height:48%"></span><span style="height:55%"></span><span style="height:60%"></span><span style="height:65%"></span><span style="height:70%"></span><span style="height:74%"></span><span style="height:80%"></span><span style="height:85%"></span><span style="height:92%"></span>
+            </div>
+          </div>
+        </div>
+        <div class="antd-stat-tile">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">费用合计</span>
+            <span class="antd-stat-tile-icon">费</span>
+          </div>
+          <div class="antd-stat-tile-value">286.5<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-flat">→ 0.3%</span>
+            <span class="antd-text-tertiary antd-fs-sm">同比</span>
+            <div class="antd-stat-tile-spark">
+              <span style="height:48%"></span><span style="height:42%"></span><span style="height:55%"></span><span style="height:38%"></span><span style="height:50%"></span><span style="height:32%"></span><span style="height:48%"></span><span style="height:55%"></span><span style="height:38%"></span><span style="height:50%"></span><span style="height:42%"></span><span style="height:48%"></span>
+            </div>
+          </div>
+        </div>
+        <div class="antd-stat-tile is-cyan">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">应收账款</span>
+            <span class="antd-stat-tile-icon">应</span>
+          </div>
+          <div class="antd-stat-tile-value">358.2<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-up">↑ 5.6%</span>
+            <span class="antd-text-tertiary antd-fs-sm">需关注</span>
+            <div class="antd-stat-tile-spark">
+              <span style="height:55%"></span><span style="height:60%"></span><span style="height:50%"></span><span style="height:65%"></span><span style="height:72%"></span><span style="height:60%"></span><span style="height:78%"></span><span style="height:74%"></span><span style="height:85%"></span><span style="height:80%"></span><span style="height:88%"></span><span style="height:95%"></span>
+            </div>
+          </div>
+        </div>
+        <div class="antd-stat-tile is-violet">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">预算完成率</span>
+            <span class="antd-stat-tile-icon">%</span>
+          </div>
+          <div class="antd-stat-tile-value">67.2<span class="unit">%</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-down">↑ 4.1 pp</span>
+            <span class="antd-text-tertiary antd-fs-sm">超计划</span>
+            <div class="antd-stat-tile-spark">
+              <span style="height:20%"></span><span style="height:32%"></span><span style="height:40%"></span><span style="height:48%"></span><span style="height:55%"></span><span style="height:60%"></span><span style="height:65%"></span><span style="height:70%"></span><span style="height:75%"></span><span style="height:80%"></span><span style="height:85%"></span><span style="height:90%"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 趋势 + 预算完成 -->
+      <div class="grid-2">
+        <div class="section">
+          <div class="section-head">
+            <h3>经营趋势<span class="badge">近 12 个月</span></h3>
+            <div class="antd-segmented">
+              <div class="antd-segmented-item">月</div>
+              <div class="antd-segmented-item is-active">季</div>
+              <div class="antd-segmented-item">年</div>
+            </div>
+          </div>
+          <div class="chart-legend" style="margin-bottom: 12px;">
+            <span><span class="dot" style="background: var(--color-primary);"></span>收入</span>
+            <span><span class="dot" style="background: var(--antd-state-success);"></span>毛利</span>
+            <span><span class="dot" style="background: var(--antd-state-warning);"></span>净利润</span>
+          </div>
+          <div class="chart-area">
+            <svg class="trend-svg" viewBox="0 0 600 260" preserveAspectRatio="none">
+              <g class="trend-grid">
+                <line x1="40" y1="40" x2="600" y2="40"/>
+                <line x1="40" y1="100" x2="600" y2="100"/>
+                <line x1="40" y1="160" x2="600" y2="160"/>
+                <line x1="40" y1="220" x2="600" y2="220"/>
+              </g>
+              <g class="trend-axis">
+                <text x="10" y="44">1500</text>
+                <text x="10" y="104">1000</text>
+                <text x="10" y="164">500</text>
+                <text x="10" y="224">0</text>
+                <text x="80" y="250">1月</text>
+                <text x="160" y="250">3月</text>
+                <text x="240" y="250">5月</text>
+                <text x="320" y="250">7月</text>
+                <text x="400" y="250">9月</text>
+                <text x="480" y="250">11月</text>
+                <text x="560" y="250">12月</text>
+              </g>
+              <path class="trend-area-1" d="M40,180 L80,170 L120,160 L160,150 L200,140 L240,135 L280,120 L320,110 L360,100 L400,95 L440,85 L480,80 L520,70 L560,60 L560,220 L40,220 Z" />
+              <path class="trend-line-1" d="M40,180 L80,170 L120,160 L160,150 L200,140 L240,135 L280,120 L320,110 L360,100 L400,95 L440,85 L480,80 L520,70 L560,60" />
+              <path class="trend-line-2" d="M40,200 L80,195 L120,188 L160,180 L200,175 L240,170 L280,160 L320,150 L360,140 L400,135 L440,128 L480,118 L520,108 L560,95" />
+              <path class="trend-line-3" d="M40,212 L80,210 L120,205 L160,200 L200,196 L240,192 L280,184 L320,178 L360,170 L400,165 L440,160 L480,150 L520,142 L560,132" />
+            </svg>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-head">
+            <h3>预算完成情况</h3>
+            <a class="antd-card-extra" href="#">详情 →</a>
+          </div>
+          <div class="ring-row">
+            <div class="ring-label">
+              <div class="ring-label-name">营业收入</div>
+              <div class="ring-label-meta">完成 ¥1,284.6万 / 预算 ¥1,910万</div>
+            </div>
+            <div class="ring-pct antd-text-success">67.2%</div>
+          </div>
+          <div class="antd-progress" style="margin-bottom: 18px;">
+            <div class="antd-progress-track"><div class="antd-progress-bar is-success" style="width:67.2%;"></div></div>
+          </div>
+
+          <div class="ring-row">
+            <div class="ring-label">
+              <div class="ring-label-name">销售费用</div>
+              <div class="ring-label-meta">完成 ¥98.4万 / 预算 ¥156万</div>
+            </div>
+            <div class="ring-pct">63.1%</div>
+          </div>
+          <div class="antd-progress" style="margin-bottom: 18px;">
+            <div class="antd-progress-track"><div class="antd-progress-bar" style="width:63.1%;"></div></div>
+          </div>
+
+          <div class="ring-row">
+            <div class="ring-label">
+              <div class="ring-label-name">管理费用</div>
+              <div class="ring-label-meta">完成 ¥112.6万 / 预算 ¥168万</div>
+            </div>
+            <div class="ring-pct antd-text-warning">67.0%</div>
+          </div>
+          <div class="antd-progress" style="margin-bottom: 18px;">
+            <div class="antd-progress-track"><div class="antd-progress-bar is-warning" style="width:67%;"></div></div>
+          </div>
+
+          <div class="ring-row">
+            <div class="ring-label">
+              <div class="ring-label-name">研发投入</div>
+              <div class="ring-label-meta">完成 ¥75.5万 / 预算 ¥120万</div>
+            </div>
+            <div class="ring-pct">62.9%</div>
+          </div>
+          <div class="antd-progress">
+            <div class="antd-progress-track"><div class="antd-progress-bar" style="width:62.9%;"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 三栏：费用结构 + 应收账龄 + 最近活动 -->
+      <div class="grid-3" style="margin-bottom: 16px;">
+        <div class="section">
+          <div class="section-head"><h3>费用结构</h3></div>
+          <div class="pie-wrap">
+            <svg class="pie-svg" viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="40" fill="#f0f0f0"/>
+              <path d="M50,10 A40,40 0 0,1 86.6,67.6 L50,50 Z" fill="#1677ff"/>
+              <path d="M86.6,67.6 A40,40 0 0,1 36,86.6 L50,50 Z" fill="#52c41a"/>
+              <path d="M36,86.6 A40,40 0 0,1 12.4,42 L50,50 Z" fill="#faad14"/>
+              <path d="M12.4,42 A40,40 0 0,1 50,10 L50,50 Z" fill="#722ed1"/>
+              <circle cx="50" cy="50" r="22" fill="#fff"/>
+              <text x="50" y="48" text-anchor="middle" font-size="8" fill="#8c8c8c">费用合计</text>
+              <text x="50" y="60" text-anchor="middle" font-size="11" font-weight="600" fill="#262626">¥286.5万</text>
+            </svg>
+            <div class="pie-legend">
+              <div class="pie-legend-row">
+                <span class="swatch" style="background: #1677ff;"></span>
+                <span class="name">销售费用</span>
+                <span class="val">¥98.4万 · 34%</span>
+              </div>
+              <div class="pie-legend-row">
+                <span class="swatch" style="background: #52c41a;"></span>
+                <span class="name">管理费用</span>
+                <span class="val">¥112.6万 · 39%</span>
+              </div>
+              <div class="pie-legend-row">
+                <span class="swatch" style="background: #faad14;"></span>
+                <span class="name">研发投入</span>
+                <span class="val">¥75.5万 · 27%</span>
+              </div>
+              <div class="pie-legend-row">
+                <span class="swatch" style="background: #722ed1;"></span>
+                <span class="name">财务费用</span>
+                <span class="val">¥12.6万 · 4%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-head">
+            <h3>应收账龄</h3>
+            <a class="antd-card-extra" href="#">详情 →</a>
+          </div>
+          <div class="budget-row">
+            <div class="budget-name">30 天以内</div>
+            <div class="antd-progress budget-bar"><div class="antd-progress-track"><div class="antd-progress-bar is-success" style="width:55%;"></div></div></div>
+            <div class="budget-value antd-text-mono">¥196.4万</div>
+            <div class="budget-pct">55%</div>
+          </div>
+          <div class="budget-row">
+            <div class="budget-name">31-60 天</div>
+            <div class="antd-progress budget-bar"><div class="antd-progress-track"><div class="antd-progress-bar" style="width:25%;"></div></div></div>
+            <div class="budget-value antd-text-mono">¥88.3万</div>
+            <div class="budget-pct">25%</div>
+          </div>
+          <div class="budget-row">
+            <div class="budget-name">61-90 天</div>
+            <div class="antd-progress budget-bar"><div class="antd-progress-track"><div class="antd-progress-bar is-warning" style="width:12%;"></div></div></div>
+            <div class="budget-value antd-text-mono">¥42.1万</div>
+            <div class="budget-pct">12%</div>
+          </div>
+          <div class="budget-row">
+            <div class="budget-name">90 天以上</div>
+            <div class="antd-progress budget-bar"><div class="antd-progress-track"><div class="antd-progress-bar is-error" style="width:8%;"></div></div></div>
+            <div class="budget-value antd-text-mono">¥31.4万</div>
+            <div class="budget-pct">8%</div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-head"><h3>最近活动</h3></div>
+          <div class="act-row">
+            <div class="act-time">14:23</div>
+            <div class="antd-status antd-status-success">已完成</div>
+            <div class="act-text">导入 8月经营数据</div>
+            <div class="act-user">王芳</div>
+          </div>
+          <div class="act-row">
+            <div class="act-time">13:05</div>
+            <div class="antd-status antd-status-processing">进行中</div>
+            <div class="act-text">Q2 合并调整审批</div>
+            <div class="act-user">李娜</div>
+          </div>
+          <div class="act-row">
+            <div class="act-time">11:48</div>
+            <div class="antd-status antd-status-success">已发布</div>
+            <div class="act-text">"月度经营分析报告"v2.1</div>
+            <div class="act-user">陈勇</div>
+          </div>
+          <div class="act-row">
+            <div class="act-time">10:32</div>
+            <div class="antd-status antd-status-warning">待复核</div>
+            <div class="act-text">应收账款催收计划</div>
+            <div class="act-user">赵敏</div>
+          </div>
+          <div class="act-row">
+            <div class="act-time">09:15</div>
+            <div class="antd-status antd-status-error">异常</div>
+            <div class="act-text">A 公司科目映射缺失</div>
+            <div class="act-user">系统</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 快捷入口 -->
+      <div class="section">
+        <div class="section-head"><h3>快捷入口</h3></div>
+        <div class="quick-grid">
+          <a class="quick-card" href="indicators-operating.html">
+            <div class="quick-card-ic">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+            </div>
+            <div class="quick-card-name">经营指标</div>
+            <div class="quick-card-desc">收入 / 毛利 / 利润</div>
+          </a>
+          <a class="quick-card" href="transactions-overview.html">
+            <div class="quick-card-ic">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+            </div>
+            <div class="quick-card-name">往来总览</div>
+            <div class="quick-card-desc">应收 / 应付 / 账龄</div>
+          </a>
+          <a class="quick-card" href="data-import.html">
+            <div class="quick-card-ic">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+            </div>
+            <div class="quick-card-name">数据导入</div>
+            <div class="quick-card-desc">Excel 批量导入</div>
+          </a>
+          <a class="quick-card" href="reports-list.html">
+            <div class="quick-card-ic">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+            </div>
+            <div class="quick-card-name">汇总报告</div>
+            <div class="quick-card-desc">报告中心</div>
+          </a>
+          <a class="quick-card" href="enterprise-lookup.html">
+            <div class="quick-card-ic">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            </div>
+            <div class="quick-card-name">企业查询</div>
+            <div class="quick-card-desc">工商 / 风险信息</div>
+          </a>
+          <a class="quick-card" href="#">
+            <div class="quick-card-ic">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83"/></svg>
+            </div>
+            <div class="quick-card-name">AI 经营洞察</div>
+            <div class="quick-card-desc">智能问答</div>
+          </a>
+          <a class="quick-card" href="#">
+            <div class="quick-card-ic">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 21l-6-6m6 6v-4.8m0 4.8h-4.8M3 16.2V21m0 0h4.8M3 21l6-6M21 7.8V3m0 0h-4.8M21 3l-6 6M3 7.8V3m0 0h4.8M3 3l6 6"/></svg>
+            </div>
+            <div class="quick-card-name">科目管理</div>
+            <div class="quick-card-desc">经营 / 静态科目</div>
+          </a>
+          <a class="quick-card" href="#">
+            <div class="quick-card-ic">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            </div>
+            <div class="quick-card-name">审批中心</div>
+            <div class="quick-card-desc">待办 3 项</div>
+          </a>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

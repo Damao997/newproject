@@ -1,0 +1,751 @@
+<!doctype html>
+<html lang="zh-CN" class="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>通用壳 · 侧栏 + 顶栏 · v1</title>
+<style id="theme-vars">
+/*
+ * Ant Design 风格设计系统
+ * 基于 Ant Design v5 设计语言
+ * 主题变量定义
+ */
+
+:root {
+  /* ========== 1. 品牌主色：蓝 ========== */
+  --antd-brand-50:  #e6f4ff;
+  --antd-brand-100: #bae0ff;
+  --antd-brand-200: #91caff;
+  --antd-brand-300: #69b1ff;
+  --antd-brand-400: #4096ff;
+  --antd-brand-500: #1677ff;
+  --antd-brand-600: #0958d9;
+  --antd-brand-700: #003eb3;
+  --antd-brand-800: #002c8c;
+  --antd-brand-900: #001d66;
+
+  /* ========== 2. 中性色 ========== */
+  --antd-white:    #ffffff;
+  --antd-gray-1:   #fafafa;
+  --antd-gray-2:   #f5f5f5;
+  --antd-gray-3:   #f0f0f0;
+  --antd-gray-4:   #d9d9d4;
+  --antd-gray-5:   #bfbfbf;
+  --antd-gray-6:   #8c8c8c;
+  --antd-gray-7:   #595959;
+  --antd-gray-8:   #434343;
+  --antd-gray-9:   #262626;
+  --antd-gray-10:  #1f1f1f;
+
+  /* ========== 3. 状态色 ========== */
+  --antd-state-success:      #52c41a;
+  --antd-state-success-bg:   #f6ffed;
+  --antd-state-success-border:#b7eb8f;
+  --antd-state-warning:      #faad14;
+  --antd-state-warning-bg:   #fffbe6;
+  --antd-state-warning-border:#ffe58f;
+  --antd-state-error:        #ff4d4f;
+  --antd-state-error-bg:     #fff2f0;
+  --antd-state-error-border: #ffccc7;
+  --antd-state-info:         #1677ff;
+  --antd-state-info-bg:      #e6f4ff;
+  --antd-state-info-border:  #91caff;
+
+  /* ========== 4. 字体 ========== */
+  --antd-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --antd-font-family-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --antd-font-size-sm: 12px;
+  --antd-font-size-base: 14px;
+  --antd-font-size-lg: 16px;
+  --antd-font-size-xl: 18px;
+  --antd-font-size-2xl: 20px;
+
+  /* ========== 5. 圆角/阴影/间距 ========== */
+  --antd-radius-sm: 4px;
+  --antd-radius-md: 6px;
+  --antd-radius-lg: 8px;
+  --antd-radius-xl: 12px;
+  --antd-shadow-sm:  0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02);
+  --antd-shadow-md:  0 6px 16px 0 rgba(0, 0, 0, 0.08), 0 3px 6px -4px rgba(0, 0, 0, 0.12), 0 9px 28px 8px rgba(0, 0, 0, 0.05);
+  --antd-shadow-lg:  0 9px 28px 8px rgba(0, 0, 0, 0.05), 0 6px 16px 0 rgba(0, 0, 0, 0.08), 0 3px 6px -4px rgba(0, 0, 0, 0.12);
+  --antd-space-1: 4px;
+  --antd-space-2: 8px;
+  --antd-space-3: 12px;
+  --antd-space-4: 16px;
+  --antd-space-5: 20px;
+  --antd-space-6: 24px;
+  --antd-space-8: 32px;
+  --antd-space-10: 40px;
+
+  /* ========== 6. 语义 Token（shadcn 风格） ========== */
+  --color-background:   #f5f5f5;
+  --color-foreground:   rgba(0, 0, 0, 0.88);
+  --color-card:         #ffffff;
+  --color-card-foreground: rgba(0, 0, 0, 0.88);
+  --color-popover:      #ffffff;
+  --color-popover-foreground: rgba(0, 0, 0, 0.88);
+  --color-primary:      #1677ff;
+  --color-primary-foreground: #ffffff;
+  --color-muted:        #fafafa;
+  --color-muted-foreground: rgba(0, 0, 0, 0.45);
+  --color-border:       #d9d9d9;
+  --color-border-light: #f0f0f0;
+  --color-input:        #d9d9d9;
+  --color-ring:         #4096ff;
+  --color-text-secondary: rgba(0, 0, 0, 0.65);
+  --color-text-tertiary:  rgba(0, 0, 0, 0.45);
+  --color-text-disabled:  rgba(0, 0, 0, 0.25);
+  --color-fill:         #f0f0f0;
+  --color-fill-secondary: #fafafa;
+  --color-fill-tertiary:  #f5f5f5;
+  --color-hover:        rgba(0, 0, 0, 0.04);
+  --color-active:       rgba(0, 0, 0, 0.06);
+
+  /* ========== 7. 强调橙 ========== */
+  --antd-orange-50:   #fff7e6;
+  --antd-orange-100:  #ffe7ba;
+  --antd-orange-500:  #fa8c16;
+  --antd-orange-700:  #ad4e00;
+
+  /* ========== 8. 冷色阶 ========== */
+  --antd-gray-cool-1:  #ffffff;
+  --antd-gray-cool-2:  #fcfcfd;
+  --antd-gray-cool-3:  #f8f9fa;
+  --antd-gray-cool-4:  #f1f3f5;
+  --antd-gray-cool-5:  #e6e8eb;
+  --antd-gray-cool-6:  #d9dce0;
+  --antd-gray-cool-7:  #b8bcc4;
+  --antd-gray-cool-8:  #8c93a0;
+  --antd-gray-cool-9:  #5b6472;
+  --antd-gray-cool-10: #3a4250;
+  --antd-gray-cool-11: #232a36;
+  --antd-gray-cool-12: #11161f;
+}
+
+/* === 全局基础 === */
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: var(--antd-font-family);
+  font-size: var(--antd-font-size-base);
+  line-height: 1.5;
+  color: var(--color-foreground);
+  background: var(--color-background);
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3, h4, h5, h6 { margin: 0; font-weight: 600; }
+button { font-family: inherit; }
+a { color: inherit; text-decoration: none; }
+</style>
+</head>
+<body>
+  <!-- ========================== 应用壳 ========================== -->
+  <div class="app-shell">
+
+    <!-- ========== 左侧栏：暗色叙事 ========== -->
+    <aside class="app-side">
+
+      <!-- 品牌区：与登录页 v6 品牌块统一（玻璃感渐变） -->
+      <div class="app-side-brand">
+        <div class="app-side-brand-mark">壹</div>
+        <div class="app-side-brand-text">
+          <div class="app-side-brand-name">壹品慧</div>
+          <span class="app-side-brand-en">YIPINHUI · DATA</span>
+        </div>
+      </div>
+
+      <!-- 菜单区 -->
+      <nav class="app-side-nav">
+        <div class="app-nav-group">
+          <div class="app-nav-group-title">首页</div>
+          <a class="app-nav-item is-active">
+            <span class="app-nav-ic">▦</span>
+            <span>经营看板</span>
+          </a>
+        </div>
+
+        <div class="app-nav-group">
+          <div class="app-nav-group-title">分析</div>
+          <a class="app-nav-item">
+            <span class="app-nav-ic">◆</span>
+            <span>关键指标</span>
+            <span class="app-nav-tag app-nav-tag-warn">新</span>
+          </a>
+          <a class="app-nav-item">
+            <span class="app-nav-ic">◇</span>
+            <span>现金流</span>
+          </a>
+          <a class="app-nav-item">
+            <span class="app-nav-ic">▤</span>
+            <span>预算达成</span>
+          </a>
+          <a class="app-nav-item is-open">
+            <span class="app-nav-ic">▥</span>
+            <span>往来账龄</span>
+            <span class="app-nav-arrow">▾</span>
+          </a>
+          <div class="app-nav-sub">
+            <a class="app-nav-sub-item is-active">应收账款</a>
+            <a class="app-nav-sub-item">存货账龄</a>
+            <a class="app-nav-sub-item">覆盖率</a>
+          </div>
+          <a class="app-nav-item">
+            <span class="app-nav-ic">▦</span>
+            <span>存货分析</span>
+          </a>
+        </div>
+
+        <div class="app-nav-group">
+          <div class="app-nav-group-title">业务</div>
+          <a class="app-nav-item">
+            <span class="app-nav-ic">◈</span>
+            <span>往来管理</span>
+          </a>
+          <a class="app-nav-item">
+            <span class="app-nav-ic">◉</span>
+            <span>收料管理</span>
+            <span class="app-nav-badge">12</span>
+          </a>
+          <a class="app-nav-item">
+            <span class="app-nav-ic">◐</span>
+            <span>企业查询</span>
+          </a>
+        </div>
+
+        <div class="app-nav-group">
+          <div class="app-nav-group-title">数据</div>
+          <a class="app-nav-item">
+            <span class="app-nav-ic">▢</span>
+            <span>数据导入</span>
+          </a>
+          <a class="app-nav-item">
+            <span class="app-nav-ic">▣</span>
+            <span>数据浏览</span>
+          </a>
+          <a class="app-nav-item">
+            <span class="app-nav-ic">▤</span>
+            <span>数据重分类</span>
+          </a>
+          <a class="app-nav-item">
+            <span class="app-nav-ic">▥</span>
+            <span>报告中心</span>
+          </a>
+        </div>
+
+        <div class="app-nav-group">
+          <div class="app-nav-group-title">管理</div>
+          <a class="app-nav-item">
+            <span class="app-nav-ic">★</span>
+            <span>用户与角色</span>
+          </a>
+          <a class="app-nav-item">
+            <span class="app-nav-ic">✦</span>
+            <span>审计日志</span>
+          </a>
+        </div>
+      </nav>
+
+      <!-- 底部：版本号 + 折叠按钮 -->
+      <div class="app-side-foot">
+        <div class="app-side-version">
+          <span class="dot"></span>
+          <span>v3.2.1 · 已更新</span>
+        </div>
+        <button class="app-side-collapse" title="折叠侧栏">«</button>
+      </div>
+    </aside>
+
+    <!-- ========== 顶栏 ========== -->
+    <div class="app-main">
+      <header class="app-top">
+
+        <!-- 左：面包屑 + 当前页 -->
+        <div class="app-top-l">
+          <div class="app-breadcrumb">
+            <span>首页</span>
+            <span class="sep">/</span>
+            <span>分析</span>
+            <span class="sep">/</span>
+            <span class="cur">经营看板</span>
+          </div>
+        </div>
+
+        <!-- 中：全局搜索 -->
+        <div class="app-top-c">
+          <div class="app-search">
+            <span class="app-search-ic">⌕</span>
+            <input class="app-search-input" placeholder="搜索指标、报表、往来单位、客户（按 / 快速聚焦）" />
+            <span class="app-search-kbd">/</span>
+          </div>
+        </div>
+
+        <!-- 右：财务期 / 通知 / 帮助 / 头像 -->
+        <div class="app-top-r">
+          <!-- 财务期切换 -->
+          <button class="app-top-chip">
+            <span class="ic">📅</span>
+            <span class="lab">财年</span>
+            <span class="val">2026·Q3</span>
+            <span class="arr">▾</span>
+          </button>
+          <!-- 通知（红点） -->
+          <button class="app-top-icon-btn has-dot" title="通知">
+            <span class="ic">🔔</span>
+            <span class="dot"></span>
+          </button>
+          <!-- 帮助 -->
+          <button class="app-top-icon-btn" title="帮助中心">
+            <span class="ic">?</span>
+          </button>
+          <!-- 主题 -->
+          <button class="app-top-icon-btn" title="主题">
+            <span class="ic">☀</span>
+          </button>
+          <!-- 头像区 -->
+          <div class="app-top-user">
+            <div class="avatar">Z</div>
+            <div class="meta">
+              <div class="name">张志远</div>
+              <div class="role">财务总监 · 财年集团</div>
+            </div>
+            <span class="arr">▾</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- ========== 内容容器（示意） ========== -->
+      <div class="app-content">
+        <div class="app-content-inner">
+          <div class="placeholder-card">
+            <div class="placeholder-h">这里是当前页面内容</div>
+            <div class="placeholder-sub">壳子规范页：用于展示侧栏 + 顶栏的组合形态，不承载具体业务</div>
+            <div class="placeholder-tags">
+              <span class="tag tag-blue">· 暗色侧栏 + 渐变玻璃 Logo</span>
+              <span class="tag tag-blue">· 64px 顶栏 + 全局搜索</span>
+              <span class="tag tag-blue">· 财务期切换 + 通知红点</span>
+              <span class="tag tag-blue">· 头像区展示身份与角色</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <style>
+  /* =========================================================
+     通用壳 · 侧栏 + 顶栏 · v1
+     设计意图：与 v6 登录页气质统一
+       - 暗色侧栏用 #001529 → #0A1E36 微渐变，玻璃感 Logo
+       - 顶栏 64px，三段式：面包屑 / 全局搜索 / 财务期+通知+头像
+       - 强调色：主色蓝（主导航 / 激活态）+ 强调橙（新功能 Tag）
+     ========================================================= */
+  body { margin: 0; font-family: var(--antd-font-family); }
+
+  /* ========== 1. 外壳（侧栏 + 主体） ========== */
+  .app-shell {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    min-height: 100vh;
+    background: var(--color-background);
+  }
+
+  /* ========== 2. 侧栏 ========== */
+  .app-side {
+    background: linear-gradient(180deg, #001529 0%, #0A1E36 100%);
+    color: var(--antd-white);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+  }
+  /* 侧栏装饰光斑（与登录页呼应） */
+  .app-side::before {
+    content: "";
+    position: absolute;
+    top: -80px; right: -100px;
+    width: 260px; height: 260px;
+    background: radial-gradient(circle, rgba(22, 119, 255, 0.18) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .app-side::after {
+    content: "";
+    position: absolute;
+    bottom: -120px; left: -60px;
+    width: 260px; height: 260px;
+    background: radial-gradient(circle, rgba(250, 140, 22, 0.10) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  /* 2.1 品牌区 */
+  .app-side-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 64px;
+    padding: 0 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    position: relative;
+    z-index: 1;
+  }
+  .app-side-brand-mark {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--antd-brand-700) 100%);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--antd-white);
+    font-weight: 700; font-size: 17px;
+    box-shadow: 0 4px 12px rgba(22, 119, 255, 0.3);
+  }
+  .app-side-brand-text { line-height: 1.15; }
+  .app-side-brand-name { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
+  .app-side-brand-en {
+    display: block;
+    font-size: 9px; font-weight: 400;
+    color: rgba(255, 255, 255, 0.5);
+    letter-spacing: 2px;
+    margin-top: 2px;
+  }
+
+  /* 2.2 菜单 */
+  .app-side-nav {
+    flex: 1;
+    padding: 12px 0;
+    overflow-y: auto;
+    position: relative;
+    z-index: 1;
+  }
+  .app-nav-group { margin-bottom: 6px; }
+  .app-nav-group-title {
+    padding: 10px 24px 6px;
+    color: rgba(255, 255, 255, 0.32);
+    font-size: 11px;
+    letter-spacing: 1.5px;
+  }
+  .app-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 40px;
+    padding: 0 20px;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.18s;
+    border-left: 3px solid transparent;
+    position: relative;
+  }
+  .app-nav-item:hover {
+    color: var(--antd-white);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .app-nav-item.is-active {
+    background: linear-gradient(90deg, var(--color-primary) 0%, var(--antd-brand-700) 100%);
+    color: var(--antd-white);
+    border-left-color: var(--antd-orange-500);
+  }
+  .app-nav-item.is-active::after {
+    content: "";
+    position: absolute;
+    right: 0; top: 50%;
+    transform: translateY(-50%);
+    width: 4px; height: 24px;
+    background: var(--antd-orange-500);
+    border-radius: 2px;
+    box-shadow: 0 0 8px rgba(250, 140, 22, 0.6);
+  }
+  .app-nav-ic {
+    width: 18px; flex-shrink: 0;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 14px;
+  }
+  .app-nav-item.is-active .app-nav-ic { color: var(--antd-white); }
+  .app-nav-item:hover .app-nav-ic { color: var(--antd-white); }
+
+  /* 角标：普通 */
+  .app-nav-badge {
+    margin-left: auto;
+    min-width: 18px; height: 18px;
+    padding: 0 5px;
+    background: var(--antd-state-error);
+    color: var(--antd-white);
+    border-radius: 9px;
+    font-size: 11px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* 角标：新功能 Tag（橙） */
+  .app-nav-tag {
+    margin-left: auto;
+    padding: 0 6px;
+    height: 18px;
+    border-radius: 9px;
+    font-size: 10px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+  }
+  .app-nav-tag-warn {
+    background: var(--antd-orange-500);
+    color: var(--antd-white);
+  }
+  /* 折叠箭头 */
+  .app-nav-arrow {
+    margin-left: auto;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 12px;
+    transition: transform 0.2s;
+  }
+  .app-nav-item.is-open .app-nav-arrow { transform: rotate(180deg); }
+
+  /* 二级菜单 */
+  .app-nav-sub {
+    padding: 4px 0 4px 50px;
+    background: rgba(0, 0, 0, 0.18);
+    border-left: 3px solid var(--antd-orange-500);
+  }
+  .app-nav-sub-item {
+    display: block;
+    height: 34px;
+    line-height: 34px;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 13px;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+  }
+  .app-nav-sub-item:hover { color: var(--antd-white); }
+  .app-nav-sub-item.is-active {
+    color: var(--antd-orange-500);
+    border-left-color: var(--antd-orange-500);
+  }
+
+  /* 2.3 底部 */
+  .app-side-foot {
+    height: 44px;
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    position: relative;
+    z-index: 1;
+  }
+  .app-side-version {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.45);
+  }
+  .app-side-version .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--antd-state-success);
+    box-shadow: 0 0 6px var(--antd-state-success);
+  }
+  .app-side-collapse {
+    width: 28px; height: 28px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: transparent;
+    color: rgba(255, 255, 255, 0.6);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .app-side-collapse:hover { color: var(--antd-white); border-color: rgba(255, 255, 255, 0.3); }
+
+  /* ========== 3. 主体 ========== */
+  .app-main {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  /* 3.1 顶栏 64px */
+  .app-top {
+    height: 64px;
+    background: var(--color-card);
+    border-bottom: 1px solid var(--color-border-light);
+    display: grid;
+    grid-template-columns: 280px 1fr auto;
+    align-items: center;
+    padding: 0 24px;
+    gap: 24px;
+    position: sticky; top: 0; z-index: 10;
+    box-shadow: 0 1px 0 var(--color-border-light);
+  }
+  .app-top-l { min-width: 0; }
+  .app-top-c { min-width: 0; }
+  .app-top-r {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* 3.2 面包屑 */
+  .app-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--antd-gray-6);
+  }
+  .app-breadcrumb .sep { color: var(--antd-gray-5); }
+  .app-breadcrumb .cur {
+    color: var(--antd-gray-9);
+    font-weight: 500;
+  }
+
+  /* 3.3 全局搜索 */
+  .app-search {
+    position: relative;
+    max-width: 520px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .app-search-ic {
+    position: absolute;
+    left: 14px; top: 50%;
+    transform: translateY(-50%);
+    color: var(--antd-gray-6);
+    font-size: 15px;
+  }
+  .app-search-input {
+    width: 100%;
+    height: 40px;
+    border: 1px solid var(--color-border);
+    background: var(--antd-gray-2);
+    border-radius: 6px;
+    padding: 0 44px 0 40px;
+    font-size: 13px;
+    color: var(--antd-gray-9);
+    font-family: inherit;
+    transition: all 0.18s;
+  }
+  .app-search-input::placeholder { color: var(--antd-gray-6); }
+  .app-search-input:focus {
+    outline: none;
+    background: var(--color-card);
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
+  }
+  .app-search-kbd {
+    position: absolute;
+    right: 12px; top: 50%;
+    transform: translateY(-50%);
+    width: 22px; height: 22px;
+    border: 1px solid var(--color-border);
+    background: var(--color-card);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--antd-font-family-mono);
+    font-size: 11px;
+    color: var(--antd-gray-7);
+  }
+
+  /* 3.4 财务期切换 */
+  .app-top-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 10px 0 12px;
+    background: var(--antd-gray-2);
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: var(--antd-gray-8);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .app-top-chip:hover {
+    background: var(--antd-gray-3);
+    color: var(--antd-gray-9);
+  }
+  .app-top-chip .ic { font-size: 14px; }
+  .app-top-chip .lab { color: var(--antd-gray-6); }
+  .app-top-chip .val { font-weight: 600; color: var(--color-primary); }
+  .app-top-chip .arr { color: var(--antd-gray-6); font-size: 11px; }
+
+  /* 3.5 图标按钮（通知 / 帮助 / 主题） */
+  .app-top-icon-btn {
+    position: relative;
+    width: 36px; height: 36px;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    color: var(--antd-gray-7);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    transition: all 0.15s;
+  }
+  .app-top-icon-btn:hover { background: var(--antd-gray-2); color: var(--antd-gray-9); }
+  .app-top-icon-btn .dot {
+    position: absolute;
+    top: 8px; right: 8px;
+    width: 8px; height: 8px;
+    background: var(--antd-state-error);
+    border-radius: 50%;
+    border: 2px solid var(--color-card);
+  }
+
+  /* 3.6 头像区 */
+  .app-top-user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 8px 4px 4px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .app-top-user:hover { background: var(--antd-gray-2); }
+  .avatar {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--antd-brand-700) 100%);
+    color: var(--antd-white);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .app-top-user .meta { line-height: 1.2; }
+  .app-top-user .name { font-size: 13px; font-weight: 500; color: var(--antd-gray-9); }
+  .app-top-user .role { font-size: 11px; color: var(--antd-gray-6); }
+  .app-top-user .arr { font-size: 11px; color: var(--antd-gray-6); }
+
+  /* ========== 4. 内容占位 ========== */
+  .app-content {
+    flex: 1;
+    padding: 24px;
+    overflow: auto;
+  }
+  .app-content-inner { max-width: 1200px; margin: 0 auto; }
+  .placeholder-card {
+    background: var(--color-card);
+    border: 1px dashed var(--color-border);
+    border-radius: 8px;
+    padding: 56px 32px;
+    text-align: center;
+  }
+  .placeholder-h { font-size: 16px; color: var(--antd-gray-8); font-weight: 500; margin-bottom: 8px; }
+  .placeholder-sub { font-size: 13px; color: var(--antd-gray-6); margin-bottom: 18px; }
+  .placeholder-tags { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .placeholder-tags .tag {
+    padding: 4px 10px;
+    background: var(--antd-brand-50);
+    color: var(--color-primary);
+    border: 1px solid var(--antd-brand-100);
+    border-radius: 14px;
+    font-size: 12px;
+  }
+  </style>
+</body>
+</html>

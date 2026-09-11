@@ -1,0 +1,63 @@
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
+import { useExclusiveCompanyFilter } from '@/hooks/use-exclusive-company-filter'
+import type { Company } from '@/types'
+
+const ENTITY = { code: 'C1', name: '甲公司', type: 'entity' } as unknown as Company
+const SUMMARY = { code: 'S1', name: '汇总一号', type: 'summary' } as unknown as Company
+const SUMMARY2 = { code: 'S2', name: '汇总二号', type: 'summary' } as unknown as Company
+
+function Host({ companies, prev, setSelected }: {
+  companies: Company[]
+  prev: string[]
+  setSelected: (codes: string[]) => void
+}) {
+  const { handleCompaniesChange, noticeElement } = useExclusiveCompanyFilter({
+    companies,
+    getPrev: () => prev,
+    setSelected,
+  })
+  return (
+    <div>
+      <button onClick={() => handleCompaniesChange(['C1', 'S1'])}>勾选 C1+S1</button>
+      <button onClick={() => handleCompaniesChange(['S1'])}>勾选 S1</button>
+      <button onClick={() => handleCompaniesChange(['C1'])}>勾选 C1</button>
+      <button onClick={() => handleCompaniesChange(['S1', 'S2'])}>勾选 S1+S2</button>
+      {noticeElement}
+    </div>
+  )
+}
+
+describe('useExclusiveCompanyFilter 主体互斥过滤', () => {
+  it('新增单体时自动移除已选汇总主体并以轻提示告知', () => {
+    const setSelected = vi.fn()
+    render(<Host companies={[ENTITY, SUMMARY]} prev={['S1']} setSelected={setSelected} />)
+    fireEvent.click(screen.getByRole('button', { name: '勾选 C1+S1' }))
+    expect(screen.getByText('单体公司与汇总主体不能同时筛选，已自动取消已选汇总主体。')).toBeInTheDocument()
+    expect(setSelected).toHaveBeenCalledWith(['C1'])
+  })
+
+  it('新增汇总时自动移除已选单体公司并以轻提示告知', () => {
+    const setSelected = vi.fn()
+    render(<Host companies={[ENTITY, SUMMARY]} prev={['C1']} setSelected={setSelected} />)
+    fireEvent.click(screen.getByRole('button', { name: '勾选 C1+S1' }))
+    expect(screen.getByText('单体公司与汇总主体不能同时筛选，已自动取消已选单体公司。')).toBeInTheDocument()
+    expect(setSelected).toHaveBeenCalledWith(['S1'])
+  })
+
+  it('无冲突时直接透传选择结果，不出现提示', () => {
+    const setSelected = vi.fn()
+    render(<Host companies={[ENTITY, SUMMARY]} prev={['C1']} setSelected={setSelected} />)
+    fireEvent.click(screen.getByRole('button', { name: '勾选 S1' }))
+    expect(screen.queryByText(/不能同时筛选/)).not.toBeInTheDocument()
+    expect(setSelected).toHaveBeenCalledWith(['S1'])
+  })
+
+  it('新选汇总主体自动替换已选汇总主体并以轻提示告知', () => {
+    const setSelected = vi.fn()
+    render(<Host companies={[ENTITY, SUMMARY, SUMMARY2]} prev={['S1']} setSelected={setSelected} />)
+    fireEvent.click(screen.getByRole('button', { name: '勾选 S1+S2' }))
+    expect(screen.getByText('汇总主体仅可选择一个，已切换为「汇总二号」。')).toBeInTheDocument()
+    expect(setSelected).toHaveBeenCalledWith(['S2'])
+  })
+})

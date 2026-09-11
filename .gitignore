@@ -1,0 +1,103 @@
+# Dependencies
+node_modules
+**/node_modules
+
+# Build output
+dist
+**/dist
+# 本地调试产物（浏览器截图/临时脚本/日志），禁止入库
+web/audit/
+.vite
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Editor directories
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS files
+.DS_Store
+Thumbs.db
+# Office 临时锁文件（~$ 前缀，Excel/Word 打开时的残留）
+~$*
+
+# Local environment
+*.local
+.env
+.env.*
+# 模板文件必须入库（不含真实密钥）
+!.env.example
+
+# 临时排查截图（不入库）
+login-attempt.png
+dashboard-top-kpi.png
+trend-*.png
+
+# 代码审查临时产物（不入库）
+review-diff*.txt
+.qoder/_review_part*.diff
+.qoder/_rv_*
+.qoder/aging-table-*.png
+.qoder/verify-*
+.qoder/edge-profile-*
+.qoder/mcp.json
+
+# 浏览器测试产物（无头浏览器 profile / 截图 / 验证脚本，不入库）
+.qoder/edge-headless-profile/
+.qoder/browser-check/
+.qoder/better-harness-runs/
+.qoder/*.png
+.qoder/*.mjs
+
+# Superpowers 插件工作区缓存（brainstorm 设计稿/运行状态，不入库）
+.superpowers/
+
+# Git worktree 隔离工作区（不入库）
+.worktrees/
+
+# 诊断脚本与请求体（可能含测试口令，不入库）
+server/scripts/diag-*
+
+# Coverage
+coverage
+
+# Mimiocode internal
+.mimocode/node_modules
+.mimocode/.cron-lock
+
+# Qoder internal (repowiki 需纳入版本管理)
+.qoder/better-harness
+.qoder/specs
+
+# 数据库备份资料（真实业务数据 + 口令哈希，不入库）
+.qoder/db-backup-*/
+.qoder/local-pre-import-*
+.qoder/
+server/backups/
+
+# 本地 IDE / 调试产物（不入库）
+.trae/
+web/screenshots/
+web/debug-out.txt
+
+# pnpm 本地锁文件（项目使用 npm）
+web/pnpm-lock.yaml
+web/pnpm-workspace.yaml
+
+# Claude internal
+.claude
+
+# frp 内网穿透（frpc.toml 内含 token，整目录本地化，不入库）
+frp/

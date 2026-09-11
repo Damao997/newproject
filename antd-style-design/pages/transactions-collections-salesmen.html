@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>销售员催收看板 · 经营数据分析平台</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; }
+  .shell-side { background: #001529; color: rgba(255, 255, 255, 0.85); display: flex; flex-direction: column; }
+  .shell-side-logo { height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); color: #fff; }
+  .shell-side-logo-mark { width: 32px; height: 32px; background: var(--color-primary); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 16px; }
+  .shell-side-logo-text { font-size: 15px; font-weight: 600; }
+  .shell-side-nav { padding: 12px 0; flex: 1; overflow-y: auto; }
+  .shell-nav-group-title { padding: 12px 28px 8px; color: rgba(255, 255, 255, 0.35); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .shell-nav-item { display: flex; align-items: center; gap: 12px; padding: 0 20px; height: 40px; color: rgba(255, 255, 255, 0.75); cursor: pointer; transition: all 0.2s; border-left: 3px solid transparent; font-size: 14px; text-decoration: none; }
+  .shell-nav-item:hover { color: #fff; background: rgba(255, 255, 255, 0.04); }
+  .shell-nav-item.is-active { background: var(--color-primary); color: #fff; border-left-color: #fff; }
+  .shell-nav-ic { width: 18px; flex-shrink: 0; color: rgba(255, 255, 255, 0.55); }
+  .shell-nav-item:hover .shell-nav-ic { color: #fff; }
+
+  .shell-header { background: #fff; border-bottom: 1px solid var(--antd-gray-3); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .shell-header-l { display: flex; align-items: center; gap: 16px; }
+  .shell-header-r { display: flex; align-items: center; gap: 16px; }
+  .period-pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; background: var(--antd-gray-2); border-radius: var(--radius-medium); color: var(--color-foreground); font-size: 13px; cursor: pointer; }
+  .period-pill:hover { background: var(--antd-gray-3); }
+  .user-chip { display: flex; align-items: center; gap: 10px; padding: 4px 10px 4px 4px; border-radius: 20px; cursor: pointer; }
+  .user-chip:hover { background: var(--antd-gray-2); }
+  .user-chip-name { font-size: 13px; font-weight: 500; }
+  .user-chip-role { font-size: 11px; color: var(--color-text-tertiary); }
+
+  .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px; }
+  .section { background: #fff; border: 1px solid var(--antd-gray-3); border-radius: var(--radius-large); padding: 20px; }
+  .section h3 { font-size: 16px; font-weight: 600; margin: 0; }
+  .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+
+  /* 销售员卡片网格 */
+  .sm-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .sm-card {
+    background: var(--color-card);
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-large);
+    padding: 16px;
+    box-sizing: border-box;
+    transition: box-shadow 0.2s, transform 0.2s;
+    position: relative;
+  }
+  .sm-card:hover { box-shadow: var(--antd-shadow-md); transform: translateY(-1px); }
+  .sm-card::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--color-primary);
+    border-radius: 0 2px 2px 0;
+  }
+  .sm-card.is-orange::before { background: var(--antd-orange-500); }
+  .sm-card.is-green::before { background: var(--antd-state-success); }
+  .sm-card.is-violet::before { background: #722ed1; }
+  .sm-card.is-cyan::before { background: #13c2c2; }
+
+  .sm-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .sm-avatar { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; background: var(--antd-brand-100); color: var(--color-primary); font-size: 14px; flex-shrink: 0; }
+  .sm-name { font-size: 15px; font-weight: 600; color: var(--color-foreground); }
+  .sm-role { font-size: 12px; color: var(--color-text-tertiary); }
+  .sm-region { font-size: 11px; color: var(--color-text-tertiary); margin-top: 2px; }
+
+  .sm-kpi-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .sm-kpi { background: var(--antd-gray-2); border-radius: 6px; padding: 8px 10px; }
+  .sm-kpi .lbl { font-size: 11px; color: var(--color-text-tertiary); }
+  .sm-kpi .val { font-size: 14px; font-weight: 600; font-family: var(--antd-font-family-mono); font-variant-numeric: tabular-nums; margin-top: 2px; color: var(--color-foreground); }
+  .sm-kpi .val.is-warn { color: var(--antd-state-error); }
+  .sm-kpi .val.is-good { color: var(--antd-state-success); }
+
+  .sm-mini-bar-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  .sm-mini-bar-row .lbl { font-size: 12px; color: var(--color-text-secondary); flex: 1; }
+  .sm-mini-bar-row .val { font-size: 12px; font-weight: 600; font-family: var(--antd-font-family-mono); font-variant-numeric: tabular-nums; }
+  .sm-mini-bar-row .antd-mini-bar { width: 80px; }
+
+  .sm-foot { display: flex; align-items: center; gap: 6px; margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--antd-gray-3); font-size: 11px; color: var(--color-text-tertiary); }
+</style>
+</head>
+<body>
+<div class="antd-page">
+  <aside class="shell-side" style="grid-column: 1;">
+    <div class="shell-side-logo">
+      <div class="shell-side-logo-mark">J</div>
+      <div class="shell-side-logo-text">经营分析平台</div>
+    </div>
+    <nav class="shell-side-nav">
+      <div class="shell-nav-group-title">主数据</div>
+      <a class="shell-nav-item" href="dashboard.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        首页看板
+      </a>
+      <a class="shell-nav-item" href="indicators-operating.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+        财务指标
+      </a>
+      <a class="shell-nav-item is-active" href="transactions-overview.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+        往来分析
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        存货管理
+      </a>
+      <a class="shell-nav-item" href="reports-list.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+        分析报告
+      </a>
+
+      <div class="shell-nav-group-title">业务工具</div>
+      <a class="shell-nav-item" href="enterprise-lookup.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        企业信息查询
+      </a>
+
+      <div class="shell-nav-group-title">数据管理</div>
+      <a class="shell-nav-item" href="data-import.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        数据导入
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h12"/></svg>
+        重分类管理
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        维度管理
+      </a>
+
+      <div class="shell-nav-group-title">系统</div>
+      <a class="shell-nav-item" href="admin-users.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><circle cx="17" cy="7" r="3"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
+        用户管理
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+        角色权限
+      </a>
+    </nav>
+  </aside>
+
+  <main class="antd-content">
+    <header class="shell-header">
+      <div class="shell-header-l">
+        <div class="antd-breadcrumb">
+          <a>往来分析</a>
+          <span class="sep">/</span>
+          <a>催收</a>
+          <span class="sep">/</span>
+          <span class="current">销售员看板</span>
+        </div>
+      </div>
+      <div class="shell-header-r">
+        <div class="antd-select" style="min-width: 160px;">浙江壹品慧生活集团</div>
+        <div class="period-pill">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          2026 财年 · 8月
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <button class="antd-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          刷新
+        </button>
+        <div class="user-chip">
+          <div class="antd-avatar" style="background: var(--antd-brand-100); color: var(--color-primary);">张</div>
+          <div>
+            <div class="user-chip-name">张伟</div>
+            <div class="user-chip-role">财务总监</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="antd-content-body">
+      <!-- PageHead -->
+      <div class="antd-page-head">
+        <div>
+          <div class="antd-page-head-title">销售员催收看板</div>
+          <div class="antd-page-head-desc">按销售员维度展示应收 / 已回 / 逾期 / 客户数，关注个体业绩差异</div>
+        </div>
+        <div class="antd-page-head-actions">
+          <div class="antd-segmented">
+            <div class="antd-segmented-item is-active">全部</div>
+            <div class="antd-segmented-item">按业绩</div>
+            <div class="antd-segmented-item">按回款率</div>
+          </div>
+          <button class="antd-btn antd-btn-primary">导出报告</button>
+        </div>
+      </div>
+
+      <!-- 4 个 stat-tile -->
+      <div class="stat-row">
+        <div class="antd-stat-tile">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">销售员数</span>
+            <span class="antd-stat-tile-icon">人</span>
+          </div>
+          <div class="antd-stat-tile-value">12<span class="unit">人</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-flat">→ 0%</span>
+            <span class="antd-text-tertiary antd-fs-sm">覆盖 11 城市</span>
+          </div>
+        </div>
+        <div class="antd-stat-tile">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">总应收</span>
+            <span class="antd-stat-tile-icon">¥</span>
+          </div>
+          <div class="antd-stat-tile-value">358.2<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-up">↑ 5.6%</span>
+            <span class="antd-text-tertiary antd-fs-sm">较上月</span>
+          </div>
+        </div>
+        <div class="antd-stat-tile">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">总回款</span>
+            <span class="antd-stat-tile-icon">回</span>
+          </div>
+          <div class="antd-stat-tile-value">280.4<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-up">↑ 8.2%</span>
+            <span class="antd-text-tertiary antd-fs-sm">较上月</span>
+          </div>
+        </div>
+        <div class="antd-stat-tile is-green">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">回款率</span>
+            <span class="antd-stat-tile-icon">%</span>
+          </div>
+          <div class="antd-stat-tile-value">78.3<span class="unit">%</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-down">↑ 2.1 pp</span>
+            <span class="antd-text-tertiary antd-fs-sm">超目标 3.3 pp</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 销售员卡片网格 -->
+      <div class="section">
+        <div class="section-head">
+          <h3>销售员业绩卡片</h3>
+          <a class="antd-card-extra" href="#">查看全部 →</a>
+        </div>
+        <div class="sm-grid">
+          <!-- 卡片 1 -->
+          <div class="sm-card is-green">
+            <div class="sm-head">
+              <div class="sm-avatar" style="background: var(--antd-state-success-bg); color: var(--antd-state-success);">王</div>
+              <div>
+                <div class="sm-name">王芳</div>
+                <div class="sm-role">高级销售经理</div>
+                <div class="sm-region">杭州 · 物业一部</div>
+              </div>
+            </div>
+            <div class="sm-kpi-row">
+              <div class="sm-kpi">
+                <div class="lbl">总应收</div>
+                <div class="val">¥ 86.4</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">已回款</div>
+                <div class="val is-good">¥ 78.2</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">逾期</div>
+                <div class="val">¥ 2.4</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">客户数</div>
+                <div class="val">28</div>
+              </div>
+            </div>
+            <div class="sm-mini-bar-row">
+              <span class="lbl">回款进度</span>
+              <div class="antd-mini-bar is-green"><i style="width: 90%;"></i></div>
+              <span class="val" style="color: var(--antd-state-success);">90.5%</span>
+            </div>
+            <div class="sm-foot"><span class="antd-rank-badge is-1" style="width:18px;height:18px;font-size:10px;">1</span>业绩排名 No.1 · 已回款 78.2 万</div>
+          </div>
+
+          <!-- 卡片 2 -->
+          <div class="sm-card is-cyan">
+            <div class="sm-head">
+              <div class="sm-avatar" style="background: #e6fffb; color: #13c2c2;">李</div>
+              <div>
+                <div class="sm-name">李娜</div>
+                <div class="sm-role">销售经理</div>
+                <div class="sm-region">宁波 · 物业二部</div>
+              </div>
+            </div>
+            <div class="sm-kpi-row">
+              <div class="sm-kpi">
+                <div class="lbl">总应收</div>
+                <div class="val">¥ 64.8</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">已回款</div>
+                <div class="val is-good">¥ 52.6</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">逾期</div>
+                <div class="val">¥ 3.6</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">客户数</div>
+                <div class="val">22</div>
+              </div>
+            </div>
+            <div class="sm-mini-bar-row">
+              <span class="lbl">回款进度</span>
+              <div class="antd-mini-bar is-green"><i style="width: 81%;"></i></div>
+              <span class="val" style="color: var(--antd-state-success);">81.2%</span>
+            </div>
+            <div class="sm-foot"><span class="antd-rank-badge is-2" style="width:18px;height:18px;font-size:10px;">2</span>业绩排名 No.2</div>
+          </div>
+
+          <!-- 卡片 3 -->
+          <div class="sm-card is-violet">
+            <div class="sm-head">
+              <div class="sm-avatar" style="background: #f9f0ff; color: #722ed1;">陈</div>
+              <div>
+                <div class="sm-name">陈勇</div>
+                <div class="sm-role">销售经理</div>
+                <div class="sm-region">金华 · 物业三部</div>
+              </div>
+            </div>
+            <div class="sm-kpi-row">
+              <div class="sm-kpi">
+                <div class="lbl">总应收</div>
+                <div class="val">¥ 52.6</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">已回款</div>
+                <div class="val is-good">¥ 41.2</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">逾期</div>
+                <div class="val">¥ 4.8</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">客户数</div>
+                <div class="val">18</div>
+              </div>
+            </div>
+            <div class="sm-mini-bar-row">
+              <span class="lbl">回款进度</span>
+              <div class="antd-mini-bar"><i style="width: 78%;"></i></div>
+              <span class="val" style="color: var(--antd-state-success);">78.3%</span>
+            </div>
+            <div class="sm-foot"><span class="antd-rank-badge is-3" style="width:18px;height:18px;font-size:10px;">3</span>业绩排名 No.3</div>
+          </div>
+
+          <!-- 卡片 4 -->
+          <div class="sm-card is-orange">
+            <div class="sm-head">
+              <div class="sm-avatar" style="background: var(--antd-orange-bg); color: var(--antd-orange-500);">赵</div>
+              <div>
+                <div class="sm-name">赵敏</div>
+                <div class="sm-role">销售主管</div>
+                <div class="sm-region">温州 · 物业四部</div>
+              </div>
+            </div>
+            <div class="sm-kpi-row">
+              <div class="sm-kpi">
+                <div class="lbl">总应收</div>
+                <div class="val">¥ 42.4</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">已回款</div>
+                <div class="val">¥ 28.6</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">逾期</div>
+                <div class="val is-warn">¥ 7.6</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">客户数</div>
+                <div class="val">16</div>
+              </div>
+            </div>
+            <div class="sm-mini-bar-row">
+              <span class="lbl">回款进度</span>
+              <div class="antd-mini-bar is-orange"><i style="width: 67%;"></i></div>
+              <span class="val" style="color: var(--antd-orange-500);">67.5%</span>
+            </div>
+            <div class="sm-foot"><span class="antd-pill is-orange" style="height:18px;font-size:10px;">需关注</span>逾期金额较高，建议介入</div>
+          </div>
+
+          <!-- 卡片 5 -->
+          <div class="sm-card">
+            <div class="sm-head">
+              <div class="sm-avatar">周</div>
+              <div>
+                <div class="sm-name">周建国</div>
+                <div class="sm-role">销售经理</div>
+                <div class="sm-region">绍兴 · 物业五部</div>
+              </div>
+            </div>
+            <div class="sm-kpi-row">
+              <div class="sm-kpi">
+                <div class="lbl">总应收</div>
+                <div class="val">¥ 36.8</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">已回款</div>
+                <div class="val is-good">¥ 29.4</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">逾期</div>
+                <div class="val">¥ 1.2</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">客户数</div>
+                <div class="val">14</div>
+              </div>
+            </div>
+            <div class="sm-mini-bar-row">
+              <span class="lbl">回款进度</span>
+              <div class="antd-mini-bar"><i style="width: 80%;"></i></div>
+              <span class="val" style="color: var(--antd-state-success);">79.9%</span>
+            </div>
+            <div class="sm-foot">业绩排名 No.4 · 稳定</div>
+          </div>
+
+          <!-- 卡片 6 -->
+          <div class="sm-card is-cyan">
+            <div class="sm-head">
+              <div class="sm-avatar" style="background: #e6fffb; color: #13c2c2;">孙</div>
+              <div>
+                <div class="sm-name">孙晓敏</div>
+                <div class="sm-role">销售经理</div>
+                <div class="sm-region">嘉兴 · 物业六部</div>
+              </div>
+            </div>
+            <div class="sm-kpi-row">
+              <div class="sm-kpi">
+                <div class="lbl">总应收</div>
+                <div class="val">¥ 28.4</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">已回款</div>
+                <div class="val is-good">¥ 22.6</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">逾期</div>
+                <div class="val">¥ 0.8</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">客户数</div>
+                <div class="val">12</div>
+              </div>
+            </div>
+            <div class="sm-mini-bar-row">
+              <span class="lbl">回款进度</span>
+              <div class="antd-mini-bar"><i style="width: 80%;"></i></div>
+              <span class="val" style="color: var(--antd-state-success);">79.6%</span>
+            </div>
+            <div class="sm-foot">业绩排名 No.5</div>
+          </div>
+
+          <!-- 卡片 7 -->
+          <div class="sm-card">
+            <div class="sm-head">
+              <div class="sm-avatar" style="background: #fff7e6; color: var(--antd-orange-500);">钱</div>
+              <div>
+                <div class="sm-name">钱海涛</div>
+                <div class="sm-role">销售主管</div>
+                <div class="sm-region">湖州 · 物业七部</div>
+              </div>
+            </div>
+            <div class="sm-kpi-row">
+              <div class="sm-kpi">
+                <div class="lbl">总应收</div>
+                <div class="val">¥ 24.6</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">已回款</div>
+                <div class="val">¥ 16.8</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">逾期</div>
+                <div class="val is-warn">¥ 3.4</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">客户数</div>
+                <div class="val">10</div>
+              </div>
+            </div>
+            <div class="sm-mini-bar-row">
+              <span class="lbl">回款进度</span>
+              <div class="antd-mini-bar is-orange"><i style="width: 68%;"></i></div>
+              <span class="val" style="color: var(--antd-orange-500);">68.3%</span>
+            </div>
+            <div class="sm-foot"><span class="antd-pill is-orange" style="height:18px;font-size:10px;">需关注</span>逾期率 13.8%</div>
+          </div>
+
+          <!-- 卡片 8 -->
+          <div class="sm-card is-green">
+            <div class="sm-head">
+              <div class="sm-avatar" style="background: var(--antd-state-success-bg); color: var(--antd-state-success);">郑</div>
+              <div>
+                <div class="sm-name">郑文静</div>
+                <div class="sm-role">销售经理</div>
+                <div class="sm-region">台州 · 物业八部</div>
+              </div>
+            </div>
+            <div class="sm-kpi-row">
+              <div class="sm-kpi">
+                <div class="lbl">总应收</div>
+                <div class="val">¥ 22.4</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">已回款</div>
+                <div class="val is-good">¥ 19.2</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">逾期</div>
+                <div class="val">¥ 0.4</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">客户数</div>
+                <div class="val">9</div>
+              </div>
+            </div>
+            <div class="sm-mini-bar-row">
+              <span class="lbl">回款进度</span>
+              <div class="antd-mini-bar is-green"><i style="width: 86%;"></i></div>
+              <span class="val" style="color: var(--antd-state-success);">85.7%</span>
+            </div>
+            <div class="sm-foot">业绩排名 No.6</div>
+          </div>
+
+          <!-- 卡片 9 -->
+          <div class="sm-card is-violet">
+            <div class="sm-head">
+              <div class="sm-avatar" style="background: #f9f0ff; color: #722ed1;">吴</div>
+              <div>
+                <div class="sm-name">吴丽华</div>
+                <div class="sm-role">销售主管</div>
+                <div class="sm-region">丽水 · 物业九部</div>
+              </div>
+            </div>
+            <div class="sm-kpi-row">
+              <div class="sm-kpi">
+                <div class="lbl">总应收</div>
+                <div class="val">¥ 18.6</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">已回款</div>
+                <div class="val">¥ 13.4</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">逾期</div>
+                <div class="val is-warn">¥ 2.6</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">客户数</div>
+                <div class="val">8</div>
+              </div>
+            </div>
+            <div class="sm-mini-bar-row">
+              <span class="lbl">回款进度</span>
+              <div class="antd-mini-bar is-orange"><i style="width: 72%;"></i></div>
+              <span class="val" style="color: var(--antd-orange-500);">72.0%</span>
+            </div>
+            <div class="sm-foot">业绩排名 No.7</div>
+          </div>
+
+          <!-- 卡片 10 -->
+          <div class="sm-card">
+            <div class="sm-head">
+              <div class="sm-avatar">冯</div>
+              <div>
+                <div class="sm-name">冯子轩</div>
+                <div class="sm-role">销售代表</div>
+                <div class="sm-region">衢州 · 物业十部</div>
+              </div>
+            </div>
+            <div class="sm-kpi-row">
+              <div class="sm-kpi">
+                <div class="lbl">总应收</div>
+                <div class="val">¥ 14.8</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">已回款</div>
+                <div class="val is-good">¥ 11.2</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">逾期</div>
+                <div class="val">¥ 1.0</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">客户数</div>
+                <div class="val">6</div>
+              </div>
+            </div>
+            <div class="sm-mini-bar-row">
+              <span class="lbl">回款进度</span>
+              <div class="antd-mini-bar"><i style="width: 76%;"></i></div>
+              <span class="val" style="color: var(--antd-state-success);">75.7%</span>
+            </div>
+            <div class="sm-foot">业绩排名 No.8 · 储备人才</div>
+          </div>
+
+          <!-- 卡片 11 -->
+          <div class="sm-card is-green">
+            <div class="sm-head">
+              <div class="sm-avatar" style="background: var(--antd-state-success-bg); color: var(--antd-state-success);">蒋</div>
+              <div>
+                <div class="sm-name">蒋婷婷</div>
+                <div class="sm-role">销售代表</div>
+                <div class="sm-region">舟山 · 物业十一部</div>
+              </div>
+            </div>
+            <div class="sm-kpi-row">
+              <div class="sm-kpi">
+                <div class="lbl">总应收</div>
+                <div class="val">¥ 8.6</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">已回款</div>
+                <div class="val is-good">¥ 7.8</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">逾期</div>
+                <div class="val">¥ 0.2</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">客户数</div>
+                <div class="val">5</div>
+              </div>
+            </div>
+            <div class="sm-mini-bar-row">
+              <span class="lbl">回款进度</span>
+              <div class="antd-mini-bar is-green"><i style="width: 91%;"></i></div>
+              <span class="val" style="color: var(--antd-state-success);">90.7%</span>
+            </div>
+            <div class="sm-foot">回款率最高</div>
+          </div>
+
+          <!-- 卡片 12 -->
+          <div class="sm-card is-orange">
+            <div class="sm-head">
+              <div class="sm-avatar" style="background: var(--antd-orange-bg); color: var(--antd-orange-500);">韩</div>
+              <div>
+                <div class="sm-name">韩志强</div>
+                <div class="sm-role">销售代表</div>
+                <div class="sm-region">长尾客户 · 兜底组</div>
+              </div>
+            </div>
+            <div class="sm-kpi-row">
+              <div class="sm-kpi">
+                <div class="lbl">总应收</div>
+                <div class="val">¥ 12.4</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">已回款</div>
+                <div class="val">¥ 7.6</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">逾期</div>
+                <div class="val is-warn">¥ 2.8</div>
+              </div>
+              <div class="sm-kpi">
+                <div class="lbl">客户数</div>
+                <div class="val">18</div>
+              </div>
+            </div>
+            <div class="sm-mini-bar-row">
+              <span class="lbl">回款进度</span>
+              <div class="antd-mini-bar is-error"><i style="width: 61%;"></i></div>
+              <span class="val" style="color: var(--antd-state-error);">61.3%</span>
+            </div>
+            <div class="sm-foot"><span class="antd-pill is-red" style="height:18px;font-size:10px;">需介入</span>回款率偏低</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

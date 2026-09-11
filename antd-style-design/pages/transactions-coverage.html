@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>主体覆盖 · 经营数据分析平台</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; }
+  .shell-side { background: #001529; color: rgba(255, 255, 255, 0.85); display: flex; flex-direction: column; }
+  .shell-side-logo { height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); color: #fff; }
+  .shell-side-logo-mark { width: 32px; height: 32px; background: var(--color-primary); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 16px; }
+  .shell-side-logo-text { font-size: 15px; font-weight: 600; }
+  .shell-side-nav { padding: 12px 0; flex: 1; overflow-y: auto; }
+  .shell-nav-group-title { padding: 12px 28px 8px; color: rgba(255, 255, 255, 0.35); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .shell-nav-item { display: flex; align-items: center; gap: 12px; padding: 0 20px; height: 40px; color: rgba(255, 255, 255, 0.75); cursor: pointer; transition: all 0.2s; border-left: 3px solid transparent; font-size: 14px; text-decoration: none; }
+  .shell-nav-item:hover { color: #fff; background: rgba(255, 255, 255, 0.04); }
+  .shell-nav-item.is-active { background: var(--color-primary); color: #fff; border-left-color: #fff; }
+  .shell-nav-ic { width: 18px; flex-shrink: 0; color: rgba(255, 255, 255, 0.55); }
+  .shell-nav-item:hover .shell-nav-ic { color: #fff; }
+
+  .shell-header { background: #fff; border-bottom: 1px solid var(--antd-gray-3); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .shell-header-l { display: flex; align-items: center; gap: 16px; }
+  .shell-header-r { display: flex; align-items: center; gap: 16px; }
+  .period-pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; background: var(--antd-gray-2); border-radius: var(--radius-medium); color: var(--color-foreground); font-size: 13px; cursor: pointer; }
+  .period-pill:hover { background: var(--antd-gray-3); }
+  .user-chip { display: flex; align-items: center; gap: 10px; padding: 4px 10px 4px 4px; border-radius: 20px; cursor: pointer; }
+  .user-chip:hover { background: var(--antd-gray-2); }
+  .user-chip-name { font-size: 13px; font-weight: 500; }
+  .user-chip-role { font-size: 11px; color: var(--color-text-tertiary); }
+
+  .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px; }
+  .section { background: #fff; border: 1px solid var(--antd-gray-3); border-radius: var(--radius-large); padding: 20px; }
+  .section h3 { font-size: 16px; font-weight: 600; margin: 0; }
+  .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+
+  /* 行/列汇总卡 */
+  .summary-row { display: grid; grid-template-columns: 1.1fr repeat(5, 1fr); gap: 12px; margin-bottom: 14px; }
+  .summary-col-head { font-size: 12px; color: var(--color-text-tertiary); }
+  .summary-stat { display: flex; flex-direction: column; gap: 4px; }
+  .summary-stat .label { font-size: 12px; color: var(--color-text-tertiary); }
+  .summary-stat .val { font-size: 14px; font-weight: 600; font-family: var(--antd-font-family-mono); font-variant-numeric: tabular-nums; }
+
+  /* ── 6×6 主体×账龄 矩阵（新增 .antd-coverage-matrix） ── */
+  .antd-coverage-matrix {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 4px;
+    table-layout: fixed;
+  }
+  .antd-coverage-matrix th, .antd-coverage-matrix td {
+    padding: 10px 8px;
+    text-align: center;
+    font-size: 13px;
+    border-radius: var(--radius-small);
+  }
+  .antd-coverage-matrix thead th {
+    background: var(--antd-gray-2);
+    color: var(--color-text-secondary);
+    font-weight: 500;
+    font-size: 12px;
+  }
+  .antd-coverage-matrix tbody th {
+    background: var(--antd-gray-2);
+    color: var(--color-foreground);
+    font-weight: 500;
+    text-align: left;
+    padding-left: 14px;
+  }
+  .antd-coverage-matrix .corner {
+    background: transparent;
+  }
+  /* 行/列双维斑马 */
+  .antd-coverage-matrix tbody tr:nth-child(even) th {
+    background: var(--antd-gray-3);
+  }
+  .antd-coverage-matrix tbody tr:nth-child(even) td {
+    background: var(--color-table-zebra);
+  }
+  .antd-coverage-matrix tbody tr:nth-child(odd) td.lv-1 { background: #f0f7ff; }
+  .antd-coverage-matrix tbody tr:nth-child(odd) td.lv-2 { background: #bae0ff; }
+  .antd-coverage-matrix tbody tr:nth-child(odd) td.lv-3 { background: #69b1ff; color: #fff; }
+  .antd-coverage-matrix tbody tr:nth-child(odd) td.lv-4 { background: #1677ff; color: #fff; }
+  .antd-coverage-matrix tbody tr:nth-child(odd) td.lv-5 { background: #003eb3; color: #fff; }
+  .antd-coverage-matrix tbody tr:nth-child(even) td.lv-1 { background: #f5f9ff; }
+  .antd-coverage-matrix tbody tr:nth-child(even) td.lv-2 { background: #d3eaff; }
+  .antd-coverage-matrix tbody tr:nth-child(even) td.lv-3 { background: #82baff; color: #fff; }
+  .antd-coverage-matrix tbody tr:nth-child(even) td.lv-4 { background: #2979ff; color: #fff; }
+  .antd-coverage-matrix tbody tr:nth-child(even) td.lv-5 { background: #002c8c; color: #fff; }
+  .antd-coverage-matrix .row-total, .antd-coverage-matrix .col-total {
+    background: var(--antd-orange-50);
+    color: var(--antd-orange-700);
+    font-weight: 600;
+    font-family: var(--antd-font-family-mono);
+    font-variant-numeric: tabular-nums;
+  }
+  .antd-coverage-matrix tfoot th, .antd-coverage-matrix tfoot td {
+    background: var(--antd-orange-50);
+    color: var(--antd-orange-700);
+    font-weight: 600;
+    font-family: var(--antd-font-family-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .matrix-legend { display: flex; gap: 12px; align-items: center; font-size: 12px; color: var(--color-text-secondary); margin-top: 12px; }
+  .matrix-legend .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: middle; margin-right: 4px; }
+  .matrix-note { background: var(--antd-brand-50); border: 1px solid var(--antd-brand-100); border-radius: var(--radius-medium); padding: 12px 16px; font-size: 13px; color: var(--color-text-secondary); margin-top: 16px; }
+</style>
+</head>
+<body>
+<div class="antd-page">
+  <aside class="shell-side" style="grid-column: 1;">
+    <div class="shell-side-logo">
+      <div class="shell-side-logo-mark">J</div>
+      <div class="shell-side-logo-text">经营分析平台</div>
+    </div>
+    <nav class="shell-side-nav">
+      <div class="shell-nav-group-title">主数据</div>
+      <a class="shell-nav-item" href="dashboard.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        首页看板
+      </a>
+      <a class="shell-nav-item" href="indicators-operating.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+        财务指标
+      </a>
+      <a class="shell-nav-item is-active" href="transactions-overview.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+        往来分析
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        存货管理
+      </a>
+      <a class="shell-nav-item" href="reports-list.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+        分析报告
+      </a>
+
+      <div class="shell-nav-group-title">业务工具</div>
+      <a class="shell-nav-item" href="enterprise-lookup.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        企业信息查询
+      </a>
+
+      <div class="shell-nav-group-title">数据管理</div>
+      <a class="shell-nav-item" href="data-import.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        数据导入
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h12"/></svg>
+        重分类管理
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        维度管理
+      </a>
+
+      <div class="shell-nav-group-title">系统</div>
+      <a class="shell-nav-item" href="admin-users.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><circle cx="17" cy="7" r="3"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
+        用户管理
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+        角色权限
+      </a>
+    </nav>
+  </aside>
+
+  <main class="antd-content">
+    <header class="shell-header">
+      <div class="shell-header-l">
+        <div class="antd-breadcrumb">
+          <a>往来分析</a>
+          <span class="sep">/</span>
+          <span class="current">主体覆盖</span>
+        </div>
+      </div>
+      <div class="shell-header-r">
+        <div class="antd-select" style="min-width: 160px;">浙江壹品慧生活集团</div>
+        <div class="period-pill">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          2026 财年 · 8月
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <button class="antd-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          刷新
+        </button>
+        <div class="user-chip">
+          <div class="antd-avatar" style="background: var(--antd-brand-100); color: var(--color-primary);">张</div>
+          <div>
+            <div class="user-chip-name">张伟</div>
+            <div class="user-chip-role">财务总监</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="antd-content-body">
+      <!-- PageHead -->
+      <div class="antd-page-head">
+        <div>
+          <div class="antd-page-head-title">主体覆盖</div>
+          <div class="antd-page-head-desc">6 家汇总主体 × 5 段账龄交叉热力矩阵，识别集中风险</div>
+        </div>
+        <div class="antd-page-head-actions">
+          <button class="antd-btn">导出 CSV</button>
+          <button class="antd-btn antd-btn-primary">主体配置</button>
+        </div>
+      </div>
+
+      <!-- 3 个 stat-tile -->
+      <div class="stat-row">
+        <div class="antd-stat-tile">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">覆盖主体数</span>
+            <span class="antd-stat-tile-icon">家</span>
+          </div>
+          <div class="antd-stat-tile-value">6<span class="unit">家</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-flat">→ 0%</span>
+            <span class="antd-text-tertiary antd-fs-sm">全部已纳入</span>
+          </div>
+        </div>
+        <div class="antd-stat-tile">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">账龄分段数</span>
+            <span class="antd-stat-tile-icon">5 段</span>
+          </div>
+          <div class="antd-stat-tile-value">5<span class="unit">段</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-flat">→ 0%</span>
+            <span class="antd-text-tertiary antd-fs-sm">标准分段</span>
+          </div>
+        </div>
+        <div class="antd-stat-tile is-green">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">数据完整度</span>
+            <span class="antd-stat-tile-icon">%</span>
+          </div>
+          <div class="antd-stat-tile-value">96.4<span class="unit">%</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-down">↑ 1.2 pp</span>
+            <span class="antd-text-tertiary antd-fs-sm">较上月</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 矩阵 -->
+      <div class="section">
+        <div class="section-head">
+          <h3>主体 × 账龄矩阵</h3>
+          <div class="antd-flex">
+            <span class="antd-tag antd-tag-default">单位：万元</span>
+            <a class="antd-card-extra" href="#">重置</a>
+          </div>
+        </div>
+
+        <!-- 行/列汇总卡（mini-bar） -->
+        <div class="summary-row">
+          <div class="summary-col-head"></div>
+          <div class="summary-stat">
+            <span class="label">0-30 天 · 合计</span>
+            <span class="val">196.4</span>
+            <div class="antd-mini-bar" style="width: 100%;"><i style="width: 78%;"></i></div>
+          </div>
+          <div class="summary-stat">
+            <span class="label">31-60 天 · 合计</span>
+            <span class="val">88.3</span>
+            <div class="antd-mini-bar" style="width: 100%;"><i style="width: 35%;"></i></div>
+          </div>
+          <div class="summary-stat">
+            <span class="label">61-90 天 · 合计</span>
+            <span class="val">42.1</span>
+            <div class="antd-mini-bar is-orange" style="width: 100%;"><i style="width: 17%;"></i></div>
+          </div>
+          <div class="summary-stat">
+            <span class="label">91-180 天 · 合计</span>
+            <span class="val">19.7</span>
+            <div class="antd-mini-bar is-orange" style="width: 100%;"><i style="width: 8%;"></i></div>
+          </div>
+          <div class="summary-stat">
+            <span class="label">180+ 天 · 合计</span>
+            <span class="val">11.7</span>
+            <div class="antd-mini-bar is-error" style="width: 100%;"><i style="width: 5%;"></i></div>
+          </div>
+        </div>
+
+        <table class="antd-coverage-matrix">
+          <thead>
+            <tr>
+              <th class="corner">主体 \ 账龄</th>
+              <th>0-30 天</th>
+              <th>31-60 天</th>
+              <th>61-90 天</th>
+              <th>91-180 天</th>
+              <th>180+ 天</th>
+              <th class="row-total">行汇总</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th>汇总主体 1 · 杭州绿城物业</th>
+              <td class="lv-4">48.6</td>
+              <td class="lv-3">22.4</td>
+              <td class="lv-2">9.2</td>
+              <td class="lv-1">3.6</td>
+              <td class="lv-1">1.4</td>
+              <td class="row-total">85.2</td>
+            </tr>
+            <tr>
+              <th>汇总主体 2 · 宁波雅戈尔置业</th>
+              <td class="lv-3">36.4</td>
+              <td class="lv-2">14.6</td>
+              <td class="lv-2">6.4</td>
+              <td class="lv-1">2.8</td>
+              <td class="lv-1">1.1</td>
+              <td class="row-total">61.3</td>
+            </tr>
+            <tr>
+              <th>汇总主体 3 · 金华万科物业</th>
+              <td class="lv-3">28.2</td>
+              <td class="lv-2">11.4</td>
+              <td class="lv-1">4.8</td>
+              <td class="lv-1">2.0</td>
+              <td class="lv-1">0.9</td>
+              <td class="row-total">47.3</td>
+            </tr>
+            <tr>
+              <th>汇总主体 4 · 温州龙湖智慧服务</th>
+              <td class="lv-2">24.5</td>
+              <td class="lv-2">9.8</td>
+              <td class="lv-1">3.6</td>
+              <td class="lv-1">1.4</td>
+              <td class="lv-1">0.7</td>
+              <td class="row-total">40.0</td>
+            </tr>
+            <tr>
+              <th>汇总主体 5 · 绍兴碧桂园生活</th>
+              <td class="lv-2">21.8</td>
+              <td class="lv-1">8.2</td>
+              <td class="lv-1">3.2</td>
+              <td class="lv-1">1.2</td>
+              <td class="lv-1">0.6</td>
+              <td class="row-total">35.0</td>
+            </tr>
+            <tr>
+              <th>汇总主体 6 · 嘉兴招商局物业</th>
+              <td class="lv-2">18.6</td>
+              <td class="lv-1">7.4</td>
+              <td class="lv-1">2.8</td>
+              <td class="lv-1">1.0</td>
+              <td class="lv-1">0.5</td>
+              <td class="row-total">30.3</td>
+            </tr>
+            <tr>
+              <th>其他 · 长尾客户</th>
+              <td class="lv-1">18.3</td>
+              <td class="lv-1">14.5</td>
+              <td class="lv-2">12.1</td>
+              <td class="lv-2">7.7</td>
+              <td class="lv-2">6.5</td>
+              <td class="row-total">59.1</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr>
+              <th>列汇总</th>
+              <td>196.4</td>
+              <td>88.3</td>
+              <td>42.1</td>
+              <td>19.7</td>
+              <td>11.7</td>
+              <td>358.2</td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <div class="matrix-legend">
+          <span>金额深浅：</span>
+          <span><span class="swatch" style="background: #f0f7ff;"></span>≤ 5 万</span>
+          <span><span class="swatch" style="background: #bae0ff;"></span>5-15 万</span>
+          <span><span class="swatch" style="background: #69b1ff;"></span>15-30 万</span>
+          <span><span class="swatch" style="background: #1677ff;"></span>30-50 万</span>
+          <span><span class="swatch" style="background: #003eb3;"></span>&gt; 50 万</span>
+        </div>
+
+        <div class="matrix-note">
+          <strong>说明：</strong>汇总主体 1（杭州绿城物业）合计 85.2 万元，占应收总额 23.8%，且在 31-60 天段仍有 22.4 万元余额，建议列为 9 月催收优先级 <span class="antd-pill is-orange" style="margin-left: 6px;">P0</span>；长尾客户群体在 90+ 长账龄段合计 14.2 万元，需关注小客户违约风险。
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>关键指标 · 财年经营数据分析平台</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; }
+
+  /* shell side */
+  .shell-side { background: #001529; color: rgba(255, 255, 255, 0.85); display: flex; flex-direction: column; }
+  .shell-side-logo { height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); color: #fff; }
+  .shell-side-logo-mark { width: 32px; height: 32px; background: var(--color-primary); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 16px; }
+  .shell-side-logo-text { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
+  .shell-side-nav { padding: 12px 0; flex: 1; overflow-y: auto; }
+  .shell-nav-group-title { padding: 12px 28px 8px; color: rgba(255, 255, 255, 0.35); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .shell-nav-item { display: flex; align-items: center; gap: 12px; padding: 0 20px; height: 40px; color: rgba(255, 255, 255, 0.75); cursor: pointer; transition: all 0.2s; border-left: 3px solid transparent; font-size: 14px; text-decoration: none; }
+  .shell-nav-item:hover { color: #fff; background: rgba(255, 255, 255, 0.04); }
+  .shell-nav-item.is-active { background: var(--color-primary); color: #fff; border-left-color: #fff; }
+  .shell-nav-ic { width: 18px; flex-shrink: 0; color: rgba(255, 255, 255, 0.55); }
+  .shell-nav-item:hover .shell-nav-ic { color: #fff; }
+
+  .shell-header { background: #fff; border-bottom: 1px solid var(--antd-gray-3); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .shell-header-r { display: flex; align-items: center; gap: 16px; }
+  .period-pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; background: var(--antd-gray-2); border-radius: var(--radius-medium); color: var(--color-foreground); font-size: 13px; cursor: pointer; }
+  .period-pill:hover { background: var(--antd-gray-3); }
+  .user-chip { display: flex; align-items: center; gap: 10px; padding: 4px 10px 4px 4px; border-radius: 20px; cursor: pointer; }
+  .user-chip:hover { background: var(--antd-gray-2); }
+  .user-chip-name { font-size: 13px; font-weight: 500; }
+  .user-chip-role { font-size: 11px; color: var(--color-text-tertiary); }
+
+  /* 业务独有：双栏 + 热力 + 折线 + 明细表 */
+  .two-col { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .three-col { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px; }
+
+  .heatmap-card { background: #fff; border: 1px solid var(--antd-gray-3); border-radius: var(--radius-large); padding: 20px; }
+  .heatmap-card h3 { font-size: 16px; font-weight: 600; margin: 0 0 12px; display: flex; align-items: center; justify-content: space-between; }
+  .heatmap-card h3 .meta { font-size: 12px; color: var(--color-text-tertiary); font-weight: 400; }
+  .heatmap-rows { display: flex; flex-direction: column; gap: 6px; }
+  .heatmap-row { display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; gap: 10px; }
+  .heatmap-row-label { font-size: 12px; color: var(--color-text-secondary); text-align: right; }
+  .heatmap-row-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; }
+  .heatmap-cell { aspect-ratio: 1; border-radius: 3px; background: var(--antd-gray-2); position: relative; }
+  .heatmap-cell .tip { position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); background: var(--antd-gray-9); color: #fff; font-size: 11px; padding: 2px 6px; border-radius: 3px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.15s; }
+  .heatmap-cell:hover .tip { opacity: 1; }
+  .heatmap-cell.lv-1 { background: #fff7e6; }
+  .heatmap-cell.lv-2 { background: #ffe7ba; }
+  .heatmap-cell.lv-3 { background: #ffc069; }
+  .heatmap-cell.lv-4 { background: #fa8c16; }
+  .heatmap-cell.lv-5 { background: #d46b08; }
+  .heatmap-row-axis { display: grid; grid-template-columns: repeat(12, 1fr); font-size: 11px; color: var(--color-text-tertiary); margin-top: 8px; padding-left: 66px; }
+  .heatmap-row-axis span { text-align: center; }
+  .heatmap-legend { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--color-text-tertiary); margin-top: 14px; padding-left: 66px; }
+  .heatmap-legend .sw { width: 12px; height: 12px; border-radius: 2px; }
+
+  .trend-card { background: #fff; border: 1px solid var(--antd-gray-3); border-radius: var(--radius-large); padding: 20px; }
+  .trend-card h3 { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
+  .trend-svg { width: 100%; height: 280px; }
+  .trend-svg .grid line { stroke: var(--antd-gray-3); stroke-width: 1; stroke-dasharray: 2 2; }
+  .trend-svg .axis text { font-size: 11px; fill: var(--color-text-tertiary); }
+  .trend-svg .line-1 { fill: none; stroke: var(--color-primary); stroke-width: 2; }
+  .trend-svg .line-2 { fill: none; stroke: var(--antd-orange-500); stroke-width: 2; }
+  .trend-svg .area-1 { fill: rgba(22, 119, 255, 0.10); }
+
+  .table-card { background: #fff; border: 1px solid var(--antd-gray-3); border-radius: var(--radius-large); padding: 20px; margin-bottom: 16px; }
+  .table-card h3 { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
+</style>
+</head>
+<body>
+<div class="antd-page">
+  <aside class="shell-side" style="grid-column: 1;">
+    <div class="shell-side-logo">
+      <div class="shell-side-logo-logo-mark" style="width:32px;height:32px;background:var(--color-primary);border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:16px;">J</div>
+      <div class="shell-side-logo-text">经营分析平台</div>
+    </div>
+    <nav class="shell-side-nav">
+      <div class="shell-nav-group-title">主数据</div>
+      <a class="shell-nav-item is-active" href="dashboard.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        首页看板
+      </a>
+      <a class="shell-nav-item" href="indicators-operating.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+        财务指标
+      </a>
+      <a class="shell-nav-item" href="transactions-overview.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+        往来分析
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        存货管理
+      </a>
+      <a class="shell-nav-item" href="reports-list.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+        分析报告
+      </a>
+
+      <div class="shell-nav-group-title">业务工具</div>
+      <a class="shell-nav-item" href="enterprise-lookup.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        企业信息查询
+      </a>
+
+      <div class="shell-nav-group-title">数据管理</div>
+      <a class="shell-nav-item" href="data-import.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        数据导入
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h12"/></svg>
+        重分类管理
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        维度管理
+      </a>
+
+      <div class="shell-nav-group-title">系统</div>
+      <a class="shell-nav-item" href="admin-users.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><circle cx="17" cy="7" r="3"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
+        用户管理
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+        角色权限
+      </a>
+    </nav>
+  </aside>
+
+  <main class="antd-content">
+    <header class="shell-header">
+      <div class="antd-breadcrumb">
+        <span>首页</span><span class="sep">/</span><span>经营分析</span><span class="sep">/</span><span class="current">关键指标</span>
+      </div>
+      <div class="shell-header-r">
+        <div class="antd-select" style="min-width: 160px;">浙江壹品慧生活集团</div>
+        <div class="period-pill">2026 财年 · 8月 ⌄</div>
+        <button class="antd-btn">刷新</button>
+        <div class="user-chip">
+          <div class="antd-avatar" style="background: var(--antd-brand-100); color: var(--color-primary);">张</div>
+          <div>
+            <div class="user-chip-name">张伟</div>
+            <div class="user-chip-role">财务总监</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="antd-content-body">
+      <!-- PageHead -->
+      <div class="antd-page-head">
+        <div>
+          <div class="antd-page-head-title">关键指标</div>
+          <div class="antd-page-head-desc">经营核心指标快照 · 月度变化</div>
+        </div>
+        <div class="antd-page-head-actions">
+          <div class="antd-segmented">
+            <div class="antd-segmented-item is-active">月</div>
+            <div class="antd-segmented-item">季</div>
+            <div class="antd-segmented-item">年</div>
+          </div>
+          <button class="antd-btn">导出</button>
+        </div>
+      </div>
+
+      <!-- 数据时效条 -->
+      <div class="antd-stale-bar antd-mb-4">
+        <span class="dot"></span>
+        <span class="antd-fw-600">数据更新于 8 分钟前</span>
+        <span class="text-secondary">下一批次同步：今日 18:00 · 已完成 92% 采集</span>
+        <a class="antd-card-extra" href="#" style="margin-left: var(--antd-space-4);">查看同步日志 →</a>
+      </div>
+
+      <!-- KPI 行：5 个 stat-tile，首项 is-orange + emphasis-warm-strong 强调 -->
+      <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--antd-space-4); margin-bottom: var(--antd-space-5);">
+        <div class="antd-stat-tile is-orange antd-emphasis-warm-strong">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label"><span class="antd-rank-badge is-1">1</span>本月营业收入 · Top</span>
+            <span class="antd-stat-tile-icon">¥</span>
+          </div>
+          <div class="antd-stat-tile-value">1,284.6<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-down">↑ 12.4%</span>
+            <span class="antd-text-tertiary antd-fs-sm">同比</span>
+            <div class="antd-stat-tile-spark">
+              <span style="height:30%"></span><span style="height:50%"></span><span style="height:42%"></span><span style="height:60%"></span><span style="height:55%"></span><span style="height:72%"></span><span style="height:68%"></span><span style="height:80%"></span><span style="height:74%"></span><span style="height:88%"></span><span style="height:82%"></span><span style="height:96%"></span>
+            </div>
+          </div>
+        </div>
+        <div class="antd-stat-tile is-green">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label"><span class="antd-rank-badge is-2">2</span>累计毛利</span>
+            <span class="antd-stat-tile-icon">毛利</span>
+          </div>
+          <div class="antd-stat-tile-value">462.3<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-down">↑ 8.7%</span>
+            <span class="antd-text-tertiary antd-fs-sm">同比</span>
+            <div class="antd-stat-tile-spark">
+              <span style="height:25%"></span><span style="height:32%"></span><span style="height:40%"></span><span style="height:48%"></span><span style="height:55%"></span><span style="height:60%"></span><span style="height:65%"></span><span style="height:70%"></span><span style="height:74%"></span><span style="height:80%"></span><span style="height:85%"></span><span style="height:92%"></span>
+            </div>
+          </div>
+        </div>
+        <div class="antd-stat-tile">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">费用合计</span>
+            <span class="antd-stat-tile-icon">费</span>
+          </div>
+          <div class="antd-stat-tile-value">286.5<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-flat">→ 0.3%</span>
+            <span class="antd-text-tertiary antd-fs-sm">同比</span>
+            <div class="antd-stat-tile-spark">
+              <span style="height:48%"></span><span style="height:42%"></span><span style="height:55%"></span><span style="height:38%"></span><span style="height:50%"></span><span style="height:32%"></span><span style="height:48%"></span><span style="height:55%"></span><span style="height:38%"></span><span style="height:50%"></span><span style="height:42%"></span><span style="height:48%"></span>
+            </div>
+          </div>
+        </div>
+        <div class="antd-stat-tile is-cyan">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">应收账款</span>
+            <span class="antd-stat-tile-icon">应</span>
+          </div>
+          <div class="antd-stat-tile-value">358.2<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-up">↑ 5.6%</span>
+            <span class="antd-text-tertiary antd-fs-sm">需关注</span>
+            <div class="antd-stat-tile-spark">
+              <span style="height:55%"></span><span style="height:60%"></span><span style="height:50%"></span><span style="height:65%"></span><span style="height:72%"></span><span style="height:60%"></span><span style="height:78%"></span><span style="height:74%"></span><span style="height:85%"></span><span style="height:80%"></span><span style="height:88%"></span><span style="height:95%"></span>
+            </div>
+          </div>
+        </div>
+        <div class="antd-stat-tile is-violet">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">预算完成率</span>
+            <span class="antd-stat-tile-icon">%</span>
+          </div>
+          <div class="antd-stat-tile-value">67.2<span class="unit">%</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-down">↑ 4.1 pp</span>
+            <span class="antd-text-tertiary antd-fs-sm">超计划</span>
+            <div class="antd-stat-tile-spark">
+              <span style="height:20%"></span><span style="height:32%"></span><span style="height:40%"></span><span style="height:48%"></span><span style="height:55%"></span><span style="height:60%"></span><span style="height:65%"></span><span style="height:70%"></span><span style="height:75%"></span><span style="height:80%"></span><span style="height:85%"></span><span style="height:90%"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 两栏：左 5×12 热力 + 右月度趋势折线 -->
+      <div class="two-col">
+        <div class="heatmap-card">
+          <h3>月度变化热力 <span class="meta">5 个核心指标 × 12 个月 · 色深=指标强度</span></h3>
+          <div class="heatmap-rows">
+            <!-- 5 行 × 12 列 = 60 个色块 -->
+            <div class="heatmap-row">
+              <div class="heatmap-row-label">营业收入</div>
+              <div class="heatmap-row-grid">
+                <div class="heatmap-cell lv-2"><span class="tip">1月 980万</span></div>
+                <div class="heatmap-cell lv-2"><span class="tip">2月 920万</span></div>
+                <div class="heatmap-cell lv-3"><span class="tip">3月 1,050万</span></div>
+                <div class="heatmap-cell lv-3"><span class="tip">4月 1,120万</span></div>
+                <div class="heatmap-cell lv-4"><span class="tip">5月 1,180万</span></div>
+                <div class="heatmap-cell lv-4"><span class="tip">6月 1,210万</span></div>
+                <div class="heatmap-cell lv-5"><span class="tip">7月 1,260万</span></div>
+                <div class="heatmap-cell lv-5"><span class="tip">8月 1,285万</span></div>
+                <div class="heatmap-cell lv-1"><span class="tip">9月 待录入</span></div>
+                <div class="heatmap-cell lv-1"><span class="tip">10月 待录入</span></div>
+                <div class="heatmap-cell lv-1"><span class="tip">11月 待录入</span></div>
+                <div class="heatmap-cell lv-1"><span class="tip">12月 待录入</span></div>
+              </div>
+              <div></div>
+            </div>
+            <div class="heatmap-row">
+              <div class="heatmap-row-label">毛利</div>
+              <div class="heatmap-row-grid">
+                <div class="heatmap-cell lv-1"><span class="tip">1月 320万</span></div>
+                <div class="heatmap-cell lv-2"><span class="tip">2月 340万</span></div>
+                <div class="heatmap-cell lv-2"><span class="tip">3月 360万</span></div>
+                <div class="heatmap-cell lv-3"><span class="tip">4月 380万</span></div>
+                <div class="heatmap-cell lv-3"><span class="tip">5月 395万</span></div>
+                <div class="heatmap-cell lv-4"><span class="tip">6月 410万</span></div>
+                <div class="heatmap-cell lv-4"><span class="tip">7月 430万</span></div>
+                <div class="heatmap-cell lv-5"><span class="tip">8月 462万</span></div>
+                <div class="heatmap-cell lv-1"><span class="tip">9月 待录入</span></div>
+                <div class="heatmap-cell lv-1"><span class="tip">10月 待录入</span></div>
+                <div class="heatmap-cell lv-1"><span class="tip">11月 待录入</span></div>
+                <div class="heatmap-cell lv-1"><span class="tip">12月 待录入</span></div>
+              </div>
+              <div></div>
+            </div>
+            <div class="heatmap-row">
+              <div class="heatmap-row-label">毛利率</div>
+              <div class="heatmap-row-grid">
+                <div class="heatmap-cell lv-2"><span class="tip">1月 32.7%</span></div>
+                <div class="heatmap-cell lv-3"><span class="tip">2月 36.9%</span></div>
+                <div class="heatmap-cell lv-3"><span class="tip">3月 34.3%</span></div>
+                <div class="heatmap-cell lv-4"><span class="tip">4月 33.9%</span></div>
+                <div class="heatmap-cell lv-4"><span class="tip">5月 33.5%</span></div>
+                <div class="heatmap-cell lv-4"><span class="tip">6月 33.9%</span></div>
+                <div class="heatmap-cell lv-5"><span class="tip">7月 34.1%</span></div>
+                <div class="heatmap-cell lv-5"><span class="tip">8月 36.0%</span></div>
+                <div class="heatmap-cell lv-1"><span class="tip">9月 待录入</span></div>
+                <div class="heatmap-cell lv-1"><span class="tip">10月 待录入</span></div>
+                <div class="heatmap-cell lv-1"><span class="tip">11月 待录入</span></div>
+                <div class="heatmap-cell lv-1"><span class="tip">12月 待录入</span></div>
+              </div>
+              <div></div>
+            </div>
+            <div class="heatmap-row">
+              <div class="heatmap-row-label">费用</div>
+              <div class="heatmap-row-grid">
+                <div class="heatmap-cell lv-3"><span class="tip">1月 230万</span></div>
+                <div class="heatmap-cell lv-2"><span class="tip">2月 220万</span></div>
+                <div class="heatmap-cell lv-3"><span class="tip">3月 245万</span></div>
+                <div class="heatmap-cell lv-3"><span class="tip">4月 260万</span></div>
+                <div class="heatmap-cell lv-3"><span class="tip">5月 255万</span></div>
+                <div class="heatmap-cell lv-3"><span class="tip">6月 270万</span></div>
+                <div class="heatmap-cell lv-4"><span class="tip">7月 280万</span></div>
+                <div class="heatmap-cell lv-4"><span class="tip">8月 287万</span></div>
+                <div class="heatmap-cell lv-1"><span class="tip">9月 待录入</span></div>
+                <div class="heatmap-cell lv-1"><span class="tip">10月 待录入</span></div>
+                <div class="heatmap-cell lv-1"><span class="tip">11月 待录入</span></div>
+                <div class="heatmap-cell lv-1"><span class="tip">12月 待录入</span></div>
+              </div>
+              <div></div>
+            </div>
+            <div class="heatmap-row">
+              <div class="heatmap-row-label">净利率</div>
+              <div class="heatmap-row-grid">
+                <div class="heatmap-cell lv-2"><span class="tip">1月 12.4%</span></div>
+                <div class="heatmap-cell lv-2"><span class="tip">2月 13.0%</span></div>
+                <div class="heatmap-cell lv-3"><span class="tip">3月 13.5%</span></div>
+                <div class="heatmap-cell lv-3"><span class="tip">4月 13.8%</span></div>
+                <div class="heatmap-cell lv-3"><span class="tip">5月 13.5%</span></div>
+                <div class="heatmap-cell lv-4"><span class="tip">6月 14.2%</span></div>
+                <div class="heatmap-cell lv-4"><span class="tip">7月 14.5%</span></div>
+                <div class="heatmap-cell lv-5"><span class="tip">8月 14.8%</span></div>
+                <div class="heatmap-cell lv-1"><span class="tip">9月 待录入</span></div>
+                <div class="heatmap-cell lv-1"><span class="tip">10月 待录入</span></div>
+                <div class="heatmap-cell lv-1"><span class="tip">11月 待录入</span></div>
+                <div class="heatmap-cell lv-1"><span class="tip">12月 待录入</span></div>
+              </div>
+              <div></div>
+            </div>
+          </div>
+          <div class="heatmap-row-axis">
+            <span>1月</span><span>2月</span><span>3月</span><span>4月</span><span>5月</span><span>6月</span><span>7月</span><span>8月</span><span>9月</span><span>10月</span><span>11月</span><span>12月</span>
+          </div>
+          <div class="heatmap-legend">
+            <span>低</span>
+            <span class="sw" style="background: #fff7e6;"></span>
+            <span class="sw" style="background: #ffe7ba;"></span>
+            <span class="sw" style="background: #ffc069;"></span>
+            <span class="sw" style="background: #fa8c16;"></span>
+            <span class="sw" style="background: #d46b08;"></span>
+            <span>高</span>
+          </div>
+        </div>
+
+        <div class="trend-card">
+          <h3>月度趋势</h3>
+          <div class="chart-legend" style="display: flex; gap: 16px; font-size: 12px; color: var(--color-text-secondary); margin-bottom: 8px;">
+            <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; background: var(--color-primary); border-radius: 2px;"></span>营业收入</span>
+            <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; background: var(--antd-orange-500); border-radius: 2px;"></span>毛利</span>
+          </div>
+          <svg class="trend-svg" viewBox="0 0 280 320" preserveAspectRatio="xMidYMid meet">
+            <g class="grid">
+              <line x1="30" y1="40" x2="280" y2="40"/>
+              <line x1="30" y1="100" x2="280" y2="100"/>
+              <line x1="30" y1="160" x2="280" y2="160"/>
+              <line x1="30" y1="220" x2="280" y2="220"/>
+              <line x1="30" y1="280" x2="280" y2="280"/>
+            </g>
+            <g class="axis">
+              <text x="0" y="44">1500</text>
+              <text x="0" y="104">1200</text>
+              <text x="0" y="164">900</text>
+              <text x="0" y="224">600</text>
+              <text x="0" y="284">300</text>
+              <text x="50" y="310">1月</text>
+              <text x="80" y="310">3月</text>
+              <text x="110" y="310">5月</text>
+              <text x="140" y="310">7月</text>
+              <text x="180" y="310">9月</text>
+              <text x="220" y="310">11月</text>
+              <text x="255" y="310">12月</text>
+            </g>
+            <path class="area-1" d="M50,200 L70,210 L90,180 L110,170 L130,160 L150,150 L170,140 L190,135 L210,125 L230,115 L250,105 L270,95 L270,280 L50,280 Z"/>
+            <path class="line-1" d="M50,200 L70,210 L90,180 L110,170 L130,160 L150,150 L170,140 L190,135 L210,125 L230,115 L250,105 L270,95"/>
+            <path class="line-2" d="M50,235 L70,232 L90,225 L110,218 L130,215 L150,210 L170,205 L190,195 L210,188 L230,180 L250,170 L270,160"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- 底部明细表 -->
+      <div class="table-card">
+        <h3>关键指标明细 <span class="antd-overline" style="margin-left: 8px;">科目 / 本期 / 同比 / 环比 / 趋势</span></h3>
+        <table class="antd-table antd-table-zebra antd-table-density-compact">
+          <thead>
+            <tr>
+              <th>科目</th>
+              <th class="num">本期</th>
+              <th class="num">同比</th>
+              <th class="num">环比</th>
+              <th>12月趋势</th>
+              <th>状态</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>营业收入</td>
+              <td class="num">1,284.6 万</td>
+              <td class="num antd-text-success">↑ 12.4%</td>
+              <td class="num antd-text-success">↑ 1.9%</td>
+              <td><div class="antd-mini-bar is-orange" style="width:96px;"><i style="width:78%;"></i></div></td>
+              <td><span class="antd-pill is-orange">Top1</span></td>
+            </tr>
+            <tr>
+              <td>毛利</td>
+              <td class="num">462.3 万</td>
+              <td class="num antd-text-success">↑ 8.7%</td>
+              <td class="num antd-text-success">↑ 3.2%</td>
+              <td><div class="antd-mini-bar is-green" style="width:96px;"><i style="width:65%;"></i></div></td>
+              <td><span class="antd-pill is-green">良好</span></td>
+            </tr>
+            <tr>
+              <td>销售费用</td>
+              <td class="num">98.4 万</td>
+              <td class="num antd-text-success">↓ 2.1%</td>
+              <td class="num">→ 0.0%</td>
+              <td><div class="antd-mini-bar" style="width:96px;"><i style="width:42%;"></i></div></td>
+              <td><span class="antd-pill is-blue">正常</span></td>
+            </tr>
+            <tr>
+              <td>管理费用</td>
+              <td class="num">112.6 万</td>
+              <td class="num">↑ 1.4%</td>
+              <td class="num antd-text-success">↓ 0.8%</td>
+              <td><div class="antd-mini-bar" style="width:96px;"><i style="width:48%;"></i></div></td>
+              <td><span class="antd-pill is-blue">正常</span></td>
+            </tr>
+            <tr>
+              <td>研发投入</td>
+              <td class="num">75.5 万</td>
+              <td class="num antd-text-success">↑ 6.3%</td>
+              <td class="num antd-text-success">↑ 2.0%</td>
+              <td><div class="antd-mini-bar is-green" style="width:96px;"><i style="width:60%;"></i></div></td>
+              <td><span class="antd-pill is-green">增长</span></td>
+            </tr>
+            <tr>
+              <td>财务费用</td>
+              <td class="num">12.6 万</td>
+              <td class="num antd-text-success">↓ 4.5%</td>
+              <td class="num antd-text-success">↓ 1.1%</td>
+              <td><div class="antd-mini-bar" style="width:96px;"><i style="width:18%;"></i></div></td>
+              <td><span class="antd-pill is-blue">正常</span></td>
+            </tr>
+            <tr>
+              <td>净利润</td>
+              <td class="num">190.1 万</td>
+              <td class="num antd-text-success">↑ 11.2%</td>
+              <td class="num antd-text-success">↑ 2.6%</td>
+              <td><div class="antd-mini-bar is-green" style="width:96px;"><i style="width:70%;"></i></div></td>
+              <td><span class="antd-pill is-orange">Top2</span></td>
+            </tr>
+            <tr>
+              <td>应收账款</td>
+              <td class="num">358.2 万</td>
+              <td class="num antd-text-warning">↑ 5.6%</td>
+              <td class="num antd-text-warning">↑ 3.1%</td>
+              <td><div class="antd-mini-bar is-orange" style="width:96px;"><i style="width:55%;"></i></div></td>
+              <td><span class="antd-pill is-red">需关注</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

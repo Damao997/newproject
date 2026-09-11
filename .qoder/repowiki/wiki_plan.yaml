@@ -1,0 +1,22 @@
+version: 1
+
+scope:
+  include: []
+  exclude:
+    - "docs/archive/**"
+
+repowiki:
+  template: "architecture"
+  notes:
+    - text: "本项目为浙江壹品慧财年经营数据分析平台，定位'Excel进、看板/报表出'的内部管理口径财务数据平台，单位统一为万元/人民币。"
+    - text: "后端技术栈：Express 4 + Prisma 5 + PostgreSQL 15 + JWT（access 15min + refresh 7day 轮转）+ DeepSeek API（SSE 流式）。"
+    - text: "中间件执行链顺序：helmet → cors → express.json → rate-limit → auth(JWT+黑名单) → permission(默认拒绝) → scope(Prisma extension) → softDelete → audit → Service → Prisma → PostgreSQL。"
+    - text: "计算类指标使用安全公式解析（白名单算子 +-*/()，禁止 eval），同比/环比由后端实时计算不存库。"
+    - text: "AI 双管道架构：polish（文本→脱敏→LLM→还原）/ analyze（结构化→计算→脱敏→LLM→生成），脱敏规则：绝对金额→区间，公司名→动态映射。"
+
+knowledgecard:
+  notes:
+    - text: "知识卡聚焦后端核心模块：server/src/routes（7个路由文件）、server/src/services（12个业务服务）、server/src/middleware（10个中间件）、server/src/lib（工具库）。"
+    - text: "路由层按业务域划分：auth（认证）、admin（用户/角色管理）、data（数据导入/浏览/指标）、indicators（财务指标）、dashboard（首页看板）、reports（分析报告）、ai（AI润色/分析）。"
+    - text: "Service 层核心：AggregationService（汇总计算+公式引擎）、DataService（CRUD+宽表转长表）、ImportService（Excel解析+unpivot）、AIProxyService（DeepSeek代理+脱敏）、IndicatorsService（同比/环比/达成率）。"
+    - text: "权限模型：Resource 三段式编码 '模块:子页面:操作'，5角色×8模块×6操作矩阵，permission 中间件默认拒绝策略。"

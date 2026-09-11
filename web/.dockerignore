@@ -1,0 +1,25 @@
+# web/.dockerignore
+# 排除不参与镜像构建的内容，缩小构建上下文
+
+node_modules
+dist
+coverage
+
+# 本地环境文件
+.env
+.env.*
+!.env.example
+
+# 开发期残留/演示文件，不进生产镜像
+demo.html
+
+*.log
+npm-debug.log*
+
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+Dockerfile
+.dockerignore

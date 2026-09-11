@@ -1,0 +1,1033 @@
+// 浙江壹品慧财年经营数据分析平台 — Prisma Schema
+// 依据 docs/plans/数据模型规范.md v1.1 落地。
+//
+// 关系策略（增量交付）：
+//   - 认证/RBAC 图（user/role/permission/token_blacklist/company(user)/audit_log(user)）
+//     使用完整 Prisma 关系，本期已实现并测试。
+//   - 其余基座表（维度/事实/业务/报告/指标）以标量外键字段 + 索引 + 唯一约束落地，
+//     数据库级外键关系在对应业务模块实现时逐步形式化，避免一次性引入大量反向关系。
+// 命名规范（详见 docs/plans/数据模型规范.md「二、命名规范」，pre-commit 由 scripts/check-schema-naming.mjs 守护）：
+//   - 表：snake_case 单数，模型 PascalCase + 强制 @@map；列：snake_case，字段 camelCase，多词字段强制 @map。
+//   - 前缀：fact_ 仅限三张导入事实表；ai_ 为 AI 域配置表；其余不加前缀。
+//   - 后缀速查：_log=append-only 流水；_version=内容快照；_history=定义变更留痕；
+//     _map=N:N 关联；_scheme=配置方案；_record=周期记录；_detail=行级明细。
+//   - 新表禁用 PG 保留字（存量 user 例外）；枚举值小写 snake_case（存量 AgingBucket 例外）。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// 枚举
+// ============================================================
+
+enum EntityType {
+  single
+  summary
+}
+
+enum SubjectType {
+  operating
+  static
+  cashflow
+  transaction
+  overview
+}
+
+enum Direction {
+  debit
+  credit
+}
+
+// 科目值类型：金额（万元）/ 数量（户、天等）/ 比率（0-1 小数，展示乘 100 加 %）
+enum ValueType {
+  amount
+  quantity
+  ratio
+}
+
+// 权限操作类型：与 seed.ts PERMISSIONS 的 action 值域一一对应，
+// 由库级枚举兜底，防止拼写错误的权限记录静默成为永不命中的死权限。
+enum PermissionAction {
+  view
+  create
+  update
+  delete
+  export
+  import
+  approve
+}
+
+enum RecordStatus {
+  active
+  inactive
+}
+
+enum PeriodApplicableType {
+  operating
+  static
+  cashflow
+}
+
+enum DimType {
+  fiscal_year
+  period
+  business_unit
+  region
+  project
+}
+
+enum AgingBucket {
+  B0_1M    @map("0_1M")
+  B1_3M    @map("1_3M")
+  B3_6M    @map("3_6M")
+  B6_12M   @map("6_12M")
+  B1_2Y    @map("1_2Y")
+  B2Y_PLUS @map("2Y_PLUS")
+}
+
+enum CollectionMethod {
+  phone
+  letter
+  legal
+}
+
+enum CollectionStatus {
+  pending
+  collecting
+  partial
+  full
+  bad_debt
+}
+
+enum ReportStatus {
+  draft
+  published
+  archived
+}
+
+enum MetricDataType {
+  data
+  calc
+  display
+}
+
+enum ImportStatus {
+  pending
+  processing
+  success
+  partial
+  failed
+}
+
+enum LifecycleStatus {
+  draft
+  active
+  archived
+  purged
+}
+
+enum ImportDataType {
+  operating
+  static
+  cashflow
+  budget
+  transaction
+  inventory
+}
+
+enum DesensitizeType {
+  amount
+  counterparty
+  subject
+}
+
+// ============================================================
+// 三、维度表（主数据）
+// ============================================================
+
+// 3.1 公司主体表
+model Company {
+  id               String       @id @default(uuid())
+  code             String       @unique
+  name             String
+  shortName        String?      @map("short_name") @db.VarChar(100)
+  entityType       EntityType   @map("entity_type")
+  legalEntity      String?      @map("legal_entity")
+  managementEntity String?      @map("management_entity")
+  businessUnit     String?      @map("business_unit")
+  parentCode       String?      @map("parent_code")
+  status           RecordStatus @default(active)
+  orderNo          Int          @default(0) @map("order_no")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+  createdBy        String?      @map("created_by")
+  updatedBy        String?      @map("updated_by")
+
+  // 认证增量使用的关系
+  users User[]
+
+  @@index([parentCode])
+  @@index([status])
+  @@map("company")
+}
+
+// 3.2 汇总映射表
+model CompanyAggregationMap {
+  id                    String   @id @default(uuid())
+  summaryCompanyCode    String   @map("summary_company_code")
+  singleCompanyCode     String   @map("single_company_code")
+  isInternalElimination Boolean  @default(false) @map("is_internal_elimination")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@unique([summaryCompanyCode, singleCompanyCode])
+  @@index([singleCompanyCode])
+  @@map("company_aggregation_map")
+}
+
+// 3.3 科目体系表
+model AccountSubject {
+  id          String       @id @default(uuid())
+  code        String       @unique
+  name        String
+  subjectType SubjectType  @map("subject_type")
+  level       Int
+  parentCode  String?      @map("parent_code")
+  category    String
+  direction   Direction
+  valueType   ValueType    @default(amount) @map("value_type")
+  isLeaf      Boolean      @map("is_leaf")
+  status      RecordStatus @default(active)
+  orderNo     Int          @default(0) @map("order_no")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  @@index([parentCode])
+  @@index([subjectType, level])
+  @@index([status])
+  @@map("account_subject")
+}
+
+// 3.4 品类配置表（品类预算达成分析：品类 ↔ 收入科目名关键词，支持科目树变化后由管理员维护）
+model ProductCategory {
+  id             String       @id @default(uuid())
+  code           String       @unique
+  name           String
+  subjectKeyword String       @map("subject_keyword")
+  sortOrder      Int          @default(0) @map("sort_order")
+  status         RecordStatus @default(active)
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@map("product_category")
+}
+
+// 3.4-2 关键指标产品配置表（壹品慧关键指标表「按产品分」明细：产品 ↔ 收入科目名关键词，
+// 独立于品类配置，支持科目树变化后由管理员维护）
+model KeyMetricsProduct {
+  id             String       @id @default(uuid())
+  code           String       @unique
+  name           String
+  subjectKeyword String       @map("subject_keyword")
+  sortOrder      Int          @default(0) @map("sort_order")
+  status         RecordStatus @default(active)
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@map("key_metrics_product")
+}
+
+// 3.4-1 运营费用映射表（运营费用分析：展示指标 ↔ 经营科目编码集合，支持科目树变化后由管理员维护）
+// 软删除（deletedAt）：删除的默认映射不随 seed 复活（种子仅创建"无墓碑且缺失"的默认映射）
+model ExpenseSubjectMapping {
+  id           String       @id @default(uuid())
+  code         String       @unique
+  name         String
+  subjectCodes String[]     @map("subject_codes")
+  sortOrder    Int          @default(0) @map("sort_order")
+  status       RecordStatus @default(active)
+  deletedAt    DateTime?    @map("deleted_at")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([deletedAt])
+  @@map("expense_subject_mapping")
+}
+
+// 3.5 主体展示配置表（主体预算达成分析：配置展示的主体/排序/启停，支持公司变化后由管理员维护）
+model SubjectBudgetConfig {
+  id          String       @id @default(uuid())
+  companyCode String       @unique @map("company_code")
+  sortOrder   Int          @default(0) @map("sort_order")
+  status      RecordStatus @default(active)
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@map("subject_budget_config")
+}
+
+// 3.5-1 预算月度占比配置表（看板月度预算按占比拆分；未配置财年回退默认占比）
+model BudgetRatioConfig {
+  id         String   @id @default(uuid())
+  fiscalYear String   @unique @map("fiscal_year") // FY2026
+  ratios     Json     @map("ratios") @db.JsonB // 12 项，按财年 4月~次年3月顺序，和为 100
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("budget_ratio_config")
+}
+
+// 3.6 期间维度表
+model PeriodDimension {
+  id                 String               @id @default(uuid())
+  code               String               @unique
+  name               String
+  applicableType     PeriodApplicableType @map("applicable_type")
+  isCalculated       Boolean              @default(false) @map("is_calculated")
+  calculationFormula String?              @map("calculation_formula")
+  orderNo            Int                  @default(0) @map("order_no")
+
+  @@map("period_dimension")
+}
+
+// 3.4-1 往来会计科目主数据（集团统一科目表 CG_COA_ACCOUNT 中六大往来相关科目）
+model TransactionAccount {
+  code            String       @id // 12 位科目段值，如 112202010101
+  name            String // 科目说明
+  transactionType String       @map("transaction_type") // 六大往来类型
+  direction       String // AR / AP
+  note            String? // 科目表附加说明
+  orderNo         Int          @default(0) @map("order_no")
+  status          RecordStatus @default(active)
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  @@index([transactionType])
+  @@map("transaction_account")
+}
+
+// 3.7 客商表
+model Counterparty {
+  id            String       @id @default(uuid())
+  code          String       @unique
+  name          String
+  companyCode   String       @map("company_code")
+  isInternal    Boolean      @default(false) @map("is_internal")
+  partyType     String       @default("external") @map("party_type") // internal/related/external
+  contactPerson String?      @map("contact_person")
+  contactPhone  String?      @map("contact_phone")
+  status        RecordStatus @default(active)
+  createdAt     DateTime     @default(now()) @map("created_at")
+
+  @@index([companyCode])
+  @@index([status])
+  @@map("counterparty")
+}
+
+// 3.8 维度通用表
+model Dimension {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  dimType     DimType  @map("dim_type")
+  level       Int      @default(0)
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("dimension")
+}
+
+model DimensionMember {
+  id          String  @id @default(uuid())
+  dimensionId String  @map("dimension_id")
+  code        String
+  name        String
+  parentCode  String? @map("parent_code")
+  orderNo     Int     @default(0) @map("order_no")
+
+  @@index([dimensionId])
+  @@map("dimension_member")
+}
+
+// ============================================================
+// 四、事实表
+// ============================================================
+
+// 4.1 经营数据事实表
+model FactOperating {
+  id            String   @id @default(uuid())
+  batchId       String   @map("batch_id")
+  companyCode   String   @map("company_code")
+  accountCode   String   @map("account_code")
+  period        String
+  periodDimCode String   @map("period_dim_code")
+  fiscalYear    String   @map("fiscal_year")
+  value         Decimal  @db.Decimal(18, 4)
+  rawJson       Json?    @map("raw_json") @db.JsonB
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([companyCode, accountCode, period, periodDimCode, batchId])
+  @@index([batchId])
+  @@index([accountCode, period])
+  @@map("fact_operating")
+}
+
+// 4.2 静态数据事实表
+model FactStatic {
+  id            String   @id @default(uuid())
+  batchId       String   @map("batch_id")
+  companyCode   String   @map("company_code")
+  accountCode   String   @map("account_code")
+  snapshotDate  DateTime @map("snapshot_date") @db.Date
+  periodDimCode String   @map("period_dim_code")
+  fiscalYear    String   @map("fiscal_year")
+  value         Decimal  @db.Decimal(18, 4)
+  rawJson       Json?    @map("raw_json") @db.JsonB
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([companyCode, accountCode, snapshotDate, periodDimCode, batchId])
+  @@index([batchId])
+  @@map("fact_static")
+}
+
+// 4.3 年度预算事实表
+model FactBudget {
+  id          String   @id @default(uuid())
+  batchId     String   @map("batch_id")
+  companyCode String   @map("company_code")
+  accountCode String   @map("account_code")
+  fiscalYear  String   @map("fiscal_year")
+  period      String
+  value       Decimal  @db.Decimal(18, 4)
+  rawJson     Json?    @map("raw_json") @db.JsonB
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([companyCode, accountCode, fiscalYear, period, batchId])
+  @@index([batchId])
+  @@map("fact_budget")
+}
+
+// 4.4 导入数据快照表（批次激活覆盖时的被删行备份，支撑批次回滚）
+// 仅 operating/static/cashflow/budget 四类（cashflow 与 operating 同存 fact_operating 按 period 备份）；
+// 不设同键唯一约束，允许同一批次被多次覆盖产生多份快照
+model FactSnapshot {
+  id                String         @id @default(uuid())
+  batchId           String         @map("batch_id") // 行原属批次（回滚恢复目标）
+  archivedByBatchId String?        @map("archived_by_batch_id") // 因哪次激活被覆盖（追溯）
+  template          ImportDataType @map("template") // operating/static/cashflow/budget（v1 不覆盖 transaction）
+  companyCode       String         @map("company_code")
+  accountCode       String         @map("account_code")
+  period            String? // operating: period；budget: 财务期间
+  snapshotDate      DateTime?      @map("snapshot_date") @db.Date // static
+  fiscalYear        String?        @map("fiscal_year")
+  periodDimCode     String?        @map("period_dim_code") // operating/static 维度
+  value             Decimal        @db.Decimal(18, 4)
+  rawJson           Json?          @map("raw_json") @db.JsonB
+  archivedAt        DateTime       @default(now()) @map("archived_at")
+
+  @@index([batchId, template])
+  @@index([archivedByBatchId])
+  @@map("fact_snapshot")
+}
+
+// 4.5 重分类记录表（跨公司/科目归类调整的审计追溯，含行级快照支持撤销）
+model ReclassificationLog {
+  id                String    @id @default(uuid())
+  type              String // 'company' | 'subject' | 'subject_adjust'
+  templateType      String?   @map("template_type")
+  sourceCompany     String?   @map("source_company")
+  targetCompany     String?   @map("target_company")
+  sourceSubject     String?   @map("source_subject")
+  targetSubject     String?   @map("target_subject")
+  period            String?
+  periodFrom        String?   @map("period_from")
+  periodTo          String?   @map("period_to")
+  affectedRows      Int       @default(0) @map("affected_rows")
+  operatedBy        String    @map("operated_by")
+  revertedAt        DateTime? @map("reverted_at")
+  revertedBy        String?   @map("reverted_by")
+  // 批次替换/归档/清除导致快照引用失效时由批次变更流程联动标记（reason: rows_replaced | batch_inactive）
+  invalidatedAt     DateTime? @map("invalidated_at")
+  invalidatedBy     String?   @map("invalidated_by")
+  invalidatedReason String?   @map("invalidated_reason")
+  detail            Json?     @db.JsonB
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  @@index([type, createdAt])
+  @@map("reclassification_log")
+}
+
+// 汇总抵消调整：在汇总主体（如 ET0001）聚合口径上按科目/期间叠加抵消金额，
+// 解决内部公司间交易（如集团内现金流）在汇总层面的重复计算；单体报表不受影响。
+// 软删除（deletedAt）即撤销抵消，聚合查询只取未删除记录。
+model ConsolidationAdjustment {
+  id                 String    @id @default(uuid())
+  templateType       String    @map("template_type") // operating / cashflow（四维叠加口径同构）
+  summaryCompanyCode String    @map("summary_company_code")
+  accountCode        String    @map("account_code")
+  period             String // 单月 YYYY-MM
+  amount             Float // 万元，正=调增、负=调减，非 0
+  reason             String
+  createdBy          String    @map("created_by")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime? @map("updated_at")
+  updatedBy          String?   @map("updated_by")
+  deletedAt          DateTime? @map("deleted_at")
+
+  @@index([summaryCompanyCode, templateType, period, accountCode])
+  @@map("consolidation_adjustment")
+}
+
+// ============================================================
+// 五、业务表
+// ============================================================
+
+// 5.1 往来明细表（六大往来：应收/其他应收/预收/应付/其他应付/预付）
+model TransactionDetail {
+  id               String   @id @default(uuid())
+  batchId          String?  @map("batch_id")
+  companyCode      String   @map("company_code")
+  companyName      String?  @map("company_name")
+  transactionType  String   @map("transaction_type") // 应付账款/其他应付款/预付账款/应收账款/其他应收款/预收账款
+  direction        String // AR / AP
+  cutoffDate       String?  @map("cutoff_date") // 截止日期
+  counterpartyCode String   @map("counterparty_code")
+  counterpartyName String?  @map("counterparty_name")
+  accountCode      String   @map("account_code")
+  accountDesc      String?  @map("account_desc")
+  subCode          String?  @map("sub_code")
+  subName          String?  @map("sub_name")
+  sourceType       String?  @map("source_type")
+  documentNo       String?  @map("document_no")
+  documentLineNo   String?  @map("document_line_no")
+  bookingDate      String?  @map("booking_date")
+  dueDate          String?  @map("due_date")
+  internalArea     String?  @map("internal_area")
+  product          String?
+  productDesc      String?  @map("product_desc")
+  project          String?
+  projectDesc      String?  @map("project_desc")
+  remark           String?
+  agingDays        Int?     @map("aging_days")
+  openingBalance   Decimal  @default(0) @map("opening_balance") @db.Decimal(18, 2)
+  debitAmount      Decimal  @default(0) @map("debit_amount") @db.Decimal(18, 2)
+  creditAmount     Decimal  @default(0) @map("credit_amount") @db.Decimal(18, 2)
+  closingBalance   Decimal  @default(0) @map("closing_balance") @db.Decimal(18, 2)
+  // 账龄段（10段）
+  aging1m          Decimal  @default(0) @map("aging_1m") @db.Decimal(18, 2)
+  aging2m          Decimal  @default(0) @map("aging_2m") @db.Decimal(18, 2)
+  aging3m          Decimal  @default(0) @map("aging_3m") @db.Decimal(18, 2)
+  aging4m          Decimal  @default(0) @map("aging_4m") @db.Decimal(18, 2)
+  aging5m          Decimal  @default(0) @map("aging_5m") @db.Decimal(18, 2)
+  aging6m          Decimal  @default(0) @map("aging_6m") @db.Decimal(18, 2)
+  aging6mTo1y      Decimal  @default(0) @map("aging_6m_to_1y") @db.Decimal(18, 2)
+  aging1yTo2y      Decimal  @default(0) @map("aging_1y_to_2y") @db.Decimal(18, 2)
+  aging2yTo3y      Decimal  @default(0) @map("aging_2y_to_3y") @db.Decimal(18, 2)
+  aging3yPlus      Decimal  @default(0) @map("aging_3y_plus") @db.Decimal(18, 2)
+  agingTotal       Decimal  @default(0) @map("aging_total") @db.Decimal(18, 2)
+  // 内部往来标记
+  isInternal       Boolean  @default(false) @map("is_internal")
+  internalType     String?  @map("internal_type") // 内部抵消 / 内部关联(标记) / 外部
+  internalPeerCode String?  @map("internal_peer_code")
+  partyType        String   @default("external") @map("party_type") // internal/related/external
+  isEliminated     Boolean  @default(false) @map("is_eliminated")
+  isSettled        Boolean  @default(false) @map("is_settled")
+  sourceFile       String?  @map("source_file")
+  period           String?
+  rawJson          Json?    @map("raw_json") @db.JsonB
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@index([companyCode, transactionType])
+  @@index([counterpartyCode])
+  @@index([batchId])
+  @@index([isInternal, internalType])
+  @@index([partyType])
+  @@map("transaction_detail")
+}
+
+// 5.2 账龄记录表
+model AgingRecord {
+  id               String      @id @default(uuid())
+  companyCode      String      @map("company_code")
+  counterpartyCode String      @map("counterparty_code")
+  accountCode      String      @map("account_code")
+  period           String
+  bucketCode       AgingBucket @map("bucket_code")
+  amount           Decimal     @db.Decimal(18, 2)
+  createdAt        DateTime    @default(now()) @map("created_at")
+
+  @@index([companyCode, period])
+  @@map("aging_record")
+}
+
+// 5.3a 业务员表（催收计划归属业务员，按公司隔离；status=inactive 为停用软删除）
+model Salesman {
+  id          String       @id @default(uuid())
+  name        String
+  phone       String?
+  remark      String?
+  status      RecordStatus @default(active)   // active / inactive（停用）
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  @@index([status])
+  @@map("salesman")
+}
+
+// 5.3c 业务员-公司关联表（一个业务员可归属多个公司）
+model SalesmanCompany {
+  id          String   @id @default(uuid())
+  salesmanId  String   @map("salesman_id")
+  companyCode String   @map("company_code")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([salesmanId, companyCode])
+  @@index([companyCode])
+  @@map("salesman_company")
+}
+
+// 5.3 催收计划表
+model CollectionPlan {
+  id                      String           @id @default(uuid())
+  companyCode             String           @map("company_code")
+  counterpartyCode        String           @map("counterparty_code")
+  accountCode             String           @map("account_code")
+  overdueAmount           Decimal          @map("overdue_amount") @db.Decimal(18, 2)
+  plannedDate             DateTime         @map("planned_date") @db.Date
+  collectorId             String?          @map("collector_id")
+  method                  CollectionMethod
+  expectedAmount          Decimal?         @map("expected_amount") @db.Decimal(18, 2)
+  actualAmount            Decimal?         @map("actual_amount") @db.Decimal(18, 2)
+  status                  CollectionStatus @default(pending)
+  remark                  String?
+  billedUncollectedAmount Decimal?         @map("billed_uncollected_amount") @db.Decimal(18, 2)
+  salesmanId              String?          @map("salesman_id")
+  statusNote              String?          @map("status_note")
+  createdAt               DateTime         @default(now()) @map("created_at")
+
+  @@index([companyCode])
+  @@index([status])
+  @@map("collection_plan")
+}
+
+// 5.3b 客商扩展表（应收款台账：未创建催收计划时仍可补录业务员/已开票未收款）
+model CustomerExt {
+  id                      String   @id @default(uuid())
+  companyCode             String   @map("company_code")
+  counterpartyCode        String   @map("counterparty_code")
+  billedUncollectedAmount Decimal? @map("billed_uncollected_amount") @db.Decimal(18, 2)
+  salesmanId              String?  @map("salesman_id")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  @@unique([companyCode, counterpartyCode])
+  @@index([companyCode])
+  @@map("customer_ext")
+}
+
+// 5.4 催收记录表
+model CollectionLog {
+  id            String   @id @default(uuid())
+  planId        String   @map("plan_id")
+  actionTime    DateTime @map("action_time")
+  actionBy      String?  @map("action_by")
+  content       String
+  attachmentUrl String?  @map("attachment_url")
+
+  @@index([planId])
+  @@map("collection_log")
+}
+
+// 5.5 存货记录表
+model InventoryRecord {
+  id          String  @id @default(uuid())
+  batchId     String? @map("batch_id")
+  companyCode String  @map("company_code")
+  period      String
+  category    String
+  bookAmount  Decimal @map("book_amount") @db.Decimal(18, 2)
+  rawJson     Json?   @map("raw_json") @db.JsonB
+
+  @@index([companyCode, period])
+  @@map("inventory_record")
+}
+
+// ============================================================
+// 六、报告相关表
+// ============================================================
+
+model ReportTemplate {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  description String?
+  structure   Json     @db.JsonB
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("report_template")
+}
+
+model Report {
+  id             String       @id @default(uuid())
+  title          String
+  fiscalYear     String       @map("fiscal_year")
+  period         String
+  companyScope   Json         @map("company_scope") @db.JsonB
+  status         ReportStatus @default(draft)
+  currentVersion Int          @default(1) @map("current_version")
+  createdBy      String?      @map("created_by")
+  updatedBy      String?      @map("updated_by")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@map("report")
+}
+
+model ReportSection {
+  id         String   @id @default(uuid())
+  reportId   String   @map("report_id")
+  analysisId String?  @map("analysis_id")
+  title      String
+  content    String?
+  orderNo    Int      @default(0) @map("order_no")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([reportId])
+  @@index([analysisId])
+  @@map("report_section")
+}
+
+model ReportVersion {
+  id            String   @id @default(uuid())
+  reportId      String   @map("report_id")
+  versionNo     Int      @map("version_no")
+  snapshot      Json     @db.JsonB
+  changeSummary String?  @map("change_summary")
+  changedBy     String?  @map("changed_by")
+  changedAt     DateTime @default(now()) @map("changed_at")
+
+  @@unique([reportId, versionNo])
+  @@index([reportId])
+  @@map("report_version")
+}
+
+model ReportComment {
+  id        String   @id @default(uuid())
+  reportId  String   @map("report_id")
+  sectionId String?  @map("section_id")
+  userId    String   @map("user_id")
+  content   String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([reportId])
+  @@map("report_comment")
+}
+
+model ReportShare {
+  id         String    @id @default(uuid())
+  shareToken String    @unique @default(uuid()) @map("share_token")
+  reportId   String    @map("report_id")
+  createdBy  String?   @map("created_by")
+  expiresAt  DateTime? @map("expires_at")
+  viewCount  Int       @default(0) @map("view_count")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([reportId])
+  @@map("report_share")
+}
+
+// 6.7 单项分析表（公司 × 科目 × 期间）
+// 财务分析师针对某单体公司(EN)某科目撰写的单项分析，汇总报告通过
+// report_section.analysis_id 实时引用本表最新内容（见 docs/plans 分析报告模块设计）。
+model SubjectAnalysis {
+  id            String       @id @default(uuid())
+  companyCode   String       @map("company_code")
+  subjectCode   String       @map("subject_code")
+  subjectType   SubjectType  @map("subject_type")
+  fiscalYear    String       @map("fiscal_year")
+  period        String
+  title         String
+  content       String
+  metricContext Json?        @map("metric_context") @db.JsonB
+  status        RecordStatus @default(active)
+  createdBy     String?      @map("created_by")
+  updatedBy     String?      @map("updated_by")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  @@unique([companyCode, subjectCode, period])
+  @@index([companyCode, period])
+  @@index([subjectCode])
+  @@index([status])
+  @@map("subject_analysis")
+}
+
+// ============================================================
+// 七、系统表
+// ============================================================
+
+// 7.1 用户表
+model User {
+  id                  String       @id @default(uuid())
+  username            String       @unique
+  displayName         String       @map("display_name")
+  email               String?
+  passwordHash        String       @map("password_hash")
+  roleId              String       @map("role_id")
+  companyCode         String?      @map("company_code")
+  orgScopeBu          Json?        @map("org_scope_bu") @db.JsonB
+  // 多选数据范围：公司编码数组（可混合 EN 单体与 ET 汇总），优先于 companyCode 生效
+  dataScopeCodes      Json?        @map("data_scope_codes") @db.JsonB
+  status              RecordStatus @default(active)
+  // 首次登录强制改密：管理员创建/重置密码后置 true，改密成功后置 false
+  mustChangePassword  Boolean      @default(false) @map("must_change_password")
+  // 多会话刷新令牌 jti 列表（Json 数组）：任一有效即放行，登录追加、登出/改密轮转移除
+  refreshTokenJtiList Json?        @map("refresh_token_jti_list") @db.JsonB
+  // 「7 天内免登录」持久令牌：仅存 SHA-256 哈希，明文只在客户端 localStorage；登录勾选时签发，登出/改密时清空
+  persistentLoginTokenHash String?   @map("persistent_login_token_hash")
+  persistentLoginExpiresAt DateTime? @map("persistent_login_expires_at")
+  persistentLoginCreatedAt DateTime? @map("persistent_login_created_at")
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @updatedAt @map("updated_at")
+
+  role           Role             @relation(fields: [roleId], references: [id])
+  company        Company?         @relation(fields: [companyCode], references: [code])
+  tokenBlacklist TokenBlacklist[]
+  auditLogs      AuditLog[]
+
+  @@index([roleId])
+  @@index([companyCode])
+  @@index([status])
+  @@index([persistentLoginTokenHash])
+  @@map("user")
+}
+
+// 7.2 角色表
+model Role {
+  id          String       @id @default(uuid())
+  code        String       @unique
+  name        String
+  description String?
+  isSystem    Boolean      @default(false) @map("is_system")
+  scopeValue  String       @map("scope_value")
+  status      RecordStatus @default(active)
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  users       User[]
+  permissions Permission[]
+
+  @@map("role")
+}
+
+// 7.3 权限表
+model Permission {
+  id         String           @id @default(uuid())
+  roleId     String           @map("role_id")
+  resource   String
+  action     PermissionAction
+  scopeType  String?          @map("scope_type")
+  scopeValue String?          @map("scope_value")
+  createdAt  DateTime         @default(now()) @map("created_at")
+
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, resource, action])
+  @@index([roleId])
+  @@map("permission")
+}
+
+// 7.4 Token 黑名单表
+model TokenBlacklist {
+  id        String   @id @default(uuid())
+  jti       String   @unique
+  userId    String   @map("user_id")
+  expiredAt DateTime @map("expired_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiredAt])
+  @@map("token_blacklist")
+}
+
+// 7.5 指标表
+model Metric {
+  id                 String         @id @default(uuid())
+  code               String         @unique
+  name               String
+  category           String
+  dataType           MetricDataType @map("data_type")
+  formula            String?
+  dependsOn          Json?          @map("depends_on") @db.JsonB
+  sourceAccountCodes Json?          @map("source_account_codes") @db.JsonB
+  version            Int            @default(1)
+  status             RecordStatus   @default(active)
+  createdBy          String?        @map("created_by")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+
+  @@index([dataType])
+  @@index([status])
+  @@map("metric")
+}
+
+// 7.6 指标口径历史表
+model MetricDefinitionHistory {
+  id          String   @id @default(uuid())
+  metricId    String   @map("metric_id")
+  version     Int
+  formula     String
+  description String?
+  changedBy   String   @map("changed_by")
+  changedAt   DateTime @default(now()) @map("changed_at")
+  approvedBy  String?  @map("approved_by")
+
+  @@index([metricId])
+  @@map("metric_definition_history")
+}
+
+// 7.7 导入批次表
+model ImportBatch {
+  id              String          @id @default(uuid())
+  fileName        String          @map("file_name")
+  uploadedById    String?         @map("uploaded_by_id")
+  uploadedAt      DateTime        @default(now()) @map("uploaded_at")
+  fiscalYear      String?         @map("fiscal_year")
+  status          ImportStatus
+  rowCount        Int             @default(0) @map("row_count")
+  detailCount     Int             @default(0) @map("detail_count")
+  errorCount      Int             @default(0) @map("error_count")
+  sourceType      String?         @map("source_type")
+  fileHash        String?         @map("file_hash")
+  dataType        ImportDataType  @map("data_type")
+  lifecycleStatus LifecycleStatus @default(draft) @map("lifecycle_status")
+  errorsJson      Json?           @map("errors_json") @db.JsonB
+  // 往来导入申报覆盖范围：[{companyCode, period, transactionType, recordCount}]，含 0 条的空 Sheet，供覆盖矩阵区分“已导入无数据”与“缺失”
+  coverageJson    Json?           @map("coverage_json") @db.JsonB
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  @@index([dataType, lifecycleStatus])
+  @@map("import_batch")
+}
+
+// 7.8 映射方案表
+model MappingScheme {
+  id        String         @id @default(uuid())
+  name      String
+  ownerId   String?        @map("owner_id")
+  columnMap Json           @map("column_map") @db.JsonB
+  dataType  ImportDataType @map("data_type")
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  @@map("mapping_scheme")
+}
+
+// 7.9 审计日志表
+// 注：生产环境按月分区 + 独立账号仅 INSERT/SELECT，见 prisma/init-audit.sql。
+// 本期以普通表落地，保证开箱可用。
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?  @map("user_id")
+  module    String
+  action    String
+  targetId  String?  @map("target_id")
+  detail    Json?    @db.JsonB
+  ip        String?
+  userAgent String?  @map("user_agent") @db.VarChar(512)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([module, action, createdAt])
+  @@map("audit_log")
+}
+
+// 7.10 AI 脱敏配置表
+model AiDesensitizeConfig {
+  id          String          @id @default(uuid())
+  configType  DesensitizeType @map("config_type")
+  pattern     String
+  replacement String
+  enabled     Boolean         @default(true)
+  priority    Int             @default(0)
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  @@map("ai_desensitize_config")
+}
+
+// 7.11 预警表（预留）
+model Alert {
+  id               String   @id @default(uuid())
+  metricCode       String?  @map("metric_code")
+  businessUnitCode String?  @map("business_unit_code")
+  periodCode       String?  @map("period_code")
+  type             String?
+  threshold        Decimal? @db.Decimal(18, 2)
+  actualValue      Decimal? @map("actual_value") @db.Decimal(18, 2)
+  budgetValue      Decimal? @map("budget_value") @db.Decimal(18, 2)
+  level            String?
+  recipientId      String?  @map("recipient_id")
+  triggeredAt      DateTime @default(now()) @map("triggered_at")
+  acknowledged     Boolean  @default(false)
+
+  @@map("alert")
+}
+
+// ============================================================
+// 八、其他工具
+// ============================================================
+
+// 8.1 企业工商信息缓存表（外部 Provider 查询结果，带有效期）
+model EnterpriseInfo {
+  id                String   @id @default(uuid())
+  creditCode        String   @unique @map("credit_code") // 统一社会信用代码
+  name              String // 企业名称
+  legalPerson       String?  @map("legal_person") // 法定代表人
+  registeredCapital String?  @map("registered_capital") // 注册资本（原样字符串）
+  establishDate     String?  @map("establish_date") // 成立日期 YYYY-MM-DD
+  status            String? // 经营状态（在业/注销/吊销等）
+  companyType       String?  @map("company_type") // 企业类型
+  industry          String? // 所属行业
+  registeredAddress String?  @map("registered_address") // 注册地址
+  businessScope     String?  @map("business_scope") // 经营范围
+  raw               Json?    @db.JsonB // 厂商原始返回
+  provider          String // 数据来源 mock/tianyancha/...
+  fetchedAt         DateTime @map("fetched_at") // 拉取时间
+  expiresAt         DateTime @map("expires_at") // 缓存过期时间
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@index([name])
+  @@index([expiresAt])
+  @@map("enterprise_info")
+}
+
+// 8.2 企业工商查询历史表（按用户记录）
+model EnterpriseQueryLog {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  keyword     String // 查询关键词（名称或信用代码）
+  matchedName String?  @map("matched_name") // 命中企业名（未命中为空）
+  fromCache   Boolean  @default(false) @map("from_cache")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@map("enterprise_query_log")
+}

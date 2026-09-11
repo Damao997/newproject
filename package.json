@@ -1,0 +1,12 @@
+{
+  "name": "yipinhui-finance",
+  "private": true,
+  "scripts": {
+    "prepare": "husky",
+    "dev:up": "node scripts/dev-up.mjs"
+  },
+  "devDependencies": {
+    "husky": "^9.1.0",
+    "lint-staged": "^15.4.0"
+  }
+}

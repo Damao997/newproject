@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>存货管理 · 经营数据分析平台</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; }
+  .shell-side { background: #001529; color: rgba(255, 255, 255, 0.85); display: flex; flex-direction: column; }
+  .shell-side-logo { height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); color: #fff; }
+  .shell-side-logo-mark { width: 32px; height: 32px; background: var(--color-primary); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 16px; }
+  .shell-side-logo-text { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
+  .shell-side-nav { padding: 12px 0; flex: 1; overflow-y: auto; }
+  .shell-nav-group-title { padding: 12px 28px 8px; color: rgba(255, 255, 255, 0.35); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .shell-nav-item { display: flex; align-items: center; gap: 12px; padding: 0 20px; height: 40px; color: rgba(255, 255, 255, 0.75); cursor: pointer; transition: all 0.2s; border-left: 3px solid transparent; font-size: 14px; text-decoration: none; }
+  .shell-nav-item:hover { color: #fff; background: rgba(255, 255, 255, 0.04); }
+  .shell-nav-item.is-active { background: var(--color-primary); color: #fff; border-left-color: #fff; }
+  .shell-nav-ic { width: 18px; flex-shrink: 0; color: rgba(255, 255, 255, 0.55); }
+  .shell-nav-item:hover .shell-nav-ic { color: #fff; }
+  .shell-header { background: #fff; border-bottom: 1px solid var(--antd-gray-3); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .shell-header-l { display: flex; align-items: center; gap: 16px; }
+  .shell-header-r { display: flex; align-items: center; gap: 16px; }
+  .period-pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; background: var(--antd-gray-2); border-radius: var(--radius-medium); color: var(--color-foreground); font-size: 13px; cursor: pointer; }
+  .user-chip { display: flex; align-items: center; gap: 10px; padding: 4px 10px 4px 4px; border-radius: 20px; cursor: pointer; }
+  .user-chip-name { font-size: 13px; font-weight: 500; }
+  .user-chip-role { font-size: 11px; color: var(--color-text-tertiary); }
+
+  .toolbar { background: #fff; border: 1px solid var(--antd-gray-3); border-radius: var(--radius-large); padding: 14px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .toolbar-l { display: flex; align-items: center; gap: 12px; flex: 1; flex-wrap: wrap; }
+  .toolbar-r { display: flex; align-items: center; gap: 8px; }
+  .toolbar-divider { width: 1px; height: 20px; background: var(--antd-gray-3); }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px; }
+
+  .section { background: #fff; border: 1px solid var(--antd-gray-3); border-radius: var(--radius-large); padding: 20px; }
+  .section h3 { font-size: 16px; font-weight: 600; margin: 0; }
+  .section h3 .badge { font-size: 12px; font-weight: 400; color: var(--color-text-tertiary); margin-left: 8px; }
+  .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+
+  .grid-2x2 { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; gap: 16px; margin-bottom: 16px; }
+  .grid-span { display: flex; flex-direction: column; }
+
+  /* 环形图容器（4 段拼接） */
+  .pie-wrap { display: flex; align-items: center; gap: 20px; }
+  .pie-svg { width: 180px; height: 180px; flex-shrink: 0; }
+  .pie-legend { flex: 1; }
+  .pie-legend-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 13px; }
+  .pie-legend-row .swatch { width: 10px; height: 10px; border-radius: 2px; }
+  .pie-legend-row .name { flex: 1; color: var(--color-foreground); }
+  .pie-legend-row .val { color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+
+  /* 排名榜 */
+  .rank-list { display: flex; flex-direction: column; gap: 10px; }
+  .rank-row { display: flex; align-items: center; gap: 12px; padding: 8px 4px; border-bottom: 1px dashed var(--antd-gray-3); }
+  .rank-row:last-child { border-bottom: none; }
+  .rank-company { flex: 1; min-width: 0; }
+  .rank-company-name { font-size: 13px; color: var(--color-foreground); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rank-company-bar { margin-top: 4px; }
+  .rank-value { min-width: 96px; text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; font-weight: 500; }
+  .rank-pct { min-width: 42px; text-align: right; font-size: 12px; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+
+  /* 折线图 */
+  .trend-svg { width: 100%; height: 100%; }
+  .trend-grid line { stroke: var(--antd-gray-3); stroke-width: 1; stroke-dasharray: 2 2; }
+  .trend-axis text { font-size: 11px; fill: var(--color-text-tertiary); }
+  .trend-line-inv { fill: none; stroke: var(--antd-orange-500); stroke-width: 2; }
+  .trend-area-inv { fill: rgba(250, 140, 22, 0.10); }
+
+  /* 堆叠柱 */
+  .stack-chart { height: 220px; display: flex; align-items: flex-end; gap: 8px; padding: 0 4px; position: relative; }
+  .stack-bar { flex: 1; display: flex; flex-direction: column-reverse; border-radius: 4px 4px 0 0; overflow: hidden; min-height: 4px; }
+  .stack-seg { width: 100%; }
+  .stack-axis { display: flex; gap: 8px; padding: 0 4px; margin-top: 8px; }
+  .stack-axis span { flex: 1; text-align: center; font-size: 11px; color: var(--color-text-tertiary); }
+
+  .chart-area { height: 240px; }
+  .chart-legend { display: flex; gap: 16px; font-size: 12px; color: var(--color-text-secondary); margin-bottom: 8px; }
+  .chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .chart-legend .dot { width: 10px; height: 10px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="antd-page">
+  <aside class="shell-side" style="grid-column: 1;">
+    <div class="shell-side-logo">
+      <div class="shell-side-logo-mark">J</div>
+      <div class="shell-side-logo-text">经营分析平台</div>
+    </div>
+    <nav class="shell-side-nav">
+      <div class="shell-nav-group-title">主数据</div>
+      <a class="shell-nav-item" data-dom-id="nav-dashboard" href="dashboard.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        首页看板
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-indicators" href="indicators-operating.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+        财务指标
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-transactions" href="transactions-overview.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+        往来分析
+      </a>
+      <a class="shell-nav-item is-active" data-dom-id="nav-inventory" href="inventory.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        存货管理
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-reports" href="reports-list.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+        分析报告
+      </a>
+      <div class="shell-nav-group-title">业务工具</div>
+      <a class="shell-nav-item" data-dom-id="nav-tools" href="enterprise-lookup.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        企业信息查询
+      </a>
+      <div class="shell-nav-group-title">数据管理</div>
+      <a class="shell-nav-item" data-dom-id="nav-data" href="data-import.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        数据导入
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-reclassify" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h12"/></svg>
+        重分类管理
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-dim" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        维度管理
+      </a>
+      <div class="shell-nav-group-title">系统</div>
+      <a class="shell-nav-item" data-dom-id="nav-users" href="admin-users.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><circle cx="17" cy="7" r="3"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
+        用户管理
+      </a>
+      <a class="shell-nav-item" data-dom-id="nav-roles" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+        角色权限
+      </a>
+    </nav>
+  </aside>
+
+  <main class="antd-content">
+    <header class="shell-header">
+      <div class="shell-header-l">
+        <div class="antd-breadcrumb">
+          <span>首页</span>
+          <span class="sep">/</span>
+          <span>主数据</span>
+          <span class="sep">/</span>
+          <span class="current">存货管理</span>
+        </div>
+      </div>
+      <div class="shell-header-r">
+        <div class="antd-select" style="min-width: 160px;">浙江壹品慧生活集团</div>
+        <div class="period-pill">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          2026 财年 · 8月
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <button class="antd-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          刷新
+        </button>
+        <div class="user-chip">
+          <div class="antd-avatar" style="background: var(--antd-brand-100); color: var(--color-primary);">张</div>
+          <div>
+            <div class="user-chip-name">张伟</div>
+            <div class="user-chip-role">财务总监</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="antd-content-body">
+      <!-- PageHead -->
+      <div class="antd-page-head">
+        <div>
+          <div class="antd-page-head-title">存货管理</div>
+          <div class="antd-page-head-desc">覆盖品类占比、库存排名、趋势分析及公司分布 · 数据更新于 8 分钟前</div>
+        </div>
+        <div class="antd-page-head-actions">
+          <button class="antd-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+            导入库存
+          </button>
+          <button class="antd-btn antd-btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            导出明细
+          </button>
+        </div>
+      </div>
+
+      <!-- 工具条 -->
+      <div class="toolbar">
+        <div class="toolbar-l">
+          <div class="antd-select" style="min-width: 140px;">全部分公司</div>
+          <div class="antd-select" style="min-width: 140px;">全部品类</div>
+          <div class="antd-select" style="min-width: 120px;">库龄: 全部</div>
+          <div class="antd-input" style="max-width: 220px;">搜索品类 / 规格 / SKU</div>
+        </div>
+        <div class="toolbar-r">
+          <span class="antd-pill is-blue">共 1,284 条</span>
+          <span class="antd-pill is-orange">高库存 23 项</span>
+        </div>
+      </div>
+
+      <!-- 4 个 stat-tile -->
+      <div class="kpi-row">
+        <div class="antd-stat-tile is-orange antd-emphasis-warm-strong">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label"><span class="antd-rank-badge is-1">1</span>库存总额</span>
+            <span class="antd-stat-tile-icon">¥</span>
+          </div>
+          <div class="antd-stat-tile-value">2,486.7<span class="unit">万</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-up">↑ 6.8%</span>
+            <span class="antd-text-tertiary antd-fs-sm">较年初</span>
+            <div class="antd-stat-tile-spark">
+              <span style="height:30%"></span><span style="height:42%"></span><span style="height:50%"></span><span style="height:48%"></span><span style="height:60%"></span><span style="height:55%"></span><span style="height:68%"></span><span style="height:72%"></span><span style="height:65%"></span><span style="height:80%"></span><span style="height:85%"></span><span style="height:92%"></span>
+            </div>
+          </div>
+        </div>
+        <div class="antd-stat-tile is-cyan">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">库存周转天数</span>
+            <span class="antd-stat-tile-icon">天</span>
+          </div>
+          <div class="antd-stat-tile-value">38.5<span class="unit">天</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-down">↓ 4.2%</span>
+            <span class="antd-text-tertiary antd-fs-sm">周转加速</span>
+            <div class="antd-stat-tile-spark">
+              <span style="height:80%"></span><span style="height:72%"></span><span style="height:68%"></span><span style="height:65%"></span><span style="height:60%"></span><span style="height:58%"></span><span style="height:55%"></span><span style="height:52%"></span><span style="height:48%"></span><span style="height:45%"></span><span style="height:42%"></span><span style="height:38%"></span>
+            </div>
+          </div>
+        </div>
+        <div class="antd-stat-tile is-violet">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">品类数</span>
+            <span class="antd-stat-tile-icon">类</span>
+          </div>
+          <div class="antd-stat-tile-value">68<span class="unit">类</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-flat">→ 0 项</span>
+            <span class="antd-text-tertiary antd-fs-sm">SKU 1,284</span>
+            <div class="antd-stat-tile-spark">
+              <span style="height:50%"></span><span style="height:50%"></span><span style="height:50%"></span><span style="height:50%"></span><span style="height:50%"></span><span style="height:50%"></span><span style="height:50%"></span><span style="height:50%"></span><span style="height:50%"></span><span style="height:50%"></span><span style="height:50%"></span><span style="height:50%"></span>
+            </div>
+          </div>
+        </div>
+        <div class="antd-stat-tile is-green">
+          <div class="antd-stat-tile-head">
+            <span class="antd-stat-tile-label">同比</span>
+            <span class="antd-stat-tile-icon">%</span>
+          </div>
+          <div class="antd-stat-tile-value">-3.4<span class="unit">%</span></div>
+          <div class="antd-stat-tile-foot">
+            <span class="antd-stat-tile-chip is-down">↓ 3.4 pp</span>
+            <span class="antd-text-tertiary antd-fs-sm">有效去化</span>
+            <div class="antd-stat-tile-spark">
+              <span style="height:60%"></span><span style="height:55%"></span><span style="height:58%"></span><span style="height:50%"></span><span style="height:48%"></span><span style="height:45%"></span><span style="height:42%"></span><span style="height:40%"></span><span style="height:38%"></span><span style="height:35%"></span><span style="height:32%"></span><span style="height:30%"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2×2 网格 -->
+      <div class="grid-2x2">
+        <!-- 左上：品类占比 -->
+        <div class="section grid-span">
+          <div class="section-head">
+            <h3>品类占比<span class="badge">按库存金额</span></h3>
+            <div class="antd-segmented">
+              <div class="antd-segmented-item is-active">金额</div>
+              <div class="antd-segmented-item">数量</div>
+            </div>
+          </div>
+          <div class="pie-wrap">
+            <svg class="pie-svg" viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="40" fill="#f0f0f0"/>
+              <!-- 原材料 35% -->
+              <path d="M50,10 A40,40 0 0,1 88.04,60.65 L50,50 Z" fill="#fa8c16"/>
+              <!-- 在产品 25% -->
+              <path d="M88.04,60.65 A40,40 0 0,1 60.65,88.04 L50,50 Z" fill="#1677ff"/>
+              <!-- 库存商品 28% -->
+              <path d="M60.65,88.04 A40,40 0 0,1 18.04,69.55 L50,50 Z" fill="#52c41a"/>
+              <!-- 低值易耗 12% -->
+              <path d="M18.04,69.55 A40,40 0 0,1 50,10 L50,50 Z" fill="#722ed1"/>
+              <circle cx="50" cy="50" r="22" fill="#fff"/>
+              <text x="50" y="48" text-anchor="middle" font-size="7" fill="#8c8c8c">库存总额</text>
+              <text x="50" y="60" text-anchor="middle" font-size="10" font-weight="600" fill="#262626">¥2,486万</text>
+            </svg>
+            <div class="pie-legend">
+              <div class="pie-legend-row">
+                <span class="swatch" style="background: #fa8c16;"></span>
+                <span class="name">原材料</span>
+                <span class="val">¥870.3万 · 35%</span>
+              </div>
+              <div class="pie-legend-row">
+                <span class="swatch" style="background: #1677ff;"></span>
+                <span class="name">在产品</span>
+                <span class="val">¥621.7万 · 25%</span>
+              </div>
+              <div class="pie-legend-row">
+                <span class="swatch" style="background: #52c41a;"></span>
+                <span class="name">库存商品</span>
+                <span class="val">¥696.3万 · 28%</span>
+              </div>
+              <div class="pie-legend-row">
+                <span class="swatch" style="background: #722ed1;"></span>
+                <span class="name">低值易耗品</span>
+                <span class="val">¥298.4万 · 12%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右上：Top10 排名 -->
+        <div class="section grid-span">
+          <div class="section-head">
+            <h3>高库存 Top10<span class="badge">按金额</span></h3>
+            <a class="antd-card-extra" href="#">查看全部 →</a>
+          </div>
+          <div class="rank-list">
+            <div class="rank-row">
+              <span class="antd-rank-badge is-1">1</span>
+              <div class="rank-company">
+                <div class="rank-company-name">浙江壹品家电连锁 · 杭州仓</div>
+                <div class="rank-company-bar"><div class="antd-mini-bar is-orange"><i style="width: 96%;"></i></div></div>
+              </div>
+              <span class="rank-value">¥186.5万</span>
+              <span class="rank-pct">14.5%</span>
+            </div>
+            <div class="rank-row">
+              <span class="antd-rank-badge is-2">2</span>
+              <div class="rank-company">
+                <div class="rank-company-name">慧生活服务 · 宁波配送中心</div>
+                <div class="rank-company-bar"><div class="antd-mini-bar is-orange"><i style="width: 82%;"></i></div></div>
+              </div>
+              <span class="rank-value">¥152.8万</span>
+              <span class="rank-pct">11.9%</span>
+            </div>
+            <div class="rank-row">
+              <span class="antd-rank-badge is-3">3</span>
+              <div class="rank-company">
+                <div class="rank-company-name">壹品科技 · 温州成品仓</div>
+                <div class="rank-company-bar"><div class="antd-mini-bar is-orange"><i style="width: 70%;"></i></div></div>
+              </div>
+              <span class="rank-value">¥128.4万</span>
+              <span class="rank-pct">10.0%</span>
+            </div>
+            <div class="rank-row">
+              <span class="antd-rank-badge">4</span>
+              <div class="rank-company">
+                <div class="rank-company-name">智能家居事业部 · 嘉兴原料仓</div>
+                <div class="rank-company-bar"><div class="antd-mini-bar"><i style="width: 58%;"></i></div></div>
+              </div>
+              <span class="rank-value">¥104.6万</span>
+              <span class="rank-pct">8.1%</span>
+            </div>
+            <div class="rank-row">
+              <span class="antd-rank-badge">5</span>
+              <div class="rank-company">
+                <div class="rank-company-name">工程业务部 · 绍兴周转库</div>
+                <div class="rank-company-bar"><div class="antd-mini-bar"><i style="width: 48%;"></i></div></div>
+              </div>
+              <span class="rank-value">¥86.2万</span>
+              <span class="rank-pct">6.7%</span>
+            </div>
+            <div class="rank-row">
+              <span class="antd-rank-badge">6</span>
+              <div class="rank-company">
+                <div class="rank-company-name">社区零售子公司 · 台州</div>
+                <div class="rank-company-bar"><div class="antd-mini-bar"><i style="width: 40%;"></i></div></div>
+              </div>
+              <span class="rank-value">¥72.5万</span>
+              <span class="rank-pct">5.6%</span>
+            </div>
+            <div class="rank-row">
+              <span class="antd-rank-badge">7</span>
+              <div class="rank-company">
+                <div class="rank-company-name">物流子公司 · 金华中转</div>
+                <div class="rank-company-bar"><div class="antd-mini-bar"><i style="width: 34%;"></i></div></div>
+              </div>
+              <span class="rank-value">¥61.8万</span>
+              <span class="rank-pct">4.8%</span>
+            </div>
+            <div class="rank-row">
+              <span class="antd-rank-badge">8</span>
+              <div class="rank-company">
+                <div class="rank-company-name">暖通事业部 · 衢州备件</div>
+                <div class="rank-company-bar"><div class="antd-mini-bar"><i style="width: 28%;"></i></div></div>
+              </div>
+              <span class="rank-value">¥50.2万</span>
+              <span class="rank-pct">3.9%</span>
+            </div>
+            <div class="rank-row">
+              <span class="antd-rank-badge">9</span>
+              <div class="rank-company">
+                <div class="rank-company-name">工程总包 · 丽水项目仓</div>
+                <div class="rank-company-bar"><div class="antd-mini-bar"><i style="width: 22%;"></i></div></div>
+              </div>
+              <span class="rank-value">¥40.7万</span>
+              <span class="rank-pct">3.2%</span>
+            </div>
+            <div class="rank-row">
+              <span class="antd-rank-badge">10</span>
+              <div class="rank-company">
+                <div class="rank-company-name">电商事业部 · 义乌小件</div>
+                <div class="rank-company-bar"><div class="antd-mini-bar"><i style="width: 18%;"></i></div></div>
+              </div>
+              <span class="rank-value">¥33.5万</span>
+              <span class="rank-pct">2.6%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 左下：近 12 月库存金额趋势 -->
+        <div class="section grid-span">
+          <div class="section-head">
+            <h3>近 12 月库存金额趋势<span class="badge">万元</span></h3>
+            <div class="chart-legend">
+              <span><span class="dot" style="background: var(--antd-orange-500);"></span>库存金额</span>
+              <span><span class="dot" style="background: var(--antd-gray-4);"></span>目标上限</span>
+            </div>
+          </div>
+          <div class="chart-area">
+            <svg class="trend-svg" viewBox="0 0 600 240" preserveAspectRatio="none">
+              <g class="trend-grid">
+                <line x1="40" y1="20" x2="600" y2="20"/>
+                <line x1="40" y1="70" x2="600" y2="70"/>
+                <line x1="40" y1="120" x2="600" y2="120"/>
+                <line x1="40" y1="170" x2="600" y2="170"/>
+                <line x1="40" y1="220" x2="600" y2="220"/>
+              </g>
+              <g class="trend-axis">
+                <text x="4" y="24">2800</text>
+                <text x="4" y="74">2200</text>
+                <text x="4" y="124">1600</text>
+                <text x="4" y="174">1000</text>
+                <text x="4" y="224">400</text>
+                <text x="60" y="236">9月</text>
+                <text x="120" y="236">10月</text>
+                <text x="180" y="236">11月</text>
+                <text x="240" y="236">12月</text>
+                <text x="300" y="236">1月</text>
+                <text x="360" y="236">2月</text>
+                <text x="420" y="236">3月</text>
+                <text x="480" y="236">4月</text>
+                <text x="540" y="236">5月</text>
+              </g>
+              <!-- 目标上限虚线 -->
+              <line x1="40" y1="80" x2="600" y2="80" stroke="#bfbfbf" stroke-dasharray="4 4" stroke-width="1"/>
+              <text x="555" y="76" font-size="10" fill="#8c8c8c">上限 2500</text>
+              <!-- 面积 -->
+              <path class="trend-area-inv" d="M60,150 L120,140 L180,130 L240,135 L300,120 L360,115 L420,100 L480,95 L540,90 L580,82 L580,220 L60,220 Z" />
+              <!-- 主线 -->
+              <path class="trend-line-inv" d="M60,150 L120,140 L180,130 L240,135 L300,120 L360,115 L420,100 L480,95 L540,90 L580,82" />
+            </svg>
+          </div>
+        </div>
+
+        <!-- 右下：公司占比堆叠柱 -->
+        <div class="section grid-span">
+          <div class="section-head">
+            <h3>按公司分布<span class="badge">Top 6 公司</span></h3>
+            <div class="chart-legend">
+              <span><span class="dot" style="background: #fa8c16;"></span>原材料</span>
+              <span><span class="dot" style="background: #1677ff;"></span>在产品</span>
+              <span><span class="dot" style="background: #52c41a;"></span>库存商品</span>
+              <span><span class="dot" style="background: #722ed1;"></span>低值易耗</span>
+            </div>
+          </div>
+          <div class="stack-chart">
+            <!-- 6 家公司堆叠柱 -->
+            <div class="stack-bar" style="height: 78%;">
+              <div class="stack-seg" style="height: 38%; background: #fa8c16;"></div>
+              <div class="stack-seg" style="height: 22%; background: #1677ff;"></div>
+              <div class="stack-seg" style="height: 28%; background: #52c41a;"></div>
+              <div class="stack-seg" style="height: 12%; background: #722ed1;"></div>
+            </div>
+            <div class="stack-bar" style="height: 62%;">
+              <div class="stack-seg" style="height: 30%; background: #fa8c16;"></div>
+              <div class="stack-seg" style="height: 28%; background: #1677ff;"></div>
+              <div class="stack-seg" style="height: 30%; background: #52c41a;"></div>
+              <div class="stack-seg" style="height: 12%; background: #722ed1;"></div>
+            </div>
+            <div class="stack-bar" style="height: 92%;">
+              <div class="stack-seg" style="height: 40%; background: #fa8c16;"></div>
+              <div class="stack-seg" style="height: 24%; background: #1677ff;"></div>
+              <div class="stack-seg" style="height: 26%; background: #52c41a;"></div>
+              <div class="stack-seg" style="height: 10%; background: #722ed1;"></div>
+            </div>
+            <div class="stack-bar" style="height: 54%;">
+              <div class="stack-seg" style="height: 36%; background: #fa8c16;"></div>
+              <div class="stack-seg" style="height: 20%; background: #1677ff;"></div>
+              <div class="stack-seg" style="height: 32%; background: #52c41a;"></div>
+              <div class="stack-seg" style="height: 12%; background: #722ed1;"></div>
+            </div>
+            <div class="stack-bar" style="height: 70%;">
+              <div class="stack-seg" style="height: 32%; background: #fa8c16;"></div>
+              <div class="stack-seg" style="height: 26%; background: #1677ff;"></div>
+              <div class="stack-seg" style="height: 28%; background: #52c41a;"></div>
+              <div class="stack-seg" style="height: 14%; background: #722ed1;"></div>
+            </div>
+            <div class="stack-bar" style="height: 48%;">
+              <div class="stack-seg" style="height: 30%; background: #fa8c16;"></div>
+              <div class="stack-seg" style="height: 24%; background: #1677ff;"></div>
+              <div class="stack-seg" style="height: 34%; background: #52c41a;"></div>
+              <div class="stack-seg" style="height: 12%; background: #722ed1;"></div>
+            </div>
+          </div>
+          <div class="stack-axis">
+            <span>壹品家电</span>
+            <span>慧生活</span>
+            <span>壹品科技</span>
+            <span>智能家居</span>
+            <span>工程业务</span>
+            <span>社区零售</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 底部存货明细表 -->
+      <div class="section">
+        <div class="section-head">
+          <h3>存货明细表<span class="badge">共 1,284 条</span></h3>
+          <div class="antd-flex">
+            <span class="antd-pill is-blue">列宽 880px</span>
+            <a class="antd-card-extra" href="#">导出 →</a>
+          </div>
+        </div>
+        <div style="overflow-x: auto;">
+          <table class="antd-table antd-table-bordered antd-table-density-compact" style="min-width: 880px;">
+            <thead>
+              <tr>
+                <th style="width: 120px;">品类</th>
+                <th>规格</th>
+                <th class="num">数量</th>
+                <th class="num">单价(元)</th>
+                <th class="num">金额(万元)</th>
+                <th style="width: 90px;">库龄</th>
+                <th style="width: 130px;">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>原材料</td>
+                <td>冷轧钢板 1.2mm × 1250</td>
+                <td class="num">2,860</td>
+                <td class="num">¥4,520</td>
+                <td class="num antd-fw-600">¥129.3</td>
+                <td><span class="antd-tag">45 天</span></td>
+                <td>
+                  <a class="antd-text-primary" href="#">详情</a>
+                  <span class="antd-text-tertiary">·</span>
+                  <a class="antd-text-primary" href="#">调拨</a>
+                  <span class="antd-text-tertiary">·</span>
+                  <a class="antd-text-primary" href="#">处置</a>
+                </td>
+              </tr>
+              <tr>
+                <td>原材料</td>
+                <td>铜芯电线 BV 2.5mm²</td>
+                <td class="num">18,200</td>
+                <td class="num">¥186</td>
+                <td class="num antd-fw-600">¥33.9</td>
+                <td><span class="antd-tag-success">28 天</span></td>
+                <td>
+                  <a class="antd-text-primary" href="#">详情</a>
+                  <span class="antd-text-tertiary">·</span>
+                  <a class="antd-text-primary" href="#">调拨</a>
+                  <span class="antd-text-tertiary">·</span>
+                  <a class="antd-text-primary" href="#">处置</a>
+                </td>
+              </tr>
+              <tr>
+                <td>在产品</td>
+                <td>智能空调 KFR-35GW 半成品</td>
+                <td class="num">462</td>
+                <td class="num">¥1,860</td>
+                <td class="num antd-fw-600">¥85.9</td>
+                <td><span class="antd-tag">12 天</span></td>
+                <td>
+                  <a class="antd-text-primary" href="#">详情</a>
+                  <span class="antd-text-tertiary">·</span>
+                  <a class="antd-text-primary" href="#">调拨</a>
+                  <span class="antd-text-tertiary">·</span>
+                  <a class="antd-text-primary" href="#">处置</a>
+                </td>
+              </tr>
+              <tr>
+                <td>库存商品</td>
+                <td>智能门锁 Pro · 曜石黑</td>
+                <td class="num">1,280</td>
+                <td class="num">¥1,290</td>
+                <td class="num antd-fw-600">¥165.1</td>
+                <td><span class="antd-tag-warning">92 天</span></td>
+                <td>
+                  <a class="antd-text-primary" href="#">详情</a>
+                  <span class="antd-text-tertiary">·</span>
+                  <a class="antd-text-primary" href="#">调拨</a>
+                  <span class="antd-text-tertiary">·</span>
+                  <a class="antd-text-primary" href="#">处置</a>
+                </td>
+              </tr>
+              <tr>
+                <td>库存商品</td>
+                <td>扫地机器人 X1 · 钛白</td>
+                <td class="num">680</td>
+                <td class="num">¥2,180</td>
+                <td class="num antd-fw-600">¥148.2</td>
+                <td><span class="antd-tag-warning">78 天</span></td>
+                <td>
+                  <a class="antd-text-primary" href="#">详情</a>
+                  <span class="antd-text-tertiary">·</span>
+                  <a class="antd-text-primary" href="#">调拨</a>
+                  <span class="antd-text-tertiary">·</span>
+                  <a class="antd-text-primary" href="#">处置</a>
+                </td>
+              </tr>
+              <tr>
+                <td>原材料</td>
+                <td>ABS 塑料颗粒 黑色</td>
+                <td class="num">5,200</td>
+                <td class="num">¥86</td>
+                <td class="num antd-fw-600">¥4.5</td>
+                <td><span class="antd-tag-success">18 天</span></td>
+                <td>
+                  <a class="antd-text-primary" href="#">详情</a>
+                  <span class="antd-text-tertiary">·</span>
+                  <a class="antd-text-primary" href="#">调拨</a>
+                  <span class="antd-text-tertiary">·</span>
+                  <a class="antd-text-primary" href="#">处置</a>
+                </td>
+              </tr>
+              <tr>
+                <td>在产品</td>
+                <td>净水器 RO-400 组装件</td>
+                <td class="num">186</td>
+                <td class="num">¥3,420</td>
+                <td class="num antd-fw-600">¥63.6</td>
+                <td><span class="antd-tag">35 天</span></td>
+                <td>
+                  <a class="antd-text-primary" href="#">详情</a>
+                  <span class="antd-text-tertiary">·</span>
+                  <a class="antd-text-primary" href="#">调拨</a>
+                  <span class="antd-text-tertiary">·</span>
+                  <a class="antd-text-primary" href="#">处置</a>
+                </td>
+              </tr>
+              <tr>
+                <td>低值易耗品</td>
+                <td>包装泡沫箱 60×40×30</td>
+                <td class="num">28,000</td>
+                <td class="num">¥8.5</td>
+                <td class="num antd-fw-600">¥23.8</td>
+                <td><span class="antd-tag-success">22 天</span></td>
+                <td>
+                  <a class="antd-text-primary" href="#">详情</a>
+                  <span class="antd-text-tertiary">·</span>
+                  <a class="antd-text-primary" href="#">调拨</a>
+                  <span class="antd-text-tertiary">·</span>
+                  <a class="antd-text-primary" href="#">处置</a>
+                </td>
+              </tr>
+              <tr>
+                <td>库存商品</td>
+                <td>智能音箱 Mini · 云白</td>
+                <td class="num">3,420</td>
+                <td class="num">¥298</td>
+                <td class="num antd-fw-600">¥101.9</td>
+                <td><span class="antd-tag-error">142 天</span></td>
+                <td>
+                  <a class="antd-text-primary" href="#">详情</a>
+                  <span class="antd-text-tertiary">·</span>
+                  <a class="antd-text-primary" href="#">调拨</a>
+                  <span class="antd-text-tertiary">·</span>
+                  <a class="antd-text-error" href="#">处置</a>
+                </td>
+              </tr>
+              <tr>
+                <td>原材料</td>
+                <td>铝型材 6063-T5 工业级</td>
+                <td class="num">1,860</td>
+                <td class="num">¥1,520</td>
+                <td class="num antd-fw-600">¥282.7</td>
+                <td><span class="antd-tag">52 天</span></td>
+                <td>
+                  <a class="antd-text-primary" href="#">详情</a>
+                  <span class="antd-text-tertiary">·</span>
+                  <a class="antd-text-primary" href="#">调拨</a>
+                  <span class="antd-text-tertiary">·</span>
+                  <a class="antd-text-primary" href="#">处置</a>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>维度与科目体系 · 数据管理 · 经营分析平台</title>
+<link rel="stylesheet" href="../colors_and_type.css" />
+<style>
+  body { margin: 0; }
+  .shell-side { background: #001529; color: rgba(255,255,255,0.85); display: flex; flex-direction: column; }
+  .shell-side-logo { height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #fff; }
+  .shell-side-logo-mark { width: 32px; height: 32px; background: var(--color-primary); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 16px; }
+  .shell-side-logo-text { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
+  .shell-side-nav { padding: 12px 0; flex: 1; overflow-y: auto; }
+  .shell-nav-group-title { padding: 12px 28px 8px; color: rgba(255,255,255,0.35); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .shell-nav-item { display: flex; align-items: center; gap: 12px; padding: 0 20px; height: 40px; color: rgba(255,255,255,0.75); cursor: pointer; transition: all 0.2s; border-left: 3px solid transparent; font-size: 14px; text-decoration: none; }
+  .shell-nav-item:hover { color: #fff; background: rgba(255,255,255,0.04); }
+  .shell-nav-item.is-active { background: var(--color-primary); color: #fff; border-left-color: #fff; }
+  .shell-nav-item.is-active .shell-nav-ic { color: #fff; }
+  .shell-nav-ic { width: 18px; flex-shrink: 0; color: rgba(255,255,255,0.55); }
+  .shell-nav-item:hover .shell-nav-ic { color: #fff; }
+
+  .shell-header { background: #fff; border-bottom: 1px solid var(--antd-gray-3); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .shell-header-l { display: flex; align-items: center; gap: 16px; }
+  .shell-header-r { display: flex; align-items: center; gap: 16px; }
+  .period-pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; background: var(--antd-gray-2); border-radius: var(--radius-medium); color: var(--color-foreground); font-size: 13px; cursor: pointer; }
+  .period-pill:hover { background: var(--antd-gray-3); }
+  .user-chip { display: flex; align-items: center; gap: 10px; padding: 4px 10px 4px 4px; border-radius: 20px; cursor: pointer; }
+  .user-chip:hover { background: var(--antd-gray-2); }
+  .user-chip-name { font-size: 13px; font-weight: 500; }
+  .user-chip-role { font-size: 11px; color: var(--color-text-tertiary); }
+
+  /* 树表缩进 12/24/36 */
+  .tree-row.lv-1 .tree-name { padding-left: 12px; }
+  .tree-row.lv-2 .tree-name { padding-left: 24px; }
+  .tree-row.lv-3 .tree-name { padding-left: 36px; }
+  .tree-row .tree-name { display: inline-flex; align-items: center; gap: 6px; }
+  .tree-row .caret { width: 14px; color: var(--color-text-tertiary); }
+  .tree-row .tree-icon { color: var(--antd-brand-400); }
+
+  /* 标签卡头部小标题 */
+  .panel-card { background: var(--color-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-large); overflow: hidden; }
+  .panel-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 20px 0 20px;
+  }
+  .panel-head .panel-overline { display: flex; align-items: center; gap: 10px; }
+  .panel-head h3 { font-size: 15px; font-weight: 600; }
+  .panel-head .panel-meta { color: var(--color-text-tertiary); font-size: 12px; margin-top: 4px; }
+
+  .antd-table.antd-table-zebra tbody tr:nth-child(even) td { background: var(--color-table-zebra); }
+  .antd-table.antd-table-zebra tbody tr:hover td { background: var(--color-table-hover); }
+  .antd-table.antd-table-density-compact th,
+  .antd-table.antd-table-density-compact td { padding: 8px 12px; }
+</style>
+</head>
+<body>
+<div class="antd-page">
+  <aside class="shell-side" style="grid-column: 1;">
+    <div class="shell-side-logo">
+      <div class="shell-side-logo-mark">J</div>
+      <div class="shell-side-logo-text">经营分析平台</div>
+    </div>
+    <nav class="shell-side-nav">
+      <div class="shell-nav-group-title">主数据</div>
+      <a class="shell-nav-item" href="dashboard.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        首页看板
+      </a>
+      <a class="shell-nav-item" href="indicators-operating.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+        财务指标
+      </a>
+      <a class="shell-nav-item" href="transactions-overview.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+        往来分析
+      </a>
+      <a class="shell-nav-item" href="#">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        存货管理
+      </a>
+      <a class="shell-nav-item" href="reports-list.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+        分析报告
+      </a>
+      <div class="shell-nav-group-title">业务工具</div>
+      <a class="shell-nav-item" href="enterprise-lookup.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        企业信息查询
+      </a>
+      <div class="shell-nav-group-title">数据管理</div>
+      <a class="shell-nav-item" href="data-import.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        数据导入
+      </a>
+      <a class="shell-nav-item" href="data-reclassify.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h12"/></svg>
+        重分类管理
+      </a>
+      <a class="shell-nav-item is-active" href="data-dimensions.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        维度管理
+      </a>
+      <div class="shell-nav-group-title">系统</div>
+      <a class="shell-nav-item" href="admin-users.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><circle cx="17" cy="7" r="3"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
+        用户管理
+      </a>
+      <a class="shell-nav-item" href="admin-roles.html">
+        <svg class="shell-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+        角色权限
+      </a>
+    </nav>
+  </aside>
+
+  <main class="antd-content">
+    <header class="shell-header">
+      <div class="shell-header-l">
+        <div class="antd-breadcrumb">
+          <span>首页</span><span class="sep">/</span>
+          <a href="data-import.html">数据管理</a><span class="sep">/</span>
+          <span class="current">维度与科目体系</span>
+        </div>
+      </div>
+      <div class="shell-header-r">
+        <div class="antd-select" style="min-width: 160px;">浙江壹品慧生活集团</div>
+        <div class="period-pill">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          2026 财年
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <button class="antd-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          刷新
+        </button>
+        <div class="user-chip">
+          <div class="antd-avatar" style="background: var(--antd-brand-100); color: var(--color-primary);">张</div>
+          <div>
+            <div class="user-chip-name">张伟</div>
+            <div class="user-chip-role">财务总监</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="antd-content-body">
+      <div class="antd-page-head">
+        <div>
+          <div class="antd-page-head-title">维度与科目体系</div>
+          <div class="antd-page-head-desc">维护经营/静态科目、主体、汇总主体映射、公式规则等基础数据</div>
+        </div>
+        <div class="antd-page-head-actions">
+          <button class="antd-btn">导入</button>
+          <button class="antd-btn antd-btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            新增
+          </button>
+        </div>
+      </div>
+
+      <!-- 5 tab -->
+      <div class="antd-tabs">
+        <div class="antd-tab is-active">经营科目</div>
+        <div class="antd-tab">静态科目</div>
+        <div class="antd-tab">主体管理</div>
+        <div class="antd-tab">汇总主体映射</div>
+        <div class="antd-tab">公式维护</div>
+      </div>
+
+      <!-- tab 内容：经营科目 -->
+      <div class="panel-card">
+        <div class="panel-head">
+          <div class="panel-overline">
+            <span class="antd-overline">经营科目 · 树表</span>
+          </div>
+          <div class="antd-flex">
+            <span class="panel-meta">共 86 个科目 · 3 级</span>
+            <button class="antd-btn antd-btn-sm">展开全部</button>
+            <button class="antd-btn antd-btn-sm">折叠全部</button>
+          </div>
+        </div>
+        <div style="padding: 0 20px 20px 20px;">
+          <table class="antd-table antd-table-zebra antd-table-density-compact" style="margin-top: 14px;">
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th style="width: 160px;">编码</th>
+                <th style="width: 120px;">类别</th>
+                <th style="width: 120px;">状态</th>
+                <th style="width: 200px;">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="tree-row lv-1">
+                <td><div class="tree-name"><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg><span class="antd-fw-600">收入类</span></div></td>
+                <td class="antd-text-mono">REV</td>
+                <td><span class="antd-pill is-blue">收入</span></td>
+                <td><span class="antd-status antd-status-success">启用</span></td>
+                <td><a class="antd-text-primary" href="#">+ 子科目</a> · <a class="antd-text-primary" href="#">编辑</a> · <a class="antd-text-primary" href="#">禁用</a></td>
+              </tr>
+              <tr class="tree-row lv-2">
+                <td><div class="tree-name"><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>主营业务收入</div></td>
+                <td class="antd-text-mono">REV-01</td>
+                <td>收入</td>
+                <td><span class="antd-status antd-status-success">启用</span></td>
+                <td><a class="antd-text-primary" href="#">+ 子科目</a> · <a class="antd-text-primary" href="#">编辑</a></td>
+              </tr>
+              <tr class="tree-row lv-3">
+                <td><div class="tree-name"><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>商品销售收入</div></td>
+                <td class="antd-text-mono">REV-01-01</td>
+                <td>收入</td>
+                <td><span class="antd-status antd-status-success">启用</span></td>
+                <td><a class="antd-text-primary" href="#">编辑</a> · <a class="antd-text-primary" href="#">禁用</a></td>
+              </tr>
+              <tr class="tree-row lv-3">
+                <td><div class="tree-name"><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>服务收入</div></td>
+                <td class="antd-text-mono">REV-01-02</td>
+                <td>收入</td>
+                <td><span class="antd-status antd-status-success">启用</span></td>
+                <td><a class="antd-text-primary" href="#">编辑</a> · <a class="antd-text-primary" href="#">禁用</a></td>
+              </tr>
+              <tr class="tree-row lv-2">
+                <td><div class="tree-name"><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>其他业务收入</div></td>
+                <td class="antd-text-mono">REV-02</td>
+                <td>收入</td>
+                <td><span class="antd-status antd-status-success">启用</span></td>
+                <td><a class="antd-text-primary" href="#">+ 子科目</a> · <a class="antd-text-primary" href="#">编辑</a></td>
+              </tr>
+              <tr class="tree-row lv-1">
+                <td><div class="tree-name"><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg><span class="antd-fw-600">成本类</span></div></td>
+                <td class="antd-text-mono">COST</td>
+                <td><span class="antd-pill is-orange">成本</span></td>
+                <td><span class="antd-status antd-status-success">启用</span></td>
+                <td><a class="antd-text-primary" href="#">+ 子科目</a> · <a class="antd-text-primary" href="#">编辑</a></td>
+              </tr>
+              <tr class="tree-row lv-2">
+                <td><div class="tree-name"><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>营业成本</div></td>
+                <td class="antd-text-mono">COST-01</td>
+                <td>成本</td>
+                <td><span class="antd-status antd-status-success">启用</span></td>
+                <td><a class="antd-text-primary" href="#">+ 子科目</a> · <a class="antd-text-primary" href="#">编辑</a></td>
+              </tr>
+              <tr class="tree-row lv-1">
+                <td><div class="tree-name"><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg><span class="antd-fw-600">费用类</span></div></td>
+                <td class="antd-text-mono">EXP</td>
+                <td><span class="antd-pill is-green">费用</span></td>
+                <td><span class="antd-status antd-status-success">启用</span></td>
+                <td><a class="antd-text-primary" href="#">+ 子科目</a> · <a class="antd-text-primary" href="#">编辑</a></td>
+              </tr>
+              <tr class="tree-row lv-2">
+                <td><div class="tree-name"><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>销售费用</div></td>
+                <td class="antd-text-mono">EXP-01</td>
+                <td>费用</td>
+                <td><span class="antd-status antd-status-success">启用</span></td>
+                <td><a class="antd-text-primary" href="#">+ 子科目</a> · <a class="antd-text-primary" href="#">编辑</a></td>
+              </tr>
+              <tr class="tree-row lv-3">
+                <td><div class="tree-name"><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>广告费</div></td>
+                <td class="antd-text-mono">EXP-01-01</td>
+                <td>费用</td>
+                <td><span class="antd-status antd-status-success">启用</span></td>
+                <td><a class="antd-text-primary" href="#">编辑</a> · <a class="antd-text-primary" href="#">禁用</a></td>
+              </tr>
+              <tr class="tree-row lv-3">
+                <td><div class="tree-name"><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>差旅费</div></td>
+                <td class="antd-text-mono">EXP-01-02</td>
+                <td>费用</td>
+                <td><span class="antd-status antd-status-warning">停用</span></td>
+                <td><a class="antd-text-primary" href="#">编辑</a> · <a class="antd-text-primary" href="#">启用</a></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

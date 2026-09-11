@@ -1,0 +1,44 @@
+-- ============================================================
+-- audit_log 生产环境分区与权限加固（可选，本期不自动执行）
+-- ============================================================
+-- 说明：
+--   Prisma schema 中 audit_log 以普通表落地，保证本地开发开箱可用。
+--   生产环境建议改造为「按月分区 + 独立应用账号仅 INSERT/SELECT」，
+--   以满足留存 5 年、防篡改、冷热分层要求（数据模型规范 §7.9）。
+--
+--   落地方式二选一：
+--     A) 在 Prisma 之外由 DBA 手工执行本脚本（推荐生产）；
+--     B) 接入 pg_partman 自动创建月度分区（devops 增量）。
+--
+-- 警告：将普通表改造为分区表需要迁移已有数据，请在维护窗口执行。
+-- ============================================================
+
+-- 1) 分区父表（若从零开始，替代 Prisma 生成的普通表）
+-- DROP TABLE IF EXISTS audit_log CASCADE;
+-- CREATE TABLE audit_log (
+--     id          UUID        NOT NULL DEFAULT gen_random_uuid(),
+--     user_id     VARCHAR     REFERENCES "user"(id),
+--     module      VARCHAR     NOT NULL,
+--     action      VARCHAR     NOT NULL,
+--     target_id   VARCHAR,
+--     detail      JSONB,
+--     ip          VARCHAR,
+--     created_at  TIMESTAMP   NOT NULL DEFAULT NOW(),
+--     PRIMARY KEY (id, created_at)
+-- ) PARTITION BY RANGE (created_at);
+
+-- 2) 月度子分区示例（按需滚动创建）
+-- CREATE TABLE IF NOT EXISTS audit_log_202607 PARTITION OF audit_log
+--     FOR VALUES FROM ('2026-07-01') TO ('2026-08-01');
+-- CREATE TABLE IF NOT EXISTS audit_log_202608 PARTITION OF audit_log
+--     FOR VALUES FROM ('2026-08-01') TO ('2026-09-01');
+
+-- 3) 索引
+-- CREATE INDEX IF NOT EXISTS idx_audit_log_user   ON audit_log (user_id, created_at);
+-- CREATE INDEX IF NOT EXISTS idx_audit_log_module ON audit_log (module, action, created_at);
+
+-- 4) 应用账号权限：仅 INSERT + SELECT，禁止 UPDATE/DELETE（防篡改）
+-- GRANT INSERT, SELECT ON audit_log            TO yipinhui_app;
+-- GRANT INSERT, SELECT ON audit_log_202607     TO yipinhui_app;
+-- GRANT INSERT, SELECT ON audit_log_202608     TO yipinhui_app;
+-- REVOKE UPDATE, DELETE ON audit_log           FROM yipinhui_app;
