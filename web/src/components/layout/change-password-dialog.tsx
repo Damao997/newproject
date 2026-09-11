@@ -81,11 +81,13 @@ function PasswordField({ id, label, value, onChange, error, placeholder, autoCom
 }
 
 /**
- * 修改密码对话框：右上角用户菜单主动改密 + 首次登录强制改密（force 模式不可关闭）。
- * 成功后后端签发新令牌对，前端静默续期（不登出、不跳转），其他会话不受影响。
+ * 修改密码对话框：右上角用户菜单主动改密 + 首次登录强制改密。
+ * force 模式不可通过 Esc/遮罩/X 绕过，但提供"退出登录"出口（暂不修改则离开会话，
+ * 重新登录后强制改密流程会再次弹出）；成功后后端签发新令牌对，前端静默续期
+ * （不登出、不跳转），其他会话不受影响。
  */
 export function ChangePasswordDialog() {
-  const { user, passwordDialog, closePasswordDialog, updateUser, setTokens } = useAuthStore()
+  const { user, passwordDialog, closePasswordDialog, updateUser, setTokens, logout } = useAuthStore()
   const { open, force } = passwordDialog
 
   const [oldPassword, setOldPassword] = useState('')
@@ -94,6 +96,8 @@ export function ChangePasswordDialog() {
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // force 模式退出登录进行中：防重复点击（登出后组件随 MainLayout 卸载，无需重置）
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
 
   // 成功轻提示（替代原生 alert）：对话框关闭后于页面展示，3s 自动消失
   const [successFlash, setSuccessFlash] = useState(false)
@@ -139,6 +143,23 @@ export function ChangePasswordDialog() {
       setError(e instanceof Error ? e.message : '修改失败，请稍后重试')
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  /**
+   * force 模式退出登录：暂不修改密码的唯一合法出口（不提供"跳过改密继续使用"路径）。
+   * 与 user-chip 退出逻辑一致：先通知后端吊销会话（强制改密豁免白名单已放行 logout），
+   * 失败不阻塞，本地登出兜底；authStore.logout 会重置 passwordDialog 并回到登录页。
+   */
+  const handleLogout = async () => {
+    if (isLoggingOut) return
+    setIsLoggingOut(true)
+    try {
+      await api.logout()
+    } catch {
+      // 忽略：令牌可能已失效/网络异常，本地登出兜底
+    } finally {
+      logout()
     }
   }
 
@@ -204,7 +225,16 @@ export function ChangePasswordDialog() {
             )}
           </div>
           <DialogFooter>
-            {!force && (
+            {force ? (
+              // force 模式：不提供"取消"（避免误以为可跳过改密继续使用），改为"退出登录"
+              <Button
+                variant="outline"
+                onClick={handleLogout}
+                disabled={isSubmitting || isLoggingOut}
+              >
+                {isLoggingOut ? '退出中...' : '退出登录'}
+              </Button>
+            ) : (
               <Button variant="outline" onClick={closePasswordDialog} disabled={isSubmitting}>
                 取消
               </Button>
