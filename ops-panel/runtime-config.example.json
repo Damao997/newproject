@@ -1,0 +1,14 @@
+{
+  "panel": {
+    "port": 3900
+  },
+  "services": {
+    "postgresPort": 5433,
+    "backendPort": 3100,
+    "frontendPort": 8080
+  },
+  "access": {
+    "publicDomain": "finance.example.com",
+    "frontendOrigin": "https://finance.example.com"
+  }
+}

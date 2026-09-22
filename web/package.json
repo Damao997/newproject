@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:prod": "node scripts/build-prod.mjs",
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:static": "node --test serve-static.test.cjs",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {

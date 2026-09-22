@@ -27,9 +27,27 @@ vi.mock('./middleware/audit', () => ({
 }))
 
 import request from 'supertest'
-import { createApp } from './app'
+import { createApp, isTrustedProxy } from './app'
 
 const app = createApp()
+
+describe('isTrustedProxy（审计 IP 可信口径）', () => {
+  it('仅本机 serve-static 代理跳可信', () => {
+    expect(isTrustedProxy('127.0.0.1')).toBe(true)
+    expect(isTrustedProxy('::1')).toBe(true)
+    expect(isTrustedProxy('::ffff:127.0.0.1')).toBe(true)
+  })
+
+  it('局域网客户端直连后端时不被信任为代理', () => {
+    expect(isTrustedProxy('192.168.1.50')).toBe(false)
+    expect(isTrustedProxy('10.0.0.9')).toBe(false)
+    expect(isTrustedProxy('::ffff:192.168.1.50')).toBe(false)
+  })
+
+  it('公网地址不被信任', () => {
+    expect(isTrustedProxy('203.0.113.9')).toBe(false)
+  })
+})
 
 let passwordHash = ''
 

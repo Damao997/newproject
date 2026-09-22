@@ -16,6 +16,7 @@ npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
 lerna-debug.log*
+/.npm-cache/
 
 # Editor directories
 .vscode/*
@@ -39,6 +40,7 @@ Thumbs.db
 .env.*
 # 模板文件必须入库（不含真实密钥）
 !.env.example
+!.env.production.example
 
 # 临时排查截图（不入库）
 login-attempt.png
@@ -101,3 +103,18 @@ web/pnpm-workspace.yaml
 
 # frp 内网穿透（frpc.toml 内含 token，整目录本地化，不入库）
 frp/
+
+# Windows 生产运行时资产（真实数据、备份、二进制工具与密钥配置，严禁入库）
+/data/
+/server/.pgdata/
+/backup/
+/tools/
+/recovery-*/
+/*.dump
+/ops-panel/config.json
+/ops-panel/runtime-config.json
+/ops-panel/config-backups/
+/web/.release/
+
+# 运维面板本地启动产物
+/ops-panel/*.pid
