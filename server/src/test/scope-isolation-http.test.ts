@@ -13,7 +13,7 @@ import { hashPassword } from '../lib/password'
  * 断言其在往来分析 / 财务指标 / 数据管理 各模块只能取到授权公司数据，
  * 且汇总主体按「全有或全无」判定 —— 仅授权部分成员时 403。
  *
- * 无 DB / 未 seed 时整组跳过；临时数据 afterAll 清理。
+ * 数据库不可达时整组跳过；数据库可达但 seed/夹具异常时必须失败，避免 CI 假绿；临时数据 afterAll 清理。
  */
 
 const app = createApp()
@@ -27,6 +27,7 @@ const PERIOD = '2099-08'
 const TYPE = '应收账款'
 
 let dbReady = false
+let connectionReady = false
 let token = ''
 let userId = ''
 let viewerUserId = ''
@@ -52,8 +53,9 @@ let outPlanId = ''
 beforeAll(async () => {
   try {
     await basePrisma.$queryRaw`SELECT 1`
+    connectionReady = true
     const role = await basePrisma.role.findUnique({ where: { code: 'finance_manager' }, select: { id: true, scopeValue: true } })
-    if (!role) return
+    if (!role) throw new Error('缺少 finance_manager 角色，请先执行 seed')
 
     await basePrisma.company.createMany({
       data: [
@@ -101,14 +103,13 @@ beforeAll(async () => {
     userId = user.id
 
     const login = await request(app).post('/api/v1/auth/login').send({ username: USERNAME, password: PASSWORD })
-    if (login.status === 200 && login.body?.data?.accessToken) {
-      token = login.body.data.accessToken
-      dbReady = true
-    }
+    if (login.status !== 200 || !login.body?.data?.accessToken) throw new Error('范围测试用户登录失败')
+    token = login.body.data.accessToken
 
     // viewer 全公司授权夹具：复现「查看者 + 全部公司」筛选器为空的回归场景
     const viewerRole = await basePrisma.role.findUnique({ where: { code: 'viewer' }, select: { id: true } })
-    if (viewerRole) {
+    if (!viewerRole) throw new Error('缺少 viewer 角色，请先执行 seed')
+    {
       const allCodes = (await basePrisma.company.findMany({ where: { status: 'active' }, select: { code: true } })).map((c) => c.code)
       const viewerUser = await basePrisma.user.create({
         data: {
@@ -123,7 +124,8 @@ beforeAll(async () => {
       })
       viewerUserId = viewerUser.id
       const viewerLogin = await request(app).post('/api/v1/auth/login').send({ username: `__viewer_full_${suffix}`, password: PASSWORD })
-      if (viewerLogin.status === 200) viewerToken = viewerLogin.body.data.accessToken
+      if (viewerLogin.status !== 200 || !viewerLogin.body?.data?.accessToken) throw new Error('viewer 测试用户登录失败')
+      viewerToken = viewerLogin.body.data.accessToken
 
       // 无任何候选查看权限的临时角色 → 公司列表仍须 403（防止权限门过度放宽）
       const roleRow = await basePrisma.role.create({
@@ -148,7 +150,8 @@ beforeAll(async () => {
       })
       noViewUserId = noViewUser.id
       const noViewLogin = await request(app).post('/api/v1/auth/login').send({ username: `__noview_u_${suffix}`, password: PASSWORD })
-      if (noViewLogin.status === 200) noViewToken = noViewLogin.body.data.accessToken
+      if (noViewLogin.status !== 200 || !noViewLogin.body?.data?.accessToken) throw new Error('无查看权限测试用户登录失败')
+      noViewToken = noViewLogin.body.data.accessToken
 
       // 仅 inventory:view 权限的临时角色 → /indicators/periods 与 /indicators/tree 须放行（库存页不依赖 indicators:view）
       const invRole = await basePrisma.role.create({
@@ -173,7 +176,8 @@ beforeAll(async () => {
       })
       invOnlyUserId = invUser.id
       const invLogin = await request(app).post('/api/v1/auth/login').send({ username: `__invonly_u_${suffix}`, password: PASSWORD })
-      if (invLogin.status === 200) invOnlyToken = invLogin.body.data.accessToken
+      if (invLogin.status !== 200 || !invLogin.body?.data?.accessToken) throw new Error('仅存货权限测试用户登录失败')
+      invOnlyToken = invLogin.body.data.accessToken
 
       // 仅 transactions:view（无 export）的临时角色 → 账龄导出须 403（导出权限独立门禁）
       const expNoRole = await basePrisma.role.create({
@@ -198,7 +202,8 @@ beforeAll(async () => {
       })
       expNoUserId = expNoUser.id
       const expNoLogin = await request(app).post('/api/v1/auth/login').send({ username: `__expno_u_${suffix}`, password: PASSWORD })
-      if (expNoLogin.status === 200) expNoToken = expNoLogin.body.data.accessToken
+      if (expNoLogin.status !== 200 || !expNoLogin.body?.data?.accessToken) throw new Error('无导出权限测试用户登录失败')
+      expNoToken = expNoLogin.body.data.accessToken
 
       // 范围外催收计划夹具：直入库绕过守卫，供 update/addLog/listLogs 越权断言
       const outPlan = await basePrisma.collectionPlan.create({
@@ -208,15 +213,18 @@ beforeAll(async () => {
           accountCode: `__SCOPE_ACC_${suffix}`,
           overdueAmount: 100,
           plannedDate: new Date('2099-09-01'),
+          method: 'phone',
         },
         select: { id: true },
       })
       outPlanId = outPlan.id
+      dbReady = true
     }
   } catch (e) {
     // eslint-disable-next-line no-console
     console.error('[scope-isolation-http] 夹具准备失败：', e)
     dbReady = false
+    if (connectionReady) throw e
   }
 }, 90_000) // 夹含多次 bcrypt 登录（单次可达 2.5s），环境慢时默认 10s 钩子超时会误判整套件失败
 

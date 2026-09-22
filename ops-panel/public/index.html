@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230ea5e9'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='white' font-family='monospace'>Z</text></svg>">
+<title>ZJYPH 运维面板</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="logo">Z</span>
+    <h1>ZJYPH 运维面板</h1>
+  </div>
+  <div class="head-right">
+    <span id="svc-dot" class="dot dot-ok" title="面板服务"></span>
+    <span id="clock">--:--:--</span>
+  </div>
+</header>
+
+<nav>
+  <button class="tab-btn active" data-tab="overview">总览</button>
+  <button class="tab-btn" data-tab="process">进程</button>
+  <button class="tab-btn" data-tab="check">巡检</button>
+  <button class="tab-btn" data-tab="backup">备份</button>
+  <button class="tab-btn" data-tab="logs">日志</button>
+  <button class="tab-btn" data-tab="frp">FRP 隧道</button>
+  <button class="tab-btn" data-tab="config">配置中心</button>
+  <button class="tab-btn" data-tab="ai">AI 修复</button>
+</nav>
+
+<main>
+  <!-- 总览 -->
+  <section id="tab-overview" class="tab active">
+    <div class="cards" id="ov-cards"></div>
+    <div class="row-actions">
+      <button onclick="openTarget('app')">打开系统</button>
+      <button onclick="openTarget('health')">API 健康</button>
+      <button onclick="openTarget('logs')">日志目录</button>
+      <button onclick="openTarget('backup')">备份目录</button>
+      <button onclick="gotoAi('overview')">AI 诊断当前状态</button>
+    </div>
+    <div id="ai-banner" class="banner warn hidden">AI 未配置：请在「AI 修复」页填写 API 设置后才能使用 AI 诊断</div>
+  </section>
+
+  <!-- 进程 -->
+  <section id="tab-process" class="tab">
+    <div class="sec-head">
+      <h2>PM2 进程管理</h2>
+      <button onclick="loadStatus()">刷新</button>
+    </div>
+    <div id="pm2-diagnostic"></div>
+    <div id="proc-table"></div>
+    <p class="hint">停止 zjyph-postgres 将导致后端数据库不可用，请谨慎操作。</p>
+  </section>
+
+  <!-- 巡检 -->
+  <section id="tab-check" class="tab">
+    <div class="row-actions">
+      <button id="btn-opscheck" onclick="runCheck('ops-check')">一键巡检</button>
+      <button id="btn-smoke" onclick="runCheck('smoke')">冒烟验证</button>
+      <button onclick="gotoAi('check')">AI 诊断本次结果</button>
+    </div>
+    <div id="check-result"></div>
+  </section>
+
+  <!-- 备份 -->
+  <section id="tab-backup" class="tab">
+    <div class="row-actions">
+      <button id="btn-backup-full" onclick="backupFull()">立即备份</button>
+      <button onclick="loadBackups()">刷新列表</button>
+    </div>
+    <div class="cleanup-row">
+      <label>清理 <input id="cleanup-days" type="number" min="1" max="365" value="30"> 天前的旧备份</label>
+      <button id="btn-cleanup" onclick="cleanupBackups()">执行清理</button>
+    </div>
+    <div id="backup-table"></div>
+  </section>
+
+  <!-- 日志 -->
+  <section id="tab-logs" class="tab">
+    <div class="logs-bar">
+      <select id="log-proc">
+        <option value="zjyph-backend">zjyph-backend</option>
+        <option value="zjyph-frontend">zjyph-frontend</option>
+        <option value="zjyph-postgres">zjyph-postgres</option>
+      </select>
+      <select id="log-lines">
+        <option value="100">100 行</option>
+        <option value="200" selected>200 行</option>
+        <option value="500">500 行</option>
+      </select>
+      <label class="chk"><input id="log-auto" type="checkbox"> 5 秒自动刷新</label>
+      <button onclick="openTarget('logs')">打开目录</button>
+      <button onclick="gotoAi('logs')">AI 诊断日志</button>
+      <button onclick="loadLogs()">刷新</button>
+    </div>
+    <h3>标准输出 <span class="dim">(.out.log)</span></h3>
+    <pre id="log-out" class="logbox">加载中…</pre>
+    <h3>错误输出 <span class="dim">(.err.log)</span></h3>
+    <pre id="log-err" class="logbox err">加载中…</pre>
+  </section>
+
+  <!-- FRP 隧道 -->
+  <section id="tab-frp" class="tab">
+    <div class="sec-head">
+      <h2>FRP 内网穿透（frpc → 公网服务器）</h2>
+      <button onclick="loadFrpStatus()">刷新</button>
+    </div>
+    <div class="cards" id="frp-cards"></div>
+    <div class="row-actions">
+      <button id="btn-frp-start" onclick="frpAction('start')">启动</button>
+      <button id="btn-frp-restart" onclick="frpAction('restart')">重启</button>
+      <button id="btn-frp-stop" class="danger" onclick="frpAction('stop')">停止</button>
+      <button id="btn-frp-autostart" onclick="toggleFrpAutostart()">注册开机自启</button>
+    </div>
+    <div id="frp-proxy-table"></div>
+    <details class="raw" id="frp-config-box">
+      <summary>frpc.toml 配置（token 已掩码）</summary>
+      <pre id="frp-config">加载中…</pre>
+    </details>
+    <h3>frpc 运行日志 <span class="dim">(由面板启动时生成，独立于面板进程)</span></h3>
+    <pre id="frp-log" class="logbox">加载中…</pre>
+  </section>
+
+  <!-- 配置中心 -->
+  <section id="tab-config" class="tab">
+    <div class="page-intro">
+      <div>
+        <div class="eyebrow">SYSTEM SETTINGS</div>
+        <h2>配置中心</h2>
+        <p>集中管理生产运行端口、访问域名和 FRP 隧道。保存前会自动创建版本备份，保存后不会自动重启服务。</p>
+      </div>
+      <span id="config-state" class="status-badge neutral">未加载</span>
+    </div>
+    <div class="config-grid">
+      <article class="panel-card">
+        <div class="panel-card-head"><div><h3>服务端口</h3><p>修改后需要在“应用配置”中确认重启受影响进程。</p></div><span class="section-index">01</span></div>
+        <div class="field-grid">
+          <label>运维面板端口<input id="cfg-panel-port" type="number" min="1" max="65535"></label>
+          <label>数据库端口<input id="cfg-pg-port" type="number" min="1" max="65535"></label>
+          <label>后端 API 端口<input id="cfg-backend-port" type="number" min="1" max="65535"></label>
+          <label>前端页面端口<input id="cfg-frontend-port" type="number" min="1" max="65535"></label>
+        </div>
+      </article>
+      <article class="panel-card">
+        <div class="panel-card-head"><div><h3>访问域名</h3><p>域名用于 CORS 与 FRP 公网入口配置。</p></div><span class="section-index">02</span></div>
+        <div class="field-stack">
+          <label>公网域名<input id="cfg-domain" type="text" placeholder="example.com" autocomplete="off"></label>
+          <label>前端来源<input id="cfg-origin" type="text" placeholder="https://example.com" autocomplete="off"></label>
+        </div>
+      </article>
+    </div>
+    <article class="panel-card config-editor-card">
+      <div class="panel-card-head"><div><h3>FRP 客户端配置</h3><p>编辑完整 TOML。token 默认掩码，保持掩码即可沿用当前 token。</p></div><span class="section-index">03</span></div>
+      <textarea id="cfg-frp" class="code-editor" spellcheck="false" aria-label="FRP 客户端 TOML 配置"></textarea>
+    </article>
+    <div id="config-errors" class="form-errors hidden" role="alert"></div>
+    <div class="config-actions">
+      <button class="ghost" onclick="loadConfig()">放弃修改</button>
+      <button onclick="validateConfig()">校验配置</button>
+      <button class="primary" id="btn-config-save" onclick="saveConfig()">保存配置</button>
+      <button class="warning" id="btn-config-apply" onclick="applyConfig()">应用并重启服务</button>
+    </div>
+    <article class="panel-card versions-card">
+      <div class="panel-card-head"><div><h3>配置版本</h3><p>每次保存前自动生成备份，可恢复到最近版本。</p></div></div>
+      <div id="config-versions"><p class="empty-state">暂无历史版本</p></div>
+    </article>
+  </section>
+
+  <!-- AI 修复 -->
+  <section id="tab-ai" class="tab">
+    <details id="ai-settings-box">
+      <summary>AI API 设置（DeepSeek 兼容）</summary>
+      <div class="ai-form">
+        <label>Base URL<input id="ai-baseurl" placeholder="https://api.deepseek.com/v1"></label>
+        <label>API Key<input id="ai-key" type="password" placeholder="留空则不修改已保存的 Key"></label>
+        <label>模型<input id="ai-model" placeholder="deepseek-chat"></label>
+        <div class="row-actions">
+          <button id="btn-ai-save" onclick="saveAiSettings()">保存</button>
+          <button id="btn-ai-test" onclick="testAi()">连通性测试</button>
+        </div>
+        <div id="ai-test-result" class="hint"></div>
+      </div>
+    </details>
+    <div id="ai-thread" class="ai-thread">
+      <div class="ai-empty">
+        <p>AI 诊断基于面板实时采集的系统状态（进程 / 健康 / 备份 / 日志）。</p>
+        <p>AI 给出的修复动作需你点击「确认执行」后才会运行。</p>
+        <div class="ai-quick-actions">
+          <button class="primary" onclick="aiStart('overview')">诊断当前状态</button>
+          <button onclick="aiStart('frp', '请专门检查 FRP 客户端、控制连接、公网代理和最近日志，给出结论。')">检查 FRP 连通性</button>
+        </div>
+      </div>
+    </div>
+    <div class="ai-input-row">
+      <input id="ai-question" placeholder="补充问题描述（可选），回车发送">
+      <button id="btn-ai-send" onclick="aiAsk()">发送</button>
+      <button id="btn-ai-stop" class="hidden" onclick="aiStop()">停止</button>
+    </div>
+  </section>
+</main>
+
+<div id="toast" class="toast hidden"></div>
+<div id="dialog" class="dialog hidden" role="dialog" aria-modal="true" aria-labelledby="dialog-title" aria-describedby="dialog-message">
+  <div class="dialog-panel">
+    <h3 id="dialog-title">请确认</h3>
+    <p id="dialog-message"></p>
+    <pre id="dialog-detail" class="dialog-detail hidden"></pre>
+    <div class="dialog-actions"><button id="dialog-cancel">取消</button><button id="dialog-ok" class="primary">确认</button></div>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

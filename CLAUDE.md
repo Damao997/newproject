@@ -1,9 +1,9 @@
 # 浙江壹品慧财年经营数据分析平台 — AI 开发规范
 
 > **项目身份**：`yipinhui_finance_analytics` | 内部管理口径财务数据平台 | "Excel 进、看板/报表出"
-> **技术栈**：Vite+React18+Radix UI+Shadcn/ui+Tailwind+Zustand+ECharts+TipTap / Express4.19+Prisma+PostgreSQL15+JWT
+> **技术栈**：Vite5+React19+TypeScript6+Radix UI+Shadcn/ui+Tailwind+Zustand5+ECharts6+TipTap3 / Express4.21+TypeScript5.6+Prisma5+PostgreSQL17+JWT
 > **AI 引擎**：DeepSeek API（SSE 流式） | **部署**：生产为内网 Windows 非 Docker（PM2 + 嵌入式 PG17，权威口径见 docs/plans/环境管理规范.md；Docker 为预留迁移路径） | **单位**：万元/人民币/简体中文
-> **受众**：本文件由 AI Agent 自动加载，是日常开发的唯一权威规范入口。
+> **受众**：本文件是日常开发的权威规范；`AGENTS.md` 作为跨 Agent 自动加载入口并指向本文件。
 
 ---
 
@@ -54,19 +54,19 @@
 
 | 层 | 前端 | 后端 |
 |----|------|------|
-| 框架 | Vite 5 + React 18 + TypeScript 5.5 | Express 4.19+ + TypeScript 5.5 |
+| 框架 | Vite 5 + React 19 + TypeScript 6 | Express 4.21 + TypeScript 5.6 |
 | UI | Radix UI + Shadcn/ui + Ant Design 5（仅 ProTable：虚拟滚动/固定列） | — |
 | 样式 | Tailwind CSS 3（preflight: false，Design Token CSS 变量化） | — |
-| 状态/缓存 | Zustand v4 + React Query v5 | — |
-| 图表 | ECharts 5.5 + echarts-for-react | 趋势/同环比/账龄堆叠/饼图 |
+| 状态/缓存 | Zustand v5 + React Query v5 | — |
+| 图表 | ECharts 6 + echarts-for-react | 趋势/同环比/账龄堆叠/饼图 |
 | 动画 | 纯 CSS Animation（transition + @keyframes，无第三方动画库） | 微交互 active:scale/hover 过渡 |
 | 图标 | Lucide React（全站图标统一） | 工具栏/导航/状态图标 16–20px |
 | Design Token | CSS 变量化（--primary: 221 83% 53% → #2563EB） | — |
 | 富文本 | TipTap（报告编辑+AI 润色） | — |
 | ORM | — | Prisma v5（provider=postgresql） |
-| 数据库 | — | PostgreSQL 15+（生产）/ SQLite（本地开发） |
+| 数据库 | — | PostgreSQL 17（开发与 Windows 生产均使用隔离的嵌入式实例） |
 | 鉴权 | — | JWT（access 15min + refresh 7day + 轮转 + blacklist） |
-| 校验 | Zod（前后端共享，收敛到后端） | Zod + multer（fileFilter + 50MB + MIME 校验） |
+| 校验 | Zod（前后端共享，收敛到后端） | Zod + multer（数据导入 200MB / 报告图片 50MB + MIME 校验） |
 | 精度 | decimal.js | — |
 | Excel | SheetJS（预览）+ ExcelJS（导出） | SheetJS/ExcelJS（后端流式解析+unpivot） |
 | 导出 | ExcelJS + jsPDF + docx + file-saver | — |

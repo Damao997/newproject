@@ -5,7 +5,7 @@
 
 .DESCRIPTION
   与 server/scripts/backup.sh（Docker 版）职责对应，但采用 Windows 原生实现：
-    - pg_dump 来自 D:\ZJYPH-tools（PostgreSQL 官方 zip 二进制，免安装）
+    - pg_dump 默认来自 <仓库根目录>\tools\pgsql（PostgreSQL 官方 zip 二进制，免安装）
     - 加密使用 .NET AES-256（不依赖 openssl）
     - 备份文件命名：zjyph_prod_YYYYMMDD_HHMMSS.dump.enc（头部 16 字节为 IV）
   连接参数通过环境变量传入（与 pg 工具惯例一致）：
@@ -17,40 +17,66 @@
   verify  校验指定备份文件可解密且结构完整
   restore 从备份恢复（破坏性，需 -ConfirmRestore 与交互确认）
   cleanup 清理 N 天前的旧备份
+.PARAMETER EnvFile
+  生产环境变量文件；默认使用脚本相邻的 server/.env。
 
 .EXAMPLE
   $env:ZJYPH_BACKUP_KEY = "xxx"; .\backup-zjyph.ps1 -Action full
-  .\backup-zjyph.ps1 -Action verify -BackupFile D:\ZJYPH-backup\zjyph_prod_20260807_020000.dump.enc
+  .\backup-zjyph.ps1 -Action verify -BackupFile D:\ZJYPHFA\backup\zjyph_prod_20260807_020000.dump.enc
 #>
 [CmdletBinding()]
 param(
   [ValidateSet('full', 'verify', 'restore', 'cleanup')]
   [string]$Action = 'full',
   [string]$BackupFile = '',
-  [string]$BackupDir = 'D:\ZJYPH-backup',
+  [string]$BackupDir = '',
   [int]$RetentionDays = 30,
   [switch]$ConfirmRestore,
-  [string]$PgToolsBin = 'D:\ZJYPH-tools\pgsql\bin'
+  [string]$PgToolsBin = '',
+  [string]$EnvFile = ''
 )
 
 $ErrorActionPreference = 'Stop'
+$workspace = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+if (-not $BackupDir) { $BackupDir = if ($env:ZJYPH_BACKUP_DIR) { $env:ZJYPH_BACKUP_DIR } else { Join-Path $workspace 'backup' } }
+if (-not $PgToolsBin) { $PgToolsBin = if ($env:ZJYPH_PG_TOOLS_BIN) { $env:ZJYPH_PG_TOOLS_BIN } else { Join-Path $workspace 'tools\pgsql\bin' } }
+if (-not $EnvFile) { $EnvFile = Join-Path $PSScriptRoot '..\.env' }
 $logDir = Join-Path $BackupDir 'logs'
 $fullDir = Join-Path $BackupDir 'full'
 New-Item -ItemType Directory -Force -Path $logDir, $fullDir | Out-Null
+
+function ConvertFrom-PostgresUrl {
+  param([string]$Url)
+  try { $uri = [Uri]$Url }
+  catch { throw 'MIGRATE_DATABASE_URL 不是合法 URI' }
+  if ($uri.Scheme -notin @('postgresql', 'postgres')) { throw 'MIGRATE_DATABASE_URL 必须使用 postgresql:// 或 postgres://' }
+  $userInfo = $uri.UserInfo -split ':', 2
+  if ($userInfo.Count -ne 2) { throw 'MIGRATE_DATABASE_URL 缺少用户名或密码' }
+  $database = [Uri]::UnescapeDataString($uri.AbsolutePath.TrimStart('/'))
+  if (-not $database) { throw 'MIGRATE_DATABASE_URL 缺少数据库名' }
+  return [pscustomobject]@{
+    Host = $uri.Host
+    Port = if ($uri.Port -gt 0) { $uri.Port } else { 5432 }
+    User = [Uri]::UnescapeDataString($userInfo[0])
+    Password = [Uri]::UnescapeDataString($userInfo[1])
+    Database = $database
+  }
+}
 
 # ── 连接参数自动解析 ─────────────────────────────────────
 # 若 PGHOST 等未设置（如计划任务场景），从生产 server\.env 的
 # MIGRATE_DATABASE_URL（超级用户连接串）解析，备份须用超级用户。
 if (-not $env:PGHOST) {
-  $envFile = Join-Path $PSScriptRoot '..\.env'
-  if (Test-Path $envFile) {
-    $line = Get-Content $envFile | Where-Object { $_ -match '^MIGRATE_DATABASE_URL=' } | Select-Object -First 1
-    if ($line -match 'postgresql://([^:]+):([^@]+)@([^:]+):(\d+)/(\S+)') {
-      $env:PGHOST = $Matches[3]
-      $env:PGPORT = $Matches[4]
-      $env:PGUSER = $Matches[1]
-      $env:PGDATABASE = $Matches[5]
-      $env:PGPASSWORD = $Matches[2]
+  if (Test-Path $EnvFile) {
+    $line = Get-Content $EnvFile | Where-Object { $_ -match '^MIGRATE_DATABASE_URL=' } | Select-Object -First 1
+    if ($line) {
+      $url = (($line -split '=', 2)[1].Trim() -replace '^"|"$', '')
+      $connection = ConvertFrom-PostgresUrl $url
+      $env:PGHOST = $connection.Host
+      $env:PGPORT = [string]$connection.Port
+      $env:PGUSER = $connection.User
+      $env:PGDATABASE = $connection.Database
+      $env:PGPASSWORD = $connection.Password
     }
   }
 }
@@ -88,7 +114,7 @@ function New-Encryptor {
 function Invoke-PgDumpEncrypted {
   param([string]$Target)
   $pgDump = Join-Path $PgToolsBin 'pg_dump.exe'
-  if (-not (Test-Path $pgDump)) { throw "pg_dump 不存在：$pgDump（请确认 D:\ZJYPH-tools 已部署）" }
+  if (-not (Test-Path $pgDump)) { throw "pg_dump 不存在：$pgDump（可通过 ZJYPH_PG_TOOLS_BIN 或 -PgToolsBin 指定）" }
 
   $key = Get-AesKey
   $aes = New-Encryptor $key
@@ -201,7 +227,8 @@ switch ($Action) {
       Write-Log '新备份校验通过'
     }
     catch {
-      Write-Log "警告：新备份校验失败，请立即人工介入（$($_.Exception.Message)）"
+      Write-Log "错误：新备份校验失败，备份流程中止（$($_.Exception.Message)）"
+      throw
     }
     Write-Log "清理 $RetentionDays 天前的旧备份"
     Get-ChildItem $fullDir -Filter '*.dump.enc' | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-$RetentionDays) } | Remove-Item -Force

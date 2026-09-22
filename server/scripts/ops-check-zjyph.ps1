@@ -10,12 +10,27 @@
 #>
 [CmdletBinding()]
 param(
-  [string]$ProdDir = 'D:\ZJYPH-prod'
+  [string]$ProdDir = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path,
+  [string]$BackupDir = '',
+  [string]$PgToolsBin = ''
 )
 
 $ErrorActionPreference = 'Continue'
 $serverDir = Join-Path $ProdDir 'server'
 $envFile = Join-Path $serverDir '.env'
+$runtimeFile = Join-Path $ProdDir 'ops-panel\runtime-config.json'
+$backendPort = 3100
+$frontendPort = 8080
+if (Test-Path $runtimeFile) {
+  try {
+    $runtime = Get-Content -Raw $runtimeFile | ConvertFrom-Json
+    if ($runtime.services.backendPort) { $backendPort = [int]$runtime.services.backendPort }
+    if ($runtime.services.frontendPort) { $frontendPort = [int]$runtime.services.frontendPort }
+  }
+  catch { Write-Warning "runtime-config.json 无法解析，使用默认端口：$($_.Exception.Message)" }
+}
+if (-not $BackupDir) { $BackupDir = if ($env:ZJYPH_BACKUP_DIR) { $env:ZJYPH_BACKUP_DIR } else { Join-Path $ProdDir 'backup' } }
+if (-not $PgToolsBin) { $PgToolsBin = if ($env:ZJYPH_PG_TOOLS_BIN) { $env:ZJYPH_PG_TOOLS_BIN } else { Join-Path $ProdDir 'tools\pgsql\bin' } }
 $issues = @()
 $warnings = @()
 
@@ -25,6 +40,35 @@ function Report {
   Write-Host ("  [{0}] {1}" -f $Status, $Msg) -ForegroundColor $color
 }
 
+function Resolve-Pm2Command {
+  $command = Get-Command 'pm2.cmd' -ErrorAction SilentlyContinue
+  if ($command) { return $command.Source }
+  if ($env:APPDATA) {
+    $candidate = Join-Path $env:APPDATA 'npm\pm2.cmd'
+    if (Test-Path $candidate) { return $candidate }
+  }
+  throw '未找到 pm2.cmd'
+}
+
+function ConvertFrom-PostgresUrl {
+  param([string]$Url)
+  try { $uri = [Uri]$Url }
+  catch { throw 'MIGRATE_DATABASE_URL 不是合法 URI' }
+  if ($uri.Scheme -notin @('postgresql', 'postgres')) { throw 'MIGRATE_DATABASE_URL 协议非法' }
+  $userInfo = $uri.UserInfo -split ':', 2
+  $database = [Uri]::UnescapeDataString($uri.AbsolutePath.TrimStart('/'))
+  if ($userInfo.Count -ne 2 -or -not $database) { throw 'MIGRATE_DATABASE_URL 缺少连接信息' }
+  return [pscustomobject]@{
+    Host = $uri.Host
+    Port = if ($uri.Port -gt 0) { $uri.Port } else { 5432 }
+    User = [Uri]::UnescapeDataString($userInfo[0])
+    Password = [Uri]::UnescapeDataString($userInfo[1])
+    Database = $database
+  }
+}
+
+$pm2Command = Resolve-Pm2Command
+
 Write-Host '==> ZJYPH 生产巡检报告' -ForegroundColor Cyan
 Write-Host ("巡检时间：{0}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))
 
@@ -33,7 +77,7 @@ Write-Host ''
 Write-Host '1. PM2 进程状态' -ForegroundColor Cyan
 foreach ($name in @('zjyph-postgres', 'zjyph-backend', 'zjyph-frontend')) {
   # PS 5.1 的 ConvertFrom-Json 无法解析 pm2 jlist（大小写重复键），改用 describe 文本
-  $desc = pm2 describe $name 2>$null | Out-String
+  $desc = & $pm2Command describe $name 2>$null | Out-String
   if ($desc -match 'status[^\r\n]*online') {
     $restarts = 0
     if ($desc -match 'restarts[^\r\n]*?(\d+)') { $restarts = [int]$Matches[1] }
@@ -53,17 +97,27 @@ foreach ($name in @('zjyph-postgres', 'zjyph-backend', 'zjyph-frontend')) {
 Write-Host ''
 Write-Host '2. 服务健康' -ForegroundColor Cyan
 try {
-  $health = Invoke-RestMethod -Uri 'http://127.0.0.1:3100/health' -TimeoutSec 8
-  Report 'OK' '后端 /health 正常'
+  $health = Invoke-RestMethod -Uri "http://127.0.0.1:$backendPort/health" -TimeoutSec 8
+  if ($health.data.service -ne 'up' -or $health.data.db -ne 'up') { throw '服务或数据库状态不是 up' }
+  Report 'OK' '后端 /health 与数据库正常'
 }
 catch { Report 'FAIL' "后端 /health 不可达：$($_.Exception.Message)"; $issues += 'backend' }
 
 try {
-  $front = Invoke-WebRequest -Uri 'http://127.0.0.1:8080/' -TimeoutSec 8 -UseBasicParsing
-  if ($front.StatusCode -eq 200) { Report 'OK' '前端 8080 正常' }
+  $front = Invoke-WebRequest -Uri "http://127.0.0.1:$frontendPort/" -TimeoutSec 8 -UseBasicParsing
+  if ($front.StatusCode -eq 200) { Report 'OK' "前端 $frontendPort 正常" }
   else { Report 'FAIL' "前端返回 HTTP $($front.StatusCode)"; $issues += 'frontend' }
 }
 catch { Report 'FAIL' "前端不可达：$($_.Exception.Message)"; $issues += 'frontend' }
+
+try {
+  Invoke-WebRequest -Uri "http://127.0.0.1:$frontendPort/api/v1/auth/profile" -TimeoutSec 8 -UseBasicParsing | Out-Null
+  Report 'FAIL' '同源 API 代理意外返回成功状态'; $issues += 'api-proxy'
+}
+catch {
+  if ($_.Exception.Response.StatusCode.value__ -eq 401) { Report 'OK' '同源 /api/v1 代理正常' }
+  else { Report 'FAIL' "同源 API 代理异常：$($_.Exception.Message)"; $issues += 'api-proxy' }
+}
 
 # ── 3. 磁盘空间 ─────────────────────────────────────────
 Write-Host ''
@@ -79,7 +133,7 @@ Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Name -in @('C', 'D') } | 
 # ── 4. 备份时效 ─────────────────────────────────────────
 Write-Host ''
 Write-Host '4. 备份时效' -ForegroundColor Cyan
-$latest = Get-ChildItem 'D:\ZJYPH-backup\full' -Filter '*.dump.enc' -ErrorAction SilentlyContinue |
+$latest = Get-ChildItem (Join-Path $BackupDir 'full') -Filter '*.dump.enc' -ErrorAction SilentlyContinue |
   Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if (-not $latest) { Report 'FAIL' '未找到任何备份文件'; $issues += 'backup' }
 else {
@@ -95,17 +149,19 @@ Write-Host ''
 Write-Host '5. 数据库连接数' -ForegroundColor Cyan
 try {
   $line = Get-Content $envFile | Where-Object { $_ -match '^MIGRATE_DATABASE_URL=' } | Select-Object -First 1
-  if ($line -match 'postgresql://([^:]+):([^@]+)@([^:]+):(\d+)/(\S+)') {
-    $env:PGPASSWORD = $Matches[2]
+  if ($line) {
+    $url = (($line -split '=', 2)[1].Trim() -replace '^"|"$', '')
+    $connection = ConvertFrom-PostgresUrl $url
+    $env:PGPASSWORD = $connection.Password
     try {
-      $conn = & 'D:\ZJYPH-tools\pgsql\bin\psql.exe' -h $Matches[3] -p $Matches[4] -U $Matches[1] -d $Matches[5] -t -A -c "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database();" 2>$null | Select-Object -First 1
+      $conn = & (Join-Path $PgToolsBin 'psql.exe') -h $connection.Host -p $connection.Port -U $connection.User -d $connection.Database -t -A -c "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database();" 2>$null | Select-Object -First 1
       $connInt = [int]$conn
       if ($connInt -gt 50) { Report 'WARN' "当前连接数 $connInt（偏高）"; $warnings += 'connections' }
       else { Report 'OK' "当前连接数 $connInt" }
     }
     finally { Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue }
   }
-  else { Report 'WARN' '.env 中 MIGRATE_DATABASE_URL 无法解析，跳过连接数检查' }
+  else { Report 'WARN' '.env 缺少 MIGRATE_DATABASE_URL，跳过连接数检查' }
 }
 catch { Report 'WARN' "连接数检查失败：$($_.Exception.Message)" }
 

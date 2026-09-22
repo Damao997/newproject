@@ -11,12 +11,25 @@
 #>
 [CmdletBinding()]
 param(
-  [string]$ProdDir = 'D:\ZJYPH-prod'
+  [string]$ProdDir = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path,
+  [string]$PgToolsBin = ''
 )
 
 $ErrorActionPreference = 'Stop'
 $serverDir = Join-Path $ProdDir 'server'
 $envFile = Join-Path $serverDir '.env'
+$runtimeFile = Join-Path $ProdDir 'ops-panel\runtime-config.json'
+$backendPort = 3100
+$frontendPort = 8080
+if (Test-Path $runtimeFile) {
+  try {
+    $runtime = Get-Content -Raw $runtimeFile | ConvertFrom-Json
+    if ($runtime.services.backendPort) { $backendPort = [int]$runtime.services.backendPort }
+    if ($runtime.services.frontendPort) { $frontendPort = [int]$runtime.services.frontendPort }
+  }
+  catch { throw "runtime-config.json 无法解析：$($_.Exception.Message)" }
+}
+if (-not $PgToolsBin) { $PgToolsBin = if ($env:ZJYPH_PG_TOOLS_BIN) { $env:ZJYPH_PG_TOOLS_BIN } else { Join-Path $ProdDir 'tools\pgsql\bin' } }
 $failures = @()
 
 function Check {
@@ -38,24 +51,41 @@ function Get-DotEnvValue {
   return (($line -split '=', 2)[1].Trim() -replace '^"|"$', '')
 }
 
+function ConvertFrom-PostgresUrl {
+  param([string]$Url)
+  try { $uri = [Uri]$Url }
+  catch { throw 'MIGRATE_DATABASE_URL 不是合法 URI' }
+  if ($uri.Scheme -notin @('postgresql', 'postgres')) { throw 'MIGRATE_DATABASE_URL 协议非法' }
+  $userInfo = $uri.UserInfo -split ':', 2
+  $database = [Uri]::UnescapeDataString($uri.AbsolutePath.TrimStart('/'))
+  if ($userInfo.Count -ne 2 -or -not $database) { throw 'MIGRATE_DATABASE_URL 缺少连接信息' }
+  return [pscustomobject]@{
+    Host = $uri.Host
+    Port = if ($uri.Port -gt 0) { $uri.Port } else { 5432 }
+    User = [Uri]::UnescapeDataString($userInfo[0])
+    Password = [Uri]::UnescapeDataString($userInfo[1])
+    Database = $database
+  }
+}
+
 Write-Host '==> ZJYPH 生产冒烟验证' -ForegroundColor Cyan
 
 # 1. 后端健康检查
 Check '后端 /health' {
-  $r = Invoke-RestMethod -Uri 'http://127.0.0.1:3100/health' -TimeoutSec 8
-  if (-not $r) { throw '空响应' }
+  $r = Invoke-RestMethod -Uri "http://127.0.0.1:$backendPort/health" -TimeoutSec 8
+  if ($r.data.service -ne 'up' -or $r.data.db -ne 'up') { throw '服务或数据库状态不是 up' }
 }
 
 # 2. 前端可达
 Check '前端 8080 首页' {
-  $r = Invoke-WebRequest -Uri 'http://127.0.0.1:8080/' -TimeoutSec 8 -UseBasicParsing
+  $r = Invoke-WebRequest -Uri "http://127.0.0.1:$frontendPort/" -TimeoutSec 8 -UseBasicParsing
   if ($r.StatusCode -ne 200) { throw "HTTP $($r.StatusCode)" }
 }
 
 # 3. 鉴权生效（未带 token 访问需登录接口应 401）
 Check '未授权访问返回 401' {
   try {
-    Invoke-WebRequest -Uri 'http://127.0.0.1:3100/api/v1/auth/profile' -TimeoutSec 8 -UseBasicParsing | Out-Null
+    Invoke-WebRequest -Uri "http://127.0.0.1:$frontendPort/api/v1/auth/profile" -TimeoutSec 8 -UseBasicParsing | Out-Null
     throw '预期 401 但请求成功'
   }
   catch {
@@ -67,7 +97,7 @@ Check '未授权访问返回 401' {
 Check '登录接口（错误密码 401）' {
   $body = @{ username = 'smoke-test-user'; password = 'wrong-password-smoke' } | ConvertTo-Json
   try {
-    Invoke-WebRequest -Uri 'http://127.0.0.1:3100/api/v1/auth/login' -Method POST -ContentType 'application/json' -Body $body -TimeoutSec 8 -UseBasicParsing | Out-Null
+    Invoke-WebRequest -Uri "http://127.0.0.1:$frontendPort/api/v1/auth/login" -Method POST -ContentType 'application/json' -Body $body -TimeoutSec 8 -UseBasicParsing | Out-Null
     throw '预期 401 但登录成功'
   }
   catch {
@@ -79,14 +109,13 @@ Check '登录接口（错误密码 401）' {
 Check '审计日志落库' {
   $migrateUrl = Get-DotEnvValue $envFile 'MIGRATE_DATABASE_URL'
   if (-not $migrateUrl) { throw '.env 缺少 MIGRATE_DATABASE_URL' }
-  if ($migrateUrl -notmatch 'postgresql://([^:]+):([^@]+)@([^:]+):(\d+)/(\S+)') { throw 'MIGRATE_DATABASE_URL 格式无法解析' }
-  $pgUser = $Matches[1]; $pgPass = $Matches[2]; $pgHost = $Matches[3]; $pgPort = $Matches[4]; $pgDb = $Matches[5]
+  $connection = ConvertFrom-PostgresUrl $migrateUrl
 
-  $env:PGPASSWORD = $pgPass
+  $env:PGPASSWORD = $connection.Password
   # created_at 为无时区 timestamp 列（Prisma 按 UTC 写入），psql 会话须强制 UTC 才能正确比较
   $env:PGOPTIONS = '-c timezone=UTC'
   try {
-    $count = & 'D:\ZJYPH-tools\pgsql\bin\psql.exe' -h $pgHost -p $pgPort -U $pgUser -d $pgDb -t -A -c "SELECT count(*) FROM audit_log WHERE action IN ('login','login_failed') AND created_at > now() - interval '2 minutes';" 2>$null
+    $count = & (Join-Path $PgToolsBin 'psql.exe') -h $connection.Host -p $connection.Port -U $connection.User -d $connection.Database -t -A -c "SELECT count(*) FROM audit_log WHERE action IN ('login','login_failed') AND created_at > now() - interval '2 minutes';" 2>$null
   }
   finally { Remove-Item Env:PGPASSWORD, Env:PGOPTIONS -ErrorAction SilentlyContinue }
   if ([int]($count | Select-Object -First 1) -lt 1) { throw '最近 2 分钟无登录审计记录' }
