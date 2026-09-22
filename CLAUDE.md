@@ -5,6 +5,8 @@
 > **AI 引擎**：DeepSeek API（SSE 流式） | **部署**：生产为内网 Windows 非 Docker（PM2 + 嵌入式 PG17，权威口径见 docs/plans/环境管理规范.md；Docker 为预留迁移路径） | **单位**：万元/人民币/简体中文
 > **受众**：本文件是日常开发的权威规范；`AGENTS.md` 作为跨 Agent 自动加载入口并指向本文件。
 
+> **生产发版强制入口**：凡涉及生产部署、上线、回滚、正式 tag 或 `main` 发布，必须先阅读 [`docs/plans/生产部署发布流程.md`](docs/plans/生产部署发布流程.md)，再按文档调用 `server/scripts/deploy-zjyph.ps1`。生产目录 `D:\ZJYPHFA` 只允许获取 tag、备份、部署、巡检和回滚；不得在生产目录开发、测试、stash 或直接 pull。
+
 ---
 
 ## 角色定义
@@ -264,6 +266,7 @@ formatMoneyWan(value) // → "1,234.56"（财务指标/数据管理，纯数值�
 | **写认证/权限/安全配置** | Read `docs/references/security.md` + `docs/plans/安全与权限规范.md` |
 | **写 AI 润色/分析/脱敏** | Read `docs/plans/AI模块规范.md` |
 | **配 Docker/Nginx/备份/部署/环境分离** | Read `docs/plans/环境管理规范.md`（当前实际方案，权威）+ `docs/references/devops.md` + `docs/plans/部署运维规范.md` |
+| **生产发布/上线/回滚/tag** | **先 Read `docs/plans/生产部署发布流程.md`（强制）**，再按 `server/scripts/deploy-zjyph.ps1` 执行；同时 Read `docs/plans/环境管理规范.md` |
 | **配错误码/响应格式/异常处理** | Read `docs/references/errorcode.md` |
 | **配日志/traceId/监控** | Read `docs/references/observability.md` |
 | **配性能优化/缓存** | Read `docs/references/performance.md` |
@@ -291,4 +294,5 @@ formatMoneyWan(value) // → "1,234.56"（财务指标/数据管理，纯数值�
 | `docs/plans/AI模块规范.md` | 双管道脱敏、四层 Prompt 防护、事实约束注入 |
 | `docs/plans/部署运维规范.md` | docker-compose、nginx、备份脚本、监控 |
 | `docs/plans/环境管理规范.md` | **开发与生产环境分离总纲**：分支管理、物理隔离、数据库分离、部署/备份/恢复、安全与运维规范（当前实际方案） |
+| `docs/plans/生产部署发布流程.md` | **生产上线唯一操作流程**：PR/CI/tag 门禁、备份、部署、验收、失败处理、回滚与 Agent 发版协议 |
 | `docs/plans/标准操作流程手册.md` | **场景化操作手册**：开发/修bug/提交/发布/脚本使用/数据流向/异常恢复的逐步操作（与规范互补） |

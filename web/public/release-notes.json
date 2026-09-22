@@ -1,6 +1,15 @@
 {
   "releases": [
     {
+      "version": "v2026.09.3",
+      "publishedAt": "2026-09-22",
+      "title": "生产发布流程与 Agent 发版规范固化",
+      "notes": [
+        { "type": "improvement", "text": "新增生产部署、验收、失败处理与回滚流程文档，统一通过正式 tag 发布" },
+        { "type": "improvement", "text": "根目录 CLAUDE.md 增加 Agent 发版必读入口与生产目录操作边界" }
+      ]
+    },
+    {
       "version": "v2026.09.1",
       "publishedAt": "2026-09-11",
       "title": "B 端体验升级与往来/指标体系重构",
