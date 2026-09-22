@@ -89,6 +89,21 @@ foreach ($runtimePort in @($backendPort, $frontendPort)) {
   if ($runtimePort -lt 1 -or $runtimePort -gt 65535) { throw "运行时端口非法：$runtimePort" }
 }
 $pm2Command = Resolve-Pm2Command
+$prodDirToken = [regex]::Escape((Split-Path -Leaf $ProdDir))
+
+function Wait-ProductionProcessesExit {
+  param([int]$TimeoutSeconds = 30)
+  for ($i = 0; $i -lt $TimeoutSeconds; $i++) {
+    $active = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+      ($_.Name -eq 'postgres.exe' -and $_.CommandLine -match "$prodDirToken.*data") -or
+      ($_.Name -eq 'esbuild.exe' -and $_.CommandLine -match "$prodDirToken.*server.*node_modules") -or
+      ($_.Name -eq 'node.exe' -and $_.CommandLine -match "$prodDirToken.*server.*dist")
+    })
+    if ($active.Count -eq 0) { return }
+    Start-Sleep -Seconds 1
+  }
+  throw '生产进程未在限定时间内退出，拒绝替换被锁定的依赖文件'
+}
 
 git -C $ProdDir diff --quiet --
 if ($LASTEXITCODE -ne 0) { throw '生产工作区存在未提交的已跟踪文件改动，拒绝发布' }
@@ -126,58 +141,97 @@ else {
   Assert-LastExitCode '备份失败，中止发布'
 }
 
-Step '2/6 检出、安装依赖并分阶段构建'
-if ($Tag) {
-  git -C $ProdDir switch --detach $Tag
-  Assert-LastExitCode "检出 $Tag 失败"
-  $exactTag = (git -C $ProdDir describe --tags --exact-match 2>$null | Select-Object -First 1).Trim()
-  if ($exactTag -ne $Tag) { throw "当前提交未精确匹配 tag：期望 $Tag，实际 $exactTag" }
-  Write-Host "已检出正式发布：$Tag"
-}
-
-Push-Location $serverDir
+$servicesStoppedForInstall = $false
 try {
-  & npm.cmd ci
-  Assert-LastExitCode '后端 npm ci 失败'
-  & npm.cmd run build
-  Assert-LastExitCode '后端构建失败'
-}
-finally { Pop-Location }
+  Step '2/6 停止进程、检出、安装依赖并分阶段构建'
+  $servicesStoppedForInstall = $true
+  foreach ($processName in @('zjyph-postgres', 'zjyph-backend', 'zjyph-frontend')) {
+    & $pm2Command stop $processName
+    Assert-LastExitCode "$processName 停止失败，拒绝替换依赖文件"
+  }
+  Wait-ProductionProcessesExit
 
-$releaseRoot = Join-Path $webDir '.release'
-$stagedWebDist = Join-Path $releaseRoot 'dist-next'
-$previousWebDist = Join-Path $releaseRoot 'dist-previous'
-New-Item -ItemType Directory -Force -Path $releaseRoot | Out-Null
-if (Test-Path $stagedWebDist) { Remove-Item -LiteralPath $stagedWebDist -Recurse -Force }
+  if ($Tag) {
+    git -C $ProdDir switch --detach $Tag
+    Assert-LastExitCode "检出 $Tag 失败"
+    $exactTag = (git -C $ProdDir describe --tags --exact-match 2>$null | Select-Object -First 1).Trim()
+    if ($exactTag -ne $Tag) { throw "当前提交未精确匹配 tag：期望 $Tag，实际 $exactTag" }
+    Write-Host "已检出正式发布：$Tag"
+  }
 
-$env:VITE_API_BASE_URL = $ApiBaseUrl
-$env:BUILD_OUT_DIR = $stagedWebDist
-if ($AllowUntagged) { $env:ALLOW_UNTAGGED_BUILD = '1' }
-Push-Location $webDir
-try {
-  & npm.cmd ci
-  Assert-LastExitCode '前端 npm ci 失败'
-  & npm.cmd run build:prod
-  Assert-LastExitCode '前端生产构建失败'
-}
-finally {
-  Pop-Location
-  Remove-Item Env:VITE_API_BASE_URL, Env:BUILD_OUT_DIR, Env:ALLOW_UNTAGGED_BUILD -ErrorAction SilentlyContinue
-}
-if (-not (Test-Path (Join-Path $stagedWebDist 'index.html'))) { throw '前端分阶段构建未产出 index.html' }
+  Push-Location $serverDir
+  try {
+    & npm.cmd ci
+    Assert-LastExitCode '后端 npm ci 失败'
+    & npm.cmd run build
+    Assert-LastExitCode '后端构建失败'
+  }
+  finally { Pop-Location }
 
-Step '3/6 数据库迁移'
-$migrateUrl = Get-DotEnvValue $envFile 'MIGRATE_DATABASE_URL'
-if (-not $migrateUrl) { throw '.env 缺少 MIGRATE_DATABASE_URL（超级用户迁移连接串）' }
-$env:DATABASE_URL = $migrateUrl
-Push-Location $serverDir
-try {
-  & npm.cmd run migrate:deploy
-  Assert-LastExitCode 'prisma migrate deploy 失败'
+  $releaseRoot = Join-Path $webDir '.release'
+  $stagedWebDist = Join-Path $releaseRoot 'dist-next'
+  $previousWebDist = Join-Path $releaseRoot 'dist-previous'
+  New-Item -ItemType Directory -Force -Path $releaseRoot | Out-Null
+  if (Test-Path $stagedWebDist) { Remove-Item -LiteralPath $stagedWebDist -Recurse -Force }
+
+  $env:VITE_API_BASE_URL = $ApiBaseUrl
+  $env:BUILD_OUT_DIR = $stagedWebDist
+  if ($AllowUntagged) { $env:ALLOW_UNTAGGED_BUILD = '1' }
+  Push-Location $webDir
+  try {
+    & npm.cmd ci
+    Assert-LastExitCode '前端 npm ci 失败'
+    & npm.cmd run build:prod
+    Assert-LastExitCode '前端生产构建失败'
+  }
+  finally {
+    Pop-Location
+    Remove-Item Env:VITE_API_BASE_URL, Env:BUILD_OUT_DIR, Env:ALLOW_UNTAGGED_BUILD -ErrorAction SilentlyContinue
+  }
+  if (-not (Test-Path (Join-Path $stagedWebDist 'index.html'))) { throw '前端分阶段构建未产出 index.html' }
+
+  $migrateUrl = Get-DotEnvValue $envFile 'MIGRATE_DATABASE_URL'
+  if (-not $migrateUrl) { throw '.env 缺少 MIGRATE_DATABASE_URL（超级用户迁移连接串）' }
+  $databasePort = 5433
+  try {
+    $migrateUri = [Uri]$migrateUrl
+    if ($migrateUri.Port -gt 0) { $databasePort = $migrateUri.Port }
+  }
+  catch { throw 'MIGRATE_DATABASE_URL 不是合法 URI，无法确定生产数据库端口' }
+
+  Step '3/6 启动 PostgreSQL 并执行数据库迁移'
+  & $pm2Command restart zjyph-postgres --update-env
+  Assert-LastExitCode 'PostgreSQL PM2 重启失败'
+  $databaseReady = $false
+  for ($i = 0; $i -lt 30; $i++) {
+    if (Test-NetConnection -ComputerName 127.0.0.1 -Port $databasePort -InformationLevel Quiet -WarningAction SilentlyContinue) {
+      $databaseReady = $true
+      break
+    }
+    Start-Sleep -Seconds 1
+  }
+  if (-not $databaseReady) { throw "PostgreSQL 未在限定时间内监听 127.0.0.1:$databasePort" }
+
+  $env:DATABASE_URL = $migrateUrl
+  Push-Location $serverDir
+  try {
+    & npm.cmd run migrate:deploy
+    Assert-LastExitCode 'prisma migrate deploy 失败'
+  }
+  finally {
+    Pop-Location
+    Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
+  }
 }
-finally {
-  Pop-Location
-  Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
+catch {
+  if ($servicesStoppedForInstall) {
+    Write-Warning "发布构建/迁移失败，尝试恢复生产 PM2 进程：$($_.Exception.Message)"
+    try {
+      & $pm2Command startOrReload (Join-Path $serverDir 'zjyph-ecosystem.config.cjs') --only 'zjyph-postgres,zjyph-backend,zjyph-frontend' --update-env
+    }
+    catch { Write-Warning "生产 PM2 自动恢复失败：$($_.Exception.Message)" }
+  }
+  throw
 }
 
 Step '4/6 重启生产服务'

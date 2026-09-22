@@ -1,6 +1,15 @@
 {
   "releases": [
     {
+      "version": "v2026.09.4",
+      "publishedAt": "2026-09-22",
+      "title": "生产发布脚本修复依赖文件锁问题",
+      "notes": [
+        { "type": "fix", "text": "发布前自动停止生产 PM2 进程，避免 PostgreSQL 和 esbuild 锁定依赖文件导致 npm ci 失败" },
+        { "type": "improvement", "text": "依赖构建完成后先恢复 PostgreSQL，再执行数据库迁移并启动业务服务" }
+      ]
+    },
+    {
       "version": "v2026.09.3",
       "publishedAt": "2026-09-22",
       "title": "生产发布流程与 Agent 发版规范固化",
