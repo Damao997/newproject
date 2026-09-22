@@ -441,7 +441,13 @@
   border-color: hsl(var(--input) / 0.6);
 }
 
-/* 尊重用户的“减少动态效果”偏好，保障可访问性与性能 */
+/* 尊重用户的“减少动态效果”偏好，保障可访问性与性能。
+   注意：transition 强制近零时长时必须把过渡属性限定在视觉属性上——
+   antd 弹层（@rc-component/trigger useAlign）打开时会同步把 left/top 置 0
+   并立刻读 getBoundingClientRect 计算位置；若 left/top 也带过渡，
+   同步读到的是过渡起始帧 -1000vh，弹层会被定位到屏幕外
+   （表现为点击菜单/弹窗"没反应"，且只在系统关闭动画效果的机器出现）。
+   参见 https://github.com/react-component/trigger/issues/618 */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -449,6 +455,7 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    transition-property: opacity, transform, color, background-color, border-color, box-shadow, fill, stroke !important;
     scroll-behavior: auto !important;
   }
 }

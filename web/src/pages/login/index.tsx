@@ -8,6 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { cn } from '@/lib/utils'
 import { AlertCircle, Eye, EyeOff } from 'lucide-react'
 import { api } from '@/lib/api'
+import { getCurrentVersion } from '@/lib/app-version'
 import { resolveHomePath } from '@/lib/permissions'
 
 /** 记住用户名：仅本地保存用户名（凭证不落盘） */
@@ -19,6 +20,12 @@ const REMEMBER_KEY = 'login-remembered-username'
  * 仅在 URL 携带 ?demo=1 时展示，避免污染真实生产态首屏。 */
 const DEMO_ERROR_TEXT = '账号或密码错误，还可重试 4 次（演示态）'
 const DEMO_HINT_TEXT = '首次登录或密码过期将被引导到修改密码流程'
+
+/** 版本标签：生产读构建注入的 app-version meta（v2026.09.1 → V2026.09.1）；开发态无 meta 显示 DEV */
+const VERSION_LABEL = (() => {
+  const v = getCurrentVersion()
+  return v === 'dev' ? 'DEV' : `V${v.replace(/^v/, '')}`
+})()
 
 interface FieldErrors {
   username?: string
@@ -195,7 +202,7 @@ export default function LoginPage() {
             <span className="login-brand-text">浙江壹品慧经营分析平台</span>
           </div>
         </div>
-        <div className="login-version">V2026.1.3</div>
+        <div className="login-version">{VERSION_LABEL}</div>
       </aside>
 
       {/* ========== 右侧：登录区（≤1024px 时品牌块并入表单上方，单栏布局） ========== */}
