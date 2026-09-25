@@ -327,3 +327,14 @@ describe('compareBatches 覆盖快照合并与 cashflow 分支（真实 DB，H3 
     expect(diff.changed[0].delta).toBe(20)
   })
 })
+
+describe('exportCrossTable 交叉表导出（真实 DB，H12 回归）', () => {
+  it('返回非空 xlsx Buffer 且含数据行（同源 getCross 口径）', async () => {
+    if (!dbReady) return
+    const buf = await DataService.exportCrossTable({ companyCode: null, scopeValue: '*' }, { subjectType: 'operating' })
+    expect(buf.length).toBeGreaterThan(1000)
+    // xlsx 魔数 PK
+    expect(buf[0]).toBe(0x50)
+    expect(buf[1]).toBe(0x4b)
+  })
+})

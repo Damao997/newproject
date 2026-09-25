@@ -583,6 +583,16 @@ export function useAggregationMap(summaryCode: string | null) {
   })
 }
 
+/** 全量汇总映射（映射表为小量级主数据，无条件加载）：
+ * 数据浏览页需把选中的汇总主体展开为成员列，与是否存在选中汇总码无关，
+ * 故独立于按需加载的 useAggregationMap（其 enabled 门禁语义保留给维度管理面板等调用方） */
+export function useAggregationMapAll() {
+  return useQuery({
+    queryKey: ['data', 'aggregation-map', 'all'] as const,
+    queryFn: () => api.getAggregationMap(undefined),
+  })
+}
+
 export function useAddAggregationMap() {
   const qc = useQueryClient()
   return useMutation({

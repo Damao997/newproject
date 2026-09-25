@@ -7,6 +7,7 @@ import { evaluateFormula } from '../lib/formula'
 import { OPERATING_DIMS, STATIC_DIMS, CASHFLOW_DIMS } from '../lib/metric-values'
 import { periodMinusYears, fiscalYtdDays } from '../lib/period'
 import { buildExcel } from '../lib/excel'
+import { IndicatorsService } from './IndicatorsService'
 import { effectiveScope, type ScopeInput } from '../lib/scope-guard'
 import { withoutScope } from '../middleware/scope-context'
 import { SUBJECT_SEGMENT_MAP, SUBJECT_PREFIX_MAP, childSubjectCodeOf } from '../../prisma/seed-data/subject-trees'
@@ -1040,6 +1041,29 @@ export const DataService = {
       { header: '大类', key: 'category', width: 16 }, { header: '借贷方向', key: 'direction' },
       { header: '是否叶子', key: 'isLeaf' },
     ], rows.map((r) => ({ code: r.code, name: r.name, type: r.subjectType, level: r.level, category: r.category, direction: r.direction, isLeaf: r.isLeaf ? '是' : '否' })))
+  },
+
+  /**
+   * 交叉表导出：与 GET /data/cross-table 同源查询（公司/期间/体系），导出当前交叉数值
+   * （每公司一列，行=科目树前序），供数据浏览页 Excel 导出；PDF 由前端从当前数据生成。
+   */
+  async exportCrossTable(scope: Parameters<typeof IndicatorsService.getCross>[0], params: { companyCodes?: string[]; period?: string; subjectType?: 'operating' | 'static' | 'cashflow' }): Promise<Buffer> {
+    const cross = await IndicatorsService.getCross(scope, params)
+    const companies = await prisma.company.findMany({ where: { code: { in: cross.companies } }, select: { code: true, name: true, shortName: true } })
+    const nameOf = new Map(companies.map((c) => [c.code, c.shortName || c.name]))
+    const columns = [
+      { header: '科目编码', key: 'code', width: 16 },
+      { header: '科目名称', key: 'name', width: 28 },
+      { header: '层级', key: 'level' },
+      { header: '是否叶子', key: 'isLeaf' },
+      ...cross.companies.map((c) => ({ header: nameOf.get(c) ?? c, key: c, width: 16 })),
+    ]
+    const rowsData = cross.rows.map((r) => {
+      const row: Record<string, unknown> = { code: r.code, name: r.name, level: r.level, isLeaf: r.isLeaf ? '是' : '否' }
+      for (const c of cross.companies) row[c] = r.values[c] ?? 0
+      return row
+    })
+    return buildExcel(`数据交叉表（${cross.period}）`, columns, rowsData)
   },
 
   // ===== 批次差异对比（US-03） =====
