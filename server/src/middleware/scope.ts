@@ -25,6 +25,9 @@ export type DataScope =
   | { type: 'none' }
 
 // 含 company_code 维度、需按数据范围过滤的模型（Prisma 模型名）
+// 注：Salesman 已改为多公司关联（SalesmanCompany），其数据范围过滤在
+// CollectionService 经 salesmanIdsByCompanies 解析授权 ID 实现，
+// 不再注入 companyCode（模型已无该字段，注入将导致受限用户查询报错）。
 const SCOPED_MODELS = new Set<string>([
   'FactOperating',
   'FactStatic',
@@ -34,7 +37,6 @@ const SCOPED_MODELS = new Set<string>([
   'CollectionPlan',
   'InventoryRecord',
   'Counterparty',
-  'Salesman',
   'SubjectAnalysis',
 ])
 

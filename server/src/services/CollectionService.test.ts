@@ -258,3 +258,31 @@ describe('CollectionService（真实 DB）', () => {
     await basePrisma.salesman.deleteMany({ where: { id: { in: [multi.id, other.id] } } }).catch(() => undefined)
   })
 })
+
+describe('受限用户业务员查询（真实 DB，H5 回归）', () => {
+  it('companies 范围上下文中 listSalesmen/listSalesmenManage 正常返回（不再注入已删除字段）', async () => {
+    if (!dbReady) return
+    const { scopeStore } = await import('../middleware/scope-context')
+    const s = await basePrisma.salesman.create({
+      data: { name: '__受限范围业务员__', status: 'active' },
+    })
+    try {
+      await basePrisma.salesmanCompany.create({
+        data: { salesmanId: s.id, companyCode: TEST_COMPANY },
+      })
+      const rows = await scopeStore.run(
+        { type: 'companies', companyCodes: [TEST_COMPANY], summaryCodes: [] },
+        () => CollectionService.listSalesmen({ companyCodes: [TEST_COMPANY] }),
+      )
+      expect(rows.some((r) => r.id === s.id)).toBe(true)
+      const manage = await scopeStore.run(
+        { type: 'companies', companyCodes: [TEST_COMPANY], summaryCodes: [] },
+        () => CollectionService.listSalesmenManage({ companyCodes: [TEST_COMPANY] }),
+      )
+      expect(manage.items.some((r) => r.id === s.id)).toBe(true)
+    } finally {
+      await basePrisma.salesmanCompany.deleteMany({ where: { salesmanId: s.id } }).catch(() => undefined)
+      await basePrisma.salesman.delete({ where: { id: s.id } }).catch(() => undefined)
+    }
+  })
+})
