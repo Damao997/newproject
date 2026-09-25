@@ -219,7 +219,18 @@ export const AdminService = {
     if (!found) throw errors.notFound('用户不存在')
     await assertRoleAssignable(ctx.actorRoleId, found.roleId)
     const passwordHash = await hashPassword(newPassword)
-    await prisma.user.update({ where: { id }, data: { passwordHash, mustChangePassword: true, refreshTokenJtiList: [] } })
+    // 原子撤销全部既有信任：清空刷新会话列表 + 持久免登令牌（旧免登令牌在重置后不可再建立会话）
+    await prisma.user.update({
+      where: { id },
+      data: {
+        passwordHash,
+        mustChangePassword: true,
+        refreshTokenJtiList: [],
+        persistentLoginTokenHash: null,
+        persistentLoginExpiresAt: null,
+        persistentLoginCreatedAt: null,
+      },
+    })
     await recordAudit({ userId: ctx.userId, module: 'admin', action: 'update', targetId: id, detail: { action: 'reset_password' } }, ctx.traceId)
   },
 
@@ -253,15 +264,24 @@ export const AdminService = {
   async updateRole(id: string, input: { name?: string; description?: string; scopeValue?: string; status?: string }, ctx: AuditCtx) {
     const found = await prisma.role.findUnique({ where: { id } })
     if (!found) throw errors.notFound('角色不存在')
-    if (found.isSystem && (input.scopeValue !== undefined)) throw errors.forbidden('预置角色核心属性只读')
-    const updated = await prisma.role.update({
-      where: { id },
-      data: {
-        name: input.name ?? undefined,
-        description: input.description ?? undefined,
-        scopeValue: found.isSystem ? undefined : (input.scopeValue ?? undefined),
-        status: input.status === 'inactive' ? 'inactive' : input.status === 'active' ? 'active' : undefined,
-      },
+    // 预置角色核心属性只读：数据范围与状态均不可改（停用预置角色会锁死全部绑定用户，含超管保护绕过）
+    if (found.isSystem && (input.scopeValue !== undefined || input.status !== undefined)) throw errors.forbidden('预置角色的数据范围与状态只读')
+    const nextStatus = input.status === 'inactive' ? 'inactive' : input.status === 'active' ? 'active' : undefined
+    const updated = await prisma.$transaction(async (tx) => {
+      // 停用守卫：仍有活跃用户绑定的角色不可停用（事务内校验，避免并发绑定窗口）
+      if (nextStatus === 'inactive') {
+        const activeUsers = await tx.user.count({ where: { roleId: id, status: 'active' } })
+        if (activeUsers > 0) throw errors.conflict('该角色仍有活跃用户绑定，请先转移或停用对应用户')
+      }
+      return tx.role.update({
+        where: { id },
+        data: {
+          name: input.name ?? undefined,
+          description: input.description ?? undefined,
+          scopeValue: found.isSystem ? undefined : (input.scopeValue ?? undefined),
+          status: nextStatus,
+        },
+      })
     })
     await recordAudit({ userId: ctx.userId, module: 'admin', action: 'role_change', targetId: id, detail: { action: 'update' } }, ctx.traceId)
     return { id: updated.id, code: updated.code, name: updated.name, description: updated.description, isSystem: updated.isSystem }

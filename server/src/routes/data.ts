@@ -189,6 +189,18 @@ router.get('/cross-table', requirePermission('data:browse:view', 'view'), asyncH
   sendOk(res, data)
 }))
 
+// 交叉表导出：与 /cross-table 同源查询与参数，导出当前交叉数值 xlsx（含公司列）；
+// PDF 由前端从当前已加载数据生成。审计对象为 cross_table（区别于科目体系导出）
+router.get('/cross-table/export', requirePermission('data:export', 'export'), asyncHandler(async (req, res) => {
+  const buffer = await DataService.exportCrossTable(scopeOf(req.authUser as AuthUserContext), {
+    companyCodes: req.query.companyCodes ? String(req.query.companyCodes).split(',').map((s) => s.trim()).filter(Boolean) : undefined,
+    period: req.query.period as string | undefined,
+    subjectType: req.query.subjectType === 'static' ? 'static' : req.query.subjectType === 'cashflow' ? 'cashflow' : 'operating',
+  })
+  await recordAudit({ userId: (req.authUser as AuthUserContext).userId, module: 'data', action: 'export', targetId: 'cross_table', ip: clientIp(req) }, req.traceId)
+  sendXlsx(res, buffer, `cross-table-${req.query.subjectType ?? 'operating'}.xlsx`)
+}))
+
 // ===== 公司 =====
 // 公司列表是各页面筛选器（CompanySelect/CompanyMultiSelect/看板主体候选）的主数据源：
 // 持有任一模块查看权限即可读取，返回范围仍由 DataService.listCompanies 内 effectiveScope 按数据权限收敛

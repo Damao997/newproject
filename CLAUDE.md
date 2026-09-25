@@ -63,7 +63,7 @@
 | 图表 | ECharts 6 + echarts-for-react | 趋势/同环比/账龄堆叠/饼图 |
 | 动画 | 纯 CSS Animation（transition + @keyframes，无第三方动画库） | 微交互 active:scale/hover 过渡 |
 | 图标 | Lucide React（全站图标统一） | 工具栏/导航/状态图标 16–20px |
-| Design Token | CSS 变量化（--primary: 221 83% 53% → #2563EB） | — |
+| Design Token | CSS 变量化（--primary: 29 100% 53% → #FF830F 品牌橙；侧边栏三风格 light/gradient/dark，交互色随风格切换，见 frontend-design-proposal.md v4.0） | — |
 | 富文本 | TipTap（报告编辑+AI 润色） | — |
 | ORM | — | Prisma v5（provider=postgresql） |
 | 数据库 | — | PostgreSQL 17（开发与 Windows 生产均使用隔离的嵌入式实例） |

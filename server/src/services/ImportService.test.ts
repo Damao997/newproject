@@ -783,3 +783,88 @@ describe('cashflow 导入预览科目覆盖检查（真实 DB）', () => {
     if (rootCategory) expect(kc.covered).toContain(rootCategory)
   })
 })
+
+describe('activate 门禁与并发互斥（真实 DB，H2 回归）', () => {
+  const P = '2096-05'
+  const CO = 'EN999906'
+  const ACC = '__TEST_GATE_ACC__'
+  const batchIds: string[] = []
+  const factIds: string[] = []
+
+  const makeBatch = async (status: 'success' | 'partial' | 'failed', lifecycleStatus: 'draft' | 'active' | 'purged', periods: string[]) => {
+    const b = await basePrisma.importBatch.create({
+      data: { fileName: `__gate_${status}_${lifecycleStatus}__.xlsx`, status, dataType: 'operating', lifecycleStatus, sourceType: 'upload', fiscalYear: 'FY2095' },
+    })
+    batchIds.push(b.id)
+    if (periods.length > 0) {
+      await basePrisma.factOperating.createMany({
+        data: periods.map((p) => ({
+          batchId: b.id, companyCode: CO, accountCode: ACC,
+          period: p, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2095', value: 1,
+        })),
+      })
+    }
+    return b
+  }
+
+  afterAll(async () => {
+    if (batchIds.length === 0) return
+    await basePrisma.factOperating.deleteMany({ where: { batchId: { in: batchIds } } }).catch(() => undefined)
+    await basePrisma.factBudget.deleteMany({ where: { batchId: { in: batchIds } } }).catch(() => undefined)
+    await basePrisma.importBatch.deleteMany({ where: { id: { in: batchIds } } }).catch(() => undefined)
+  })
+
+  it('partial / failed / purged 批次激活被拒绝', async () => {
+    if (!dbReady) return
+    const partial = await makeBatch('partial', 'draft', [P])
+    await expect(ImportService.activate(partial.id, 'test-user', 'trace')).rejects.toMatchObject({ message: expect.stringContaining('success') })
+    const failed = await makeBatch('failed', 'draft', [])
+    await expect(ImportService.activate(failed.id, 'test-user', 'trace')).rejects.toMatchObject({ message: expect.stringContaining('success') })
+    const purged = await makeBatch('success', 'purged', [])
+    await expect(ImportService.activate(purged.id, 'test-user', 'trace')).rejects.toMatchObject({ message: expect.stringContaining('已清除') })
+  })
+
+  it('并发激活同期间两批次：串行化后仅一份生效数据，无重复有效行', async () => {
+    if (!dbReady) return
+    const a = await makeBatch('success', 'draft', [P])
+    const b = await makeBatch('success', 'draft', [P])
+    await Promise.allSettled([
+      ImportService.activate(a.id, 'test-user', 'trace'),
+      ImportService.activate(b.id, 'test-user', 'trace'),
+    ])
+    // 无论谁后执行，最终该期间的有效行只来自一个 active 批次
+    const activeBatches = await basePrisma.importBatch.findMany({
+      where: { dataType: 'operating', lifecycleStatus: 'active', id: { in: [a.id, b.id] } },
+      select: { id: true },
+    })
+    expect(activeBatches).toHaveLength(1)
+    const rows = await basePrisma.factOperating.findMany({ where: { batchId: { in: [a.id, b.id] }, period: P } })
+    expect(rows).toHaveLength(1)
+  })
+
+  it('受限范围激活 budget：覆盖范围外公司被 403 拒绝且旧批次保持 active', async () => {
+    if (!dbReady) return
+    const { scopeStore } = await import('../middleware/scope-context')
+    const FY = 'FY2094'
+    const mkBudget = async (lifecycleStatus: 'active' | 'draft', companies: string[]) => {
+      const b = await basePrisma.importBatch.create({
+        data: { fileName: `__gate_bud_${lifecycleStatus}__.xlsx`, status: 'success', dataType: 'budget', lifecycleStatus, sourceType: 'upload', fiscalYear: FY },
+      })
+      batchIds.push(b.id)
+      await basePrisma.factBudget.createMany({
+        data: companies.map((c) => ({ batchId: b.id, companyCode: c, accountCode: '__GATE_BUD_ACC__', fiscalYear: FY, period: '2094-04', value: 1 })),
+      })
+      return b
+    }
+    // 旧 active 批次含范围外公司 OUT_CO；新批次仅含范围内公司 IN_CO
+    const oldBatch = await mkBudget('active', ['OUT_CO_GATE'])
+    const newBatch = await mkBudget('draft', ['IN_CO_GATE'])
+    await expect(
+      scopeStore.run({ type: 'companies', companyCodes: ['IN_CO_GATE'], summaryCodes: [] }, () =>
+        ImportService.activate(newBatch.id, 'test-user', 'trace'),
+      ),
+    ).rejects.toMatchObject({ message: expect.stringContaining('数据范围') })
+    const still = await basePrisma.importBatch.findUnique({ where: { id: oldBatch.id }, select: { lifecycleStatus: true } })
+    expect(still?.lifecycleStatus).toBe('active')
+  })
+})

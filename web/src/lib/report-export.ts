@@ -510,3 +510,48 @@ export async function exportReportToPdf(data: ReportExportData): Promise<void> {
 
   doc.save(`${safeFilename(data.title)}.pdf`)
 }
+
+// ============ 通用表格 PDF 导出（文本方案：等宽列布局，供数据浏览交叉表等使用） ============
+
+/**
+ * 将简单表格导出为 PDF：首行为表头（加粗），单元格超宽时单行截断。
+ * 复用报告 PDF 的中文字体按需加载机制（Noto Sans SC）。
+ */
+export async function exportTableToPdf(filename: string, title: string, header: string[], rows: string[][]): Promise<void> {
+  const { jsPDF } = await import('jspdf')
+  const doc = new jsPDF({ unit: 'pt', format: 'a4', orientation: header.length > 6 ? 'landscape' : 'portrait' })
+  await loadChineseFont(doc)
+  doc.setFont('NotoSansSC')
+  const margin = 40
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const pageHeight = doc.internal.pageSize.getHeight()
+  let y = margin
+  const ensureSpace = (needed: number) => {
+    if (y + needed > pageHeight - margin) {
+      doc.addPage()
+      y = margin
+    }
+  }
+  doc.setFontSize(14)
+  doc.setFont('NotoSansSC', 'bold')
+  doc.text(title || '导出', margin, y)
+  y += 22
+
+  const cols = Math.max(header.length, 1)
+  const colWidth = (pageWidth - margin * 2) / cols
+  const drawRow = (cells: string[], bold = false) => {
+    doc.setFontSize(9)
+    doc.setFont('NotoSansSC', bold ? 'bold' : 'normal')
+    doc.setTextColor(0, 0, 0)
+    ensureSpace(15)
+    for (let i = 0; i < cols; i++) {
+      const raw = (cells[i] ?? '').trim()
+      const lines = doc.splitTextToSize(raw, colWidth - 6) as string[]
+      doc.text(lines[0] ?? '', margin + i * colWidth, y)
+    }
+    y += 13
+  }
+  drawRow(header, true)
+  for (const r of rows) drawRow(r)
+  doc.save(filename)
+}
