@@ -115,6 +115,7 @@ frp/
 /ops-panel/runtime-config.json
 /ops-panel/config-backups/
 /web/.release/
+/server/.release/
 
 # 运维面板本地启动产物
 /ops-panel/*.pid

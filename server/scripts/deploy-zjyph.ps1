@@ -142,6 +142,13 @@ else {
 }
 
 $servicesStoppedForInstall = $false
+# 分阶段产物切换路径：构建/迁移/验证全部成功后才切换产物，任一阶段失败均回退到一致版本
+$serverReleaseRoot = Join-Path $serverDir '.release'
+$stagedServerDist = Join-Path $serverReleaseRoot 'dist-next'
+$previousServerDist = Join-Path $serverReleaseRoot 'dist-previous'
+$currentServerDist = Join-Path $serverDir 'dist'
+$backendSwapped = $false
+$webSwapped = $false
 try {
   Step '2/6 停止进程、检出、安装依赖并分阶段构建'
   $servicesStoppedForInstall = $true
@@ -163,8 +170,9 @@ try {
   try {
     & npm.cmd ci
     Assert-LastExitCode '后端 npm ci 失败'
-    & npm.cmd run build
-    Assert-LastExitCode '后端构建失败'
+    # 分阶段构建：产物先落 .release/dist-next，全部构建/迁移成功后再切换（避免中途失败留下混合版本）
+    & npx.cmd tsc -p tsconfig.json --outDir $stagedServerDist
+    Assert-LastExitCode '后端分阶段构建失败'
   }
   finally { Pop-Location }
 
@@ -225,56 +233,119 @@ try {
 }
 catch {
   if ($servicesStoppedForInstall) {
-    Write-Warning "发布构建/迁移失败，尝试恢复生产 PM2 进程：$($_.Exception.Message)"
+    Write-Warning "发布构建/迁移失败，尝试恢复生产 PM2 进程（产物未切换，恢复即上一一致版本）：$($_.Exception.Message)"
     try {
       & $pm2Command startOrReload (Join-Path $serverDir 'zjyph-ecosystem.config.cjs') --only 'zjyph-postgres,zjyph-backend,zjyph-frontend' --update-env
+      if ($LASTEXITCODE -ne 0) { throw "PM2 退出码 $LASTEXITCODE" }
+      Start-Sleep -Seconds 5
+      $recovered = $false
+      for ($i = 0; $i -lt 10; $i++) {
+        try {
+          $h = Invoke-RestMethod -Uri "http://127.0.0.1:$backendPort/health" -TimeoutSec 5
+          if ($h.data.service -eq 'up' -and $h.data.db -eq 'up') { $recovered = $true; break }
+        }
+        catch { Start-Sleep -Seconds 3 }
+      }
+      if ($recovered) { Write-Host '已恢复至上一版本并通过健康检查' }
+      else { Write-Warning '恢复后健康检查未通过，请立即人工介入' }
     }
-    catch { Write-Warning "生产 PM2 自动恢复失败：$($_.Exception.Message)" }
+    catch { Write-Warning "生产 PM2 自动恢复失败，请立即人工介入：$($_.Exception.Message)" }
   }
   throw
 }
 
-Step '4/6 重启生产服务'
+Step '4/6 切换产物并重启生产服务'
+# —— 后端产物切换（构建/迁移全部成功后才执行；失败就地还原） ——
+if (-not (Test-Path $currentServerDist)) { throw "当前后端产物不存在：$currentServerDist" }
+if (Test-Path $previousServerDist) { Remove-Item -LiteralPath $previousServerDist -Recurse -Force }
+Move-Item -LiteralPath $currentServerDist -Destination $previousServerDist
+try {
+  Move-Item -LiteralPath $stagedServerDist -Destination $currentServerDist
+  $backendSwapped = $true
+}
+catch {
+  Move-Item -LiteralPath $previousServerDist -Destination $currentServerDist -ErrorAction SilentlyContinue
+  throw
+}
+
+# —— 前端产物切换 ——
 $currentWebDist = Join-Path $webDir 'dist'
 if (-not (Test-Path $currentWebDist)) { throw "当前前端产物不存在：$currentWebDist" }
 if (Test-Path $previousWebDist) { Remove-Item -LiteralPath $previousWebDist -Recurse -Force }
 Move-Item -LiteralPath $currentWebDist -Destination $previousWebDist
 try {
   Move-Item -LiteralPath $stagedWebDist -Destination $currentWebDist
+  $webSwapped = $true
 }
 catch {
   Move-Item -LiteralPath $previousWebDist -Destination $currentWebDist -ErrorAction SilentlyContinue
   throw
 }
 
-& $pm2Command startOrReload (Join-Path $serverDir 'zjyph-ecosystem.config.cjs') --only 'zjyph-backend,zjyph-frontend' --update-env
-Assert-LastExitCode '后端/前端 PM2 重载失败'
-Start-Sleep -Seconds 5
-
-Step '5/6 健康检查'
-$health = $null
-for ($i = 0; $i -lt 10; $i++) {
-  try {
-    $health = Invoke-RestMethod -Uri "http://127.0.0.1:$backendPort/health" -TimeoutSec 5
-    break
-  }
-  catch { Start-Sleep -Seconds 3 }
-}
-if (-not $health -or $health.data.service -ne 'up' -or $health.data.db -ne 'up') { throw '后端 /health 或数据库检查失败' }
-
-$front = Invoke-WebRequest -Uri "http://127.0.0.1:$frontendPort/" -TimeoutSec 5 -UseBasicParsing
-if ($front.StatusCode -ne 200) { throw "前端返回 $($front.StatusCode)" }
-
-# 同源代理必须返回 API JSON/401，不能被 SPA fallback 错误接管为 200 HTML。
 try {
-  Invoke-WebRequest -Uri "http://127.0.0.1:$frontendPort/api/v1/auth/profile" -TimeoutSec 5 -UseBasicParsing | Out-Null
-  throw '前端同源代理意外返回成功状态'
+  & $pm2Command startOrReload (Join-Path $serverDir 'zjyph-ecosystem.config.cjs') --only 'zjyph-backend,zjyph-frontend' --update-env
+  Assert-LastExitCode '后端/前端 PM2 重载失败'
+  Start-Sleep -Seconds 5
+
+  Step '5/6 健康检查'
+  $health = $null
+  for ($i = 0; $i -lt 10; $i++) {
+    try {
+      $health = Invoke-RestMethod -Uri "http://127.0.0.1:$backendPort/health" -TimeoutSec 5
+      break
+    }
+    catch { Start-Sleep -Seconds 3 }
+  }
+  if (-not $health -or $health.data.service -ne 'up' -or $health.data.db -ne 'up') { throw '后端 /health 或数据库检查失败' }
+
+  $front = Invoke-WebRequest -Uri "http://127.0.0.1:$frontendPort/" -TimeoutSec 5 -UseBasicParsing
+  if ($front.StatusCode -ne 200) { throw "前端返回 $($front.StatusCode)" }
+
+  # 同源代理必须返回 API JSON/401，不能被 SPA fallback 错误接管为 200 HTML。
+  try {
+    Invoke-WebRequest -Uri "http://127.0.0.1:$frontendPort/api/v1/auth/profile" -TimeoutSec 5 -UseBasicParsing | Out-Null
+    throw '前端同源代理意外返回成功状态'
+  }
+  catch {
+    $status = $_.Exception.Response.StatusCode.value__
+    if ($status -ne 401) {
+      throw "前端同源 /api/v1 代理检查失败（HTTP $status）"
+    }
+  }
 }
 catch {
-  $status = $_.Exception.Response.StatusCode.value__
-  if ($status -ne 401) {
-    throw "前端同源 /api/v1 代理检查失败（HTTP $status）"
+  # 重启/健康检查失败：回退前后端产物至上一版本并重启，恢复的必须是一致版本；
+  # 仅凭 PM2 启动成功不视为恢复完成（H15）
+  Write-Warning "发布验证失败，回退产物至上一版本：$($_.Exception.Message)"
+  if ($backendSwapped) {
+    if (Test-Path $currentServerDist) { Remove-Item -LiteralPath $currentServerDist -Recurse -Force }
+    Move-Item -LiteralPath $previousServerDist -Destination $currentServerDist -ErrorAction SilentlyContinue
+    $backendSwapped = $false
   }
+  if ($webSwapped) {
+    if (Test-Path $currentWebDist) { Remove-Item -LiteralPath $currentWebDist -Recurse -Force }
+    Move-Item -LiteralPath $previousWebDist -Destination $currentWebDist -ErrorAction SilentlyContinue
+    $webSwapped = $false
+  }
+  try {
+    & $pm2Command startOrReload (Join-Path $serverDir 'zjyph-ecosystem.config.cjs') --only 'zjyph-backend,zjyph-frontend' --update-env
+    if ($LASTEXITCODE -ne 0) { throw "PM2 退出码 $LASTEXITCODE" }
+    Start-Sleep -Seconds 5
+    $recovered = $false
+    for ($i = 0; $i -lt 10; $i++) {
+      try {
+        $h = Invoke-RestMethod -Uri "http://127.0.0.1:$backendPort/health" -TimeoutSec 5
+        if ($h.data.service -eq 'up' -and $h.data.db -eq 'up') { $recovered = $true; break }
+      }
+      catch { Start-Sleep -Seconds 3 }
+    }
+    if ($recovered) { Write-Host '已回退至上一版本并通过健康检查' }
+    else { Write-Warning '回退后健康检查未通过，请立即人工介入' }
+  }
+  catch {
+    Write-Warning "回退/恢复失败，请立即人工介入：$($_.Exception.Message)"
+  }
+  throw
 }
 
 if ($SkipSmoke) {
@@ -288,5 +359,6 @@ else {
 
 $currentVersion = if ($Tag) { $Tag } else { (git -C $ProdDir rev-parse --short HEAD).Trim() }
 if (Test-Path $previousWebDist) { Remove-Item -LiteralPath $previousWebDist -Recurse -Force }
+if (Test-Path $previousServerDist) { Remove-Item -LiteralPath $previousServerDist -Recurse -Force }
 Write-Host ''
 Write-Host "部署完成：$currentVersion" -ForegroundColor Green
