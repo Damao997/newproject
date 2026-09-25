@@ -13,7 +13,7 @@
 
 平台提供经营指标看板、财务指标明细、数据导入管理、权限管理等模块，帮助财务与经营分析人员快速掌握财年进度与同比表现。
 
-> **当前交付状态**：项目处于规划与文档建设阶段。前端方案采用 v3 纸质感设计（Radix UI + Shadcn/ui）。文档体系采用 CLAUDE.md（AI Agent 入口）+ 五分类结构（references/ + plans/ + data-templates/ + archive/ + superpowers/）。
+> **当前交付状态**：平台已完成主体交付并上线运行（Windows/PM2 + 嵌入式 PG17），覆盖登录/看板/财务指标/往来/存货/报告/AI/数据管理/权限/工具全部模块；US-02 映射保存复用与期间维度维护接口为已知缺口（延期）。前端方案采用 v3 纸质感设计（Radix UI + Shadcn/ui）。文档体系采用 CLAUDE.md（AI Agent 入口）+ 五分类结构（references/ + plans/ + data-templates/ + archive/ + superpowers/）。
 
 ---
 
@@ -110,7 +110,7 @@
 
 ## 7. 状态说明
 
-- 当前项目处于规划与文档建设阶段。
+- 平台已完成主体交付并上线运行（Windows/PM2 + 嵌入式 PG17），覆盖登录/看板/财务指标/往来/存货/报告/AI/数据管理/权限/工具全部模块；US-02 映射保存复用与期间维度维护接口为已知缺口（延期）。
 - 前端方案采用 **v3 纸质感设计**（Radix UI + Shadcn/ui + Tailwind CSS + 纯 CSS 动画），详见 `docs/plans/frontend-design-proposal.md`。
 - v2 毛玻璃 UI 设计规范（Ant Design 全量 + Framer Motion）已废止，归档于 `docs/archive/`。
 - 文档体系采用五分类结构：`CLAUDE.md`（AI 入口）+ `references/`（引用）+ `plans/`（方案）+ `data-templates/`（数据模版）+ `superpowers/`（功能规划）。
