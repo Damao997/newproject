@@ -36,7 +36,8 @@ export function clearCompanyMapCache(): void {
 
 /**
  * 从 company 表构建动态公司名映射（active，按 code 排序保证稳定；60s 内存缓存）。
- * forward 同时登记「名称→别名」与「编码→别名」；reverse 仅登记「别名→名称」。
+ * forward 同时登记「名称→别名」「编码→别名」与「简称→别名」；reverse 仅登记「别名→名称」。
+ * 简称与既有键（其他公司全名/编码/简称）冲突时不登记，避免误替换（全名优先）。
  */
 export async function buildCompanyMap(): Promise<CompanyMap> {
   if (companyMapCache && Date.now() - companyMapCache.at < COMPANY_MAP_TTL_MS) {
@@ -44,7 +45,7 @@ export async function buildCompanyMap(): Promise<CompanyMap> {
   }
   const companies = await prisma.company.findMany({
     where: { status: 'active' },
-    select: { code: true, name: true },
+    select: { code: true, name: true, shortName: true },
     orderBy: { code: 'asc' },
   })
   const forward = new Map<string, string>()
@@ -54,6 +55,9 @@ export async function buildCompanyMap(): Promise<CompanyMap> {
     forward.set(c.name, alias)
     forward.set(c.code, alias)
     reverse.set(alias, c.name)
+  })
+  companies.forEach((c) => {
+    if (c.shortName && !forward.has(c.shortName)) forward.set(c.shortName, forward.get(c.name)!)
   })
   companyMapCache = { at: Date.now(), map: { forward, reverse } }
   return companyMapCache.map
