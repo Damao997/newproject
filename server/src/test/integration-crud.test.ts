@@ -33,6 +33,8 @@ beforeAll(async () => {
   } catch {
     dbReady = false
   }
+  // 跳过须可见：DB 集成用例静默通过会虚增绿量
+  if (!dbReady) console.warn('[integration-crud] 测试数据库不可用，DB 集成用例全部跳过（不计为通过覆盖）')
 })
 
 afterAll(async () => {
