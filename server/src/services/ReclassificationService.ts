@@ -248,6 +248,15 @@ function emptySnapshot(): RowSnapshot {
   return { updated: [], created: [], deleted: [] }
 }
 
+/** 快照触及的行 id 集合（更新 + 新建 + 删除待重建行），用于撤销顺序守卫 */
+function snapshotTouchedIds(snap: RowSnapshot): Set<string> {
+  const ids = new Set<string>()
+  for (const u of snap.updated) ids.add(u.id)
+  for (const c of snap.created) ids.add(createdIdOf(c))
+  for (const d of snap.deleted) if (typeof d.id === 'string') ids.add(d.id)
+  return ids
+}
+
 // ---- 可撤销性校验与批次变更失效标记（供 revertLog 与 ImportService 批次变更流程复用） ----
 
 export type ReplayableVerdict = { ok: true } | { ok: false; reason: 'rows_missing' | 'batch_inactive' }
@@ -1024,6 +1033,26 @@ export const ReclassificationService = {
       const verdict = await checkReplayable(tx, templateType, snap)
       if (!verdict.ok) {
         throw errors.conflict(verdict.reason === 'rows_missing' ? '相关数据已被替换或清除，无法撤销' : '相关批次已不再生效，无法撤销')
+      }
+      // 后继依赖守卫：该记录之后仍有未撤销/未失效的日志触及同一行时，直接回写旧值会覆盖后继调整，
+      // 必须按时间倒序整链撤销
+      const ownIds = snapshotTouchedIds(snap)
+      if (ownIds.size > 0) {
+        const successors = await tx.reclassificationLog.findMany({
+          where: { templateType, revertedAt: null, invalidatedAt: null, id: { not: id }, createdAt: { gt: log.createdAt } },
+          select: { id: true, detail: true },
+        })
+        for (const s of successors) {
+          const sSnap = extractSnapshot(s.detail)
+          if (!sSnap) continue
+          let overlaps = false
+          for (const rid of snapshotTouchedIds(sSnap)) {
+            if (ownIds.has(rid)) { overlaps = true; break }
+          }
+          if (overlaps) {
+            throw errors.conflict('同一数据存在后续调整，请先撤销最新一笔调整（撤销须按时间倒序进行）')
+          }
+        }
       }
       const createdIds = snap.created.map(createdIdOf)
       let n = 0

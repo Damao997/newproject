@@ -271,3 +271,59 @@ describe('DataService 科目 orderNo 排序（真实 DB）', () => {
     expect((await orderNoOf(c3))!).toBe((await orderNoOf(x1.code))! + 1)
   })
 })
+
+describe('compareBatches 覆盖快照合并与 cashflow 分支（真实 DB，H3 回归）', () => {
+  const CO = 'EN999907'
+  const ACC = '__TEST_CMP_ACC__'
+  const P = '2096-06'
+  const ids: string[] = []
+
+  const mkBatch = async (dataType: 'operating' | 'cashflow', lifecycleStatus: 'active' | 'archived') => {
+    const b = await basePrisma.importBatch.create({
+      data: { fileName: `__cmp_${dataType}_${lifecycleStatus}__.xlsx`, status: 'success', dataType, lifecycleStatus, sourceType: 'upload', fiscalYear: 'FY2095' },
+    })
+    ids.push(b.id)
+    return b
+  }
+
+  afterAll(async () => {
+    if (ids.length === 0) return
+    await basePrisma.factOperating.deleteMany({ where: { batchId: { in: ids } } }).catch(() => undefined)
+    await basePrisma.factSnapshot.deleteMany({ where: { batchId: { in: ids } } }).catch(() => undefined)
+    await basePrisma.importBatch.deleteMany({ where: { id: { in: ids } } }).catch(() => undefined)
+  })
+
+  it('operating：A 被 B 覆盖后，快照行参与对比（changed +50 而非 added）', async () => {
+    if (!dbReady) return
+    const a = await mkBatch('operating', 'archived')
+    const b = await mkBatch('operating', 'active')
+    // B 激活时 A 的原值 100 行被删除并备份到快照，A 事实表已空
+    await basePrisma.factSnapshot.create({
+      data: { batchId: a.id, template: 'operating', companyCode: CO, accountCode: ACC, period: P, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, value: 100 },
+    })
+    await basePrisma.factOperating.create({
+      data: { batchId: b.id, companyCode: CO, accountCode: ACC, period: P, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2095', value: 150 },
+    })
+    const diff = await DataService.compareBatches(a.id, b.id)
+    expect(diff.changed).toHaveLength(1)
+    expect(diff.changed[0].oldValue).toBe(100)
+    expect(diff.changed[0].newValue).toBe(150)
+    expect(diff.changed[0].delta).toBe(50)
+    expect(diff.added).toHaveLength(0)
+  })
+
+  it('cashflow：不再误落预算分支，差异可正确计算', async () => {
+    if (!dbReady) return
+    const a = await mkBatch('cashflow', 'archived')
+    const b = await mkBatch('cashflow', 'active')
+    await basePrisma.factOperating.createMany({
+      data: [
+        { batchId: a.id, companyCode: CO, accountCode: ACC, period: P, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2095', value: 100 },
+        { batchId: b.id, companyCode: CO, accountCode: ACC, period: P, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, fiscalYear: 'FY2095', value: 120 },
+      ],
+    })
+    const diff = await DataService.compareBatches(a.id, b.id)
+    expect(diff.changed).toHaveLength(1)
+    expect(diff.changed[0].delta).toBe(20)
+  })
+})

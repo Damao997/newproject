@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
 import { assertCompaniesInScope } from '../lib/scope-guard'
+import { activeTransactionBatchWhere } from './TransactionService'
 
 /**
  * 催收管理服务：催收建议生成、催收计划 CRUD 与状态机流转、催收记录。
@@ -180,6 +181,8 @@ export const CollectionService = {
       closingBalance: { gt: 0 },
     }
     if (params.companyCodes) where.companyCode = { in: params.companyCodes }
+    // 生效批次口径：草稿/归档批次不产生催收建议
+    where.AND = [await activeTransactionBatchWhere()]
 
     const rows = await prisma.transactionDetail.findMany({
       where,

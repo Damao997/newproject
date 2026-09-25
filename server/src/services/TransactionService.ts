@@ -122,6 +122,19 @@ async function getInactiveAccountCodes(): Promise<string[]> {
   return rows.map((r) => r.code)
 }
 
+/**
+ * 生效批次过滤（分析口径）：仅统计 lifecycleStatus='active' 往来批次的数据行，
+ * 草稿/归档批次不参与总览/账龄/趋势/台账/催收等分析。
+ * batchId 为空的存量历史行（批次体系上线前导入，无生命周期归属）保留。
+ * 以 { AND: [本片段] } 形式并入既有 where，避免与调用方已设置的 OR 冲突。
+ */
+export async function activeTransactionBatchWhere(): Promise<Record<string, unknown>> {
+  const activeIds = (
+    await prisma.importBatch.findMany({ where: { dataType: 'transaction', lifecycleStatus: 'active' }, select: { id: true } })
+  ).map((b) => b.id)
+  return activeIds.length > 0 ? { OR: [{ batchId: null }, { batchId: { in: activeIds } }] } : { batchId: null }
+}
+
 export const TransactionService = {
   /**
    * 六大往来总览：按往来类型汇总期末余额、账龄分布、内部/外部笔数。
@@ -139,6 +152,8 @@ export const TransactionService = {
     // 科目过滤规则管控：强制剔除科目过滤 Tab 中标记 inactive 的科目
     const overviewInactiveCodes = await getInactiveAccountCodes()
     if (overviewInactiveCodes.length) where.accountCode = { notIn: overviewInactiveCodes }
+    // 生效批次口径：草稿/归档批次不参与总览统计
+    where.AND = [await activeTransactionBatchWhere()]
 
     const rows = await prisma.transactionDetail.groupBy({
       by: ['transactionType', 'direction'],
@@ -228,6 +243,8 @@ export const TransactionService = {
     where.isEliminated = false
     // 零余额行固定隐藏（对金额合计无贡献，仅提升可读性）
     where.closingBalance = { not: 0 }
+    // 生效批次口径：草稿/归档批次不参与账龄统计（AND 与上方 keyword OR 并存互不覆盖）
+    where.AND = [await activeTransactionBatchWhere()]
 
     const groupBy = params.groupBy || 'type'
     let by: string[]
@@ -342,7 +359,7 @@ export const TransactionService = {
         select: { code: true },
       }),
       prisma.transactionDetail.findMany({
-        where: typeWhere,
+        where: { ...typeWhere, AND: [await activeTransactionBatchWhere()] },
         distinct: ['accountCode'],
         select: { accountCode: true, accountDesc: true },
       }),
@@ -376,7 +393,7 @@ export const TransactionService = {
         select: { code: true, name: true, transactionType: true, direction: true, status: true },
         orderBy: [{ transactionType: 'asc' }, { orderNo: 'asc' }],
       }),
-      prisma.transactionDetail.findMany({ distinct: ['accountCode'], select: { accountCode: true } }),
+      prisma.transactionDetail.findMany({ where: { AND: [await activeTransactionBatchWhere()] }, distinct: ['accountCode'], select: { accountCode: true } }),
     ])
     const dataSet = new Set(details.map((d) => d.accountCode))
     return masters.map((m) => ({ code: m.code, name: m.name, transactionType: m.transactionType, direction: m.direction, status: m.status, hasData: dataSet.has(m.code) }))
@@ -484,6 +501,8 @@ export const TransactionService = {
     // dataWhere 与最新期间查询均派生自 companyWhere，源头排除即可全局生效
     const trendInactiveCodes = await getInactiveAccountCodes()
     if (trendInactiveCodes.length) companyWhere.accountCode = { notIn: trendInactiveCodes }
+    // 生效批次口径：草稿/归档批次不参与趋势（最新期间定位与数据聚合同源生效）
+    companyWhere.AND = [await activeTransactionBatchWhere()]
 
     let periods: string[]
     let dataWhere: Record<string, unknown>
@@ -560,7 +579,7 @@ export const TransactionService = {
    * 由明细期间经 fiscalYearLabel 归集去重。
    */
   async listFiscalYears(): Promise<string[]> {
-    const rows = await prisma.transactionDetail.findMany({ distinct: ['period'], select: { period: true } })
+    const rows = await prisma.transactionDetail.findMany({ where: { AND: [await activeTransactionBatchWhere()] }, distinct: ['period'], select: { period: true } })
     const fys = new Set<string>()
     for (const r of rows) if (r.period) fys.add(fiscalYearLabel(r.period))
     return [...fys].sort((a, b) => b.localeCompare(a))
@@ -727,7 +746,7 @@ export const TransactionService = {
    * 获取所有往来对象（去重）用于前端筛选
    */
   async listCounterparties(companyCodes?: string[]) {
-    const where: Record<string, unknown> = {}
+    const where: Record<string, unknown> = { AND: [await activeTransactionBatchWhere()] }
     if (companyCodes) where.companyCode = { in: companyCodes }
 
     const rows = await prisma.transactionDetail.findMany({
@@ -745,7 +764,7 @@ export const TransactionService = {
    */
   async getLatestCutoff() {
     const row = await prisma.transactionDetail.findFirst({
-      where: { cutoffDate: { not: null } },
+      where: { cutoffDate: { not: null }, AND: [await activeTransactionBatchWhere()] },
       orderBy: { cutoffDate: 'desc' },
       select: { cutoffDate: true },
     })
@@ -757,7 +776,7 @@ export const TransactionService = {
    */
   async listPeriods(): Promise<string[]> {
     const rows = await prisma.transactionDetail.findMany({
-      where: { period: { not: null } },
+      where: { period: { not: null }, AND: [await activeTransactionBatchWhere()] },
       select: { period: true },
       distinct: ['period'],
       orderBy: { period: 'desc' },

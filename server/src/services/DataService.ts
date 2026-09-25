@@ -1044,8 +1044,9 @@ export const DataService = {
 
   // ===== 批次差异对比（US-03） =====
   /**
-   * 两批次差异对比：按 (公司, 科目, 期间) 键对比 operating/static/budget 三类批次事实值。
+   * 两批次差异对比：按 (公司, 科目, 期间) 键对比 operating/static/cashflow/budget 四类批次事实值。
    * - 仅同类型、非 purged 批次可比；transaction/inventory v1 不支持；
+   * - 被覆盖历史：批次曾被激活覆盖删除的行从 fact_snapshot 合并参与对比（同键以事实现状优先）；
    * - 结果按数据范围过滤（仅对比用户有权限的公司）；
    * - changed/added/removed 各上限 500 行，超出截断并在 summary 标注。
    */
@@ -1070,16 +1071,34 @@ export const DataService = {
     // 读取两批次事实行并归一化为统一行（periodKey 用于对比键，periodLabel 用于展示）
     // 读取上限 COMPARE_FETCH_LIMIT：防数万行全量载入内存，超限按截断处理
     type NormalizedRow = { companyCode: string; accountCode: string; value: Prisma.Decimal; periodKey: string; periodLabel: string }
+    /** 批次行合并：事实表现状优先，缺失键由覆盖快照（fact_snapshot）补齐；快照已按 archivedAt 倒序，同键取最近归档 */
+    const mergeWithSnapshot = (fact: NormalizedRow[], snapshot: NormalizedRow[]): NormalizedRow[] => {
+      const keyOf = (r: NormalizedRow) => `${r.companyCode}|${r.accountCode}|${r.periodKey}`
+      const byKey = new Map(fact.map((r) => [keyOf(r), r]))
+      for (const r of snapshot) {
+        const k = keyOf(r)
+        if (!byKey.has(k)) byKey.set(k, r)
+      }
+      return [...byKey.values()]
+    }
     let aRows: NormalizedRow[]
     let bRows: NormalizedRow[]
     let fetchTruncated = false
-    if (template === 'operating') {
+    if (template === 'operating' || template === 'cashflow') {
+      // cashflow 事实行存于 factOperating（与 operating 同构），此前误落预算分支导致对比恒无差异
       const withPeriod = { select: { companyCode: true, accountCode: true, period: true, periodDimCode: true, value: true } }
       const ra = await prisma.factOperating.findMany({ where: { batchId: aId, ...companyWhere }, take: COMPARE_FETCH_LIMIT, ...withPeriod })
       const rb = await prisma.factOperating.findMany({ where: { batchId: bId, ...companyWhere }, take: COMPARE_FETCH_LIMIT, ...withPeriod })
       fetchTruncated = ra.length === COMPARE_FETCH_LIMIT || rb.length === COMPARE_FETCH_LIMIT
       aRows = ra.map((r) => ({ companyCode: r.companyCode, accountCode: r.accountCode, value: r.value, periodKey: `${r.period}|${r.periodDimCode}`, periodLabel: r.period }))
       bRows = rb.map((r) => ({ companyCode: r.companyCode, accountCode: r.accountCode, value: r.value, periodKey: `${r.period}|${r.periodDimCode}`, periodLabel: r.period }))
+      // 合并被覆盖历史：该批次曾被后续激活删除的行保存在 fact_snapshot（template 同类型），参与对比
+      const [sa, sb] = await Promise.all([
+        prisma.factSnapshot.findMany({ where: { batchId: aId, template }, orderBy: { archivedAt: 'desc' }, take: COMPARE_FETCH_LIMIT, select: { companyCode: true, accountCode: true, period: true, periodDimCode: true, value: true } }),
+        prisma.factSnapshot.findMany({ where: { batchId: bId, template }, orderBy: { archivedAt: 'desc' }, take: COMPARE_FETCH_LIMIT, select: { companyCode: true, accountCode: true, period: true, periodDimCode: true, value: true } }),
+      ])
+      aRows = mergeWithSnapshot(aRows, sa.map((r) => ({ companyCode: r.companyCode, accountCode: r.accountCode, value: r.value, periodKey: `${r.period}|${r.periodDimCode ?? ''}`, periodLabel: r.period ?? '' })))
+      bRows = mergeWithSnapshot(bRows, sb.map((r) => ({ companyCode: r.companyCode, accountCode: r.accountCode, value: r.value, periodKey: `${r.period}|${r.periodDimCode ?? ''}`, periodLabel: r.period ?? '' })))
     } else if (template === 'static') {
       const withSnap = { select: { companyCode: true, accountCode: true, snapshotDate: true, periodDimCode: true, value: true } }
       const ra = await prisma.factStatic.findMany({ where: { batchId: aId, ...companyWhere }, take: COMPARE_FETCH_LIMIT, ...withSnap })
@@ -1087,6 +1106,12 @@ export const DataService = {
       fetchTruncated = ra.length === COMPARE_FETCH_LIMIT || rb.length === COMPARE_FETCH_LIMIT
       aRows = ra.map((r) => ({ companyCode: r.companyCode, accountCode: r.accountCode, value: r.value, periodKey: `${ymOfDate(r.snapshotDate)}|${r.periodDimCode}`, periodLabel: ymOfDate(r.snapshotDate) }))
       bRows = rb.map((r) => ({ companyCode: r.companyCode, accountCode: r.accountCode, value: r.value, periodKey: `${ymOfDate(r.snapshotDate)}|${r.periodDimCode}`, periodLabel: ymOfDate(r.snapshotDate) }))
+      const [sa, sb] = await Promise.all([
+        prisma.factSnapshot.findMany({ where: { batchId: aId, template }, orderBy: { archivedAt: 'desc' }, take: COMPARE_FETCH_LIMIT, select: { companyCode: true, accountCode: true, snapshotDate: true, periodDimCode: true, value: true } }),
+        prisma.factSnapshot.findMany({ where: { batchId: bId, template }, orderBy: { archivedAt: 'desc' }, take: COMPARE_FETCH_LIMIT, select: { companyCode: true, accountCode: true, snapshotDate: true, periodDimCode: true, value: true } }),
+      ])
+      aRows = mergeWithSnapshot(aRows, sa.map((r) => ({ companyCode: r.companyCode, accountCode: r.accountCode, value: r.value, periodKey: `${ymOfDate(r.snapshotDate as Date)}|${r.periodDimCode ?? ''}`, periodLabel: ymOfDate(r.snapshotDate as Date) })))
+      bRows = mergeWithSnapshot(bRows, sb.map((r) => ({ companyCode: r.companyCode, accountCode: r.accountCode, value: r.value, periodKey: `${ymOfDate(r.snapshotDate as Date)}|${r.periodDimCode ?? ''}`, periodLabel: ymOfDate(r.snapshotDate as Date) })))
     } else {
       const withFy = { select: { companyCode: true, accountCode: true, fiscalYear: true, period: true, value: true } }
       const ra = await prisma.factBudget.findMany({ where: { batchId: aId, ...companyWhere }, take: COMPARE_FETCH_LIMIT, ...withFy })
