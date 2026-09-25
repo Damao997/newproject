@@ -219,3 +219,73 @@ describe('ReportService（真实 DB）', () => {
     expect(restored.status).toBe('draft')
   })
 })
+
+describe('报告正文权限（真实 DB，H11 回归）', () => {
+  let reportId = ''
+  let ownAnalysisId = ''
+  let otherAnalysisId = ''
+  let otherCompanyCode = ''
+
+  beforeAll(async () => {
+    if (!dbReady) return
+    const other = await prisma.company.findFirst({
+      where: { entityType: 'single', status: 'active', code: { not: companyCode } },
+      select: { code: true },
+    })
+    otherCompanyCode = other?.code ?? ''
+    dbReady = !!otherCompanyCode
+    if (!dbReady) return
+    const mkAnalysis = async (co: string, content: string) => {
+      const a = await prisma.subjectAnalysis.create({
+        data: {
+          companyCode: co, subjectCode, subjectType: 'operating', fiscalYear: 'FY2098', period,
+          title: `H11分析-${co}`, content, status: 'active', createdBy: adminId, updatedBy: adminId,
+        },
+      })
+      createdAnalysisIds.push(a.id)
+      return a.id
+    }
+    ownAnalysisId = await mkAnalysis(companyCode, '<p>本公司分析正文</p>')
+    otherAnalysisId = await mkAnalysis(otherCompanyCode, '<p>他公司机密正文</p>')
+    const report = await ReportService.create(
+      adminScope,
+      { title: `H11回归报告-${Date.now()}`, fiscalYear: 'FY2098', period, companyScope: { type: 'company', code: companyCode } },
+      adminId,
+    )
+    reportId = report.id
+    createdReportIds.push(reportId)
+  })
+
+  it('挂接非报告主体的单项分析被拒绝（防借报告读取主体外正文）', async () => {
+    if (!dbReady) return
+    await expect(
+      ReportService.setSections(adminScope, reportId, [{ analysisId: otherAnalysisId, title: 'x' }], adminId),
+    ).rejects.toMatchObject({ message: expect.stringContaining('主体不一致') })
+  })
+
+  it('另存为模板仅保留章节结构，正文不入全局模板', async () => {
+    if (!dbReady) return
+    const tpl = await ReportService.createTemplate(`H11模板-${Date.now()}`, undefined, [
+      { title: '章节一', content: '<p>不应入库的正文</p>' },
+    ])
+    try {
+      const templates = await ReportService.listTemplates()
+      const found = templates.find((t) => t.id === tpl.id) as { structure?: { sections?: { content?: string }[] } } | undefined
+      const raw = found?.structure ?? JSON.parse((await basePrisma.reportTemplate.findUnique({ where: { id: tpl.id }, select: { structure: true } }))?.structure as unknown as string ?? '{}')
+      const sections = (raw as { sections?: { content?: string }[] }).sections ?? []
+      expect(sections[0]?.content ?? '').toBe('')
+    } finally {
+      await basePrisma.reportTemplate.delete({ where: { id: tpl.id } }).catch(() => undefined)
+    }
+  })
+
+  it('原文软删除后章节不回退缓存正文（missing 标记 + 空内容）', async () => {
+    if (!dbReady) return
+    await ReportService.setSections(adminScope, reportId, [{ analysisId: ownAnalysisId, title: '自有章节' }], adminId)
+    await prisma.subjectAnalysis.update({ where: { id: ownAnalysisId }, data: { status: 'inactive' } })
+    const view = await ReportService.getById(adminScope, reportId)
+    const section = view.sections.find((s) => s.analysisId === ownAnalysisId)
+    expect(section?.missing).toBe(true)
+    expect(section?.content).toBe('')
+  })
+})
