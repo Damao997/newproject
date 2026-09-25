@@ -27,15 +27,16 @@ function assertTestDatabase(): void {
   }
 }
 
-assertTestDatabase()
-
 function setDefault(key: string, value: string): void {
   if (!process.env[key] || process.env[key]?.trim() === '') {
     process.env[key] = value
   }
 }
 
+// 先注入内置测试默认值（.env 未配置 DATABASE_URL 时），再校验库身份
 setDefault('DATABASE_URL', 'postgresql://test:test@localhost:5432/test?schema=public')
+assertTestDatabase()
+
 setDefault('JWT_SECRET', 'test-jwt-secret-0123456789abcdef0123456789abcdef')
 setDefault('JWT_REFRESH_SECRET', 'test-refresh-secret-0123456789abcdef0123456789ab')
 setDefault('ACCESS_TOKEN_TTL', '15m')
