@@ -10,6 +10,7 @@ import { parseMergedWorkbook, type MergedSheetType } from '../lib/excel-import-m
 import { parseTransactionWorkbook, type TransactionParseResult, type TransactionResolvers, type TransactionSheetInfo, type TransactionImportIssue, type TransactionParseSummary } from '../lib/transaction-import'
 import { fyLabelOfDate, parsePeriod, formatPeriod } from '../lib/period'
 import { assertCompaniesInScope, effectiveScope } from '../lib/scope-guard'
+import { withoutScope } from '../middleware/scope-context'
 import { latestOperatingPeriod, latestStaticPeriod, latestCashflowPeriod } from './IndicatorsService'
 import { markInvalidatedReclassifications } from './ReclassificationService'
 
@@ -280,10 +281,13 @@ function assertActivatable(b: { lifecycleStatus: string; status: string }): void
   }
 }
 
-/** 由替换范围键生成稳定的双 int32 advisory lock 键（pg_advisory_xact_lock 两参数形式） */
-function advisoryLockKeys(range: string): [number, number] {
+/**
+ * 由替换范围键生成稳定的 bigint advisory lock 键（单参数形式，跨 PG 版本/发行版签名一致）。
+ * 取摘要前 7 字节（56 位，落在有符号 bigint 范围内），以十进制字符串承载避免 JS number 精度丢失。
+ */
+function advisoryLockKey(range: string): string {
   const hash = createHash('md5').update(range).digest()
-  return [hash.readInt32BE(0), hash.readInt32BE(4)]
+  return BigInt(`0x${hash.subarray(0, 7).toString('hex')}`).toString()
 }
 
 async function activateInTx(
@@ -306,11 +310,12 @@ async function activateInTx(
         const rows = await tx.factOperating.findMany({ where: { batchId: b.id }, distinct: ['period'], select: { period: true } })
         const newPeriods = rows.map((r) => r.period)
         // 影响范围守卫：目标批次与将被替换的旧批次数据行均须落在操作者数据范围内
-        // （批次激活是批次级状态变更，Prisma scope 扩展无法覆盖，须显式校验）
-        const [targetCompanyRows, oldCompanyRows] = await Promise.all([
+        // （批次激活是批次级状态变更，Prisma scope 扩展无法覆盖，须显式校验）。
+        // 查询须 withoutScope：守卫本身要看到范围外行才能判定越权，否则被自身 scope 过滤致盲
+        const [targetCompanyRows, oldCompanyRows] = await withoutScope(() => Promise.all([
           tx.factOperating.findMany({ where: { batchId: b.id }, distinct: ['companyCode'], select: { companyCode: true } }),
           tx.factOperating.findMany({ where: { batchId: { in: oldIds }, period: { in: newPeriods } }, distinct: ['companyCode'], select: { companyCode: true } }),
-        ])
+        ]))
         await assertCompaniesInScope([...targetCompanyRows, ...oldCompanyRows].map((r) => r.companyCode), undefined, '激活导入批次')
         if (newPeriods.length > 0) {
           const backed = await backupOperatingRows(tx, b.id, { batchId: { in: oldIds }, period: { in: newPeriods } }, b.dataType === 'cashflow' ? 'cashflow' : 'operating')
@@ -334,11 +339,11 @@ async function activateInTx(
         if (newMonths.size > 0) {
           const oldSnaps = await tx.factStatic.findMany({ where: { batchId: { in: oldIds } }, distinct: ['snapshotDate'], select: { snapshotDate: true } })
           const delDates = oldSnaps.map((s) => s.snapshotDate).filter((d) => newMonths.has(ymOfDate(d)))
-          // 影响范围守卫（同 operating：批次级状态变更扩展层无法覆盖）
-          const [targetCompanyRows, oldCompanyRows] = await Promise.all([
+          // 影响范围守卫（同 operating：查询须 withoutScope 看见范围外行）
+          const [targetCompanyRows, oldCompanyRows] = await withoutScope(() => Promise.all([
             tx.factStatic.findMany({ where: { batchId: b.id }, distinct: ['companyCode'], select: { companyCode: true } }),
             tx.factStatic.findMany({ where: { batchId: { in: oldIds }, snapshotDate: { in: delDates } }, distinct: ['companyCode'], select: { companyCode: true } }),
-          ])
+          ]))
           await assertCompaniesInScope([...targetCompanyRows, ...oldCompanyRows].map((r) => r.companyCode), undefined, '激活导入批次')
           if (delDates.length > 0) {
             const backed = await backupStaticRows(tx, b.id, { batchId: { in: oldIds }, snapshotDate: { in: delDates } })
@@ -382,7 +387,7 @@ async function activateInTx(
       if (mergedKeys.length > 0) {
         // 影响范围守卫（同 operating）：目标批次/申报范围与将被替换的旧批次三元组均须在数据范围内
         const declaredCompanies = parseDeclaredCoverage(b.coverageJson).map((d) => d.companyCode)
-        const [targetCompanyRows, oldCompanyRows] = await Promise.all([
+        const [targetCompanyRows, oldCompanyRows] = await withoutScope(() => Promise.all([
           tx.transactionDetail.findMany({ where: { batchId: b.id }, distinct: ['companyCode'], select: { companyCode: true } }),
           tx.transactionDetail.findMany({
             where: {
@@ -392,7 +397,7 @@ async function activateInTx(
             distinct: ['companyCode'],
             select: { companyCode: true },
           }),
-        ])
+        ]))
         await assertCompaniesInScope(
           [...new Set([...targetCompanyRows, ...oldCompanyRows].map((r) => r.companyCode).concat(declaredCompanies))],
           undefined,
@@ -429,9 +434,9 @@ async function activateInTx(
         ? { dataType: b.dataType, lifecycleStatus: 'active' as const, fiscalYear: b.fiscalYear, id: { not: b.id } }
         : { dataType: b.dataType, lifecycleStatus: 'active' as const, id: { not: b.id } }
     const toArchive = await tx.importBatch.findMany({ where: archiveWhere, select: { id: true } })
-    // 影响范围守卫：budget/inventory 为整体替换，目标批次与被归档旧批次覆盖的公司均须在数据范围内
+    // 影响范围守卫：budget/inventory 为整体替换，目标批次与被归档旧批次覆盖的公司均须在数据范围内（查询 withoutScope）
     const oldIdsAll = toArchive.map((x) => x.id)
-    const [targetCompanyRows, oldCompanyRows] = await Promise.all([
+    const [targetCompanyRows, oldCompanyRows] = await withoutScope(() => Promise.all([
       b.dataType === 'inventory'
         ? tx.inventoryRecord.findMany({ where: { batchId: b.id }, distinct: ['companyCode'], select: { companyCode: true } })
         : tx.factBudget.findMany({ where: { batchId: b.id }, distinct: ['companyCode'], select: { companyCode: true } }),
@@ -440,7 +445,7 @@ async function activateInTx(
         : b.dataType === 'inventory'
           ? tx.inventoryRecord.findMany({ where: { batchId: { in: oldIdsAll } }, distinct: ['companyCode'], select: { companyCode: true } })
           : tx.factBudget.findMany({ where: { batchId: { in: oldIdsAll } }, distinct: ['companyCode'], select: { companyCode: true } }),
-    ])
+    ]))
     await assertCompaniesInScope(
       [...new Set([...targetCompanyRows, ...oldCompanyRows].map((r) => r.companyCode).concat(declaredCoverageCompanies(b.coverageJson)))],
       undefined,
@@ -1336,10 +1341,12 @@ export const ImportService = {
 
     // 按替换范围（dataType，budget 另按财年）串行化：并发激活同范围批次时互斥，
     // 避免两个事务都在对方生效前读取旧集合导致双份有效数据
-    const lock = advisoryLockKeys(`import-activate:${b.dataType}:${b.dataType === 'budget' ? (b.fiscalYear ?? '') : ''}`)
+    // ::bigint 显式转换：Prisma 以 numeric/text 传参，不转换时部分 PG 签名无法解析；
+    // IS NULL 包裹：pg_advisory_xact_lock 返回 void，Prisma $queryRaw 无法反序列化 void 列，须转为 boolean
+    const lock = advisoryLockKey(`import-activate:${b.dataType}:${b.dataType === 'budget' ? (b.fiscalYear ?? '') : ''}`)
 
     const { updated, replacedPeriods, deletedRows, markedInvalidations } = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${lock[0]}, ${lock[1]})`
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${lock}::bigint) IS NULL AS locked`
       // 锁内重读：并发激活同一批次时，后到者在锁定后看到已 active 直接幂等返回
       const current = await tx.importBatch.findUnique({ where: { id } })
       if (!current) throw errors.notFound('导入批次不存在')
