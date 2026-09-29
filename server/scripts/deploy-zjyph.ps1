@@ -210,15 +210,29 @@ try {
   Step '3/6 启动 PostgreSQL 并执行数据库迁移'
   & $pm2Command restart zjyph-postgres --update-env
   Assert-LastExitCode 'PostgreSQL PM2 重启失败'
+  # 就绪判定须到「可服务查询」而非仅端口监听：PG 恢复/启动阶段端口已开但查询会报
+  # "the database system is starting up"，此时执行迁移失败会触发回滚（2026-09-30 实测）。
+  # 优先用 pg_isready（拒绝连接返回非 0），无该工具时退化为端口监听。
+  $pgIsReady = Join-Path $ProdDir 'tools\pgsql\bin\pg_isready.exe'
   $databaseReady = $false
-  for ($i = 0; $i -lt 30; $i++) {
+  for ($i = 0; $i -lt 60; $i++) {
     if (Test-NetConnection -ComputerName 127.0.0.1 -Port $databasePort -InformationLevel Quiet -WarningAction SilentlyContinue) {
-      $databaseReady = $true
-      break
+      if (Test-Path $pgIsReady) {
+        & $pgIsReady -h 127.0.0.1 -p $databasePort -q 2>$null
+        if ($LASTEXITCODE -eq 0) {
+          $databaseReady = $true
+          break
+        }
+      }
+      else {
+        Write-Warning "未找到 pg_isready（$pgIsReady），仅按端口监听判定数据库就绪"
+        $databaseReady = $true
+        break
+      }
     }
     Start-Sleep -Seconds 1
   }
-  if (-not $databaseReady) { throw "PostgreSQL 未在限定时间内监听 127.0.0.1:$databasePort" }
+  if (-not $databaseReady) { throw "PostgreSQL 未在限定时间内就绪（可服务查询）127.0.0.1:$databasePort" }
 
   $env:DATABASE_URL = $migrateUrl
   Push-Location $serverDir
