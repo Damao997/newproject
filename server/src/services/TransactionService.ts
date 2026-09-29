@@ -341,6 +341,13 @@ export const TransactionService = {
       for (const b of bucketKeys) grand.aging[b] = (grand.aging[b] || 0) + (sub.aging[b] || 0)
     }
     if (out.length > 0) out.push({ company: '合计', transactionType: '', ...(isDetailDim ? { dimension: '' } : {}), closingBalance: grand.closingBalance, ...grand.aging })
+    // 逐值收敛 2 位小数（合计行由万元值累加，避免浮点尾差如 0.11000000000000001）
+    const roundRow = (row: Record<string, unknown>): void => {
+      for (const k of ['closingBalance', ...bucketKeys]) {
+        if (typeof row[k] === 'number') row[k] = Number((row[k] as number).toFixed(2))
+      }
+    }
+    out.forEach(roundRow)
     return buildExcel('账龄分析', columns, out)
   },
 
