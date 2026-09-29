@@ -75,7 +75,10 @@ beforeAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mocks.prisma.$transaction.mockImplementation(async (arr: Promise<unknown>[]) => Promise.all(arr))
+  // 兼容两种事务形态：回调式（以 prisma mock 充当 tx 客户端）与数组式
+  mocks.prisma.$transaction.mockImplementation(async (arg: unknown) =>
+    typeof arg === "function" ? (arg as (tx: typeof mocks.prisma) => unknown)(mocks.prisma) : Promise.all(arg as Promise<unknown>[]),
+  )
   mocks.prisma.user.update.mockResolvedValue({})
   mocks.prisma.tokenBlacklist.upsert.mockResolvedValue({})
   mocks.prisma.$queryRaw.mockResolvedValue([{ '1': 1 }])

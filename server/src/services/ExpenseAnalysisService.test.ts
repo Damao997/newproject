@@ -161,7 +161,7 @@ describe('ExpenseAnalysisService 运营费用映射', () => {
         expect(created.name).toBe('__TEST_AUTO_CODE__')
         // 连续两次自动生成不重复
         const created2 = await ExpenseAnalysisService.create(
-          { name: '__TEST_AUTO_CODE_2__', subjectCodes: ['PL_TEST_SUBJECT'] },
+          { name: '__TEST_AUTO_CODE_2__', subjectCodes: ['PL_TEST_SUBJECT_2'] },
           ctx,
         )
         await basePrisma.expenseSubjectMapping.delete({ where: { id: created2.id } })
@@ -169,6 +169,51 @@ describe('ExpenseAnalysisService 运营费用映射', () => {
         expect(created2.code).toMatch(/^EXP_\d+$/)
       } finally {
         if (createdId) await basePrisma.expenseSubjectMapping.delete({ where: { id: createdId } }).catch(() => undefined)
+      }
+    })
+  })
+
+  describe('科目重叠校验（真实 DB，M4 回归）', () => {
+    it('create：科目已存在于其它映射时拒绝并指明冲突', async () => {
+      if (!dbReady) return
+      let firstId = ''
+      try {
+        const first = await ExpenseAnalysisService.create(
+          { name: '__TEST_M4_A__', subjectCodes: ['PL_M4_OVERLAP_1', 'PL_M4_OVERLAP_2'] },
+          ctx,
+        )
+        firstId = first.id
+        await expect(ExpenseAnalysisService.create(
+          { name: '__TEST_M4_B__', subjectCodes: ['PL_M4_OTHER', 'PL_M4_OVERLAP_1'] },
+          ctx,
+        )).rejects.toMatchObject({ message: expect.stringContaining('PL_M4_OVERLAP_1') })
+      } finally {
+        if (firstId) await basePrisma.expenseSubjectMapping.delete({ where: { id: firstId } }).catch(() => undefined)
+      }
+    })
+
+    it('update：改为与其它映射重叠的科目时拒绝；行内重复编码拒绝', async () => {
+      if (!dbReady) return
+      let firstId = ''
+      let secondId = ''
+      try {
+        const first = await ExpenseAnalysisService.create(
+          { name: '__TEST_M4_U1__', subjectCodes: ['PL_M4_U_1'] },
+          ctx,
+        )
+        firstId = first.id
+        const second = await ExpenseAnalysisService.create(
+          { name: '__TEST_M4_U2__', subjectCodes: ['PL_M4_U_2'] },
+          ctx,
+        )
+        secondId = second.id
+        await expect(ExpenseAnalysisService.update(secondId, { subjectCodes: ['PL_M4_U_1'] }, ctx))
+          .rejects.toMatchObject({ message: expect.stringContaining('PL_M4_U_1') })
+        await expect(ExpenseAnalysisService.update(secondId, { subjectCodes: ['PL_M4_U_2', 'PL_M4_U_2'] }, ctx))
+          .rejects.toMatchObject({ message: expect.stringContaining('重复') })
+      } finally {
+        if (firstId) await basePrisma.expenseSubjectMapping.delete({ where: { id: firstId } }).catch(() => undefined)
+        if (secondId) await basePrisma.expenseSubjectMapping.delete({ where: { id: secondId } }).catch(() => undefined)
       }
     })
   })

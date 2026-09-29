@@ -289,12 +289,17 @@ export const TransactionService = {
   /**
    * 账龄分析 Excel 导出：复用 getAgingAnalysis 口径（零余额/科目排除/内部抵消/8 段归集），
    * 按前端表格同规则重组为 数据行 + 公司小计 + 合计（subtotalOnly 时仅小计/合计），
-   * 数值以元为单位原值导出，保证导出内容 = 当前视图。
+   * 数值统一万元两位小数（往来明细底层为元，展示/导出口径一致为万元），保证导出内容 = 当前视图。
    */
   async exportAgingAnalysis(params: { companyCodes?: string[]; transactionType?: string; groupBy?: 'type' | 'counterparty' | 'account'; period?: string; accountCodes?: string[]; partyType?: string[]; counterpartyKeyword?: string; subtotalOnly?: boolean }): Promise<Buffer> {
     const groupBy = params.groupBy || 'type'
     type ExportRow = AgingSummaryRow & { accountCode?: string; accountDesc?: string | null }
-    const rows = (await this.getAgingAnalysis(params)) as unknown as ExportRow[]
+    const toWan = (v: number): number => Number((v / 10000).toFixed(2))
+    const rows = ((await this.getAgingAnalysis(params)) as unknown as ExportRow[]).map((r) => ({
+      ...r,
+      closingBalance: toWan(r.closingBalance),
+      aging: Object.fromEntries(Object.entries(r.aging).map(([k, v]) => [k, toWan(v)])) as Record<string, number>,
+    }))
 
     // 与前端表格一致：公司分组（编码升序）、组内余额倒序、逐组小计、表尾合计
     const byCompany = new Map<string, ExportRow[]>()
@@ -307,8 +312,8 @@ export const TransactionService = {
       { header: '公司', key: 'company', width: 24 },
       { header: '往来类型', key: 'transactionType', width: 14 },
       ...(isDetailDim ? [{ header: groupBy === 'counterparty' ? '往来对象' : '科目', key: 'dimension', width: 24 }] : []),
-      { header: '期末余额', key: 'closingBalance', width: 16 },
-      ...AGING_GROUP_DEFS.map(([g]) => ({ header: g, key: g, width: 14 })),
+      { header: '期末余额（万元）', key: 'closingBalance', width: 16 },
+      ...AGING_GROUP_DEFS.map(([g]) => ({ header: `${g}（万元）`, key: g, width: 14 })),
     ]
 
     const out: Record<string, unknown>[] = []
@@ -336,6 +341,13 @@ export const TransactionService = {
       for (const b of bucketKeys) grand.aging[b] = (grand.aging[b] || 0) + (sub.aging[b] || 0)
     }
     if (out.length > 0) out.push({ company: '合计', transactionType: '', ...(isDetailDim ? { dimension: '' } : {}), closingBalance: grand.closingBalance, ...grand.aging })
+    // 逐值收敛 2 位小数（合计行由万元值累加，避免浮点尾差如 0.11000000000000001）
+    const roundRow = (row: Record<string, unknown>): void => {
+      for (const k of ['closingBalance', ...bucketKeys]) {
+        if (typeof row[k] === 'number') row[k] = Number((row[k] as number).toFixed(2))
+      }
+    }
+    out.forEach(roundRow)
     return buildExcel('账龄分析', columns, out)
   },
 

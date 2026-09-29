@@ -5,8 +5,9 @@ import { hashPassword } from '../lib/password'
 // 通过 vi.hoisted 构造可变 mock，供 vi.mock 工厂与用例共享
 const mocks = vi.hoisted(() => ({
   prisma: {
-    user: { findUnique: vi.fn(), update: vi.fn() },
+    user: { findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
     tokenBlacklist: { findUnique: vi.fn(), create: vi.fn(), upsert: vi.fn() },
+    $queryRaw: vi.fn(),
     $transaction: vi.fn(),
   },
   recordAudit: vi.fn(),
@@ -45,7 +46,11 @@ function makeUser(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mocks.prisma.$transaction.mockImplementation(async (arr: Promise<unknown>[]) => Promise.all(arr))
+  // 兼容两种事务形态：回调式（以 prisma mock 充当 tx 客户端）与数组式
+  mocks.prisma.$transaction.mockImplementation(async (arg: unknown) =>
+    typeof arg === 'function' ? (arg as (tx: typeof mocks.prisma) => unknown)(mocks.prisma) : Promise.all(arg as Promise<unknown>[]),
+  )
+  mocks.prisma.$queryRaw.mockResolvedValue([{ locked: true }])
   mocks.prisma.user.update.mockResolvedValue({})
   mocks.prisma.tokenBlacklist.create.mockResolvedValue({})
   mocks.prisma.tokenBlacklist.upsert.mockResolvedValue({})
