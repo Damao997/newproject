@@ -616,6 +616,15 @@ class ApiClient {
     })
   }
 
+  /** 首页近 N 月收入/毛利趋势（US-05：折线+柱状，同比对照） */
+  async getDashboardTrend(months = 12): Promise<TrendData[]> {
+    return this.request({
+      method: 'GET',
+      url: '/dashboard/trend',
+      params: { months },
+    })
+  }
+
   // Indicators API
   async getOperatingIndicators(params: FilterParams): Promise<PaginatedResponse<any>> {
     return this.request({

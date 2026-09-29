@@ -47,6 +47,25 @@ export function useDashboardReceivables(params: { period?: string; mode: 'single
   })
 }
 
+/** 首页近 N 月收入/毛利趋势（US-05）：跟随当前财年，与 key-metrics 趋势图同源 */
+export function useDashboardTrend(months = 12) {
+  return useQuery({
+    queryKey: ['dashboard', 'trend', months] as const,
+    queryFn: () => api.getDashboardTrend(months),
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+/** 首页预警列表（US-13）：仅未确认预警，5 分钟内视为新鲜 */
+export function useDashboardAlerts() {
+  return useQuery({
+    queryKey: ['dashboard', 'alerts'] as const,
+    queryFn: () => api.getDashboardAlerts(),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
 /** 品类预算达成表：单期间 + 主体口径（跟随看板筛选），period 未定时不发请求 */
 export function useProductBudget(params: { period?: string; companyCode?: string }) {
   return useQuery({
