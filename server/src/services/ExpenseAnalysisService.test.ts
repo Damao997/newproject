@@ -161,7 +161,7 @@ describe('ExpenseAnalysisService 运营费用映射', () => {
         expect(created.name).toBe('__TEST_AUTO_CODE__')
         // 连续两次自动生成不重复
         const created2 = await ExpenseAnalysisService.create(
-          { name: '__TEST_AUTO_CODE_2__', subjectCodes: ['PL_TEST_SUBJECT'] },
+          { name: '__TEST_AUTO_CODE_2__', subjectCodes: ['PL_TEST_SUBJECT_2'] },
           ctx,
         )
         await basePrisma.expenseSubjectMapping.delete({ where: { id: created2.id } })
