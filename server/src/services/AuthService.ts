@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma'
 import { Prisma } from '@prisma/client'
 import { verifyPassword, hashPassword } from '../lib/password'
+import { advisoryLockKey } from '../lib/advisory-lock'
 import {
   signAccessToken,
   signRefreshToken,
@@ -199,38 +200,43 @@ export const AuthService = {
       throw errors.unauthorized('刷新令牌无效或已过期')
     }
 
-    // 黑名单校验（已登出/已轮转的旧令牌）
-    const blacklisted = await prisma.tokenBlacklist.findUnique({ where: { jti: payload.jti } })
-    if (blacklisted) {
-      throw errors.unauthorized('刷新令牌已失效')
-    }
+    // 事务内先按 jti 串行化（advisory lock）再复查黑名单与会话列表，
+    // 保证同一 refresh token 的并发请求只有一次能成功轮转（一次性消费）
+    const lockKey = advisoryLockKey(`auth:refresh:${payload.jti}`)
+    return prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${lockKey}::bigint) IS NULL AS locked`
 
-    const user = await prisma.user.findUnique({
-      where: { id: payload.sub },
-      include: { role: true },
-    })
-    if (!user || user.status !== 'active') {
-      throw errors.unauthorized('用户不存在或已停用')
-    }
+      // 黑名单复查（并发下旧令牌可能刚被登出/轮转写入黑名单）
+      const blacklisted = await tx.tokenBlacklist.findUnique({ where: { jti: payload.jti } })
+      if (blacklisted) {
+        throw errors.unauthorized('刷新令牌已失效')
+      }
 
-    // 轮转防重放：仅当前有效会话列表中的 jti 可刷新，任一命中即放行（多会话互不影响）
-    const jtiList = readJtiList(user)
-    if (!jtiList.includes(payload.jti)) {
-      throw errors.unauthorized('刷新令牌已失效')
-    }
+      const user = await tx.user.findUnique({
+        where: { id: payload.sub },
+        include: { role: true },
+      })
+      if (!user || user.status !== 'active') {
+        throw errors.unauthorized('用户不存在或已停用')
+      }
 
-    const { token: newRefresh, jti: newJti } = signRefreshToken(user.id)
-    const newAccess = signAccessToken({
-      userId: user.id,
-      username: user.username,
-      roleCode: user.role.code,
-      // 与 refresh token 共享会话 jti，登出/改密时可精准定位本会话
-      jti: newJti,
-    })
+      // 轮转防重放：仅当前有效会话列表中的 jti 可刷新，任一命中即放行（多会话互不影响）
+      const jtiList = readJtiList(user)
+      if (!jtiList.includes(payload.jti)) {
+        throw errors.unauthorized('刷新令牌已失效')
+      }
 
-    // 事务：旧 jti 入黑名单（upsert 幂等，并发重放同令牌不产生唯一冲突）+ 列表内移除旧 jti 并追加新 jti（仅轮转当前会话）
-    await prisma.$transaction([
-      prisma.tokenBlacklist.upsert({
+      const { token: newRefresh, jti: newJti } = signRefreshToken(user.id)
+      const newAccess = signAccessToken({
+        userId: user.id,
+        username: user.username,
+        roleCode: user.role.code,
+        // 与 refresh token 共享会话 jti，登出/改密时可精准定位本会话
+        jti: newJti,
+      })
+
+      // 旧 jti 入黑名单（upsert 幂等）+ 列表内移除旧 jti 并追加新 jti（仅轮转当前会话）
+      await tx.tokenBlacklist.upsert({
         where: { jti: payload.jti },
         create: {
           jti: payload.jti,
@@ -238,14 +244,19 @@ export const AuthService = {
           expiredAt: getRefreshTokenExpiry(refreshToken),
         },
         update: {},
-      }),
-      prisma.user.update({
+      })
+      await tx.user.update({
         where: { id: user.id },
         data: { refreshTokenJtiList: appendJti(removeJti(jtiList, payload.jti), newJti) },
-      }),
-    ])
+      })
 
-    return { accessToken: newAccess, refreshToken: newRefresh }
+      await recordAudit(
+        { userId: user.id, module: 'auth', action: 'refresh', targetId: user.id },
+        undefined,
+      )
+
+      return { accessToken: newAccess, refreshToken: newRefresh }
+    })
   },
 
   /**
@@ -256,66 +267,73 @@ export const AuthService = {
    */
   async autoLogin(rawToken: string, meta: AuditMeta = {}): Promise<LoginResult> {
     const tokenHash = hashPersistentLoginToken(rawToken)
+    // 按令牌哈希串行化：并发免登同令牌只有一次能消费并轮转（一次性消费）
+    const lockKey = advisoryLockKey(`auth:auto-login:${tokenHash}`)
 
-    // persistentLoginTokenHash 仅建索引未加唯一约束（同一用户轮转覆盖），用 findFirst
-    const user = await prisma.user.findFirst({
-      where: { persistentLoginTokenHash: tokenHash },
-      include: { role: { include: { permissions: true } } },
-    })
+    return prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${lockKey}::bigint) IS NULL AS locked`
 
-    const now = new Date()
-    const expired = !user || user.status !== 'active' || !user.persistentLoginExpiresAt || user.persistentLoginExpiresAt.getTime() <= now.getTime()
-    if (expired) {
-      // 清理过期/失效的持久令牌字段，避免长期残留
-      if (user) {
-        await prisma.user.update({
-          where: { id: user.id },
-          data: {
-            persistentLoginTokenHash: null,
-            persistentLoginExpiresAt: null,
-            persistentLoginCreatedAt: null,
-          },
-        })
+      // 锁内重读（并发下旧哈希可能刚被并发请求轮转覆盖）
+      // persistentLoginTokenHash 仅建索引未加唯一约束（同一用户轮转覆盖），用 findFirst
+      const user = await tx.user.findFirst({
+        where: { persistentLoginTokenHash: tokenHash },
+        include: { role: { include: { permissions: true } } },
+      })
+
+      const now = new Date()
+      const expired = !user || user.status !== 'active' || !user.persistentLoginExpiresAt || user.persistentLoginExpiresAt.getTime() <= now.getTime()
+      if (expired) {
+        // 清理过期/失效的持久令牌字段，避免长期残留
+        if (user) {
+          await tx.user.update({
+            where: { id: user.id },
+            data: {
+              persistentLoginTokenHash: null,
+              persistentLoginExpiresAt: null,
+              persistentLoginCreatedAt: null,
+            },
+          })
+        }
+        throw errors.unauthorized('免登录令牌无效或已过期')
       }
-      throw errors.unauthorized('免登录令牌无效或已过期')
-    }
 
-    // 签发新 access + refresh（共享 jti，落库追加）
-    const { token: refreshToken, jti } = signRefreshToken(user.id)
-    const accessToken = signAccessToken({
-      userId: user.id,
-      username: user.username,
-      roleCode: user.role.code,
-      jti,
+      // 签发新 access + refresh（共享 jti，落库追加）
+      const { token: refreshToken, jti } = signRefreshToken(user.id)
+      const accessToken = signAccessToken({
+        userId: user.id,
+        username: user.username,
+        roleCode: user.role.code,
+        jti,
+      })
+
+      // 旋转持久令牌：旧哈希被覆盖即作废，新明文下发给客户端
+      const { raw: newRaw, hash: newHash } = generatePersistentLoginToken()
+      const ttlDays = loadConfig().persistentLoginTtlDays
+      const newExpiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000)
+
+      await tx.user.update({
+        where: { id: user.id },
+        data: {
+          refreshTokenJtiList: appendJti(readJtiList(user), jti),
+          persistentLoginTokenHash: newHash,
+          persistentLoginExpiresAt: newExpiresAt,
+          persistentLoginCreatedAt: new Date(),
+        },
+      })
+
+      await recordAudit(
+        { userId: user.id, module: 'auth', action: 'auto_login', targetId: user.id, ip: meta.ip ?? null, userAgent: meta.userAgent ?? null },
+        meta.traceId,
+      )
+
+      return {
+        accessToken,
+        refreshToken,
+        user: toFrontendUser(user),
+        persistentLoginToken: newRaw,
+        persistentLoginExpiresInMs: ttlDays * 24 * 60 * 60 * 1000,
+      }
     })
-
-    // 旋转持久令牌：旧哈希被覆盖即作废，新明文下发给客户端
-    const { raw: newRaw, hash: newHash } = generatePersistentLoginToken()
-    const ttlDays = loadConfig().persistentLoginTtlDays
-    const newExpiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000)
-
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        refreshTokenJtiList: appendJti(readJtiList(user), jti),
-        persistentLoginTokenHash: newHash,
-        persistentLoginExpiresAt: newExpiresAt,
-        persistentLoginCreatedAt: new Date(),
-      },
-    })
-
-    await recordAudit(
-      { userId: user.id, module: 'auth', action: 'auto_login', targetId: user.id, ip: meta.ip ?? null, userAgent: meta.userAgent ?? null },
-      meta.traceId,
-    )
-
-    return {
-      accessToken,
-      refreshToken,
-      user: toFrontendUser(user),
-      persistentLoginToken: newRaw,
-      persistentLoginExpiresInMs: ttlDays * 24 * 60 * 60 * 1000,
-    }
   },
 
   /** 登出：仅将当前会话 jti 入黑名单并从列表移除（其他会话不受影响），同时清理持久令牌（强制下次走密码登录），记录审计 */
