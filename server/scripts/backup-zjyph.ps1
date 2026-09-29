@@ -111,6 +111,47 @@ function New-Encryptor {
   return $aes
 }
 
+# 限制读取长度的只读流包装（供跳过文件尾 HMAC 使用）
+if (-not ('Zjyph.LimitedStream' -as [type])) {
+  Add-Type -TypeDefinition @"
+using System.IO;
+namespace Zjyph {
+  public class LimitedStream : Stream {
+    private readonly Stream _inner; private readonly long _length; private long _pos;
+    public LimitedStream(Stream inner, long length) { _inner = inner; _length = length; }
+    public override bool CanRead { get { return true; } }
+    public override bool CanSeek { get { return false; } }
+    public override bool CanWrite { get { return false; } }
+    public override long Length { get { return _length; } }
+    public override long Position { get { return _pos; } set { throw new System.NotSupportedException(); } }
+    public override int Read(byte[] buffer, int offset, int count) {
+      long remain = _length - _pos; if (remain <= 0) return 0;
+      if (count > remain) count = (int)remain;
+      int read = _inner.Read(buffer, offset, count); _pos += read; return read;
+    }
+    public override void Flush() { }
+    public override long Seek(long offset, SeekOrigin origin) { throw new System.NotSupportedException(); }
+    public override void SetLength(long value) { throw new System.NotSupportedException(); }
+    public override void Write(byte[] buffer, int offset, int count) { throw new System.NotSupportedException(); }
+  }
+}
+"@
+}
+
+$MAC_LENGTH = 32
+
+# 在备份文件尾部追加 HMAC-SHA256（覆盖 IV+密文整体，M11 完整性认证）
+function Add-HmacTrailer {
+  param([string]$File, [byte[]]$Key)
+  $hmac = [System.Security.Cryptography.HMACSHA256]::new($Key)
+  try {
+    $fs = [System.IO.File]::OpenRead($File)
+    try { $mac = $hmac.ComputeHash($fs) } finally { $fs.Dispose() }
+  } finally { $hmac.Dispose() }
+  $out = [System.IO.File]::Open($File, 'Append', 'Write')
+  try { $out.Write($mac, 0, $mac.Length) } finally { $out.Dispose() }
+}
+
 function Invoke-PgDumpEncrypted {
   param([string]$Target)
   $pgDump = Join-Path $PgToolsBin 'pg_dump.exe'
@@ -150,6 +191,8 @@ function Invoke-PgDumpEncrypted {
     }
     # 原子化落地，避免定时任务与清理读到半成品
     Move-Item -Force -Path $tmp -Destination $Target
+    # 尾部追加 HMAC-SHA256（覆盖 IV+密文，M11 完整性认证）
+    Add-HmacTrailer -File $Target -Key $key
     # 权限收紧：移除继承，仅当前用户可读写（icacls 而非 .NET ACL，避免清空 ACL）
     & icacls $Target /inheritance:r /grant:r "$($env:USERNAME):F" 2>$null | Out-Null
     return (Get-Item $Target)
@@ -161,17 +204,62 @@ function Invoke-PgDumpEncrypted {
 }
 
 function Invoke-DecryptStream {
-  param([string]$Source)
+  param([string]$Source, [switch]$AllowLegacy)
   $key = Get-AesKey
   $fs = [System.IO.File]::OpenRead($Source)
+  $len = $fs.Length
+  $cipherLen = $len
+  # 新格式：尾部 32 字节 HMAC-SHA256（覆盖 IV+密文）。校验失败立即拒绝——
+  # 防止被篡改/截断的备份进入恢复流程（M11）；
+  # HMAC 不匹配时若显式 -AllowLegacy（旧格式备份兼容），告警并按旧格式整文件解密；
+  # 否则按篡改拒绝——新格式备份被篡改不会被「降级」放行
+  if ($len -gt (16 + $MAC_LENGTH)) {
+    $mac = New-Object byte[] $MAC_LENGTH
+    $fs.Seek(-$MAC_LENGTH, 'End') | Out-Null
+    [void]$fs.Read($mac, 0, $MAC_LENGTH)
+    $fs.Seek(0, 'Begin') | Out-Null
+    $hmac = [System.Security.Cryptography.HMACSHA256]::new($key)
+    try {
+      $buf = New-Object byte[] (1MB)
+      $remaining = $len - $MAC_LENGTH
+      while ($remaining -gt 0) {
+        $read = $fs.Read($buf, 0, [Math]::Min($buf.Length, $remaining))
+        if ($read -le 0) { break }
+        [void]$hmac.TransformBlock($buf, 0, $read, $buf, 0)
+        $remaining -= $read
+      }
+      $hmac.TransformFinalBlock($buf, 0, 0) | Out-Null
+      $expected = $hmac.Hash
+    } finally { $hmac.Dispose() }
+    $match = $mac.Length -eq $expected.Length
+    if ($match) {
+      for ($i = 0; $i -lt $mac.Length; $i++) { if ($mac[$i] -ne $expected[$i]) { $match = $false; break } }
+    }
+    if ($match) {
+      $fs.Seek(0, 'Begin') | Out-Null
+      $cipherLen = $len - $MAC_LENGTH
+    } elseif ($AllowLegacy) {
+      Write-Warning '备份 HMAC 校验不匹配：按旧格式（无 HMAC）兼容读取，请尽快以新格式重新全量备份'
+      $fs.Seek(0, 'Begin') | Out-Null
+    } else {
+      $fs.Dispose()
+      throw '备份完整性校验失败：HMAC 不匹配（新格式文件被篡改/截断，或密钥不符）'
+    }
+  } else {
+    Write-Warning '备份为旧格式（无 HMAC 认证），本次仅解密不校验完整性；建议尽快重新全量备份'
+    $fs.Seek(0, 'Begin') | Out-Null
+  }
   $iv = New-Object byte[] 16
   [void]$fs.Read($iv, 0, 16)
   $aes = [System.Security.Cryptography.Aes]::Create()
   $aes.Key = $key; $aes.IV = $iv
   $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
   $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
+  # 密文长度 = 总长 - IV(16) - HMAC(32)；拆独立变量避免 PS 参数数组解析歧义
+  $plainLen = $cipherLen - 16
+  $limited = New-Object Zjyph.LimitedStream -ArgumentList $fs, $plainLen
   return New-Object System.Security.Cryptography.CryptoStream(
-    $fs,
+    $limited,
     $aes.CreateDecryptor(),
     [System.Security.Cryptography.CryptoStreamMode]::Read)
 }
@@ -185,7 +273,7 @@ function Invoke-Verify {
   # 故先解密到临时文件再交给 pg_restore 读取（用完即删）
   $plain = Join-Path $env:TEMP ("zjyph_verify_{0}.dump" -f ([guid]::NewGuid().ToString('N')))
   try {
-    $cs = Invoke-DecryptStream $File
+    $cs = Invoke-DecryptStream $File -AllowLegacy
     try {
       $outFs = [System.IO.File]::Create($plain)
       try { $cs.CopyTo($outFs) }
@@ -260,7 +348,7 @@ switch ($Action) {
     Write-Log '保护性备份校验通过'
 
     $pgRestore = Join-Path $PgToolsBin 'pg_restore.exe'
-    $cs = Invoke-DecryptStream $BackupFile
+    $cs = Invoke-DecryptStream $BackupFile -AllowLegacy
     try {
       $psi = New-Object System.Diagnostics.ProcessStartInfo
       $psi.FileName = $pgRestore
