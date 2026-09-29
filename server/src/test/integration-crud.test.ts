@@ -1072,13 +1072,16 @@ describe('角色停用保护与重置密码信任撤销（真实 DB，H6/H7 回�
       message: expect.stringContaining('活跃用户'),
     })
     // 停用用户后可停用角色
-    await AdminService.updateUserStatus?.(user.id, 'inactive', ctx())
+    await AdminService.updateUser(user.id, { status: 'inactive' }, ctx())
+    await AdminService.updateRole(role.id, { status: 'inactive' }, ctx())
+    const stopped = await basePrisma.role.findUnique({ where: { id: role.id }, select: { status: true } })
+    expect(stopped?.status).toBe('inactive')
   })
 
   it('重置密码后持久免登令牌与会话列表被清空', async () => {
     if (!dbReady) return
     const username = `__t_rp_user_${Date.now().toString(36)}__`
-    const created = await AdminService.createUser({ username, password: 'Abcdef1!', name: '重置密码测试', role: admin }, ctx())
+    const created = await AdminService.createUser({ username, password: 'Abcdef1!', name: '重置密码测试', role: 'admin' }, ctx())
     tempUsernames.push(username)
     await basePrisma.user.update({
       where: { id: created.id },

@@ -236,11 +236,14 @@ describe('报告正文权限（真实 DB，H11 回归）', () => {
     dbReady = !!otherCompanyCode
     if (!dbReady) return
     const mkAnalysis = async (co: string, content: string) => {
-      const a = await prisma.subjectAnalysis.create({
-        data: {
+      // upsert 幂等：重复运行套件时同键（公司×科目×期间）残留不致冲突
+      const a = await prisma.subjectAnalysis.upsert({
+        where: { companyCode_subjectCode_period: { companyCode: co, subjectCode, period } },
+        create: {
           companyCode: co, subjectCode, subjectType: 'operating', fiscalYear: 'FY2098', period,
           title: `H11分析-${co}`, content, status: 'active', createdBy: adminId, updatedBy: adminId,
         },
+        update: { content, status: 'active', updatedBy: adminId },
       })
       createdAnalysisIds.push(a.id)
       return a.id
@@ -269,10 +272,9 @@ describe('报告正文权限（真实 DB，H11 回归）', () => {
       { title: '章节一', content: '<p>不应入库的正文</p>' },
     ])
     try {
-      const templates = await ReportService.listTemplates()
-      const found = templates.find((t) => t.id === tpl.id) as { structure?: { sections?: { content?: string }[] } } | undefined
-      const raw = found?.structure ?? JSON.parse((await basePrisma.reportTemplate.findUnique({ where: { id: tpl.id }, select: { structure: true } }))?.structure as unknown as string ?? '{}')
-      const sections = (raw as { sections?: { content?: string }[] }).sections ?? []
+      const row = await basePrisma.reportTemplate.findUnique({ where: { id: tpl.id }, select: { structure: true } })
+      const sections = ((row?.structure ?? {}) as { sections?: { content?: string }[] }).sections ?? []
+      expect(sections).toHaveLength(1)
       expect(sections[0]?.content ?? '').toBe('')
     } finally {
       await basePrisma.reportTemplate.delete({ where: { id: tpl.id } }).catch(() => undefined)
