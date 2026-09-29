@@ -8,7 +8,7 @@ import { applyCalcLayer, type CalcFormula, type CrossDimOptions, type ValueNode 
 
 const DIMS = ['BUDGET_AMOUNT', 'ACTUAL_MONTH', 'SAME_PERIOD_ACTUAL']
 
-function node(code: string, values: Record<string, number>, children: ValueNode[] = []): ValueNode {
+function node(code: string, values: Record<string, number>, children: ValueNode[] = [], valueType: 'amount' | 'ratio' = 'amount'): ValueNode {
   return {
     code,
     name: code,
@@ -16,6 +16,7 @@ function node(code: string, values: Record<string, number>, children: ValueNode[
     category: code,
     dataType: 'calc',
     direction: 'credit',
+    valueType,
     isLeaf: children.length === 0,
     values: { BUDGET_AMOUNT: 0, ACTUAL_MONTH: 0, SAME_PERIOD_ACTUAL: 0, ...values },
     children,
@@ -49,7 +50,17 @@ describe('applyCalcLayer 计算层', () => {
     ]
     applyCalcLayer(roots, calc, ['ACTUAL_MONTH'])
     expect(gross.values.ACTUAL_MONTH).toBe(100)
-    expect(grossRate.values.ACTUAL_MONTH).toBe(0.33) // 100/300 round2
+    expect(grossRate.values.ACTUAL_MONTH).toBe(0.33) // 金额类节点按 round2 兜底
+  })
+
+  it('比率类节点保留 4 位小数（100/300 = 0.3333 而非 0.33）', () => {
+    const revenue = node('OP_REV2', { ACTUAL_MONTH: 300 })
+    const gross = node('OP_GROSS2', { ACTUAL_MONTH: 100 })
+    const rate = node('OP_RATE2', { ACTUAL_MONTH: 0 }, [], 'ratio')
+    const roots = [revenue, gross, rate]
+    const calc: CalcFormula[] = [{ code: 'OP_RATE2', formula: '{OP_GROSS2} / {OP_REV2}', dependsOn: ['OP_GROSS2', 'OP_REV2'] }]
+    applyCalcLayer(roots, calc, ['ACTUAL_MONTH'])
+    expect(rate.values.ACTUAL_MONTH).toBe(0.3333)
   })
 
   it('缺失操作数记 0（引用不存在的编码）', () => {
@@ -157,5 +168,24 @@ describe('applyCalcLayer 计算层', () => {
     expect(days.values.LAST_YEAR_START).toBe(0)
     // 非跨维度节点不受影响
     expect(inv.values.YEAR_START).toBe(80)
+  })
+
+  it('经营树跨维度语义：同期列平移为去年口径、预算列置 0（M2 回归）', () => {
+    const target = node('OP_X', { BUDGET_AMOUNT: 0, ACTUAL_MONTH: 0, SAME_PERIOD_ACTUAL: 0 })
+    const dep = node('OP_DEP', { BUDGET_AMOUNT: 500, ACTUAL_MONTH: 100, SAME_PERIOD_ACTUAL: 80 })
+    const roots = [target, dep]
+    const calc: CalcFormula[] = [{ code: 'OP_X', formula: '{OP_DEP@ACTUAL_MONTH}', dependsOn: ['OP_DEP'] }]
+    const crossDim: CrossDimOptions = {
+      dimMap: new Map([
+        ['ACTUAL_MONTH', { ACTUAL_MONTH: 'ACTUAL_MONTH' }],
+        ['SAME_PERIOD_ACTUAL', { ACTUAL_MONTH: 'SAME_PERIOD_ACTUAL' }],
+      ]),
+      pseudoByDim: new Map(),
+      zeroDims: new Set(['BUDGET_AMOUNT']),
+    }
+    applyCalcLayer(roots, calc, ['BUDGET_AMOUNT', 'ACTUAL_MONTH', 'SAME_PERIOD_ACTUAL'], undefined, crossDim)
+    expect(target.values.ACTUAL_MONTH).toBe(100) // 本期列按字面维度取值
+    expect(target.values.SAME_PERIOD_ACTUAL).toBe(80) // 同期列平移为去年口径
+    expect(target.values.BUDGET_AMOUNT).toBe(0) // 预算列无跨期口径，置 0
   })
 })

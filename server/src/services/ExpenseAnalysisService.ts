@@ -196,6 +196,24 @@ async function nextMappingCode(): Promise<string> {
   return nextExpenseMappingCode(rows)
 }
 
+/** 校验科目编码集合：行内不得重复；与其它启用中映射不得重叠（重叠会让看板合计重复统计） */
+async function assertSubjectCodesUsable(subjectCodes: string[], excludeId?: string): Promise<void> {
+  if (new Set(subjectCodes).size !== subjectCodes.length) {
+    throw errors.badRequest('科目编码存在重复，请去重后保存')
+  }
+  const others = await prisma.expenseSubjectMapping.findMany({
+    where: { deletedAt: null, ...(excludeId ? { id: { not: excludeId } } : {}) },
+    select: { code: true, name: true, subjectCodes: true },
+  })
+  for (const other of others) {
+    const codes = (other.subjectCodes as unknown as string[]) ?? []
+    const overlap = subjectCodes.filter((c) => codes.includes(c))
+    if (overlap.length > 0) {
+      throw errors.conflict(`科目 ${overlap.join('、')} 已存在于映射「${other.name}」（${other.code}），同一科目只能归属一个费用映射`)
+    }
+  }
+}
+
 export const ExpenseAnalysisService = {
   /** 全部映射（sortOrder 升序；不含墓碑行） */
   async list(): Promise<ExpenseMappingDto[]> {
@@ -220,6 +238,7 @@ export const ExpenseAnalysisService = {
     if (exists) {
       // 墓碑行（软删除）同 code 重建视为复活：清除墓碑标记并按新输入更新
       if (exists.deletedAt) {
+        await assertSubjectCodesUsable(subjectCodes, exists.id)
         const revived = await prisma.expenseSubjectMapping.update({
           where: { id: exists.id },
           data: { name, subjectCodes, sortOrder: input.sortOrder ?? 0, status: input.status === 'inactive' ? 'inactive' : 'active', deletedAt: null },
@@ -229,6 +248,7 @@ export const ExpenseAnalysisService = {
       }
       throw errors.conflict('映射编码已存在')
     }
+    await assertSubjectCodesUsable(subjectCodes)
     const created = await prisma.expenseSubjectMapping.create({
       data: {
         code,
@@ -251,6 +271,7 @@ export const ExpenseAnalysisService = {
       ? input.subjectCodes.map((c) => String(c).trim()).filter(Boolean)
       : undefined
     if (subjectCodes !== undefined && subjectCodes.length === 0) throw errors.badRequest('至少选择 1 个运营费用科目')
+    if (subjectCodes !== undefined) await assertSubjectCodesUsable(subjectCodes, id)
     const updated = await prisma.expenseSubjectMapping.update({
       where: { id },
       data: {

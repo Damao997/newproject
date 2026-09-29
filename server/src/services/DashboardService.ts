@@ -240,7 +240,8 @@ export function changeRate(cur: number, base: number): number {
   const absBase = Math.abs(base)
   if (!absBase) return 0
   const r = (cur - base) / absBase
-  return Number.isFinite(r) ? round2(r) : 0
+  // 保留 4 位：round2 会把 12.34% 截成 12%，0.4% 的小幅增长直接归零
+  return Number.isFinite(r) ? Number(r.toFixed(4)) : 0
 }
 /** 预算达成率（%）：divisor=12 表示按月均预算折算月度达成率；预算为 0/缺失返回 null（前端显示 "–"） */
 export function rateOf(actualVal: number, budgetVal: number, divisor = 1): number | null {
@@ -600,12 +601,23 @@ export function matchProductCategories(
   for (const cat of categories) {
     // subjectKeyword 支持逗号（半角/全角）分隔多关键词：命中节点取并集（按节点名去重，防多关键词命中同一节点重复求和）
     const keywords = cat.subjectKeyword.split(/[,，]/).map((k) => k.trim()).filter(Boolean)
-    const hitByName = new Map<string, ValueNode>()
+    const matchedNamesAll = new Set<string>()
     for (const kw of keywords) {
       for (const n of allNodes) {
-        if (n.name.includes(kw)) hitByName.set(n.name, n)
+        if (n.name.includes(kw)) matchedNamesAll.add(n.name)
       }
     }
+    // 命中集收敛为不重叠子树：祖先已命中时其后代不再计入——
+    // 祖先节点值已包含全部后代，父子同时命中会重复统计（如关键词命中「直饮水业务回款」及其子科目）
+    const hitByName = new Map<string, ValueNode>()
+    const collectHits = (nodes: ValueNode[], ancestorMatched: boolean): void => {
+      for (const n of nodes) {
+        const selfMatched = matchedNamesAll.has(n.name)
+        if (selfMatched && !ancestorMatched) hitByName.set(n.name, n)
+        collectHits(n.children, ancestorMatched || selfMatched)
+      }
+    }
+    collectHits(incomeRoots, false)
     const hits = [...hitByName.values()]
     for (const h of hits) matchedNames.add(h.name)
     const income = productMetric(hits.length > 0 ? nodeOf(sumValues(hits)) : undefined, monthBudgetOf(hits), ytdBudgetOfNodes(hits))
@@ -1000,21 +1012,33 @@ export const DashboardService = {
       }
     })
 
-    // 运营费用合计行：费用映射全部编码求和（当期 + 上期）
-    const expenseRows = matchExpenseMappings(mappings, tree, ratios, monthIndex)
-    const prevExpenseRows = matchExpenseMappings(mappings, prevTree)
+    // 运营费用合计行：按映射科目「并集」求和（同一科目被多条映射覆盖时不得重复相加，当期 + 上期）
+    const sumByCodes = (t: ValueNode[], codes: string[]): Record<string, number> => {
+      const byCode = new Map(flattenValueTree(t).map((n) => [n.code, n]))
+      const acc: Record<string, number> = {}
+      for (const c of codes) {
+        const n = byCode.get(c)
+        if (!n) continue
+        for (const [dim, v] of Object.entries(n.values)) acc[dim] = round2((acc[dim] ?? 0) + (v ?? 0))
+      }
+      return acc
+    }
+    const expenseCodes = [...new Set(mappings.flatMap((m) => m.subjectCodes))]
     const expenseGroup = (): KeyMetricsGroup => {
-      const sum = (pick: (r: typeof expenseRows[number]) => number) => round2(expenseRows.reduce((s, r) => s + pick(r), 0))
-      const sumPrev = (pick: (r: typeof prevExpenseRows[number]) => number) => round2(prevExpenseRows.reduce((s, r) => s + pick(r), 0))
+      const cur = sumByCodes(tree, expenseCodes)
+      const prev = sumByCodes(prevTree, expenseCodes)
+      const curNodes = [{ values: cur } as ValueNode]
+      const annual = cur[OPERATING_DIMS.BUDGET_AMOUNT] ?? 0
+      const mb = monthBudgetOf(curNodes[0], ratios, monthIndex)
       return keyMetricsGroup({
-        annualBudget: sum((r) => r.budget),
-        monthBudget: expenseRows.some((r) => r.monthBudget !== null) ? round2(expenseRows.reduce((s, r) => s + (r.monthBudget ?? 0), 0)) : null,
-        ytdBudget: expenseRows.some((r) => r.budget) ? round2(expenseRows.reduce((s, r) => s + (ytdBudgetOf(r.budget, ratios, monthIndex) ?? 0), 0)) : null,
-        actual: sum((r) => r.monthActual),
-        prevActual: sumPrev((r) => r.monthActual),
-        same: sum((r) => r.monthSame),
-        ytd: sum((r) => r.ytdActual),
-        ytdSame: sum((r) => r.ytdSame),
+        annualBudget: annual,
+        monthBudget: mb === undefined ? (annual === 0 ? null : round2(annual / 12)) : mb,
+        ytdBudget: annual === 0 ? null : (ytdBudgetOf(annual, ratios, monthIndex) ?? null),
+        actual: cur[OPERATING_DIMS.ACTUAL_MONTH] ?? 0,
+        prevActual: prev[OPERATING_DIMS.ACTUAL_MONTH] ?? 0,
+        same: cur[OPERATING_DIMS.SAME_PERIOD_ACTUAL] ?? 0,
+        ytd: cur[OPERATING_DIMS.YTD_ACTUAL] ?? 0,
+        ytdSame: cur[OPERATING_DIMS.SAME_PERIOD_YTD] ?? 0,
       })
     }
 
