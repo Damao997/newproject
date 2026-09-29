@@ -75,10 +75,13 @@ afterAll(async () => {
 
 const ctx = () => ({ userId: 'test-user', traceId: 'test', actorRoleId: 'test-role' })
 
+/** 全量数据范围（用户上下文形态，与生产 scope 解析入口一致） */
+const fullScope = { companyCode: null, scopeValue: '*', dataScopeCodes: null }
+
 describe('撤销顺序守卫（真实 DB，H4 回归）', () => {
   it('撤销非末笔调整（A）被拒绝且数据保持 B 之后值', async () => {
     if (!dbReady) return
-    await expect(ReclassificationService.revertLog(logA, { type: 'all' } as never, ctx())).rejects.toMatchObject({
+    await expect(ReclassificationService.revertLog(logA, fullScope as never, ctx())).rejects.toMatchObject({
       message: expect.stringContaining('后续调整'),
     })
     const row = await basePrisma.factOperating.findUnique({ where: { id: rowId }, select: { value: true } })
@@ -87,10 +90,10 @@ describe('撤销顺序守卫（真实 DB，H4 回归）', () => {
 
   it('按倒序撤销：先 B 后 A 可依次恢复 90/100', async () => {
     if (!dbReady) return
-    await ReclassificationService.revertLog(logB, { type: 'all' } as never, ctx())
+    await ReclassificationService.revertLog(logB, fullScope as never, ctx())
     let row = await basePrisma.factOperating.findUnique({ where: { id: rowId }, select: { value: true } })
     expect(Number(row?.value)).toBe(90)
-    await ReclassificationService.revertLog(logA, { type: 'all' } as never, ctx())
+    await ReclassificationService.revertLog(logA, fullScope as never, ctx())
     row = await basePrisma.factOperating.findUnique({ where: { id: rowId }, select: { value: true } })
     expect(Number(row?.value)).toBe(100)
   })
