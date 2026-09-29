@@ -58,6 +58,7 @@ const ROUTE_MAP = [
   { html: 'state-collection.html', route: null, slug: 'state-collection', title: '6 态合集（无 React 路由）', priority: 'P2' },
 ]
 
+// 字节比率阈值仅作参考展示（L1：不作为达标依据）
 const P_THRESHOLD = { P0: 0.7, P1: 1.0, P2: 1.0 }
 
 async function tryStat(p) {
@@ -131,34 +132,34 @@ async function main() {
   }
 
   const lines = []
-  lines.push('# 视觉保真度验收报告')
+  lines.push('# 视觉验收报告（存在性门禁版）')
   lines.push('')
   lines.push(`生成时间: ${new Date().toISOString()}`)
   lines.push(`总页数: **${total}**，设计稿存在: **${withDesign}**，React 可截: **${withReact}**`)
   lines.push('')
-  lines.push('> 评估方法：每页用 Playwright 在 1440×900（desktop）和 390×844（mobile）双视口全页截图，')
-  lines.push('> React 字节数 / 设计稿字节数 = 信息密度比率。本报告要求：')
-  lines.push('> - P0 页面 ≥ 70%（核心信息必须可见）')
-  lines.push('> - P1 页面 ≥ 100%（与设计稿 1:1 完整保真）')
-  lines.push('> - P2 页面 ≥ 100%（与设计稿 1:1 完整保真）')
+  lines.push('> **判定口径（L1 重写）**：字节比率仅作参考值，不作为达标依据——PNG 字节数受内容复杂度与压缩影响，无法证明视觉保真。')
+  lines.push('> 硬门禁：1) 必测清单页面的设计稿与 React 截图（desktop+mobile）必须齐全，缺图即失败；')
+  lines.push('> 2) design-only 页（无 React 路由）显式豁免并标注；')
+  lines.push('> 3) 视觉一致性以「批准基线图像像素级差异 + 人工复核」为准（截图后走 ui-alignment-review），不在本脚本内自动化判定。')
   lines.push('')
-  lines.push('## 验收结论')
+  lines.push('## 验收结论（存在性门禁）')
   lines.push('')
-  lines.push(`| 优先级 | 总数 | 达标 | 达标率 | 平均 desktop 比率 | 平均 mobile 比率 |`)
-  lines.push(`| --- | ---: | ---: | ---: | ---: | ---: |`)
+  lines.push(`| 优先级 | 必测页 | 截图齐全 | 缺图（失败） |`)
+  lines.push(`| --- | ---: | ---: | ---: |`)
   for (const p of ['P0', 'P1', 'P2']) {
-    const cnt = byPrio(p).length
-    const pass = passCount(p)
-    const rate = cnt > 0 ? ((pass / cnt) * 100).toFixed(0) + '%' : '-'
-    lines.push(`| ${p} | ${cnt} | ${pass} | ${rate} | ${avgRatio(p, 'desktop')} | ${avgRatio(p, 'mobile')} |`)
+    const must = byPrio(p).filter((r) => r.route)
+    const ok = must.filter((r) => r.passDesktop && r.passMobile).length
+    lines.push(`| ${p} | ${must.length} | ${ok} | ${must.length - ok} |`)
   }
   lines.push('')
-  const allPass = rows.filter((r) => r.hasDesign && r.hasReact).every((r) => r.passDesktop && r.passMobile)
+  // 硬门禁：有路由的页面截图必须齐全（缺图即失败；空集/漏测不得视为通过）
+  const routeRows = rows.filter((r) => r.route)
+  const allPass = routeRows.length > 0 && routeRows.every((r) => r.passDesktop && r.passMobile)
   if (allPass) {
-    lines.push(`**最终结果: ✅ 全部 ${rows.filter((r) => r.hasDesign && r.hasReact).length} 页达标**`)
+    lines.push(`**最终结果: ✅ 全部 ${routeRows.length} 页截图齐全（字节比率为参考值，视觉一致性以基线像素差异+人工复核为准）**`)
   } else {
-    const failRows = rows.filter((r) => r.hasDesign && r.hasReact && (!r.passDesktop || !r.passMobile))
-    lines.push(`**最终结果: ⚠️ ${failRows.length} 页未达标**（详见下方详细清单）`)
+    const failRows = routeRows.filter((r) => !r.passDesktop || !r.passMobile)
+    lines.push(`**最终结果: ❌ ${failRows.length} 页截图缺失（门禁失败）**：${failRows.map((r) => r.title).join('、')}`)
   }
   lines.push('')
   lines.push('## 摘要')
@@ -167,7 +168,7 @@ async function main() {
   const p0Low = byPrio('P0').filter((r) => r.hasReact && r.hasDesign && r.rDesktop < r.dDesktop * 0.4)
   lines.push(`- P0 共 ${byPrio('P0').length} 页（核心数据可视化和决策入口）`)
   lines.push(`- P0 React 不可访问: ${p0MissReact.length} 页`)
-  lines.push(`- P0 React 截图字节 < 设计稿 40%: ${p0Low.length} 页（信息密度明显不足）`)
+  lines.push(`- P0 React 截图字节 < 设计稿 40%: ${p0Low.length} 页（仅参考值，不作为判定）`)
   lines.push('')
   const p1MissReact = byPrio('P1').filter((r) => !r.hasReact)
   const p1Low = byPrio('P1').filter((r) => r.hasReact && r.hasDesign && r.rDesktop < r.dDesktop * P_THRESHOLD.P1)

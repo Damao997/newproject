@@ -21,6 +21,14 @@ export default defineConfig({
         'src/server.ts',
         'src/types/**',
       ],
+      // 覆盖率 ratchet 门禁（M12）：阈值锚定当前实测水位（73.98%），只能向上提升；
+      // npm run test:coverage 低于阈值即失败。testing.md 目标 80%，提升任务另行排期
+      thresholds: {
+        lines: 73,
+        branches: 75,
+        functions: 78,
+        statements: 73,
+      },
     },
   },
 })
