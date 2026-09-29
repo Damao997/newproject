@@ -131,3 +131,37 @@ describe('buildTree 聚合', () => {
     expect(tree[0].values.ACTUAL_MONTH).toBe(15)
   })
 })
+
+describe('buildTree 直填逐维度回退（H8 回归）', () => {
+  it('直填父级缺某维度快照时，该维度回退子级求和（不被 0 吞没）', () => {
+    const subjects = [
+      subject('BS01', 'data', null, false),
+      subject('BS0101', 'data', 'BS01', true),
+      subject('BS0102', 'data', 'BS01', true),
+    ]
+    const leafValues = new Map([
+      ['BS01', { ACTUAL_MONTH: 100 }],
+      ['BS0101', { ACTUAL_MONTH: 60, YEAR_START: 40 }],
+      ['BS0102', { ACTUAL_MONTH: 30, YEAR_START: 25 }],
+    ])
+    const dims: Record<string, number> = { ACTUAL_MONTH: 0, YEAR_START: 0 }
+    const tree = buildTree(subjects, leafValues, dims, new Set(['BS01']))
+    expect(tree[0].values.ACTUAL_MONTH).toBe(100) // 本期直填
+    expect(tree[0].values.YEAR_START).toBe(65) // 年初缺直填快照 → 子级求和
+  })
+
+  it('全维度记录行为不变：直填覆盖全部已有维度', () => {
+    const subjects = [
+      subject('BS01', 'data', null, false),
+      subject('BS0101', 'data', 'BS01', true),
+    ]
+    const leafValues = new Map([
+      ['BS01', { ACTUAL_MONTH: 100, YEAR_START: 90 }],
+      ['BS0101', { ACTUAL_MONTH: 60, YEAR_START: 40 }],
+    ])
+    const dims: Record<string, number> = { ACTUAL_MONTH: 0, YEAR_START: 0 }
+    const tree = buildTree(subjects, leafValues, dims, new Set(['BS01']))
+    expect(tree[0].values.ACTUAL_MONTH).toBe(100)
+    expect(tree[0].values.YEAR_START).toBe(90)
+  })
+})

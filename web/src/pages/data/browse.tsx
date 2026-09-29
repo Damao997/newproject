@@ -21,7 +21,7 @@ import { DataTable, type DataTableColumn } from '@/components/data-table/data-ta
 import { Pagination } from '@/components/data-table/pagination'
 import { MiniBarChart } from '@/components/charts/mini-bar-chart'
 import {
-  useAggregationMap,
+  useAggregationMapAll,
   useCrossTable,
   type CrossTable,
 } from '@/hooks/api-queries'
@@ -31,6 +31,7 @@ import { usePageStore } from '@/stores/pageStateStore'
 import { usePeriodStore } from '@/stores/periodStore'
 import { api } from '@/lib/api'
 import { downloadBlob } from '@/lib/export'
+import { exportTableToPdf } from '@/lib/report-export'
 import { PAGINATION } from '@/lib/constants'
 import { cn, formatMetricValue } from '@/lib/utils'
 
@@ -53,7 +54,7 @@ const DATA_TYPE_TAG: Record<string, string> = { calc: '计算', display: '展示
  *   含汇总主体时客户端展开为成员列）+ subjectType 切换（经营/静态/现金流），
  *   subjectType 与展开行持久化到 pageStateStore；
  * - 数据：useCrossTable({ period, subjectType })，DataTable + Pagination 渲染，行点击展开 MiniBarChart 公司分布；
- * - 导出：api.exportData({ format: 'excel'|'pdf', ...筛选 }) + downloadBlob，按钮按 can('data','export') 显隐。
+ * - 导出：Excel 走服务端同源导出（api.exportCrossTable，含审计）；PDF 由前端 exportTableToPdf 从当前数据生成。按钮按 can('data','export') 显隐。
  */
 export default function DataBrowsePage() {
   const { can } = usePermission()
@@ -73,8 +74,10 @@ export default function DataBrowsePage() {
 
   const { getDisplayName } = useCompanyDisplayName()
 
-  // 汇总主体 → 单体成员映射：公司多选含汇总主体时客户端展开为成员列（与后端 companyCodes 展开口径一致）
-  const { data: aggMap } = useAggregationMap(null)
+  // 汇总主体 → 单体成员映射：公司多选含汇总主体时客户端展开为成员列（与后端 companyCodes 展开口径一致）。
+  // 使用全量加载（映射表小量级主数据）；旧实现 useAggregationMap(null) 因 enabled 门禁永不加载，
+  // 导致选中汇总主体后成员列全部消失
+  const { data: aggMap } = useAggregationMapAll()
   const summaryMembers = useMemo(() => {
     const m = new Map<string, string[]>()
     for (const e of aggMap ?? []) {
@@ -196,13 +199,29 @@ export default function DataBrowsePage() {
     setExporting(format)
     setExportError(null)
     try {
-      const blob = await api.exportData({
-        format,
-        type: subjectType,
-        period: period || undefined,
-        companyCode: selectedCompanies.length === 1 ? selectedCompanies[0] : undefined,
-      })
-      await downloadBlob(blob, `data-browse-${data?.period ?? (period || 'latest')}.${format === 'excel' ? 'xlsx' : 'pdf'}`)
+      if (format === 'excel') {
+        // Excel：服务端同源导出（与 /data/cross-table 同参数、含公司列、记服务端审计）
+        const blob = await api.exportCrossTable({
+          subjectType,
+          period: period || undefined,
+          companyCodes: selectedCompanies.length > 0 ? selectedCompanies : undefined,
+        })
+        await downloadBlob(blob, `data-browse-${data?.period ?? (period || 'latest')}.xlsx`)
+      } else {
+        // PDF：由当前已加载数据在客户端生成（文本表格方案，复用报告 PDF 的中文字体机制）
+        const header = ['科目编码', '科目名称', ...visibleCompanies.map((c) => getDisplayName(c))]
+        const body = rows.map((r) => [
+          r.code,
+          r.name,
+          ...visibleCompanies.map((c) => formatMetricValue(r.values[c] ?? 0, r.valueType)),
+        ])
+        await exportTableToPdf(
+          `data-browse-${data?.period ?? (period || 'latest')}.pdf`,
+          `数据交叉表（${data?.period ?? period ?? ''}）`,
+          header,
+          body,
+        )
+      }
     } catch (err) {
       setExportError(err instanceof Error ? err.message : '导出失败，请稍后重试')
     } finally {

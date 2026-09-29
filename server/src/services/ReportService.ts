@@ -248,8 +248,9 @@ export const ReportService = {
       }
       const a = aMap.get(r.analysisId)
       if (!a || a.status === 'inactive') {
-        // 原文已删除：用章节自身缓存的标题/内容占位
-        return { id: r.id, orderNo: r.orderNo, title: r.title, content: r.content ?? '', analysisId: r.analysisId, source: null, missing: true }
+        // 原文已删除：仅保留标题占位，不回退章节缓存正文
+        // （缓存正文可能落在当前读者可读范围之外，且已删除内容不应继续可读）
+        return { id: r.id, orderNo: r.orderNo, title: r.title, content: '', analysisId: r.analysisId, source: null, missing: true }
       }
       return {
         id: r.id,
@@ -391,12 +392,26 @@ export const ReportService = {
     const refMap = new Map(refAnalyses.map((a) => [a.id, a]))
     if (newRefIds.length > 0) {
       const allowed = new Set(await resolveScopeCompanyCodes(scope))
+      // 报告主体集：单主体 → 自身；汇总主体 → 其成员单体。
+      // 引用的单项分析须属于报告主体（或 AI 全局预分析），防止借报告挂接读取主体外正文
+      const reportCompanyScope = parseScope(report.companyScope)
+      const reportSubjects = new Set(
+        reportCompanyScope.type === 'company'
+          ? [reportCompanyScope.code]
+          : (await prisma.companyAggregationMap.findMany({
+              where: { summaryCompanyCode: reportCompanyScope.code },
+              select: { singleCompanyCode: true },
+            })).map((m) => m.singleCompanyCode),
+      )
       for (const rid of newRefIds) {
         const a = refMap.get(rid)
         if (!a) throw errors.badRequest(`引用的单项分析不存在：${rid}`)
         // AI 全局预分析归档（OVERVIEW）为全局口径（'ALL' 主体无公司归属），任何用户可引用；
-        // 普通科目分析仍须在用户 scope 内
-        if (a.subjectCode !== OVERVIEW_SUBJECT_CODE && !allowed.has(a.companyCode)) throw errors.forbidden('无权引用该公司的单项分析')
+        // 普通科目分析仍须在用户 scope 内且属于报告主体
+        if (a.subjectCode !== OVERVIEW_SUBJECT_CODE) {
+          if (!allowed.has(a.companyCode)) throw errors.forbidden('无权引用该公司的单项分析')
+          if (!reportSubjects.has(a.companyCode)) throw errors.forbidden('单项分析与报告主体不一致，无法挂接')
+        }
       }
     }
 
@@ -567,14 +582,15 @@ export const ReportService = {
     }
   },
 
-  /** 从报告章节快照创建自定义模板（"另存为模板"）：引用章节的内容冻结为自由内容起点 */
+  /** 从报告章节快照创建自定义模板（"另存为模板"）：仅保留章节结构（标题），正文不入全局模板——
+   * 模板对全组织可套用，携带正文会把报告主体内容泄露给无权用户 */
   async createTemplate(name: string, description: string | undefined, sections: Array<{ title: string; content?: string }>): Promise<{ id: string; code: string }> {
     const trimmed = name?.trim()
     if (!trimmed) throw errors.badRequest('模板名称为必填项')
     if (!Array.isArray(sections) || sections.length > 50) throw errors.badRequest('章节蓝图为必填项（最多 50 章）')
     const blueprints = sections.map((s) => ({
       title: String(s.title ?? '').trim().slice(0, 200) || '自定义章节',
-      content: sanitizeRichText(String(s.content ?? '')),
+      content: '',
     }))
     const code = `${CUSTOM_TEMPLATE_PREFIX}${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`
     const row = await prisma.reportTemplate.create({

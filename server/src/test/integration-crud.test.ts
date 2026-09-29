@@ -33,6 +33,8 @@ beforeAll(async () => {
   } catch {
     dbReady = false
   }
+  // 跳过须可见：DB 集成用例静默通过会虚增绿量
+  if (!dbReady) console.warn('[integration-crud] 测试数据库不可用，DB 集成用例全部跳过（不计为通过覆盖）')
 })
 
 afterAll(async () => {
@@ -1046,5 +1048,50 @@ describe('现金流公式试算（真实 DB）', () => {
       await basePrisma.factOperating.deleteMany({ where: { batchId: batch.id } }).catch(() => undefined)
       await basePrisma.importBatch.delete({ where: { id: batch.id } }).catch(() => undefined)
     }
+  })
+})
+
+describe('角色停用保护与重置密码信任撤销（真实 DB，H6/H7 回归）', () => {
+  it('预置角色（superadmin）停用被拒绝', async () => {
+    if (!dbReady) return
+    const superRole = await basePrisma.role.findUnique({ where: { code: 'superadmin' }, select: { id: true } })
+    if (!superRole) return
+    await expect(AdminService.updateRole(superRole.id, { status: 'inactive' }, ctx())).rejects.toMatchObject({
+      message: expect.stringContaining('只读'),
+    })
+  })
+
+  it('有活跃用户绑定的自定义角色停用被拒绝', async () => {
+    if (!dbReady) return
+    const code = `__T_RO_${Date.now().toString(36)}__`
+    tempRoleCodes.push(code)
+    const role = await AdminService.createRole({ code, name: '停用保护测试角色' }, ctx())
+    const user = await AdminService.createUser({ username: `__t_ro_user_${Date.now().toString(36)}__`, password: 'Abcdef1!', name: '停用保护测试用户', role: code }, ctx())
+    tempUsernames.push(user.username)
+    await expect(AdminService.updateRole(role.id, { status: 'inactive' }, ctx())).rejects.toMatchObject({
+      message: expect.stringContaining('活跃用户'),
+    })
+    // 停用用户后可停用角色
+    await AdminService.updateUserStatus?.(user.id, 'inactive', ctx())
+  })
+
+  it('重置密码后持久免登令牌与会话列表被清空', async () => {
+    if (!dbReady) return
+    const username = `__t_rp_user_${Date.now().toString(36)}__`
+    const created = await AdminService.createUser({ username, password: 'Abcdef1!', name: '重置密码测试', role: admin }, ctx())
+    tempUsernames.push(username)
+    await basePrisma.user.update({
+      where: { id: created.id },
+      data: { persistentLoginTokenHash: 'old-hash', persistentLoginExpiresAt: new Date(Date.now() + 86400000), refreshTokenJtiList: ['old-jti'] },
+    })
+    await AdminService.resetPassword(created.id, 'NewPass1!', ctx())
+    const after = await basePrisma.user.findUnique({
+      where: { id: created.id },
+      select: { persistentLoginTokenHash: true, persistentLoginExpiresAt: true, refreshTokenJtiList: true, mustChangePassword: true },
+    })
+    expect(after?.persistentLoginTokenHash).toBeNull()
+    expect(after?.persistentLoginExpiresAt).toBeNull()
+    expect(after?.refreshTokenJtiList).toEqual([])
+    expect(after?.mustChangePassword).toBe(true)
   })
 })

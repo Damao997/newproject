@@ -246,17 +246,26 @@ switch ($Action) {
     Write-Host "将用 $BackupFile 覆盖 zjyph_prod，输入 yes 继续："
     if ((Read-Host) -ne 'yes') { Write-Log '恢复已取消'; exit 0 }
 
+    # 恢复前先完整校验源归档：--clean 直灌一旦中途失败会留下部分覆盖的库（H16）
+    Write-Log '校验恢复源归档完整性'
+    Invoke-Verify $BackupFile | Out-Null
+    Write-Log '源归档校验通过'
+
     Write-Log '先做恢复前保护性备份'
     $guard = Join-Path $fullDir ("zjyph_prod_{0}_prerestore.dump.enc" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
     Invoke-PgDumpEncrypted $guard | Out-Null
     Write-Log "保护性备份完成：$guard"
+    # 保护性备份同样必须校验可用，否则恢复失败后将无可靠回退点
+    Invoke-Verify $guard | Out-Null
+    Write-Log '保护性备份校验通过'
 
     $pgRestore = Join-Path $PgToolsBin 'pg_restore.exe'
     $cs = Invoke-DecryptStream $BackupFile
     try {
       $psi = New-Object System.Diagnostics.ProcessStartInfo
       $psi.FileName = $pgRestore
-      $psi.Arguments = "--clean --if-exists --no-owner --no-acl -h $env:PGHOST -p $env:PGPORT -U $env:PGUSER -d $env:PGDATABASE"
+      # --single-transaction：全部对象在单一事务内恢复，任一失败整体回滚，不留下部分覆盖的库
+      $psi.Arguments = "--clean --if-exists --single-transaction --no-owner --no-acl -h $env:PGHOST -p $env:PGPORT -U $env:PGUSER -d $env:PGDATABASE"
       $psi.UseShellExecute = $false
       $psi.RedirectStandardInput = $true
       $psi.RedirectStandardError = $true

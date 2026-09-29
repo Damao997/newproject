@@ -1066,6 +1066,19 @@ class ApiClient {
     return response.data as any
   }
 
+  /** 交叉表导出（当前交叉数值 xlsx，服务端审计；PDF 由前端从当前数据生成） */
+  async exportCrossTable(params: { subjectType: string; period?: string; companyCodes?: string[] }): Promise<Blob> {
+    const response = await this.client.get('/data/cross-table/export', {
+      params: {
+        subjectType: params.subjectType,
+        period: params.period,
+        companyCodes: params.companyCodes && params.companyCodes.length > 0 ? params.companyCodes.join(',') : undefined,
+      },
+      responseType: 'blob',
+    })
+    return response.data as any
+  }
+
   // Admin API
   async getUsers(params?: FilterParams): Promise<PaginatedResponse<User>> {
     return this.request({

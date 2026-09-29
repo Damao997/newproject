@@ -8,6 +8,7 @@ import { AI_TEMPLATES, type AiSectionTemplate } from '../config/ai-templates'
 import { IndicatorsService, type OperatingRow, type StaticRow, type CashflowRow } from './IndicatorsService'
 import { SubjectAnalysisService, ALL_COMPANY_CODE } from './SubjectAnalysisService'
 import { resolveCompanyCodes } from './AggregationService'
+import { resolveScope } from '../middleware/scope'
 import { extractCodes, validateFormula } from './FormulaRuleService'
 import { logger } from '../lib/logger'
 import type { AuthUserContext } from '../types/express'
@@ -171,8 +172,10 @@ export const AIProxyService = {
     const map = await buildCompanyMap()
     const companyAlias = map.forward.get(companyCode) ?? '本公司'
     const factBlock = buildAnalyzeFactBlock(row, companyAlias)
+    // 用户请求文本同样经公司名映射后出站（正文可能包含公司全名/简称）
+    const safeUserPrompt = applyCompanyMap(userPrompt || '请就上述指标变化生成一段经营分析。', map)
 
-    const fullPrompt = `${factBlock}\n\n分析请求：${userPrompt || '请就上述指标变化生成一段经营分析。'}`
+    const fullPrompt = `${factBlock}\n\n分析请求：${safeUserPrompt}`
 
     let full = ''
     await chatStream(buildTemplatePrompt(ANALYZE_SYSTEM_PROMPT, AI_TEMPLATES.analyze.sections), fullPrompt, (delta) => {
@@ -210,9 +213,11 @@ export const AIProxyService = {
 
     const map = await buildCompanyMap()
     const desensitized = applyCompanyMap(source, map)
+    // 报告标题同样经公司名映射后出站（标题常含公司全名/简称）
+    const safeTitle = applyCompanyMap(title, map)
 
     let full = ''
-    await chatStream(SUMMARY_SYSTEM_PROMPT, `报告标题：${title}\n\n各章节内容摘录：\n${desensitized}`, (delta) => {
+    await chatStream(SUMMARY_SYSTEM_PROMPT, `报告标题：${safeTitle}\n\n各章节内容摘录：\n${desensitized}`, (delta) => {
       full += delta
       onToken(delta)
     }, traceId, params.signal)
@@ -252,6 +257,12 @@ export const AIProxyService = {
     if (companyCode && companyCode !== ALL_COMPANY_CODE) {
       await resolveCompanyCodes(scope, companyCode)
     }
+    // ALL/缺省主体（全局口径）：仅全量用户可归档——受限用户以局部指标覆盖管理员
+    // 同期间「全部主体」归档属越权写入；其预分析仍可流式预览，只是不落库
+    let allowAllArchive = true
+    if (!companyCode || companyCode === ALL_COMPANY_CODE) {
+      allowAllArchive = (await resolveScope(prisma, scope)).type === 'all'
+    }
 
     const map = await buildCompanyMap()
     // 分析主体：单一公司/汇总主体映射为代号；全部主体（scope 汇总）以“本公司”表述（与 analyze 一致）
@@ -268,9 +279,9 @@ export const AIProxyService = {
     const finalText = restoreCompanyMap(filtered.sanitized, map)
 
     // 归档到单项分析表（持久化，主体×全局预分析×期间 幂等覆盖；失败不影响 SSE 响应，仅告警）
-    // 期间为空（全部期间口径）时不归档
+    // 期间为空（全部期间口径）时不归档；受限用户的 ALL 口径预分析不归档
     let archived = false
-    if (finalText.trim() && period) {
+    if (finalText.trim() && period && allowAllArchive) {
       try {
         await SubjectAnalysisService.archiveOverview({
           companyCode,

@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma'
 import { AggregationService, flattenValueTree, resolveCompanyCodes, resolveDashboardCompany } from './AggregationService'
 import { BudgetRatioService, splitMonthlyBudget } from './BudgetRatioService'
 import { latestOperatingPeriod } from './IndicatorsService'
+import { activeTransactionBatchWhere } from './TransactionService'
 import { OPERATING_DIMS, CASHFLOW_DIMS } from '../lib/metric-values'
 import { fiscalYearStartPeriod, fiscalYearLabel, periodsInRange, formatPeriod, parsePeriod } from '../lib/period'
 import type { AuthUserContext } from '../types/express'
@@ -1242,7 +1243,7 @@ export const DashboardService = {
 
     const grouped = await prisma.transactionDetail.groupBy({
       by: ['companyCode'],
-      where: { transactionType: AR_TYPE, period: params.period, companyCode: { in: companyCodes } },
+      where: { transactionType: AR_TYPE, period: params.period, companyCode: { in: companyCodes }, AND: [await activeTransactionBatchWhere()] },
       _sum: { closingBalance: true },
     })
     // 往来明细为元单位，看板统一折算为万元
