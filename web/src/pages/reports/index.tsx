@@ -13,7 +13,7 @@ import { MonthPicker } from '@/components/ui/month-picker'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+  Dialog, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -510,67 +510,69 @@ function CreateReportDialog({ open, onClose, onCreated }: {
           <DialogTitle>新建报告</DialogTitle>
           <DialogDescription>选择报告主体与期间；章节依据该主体范围下的单项分析生成（实时引用）。</DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="report-title">报告标题</Label>
-            <Input id="report-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="如：2026 年 8 月经营分析报告" />
-          </div>
-          <div className="space-y-1.5">
-            <Label>报告期间</Label>
-            <MonthPicker
-              key={resetRef.current}
-              value={period}
-              onChange={setPeriod}
-              availablePeriods={periods}
-              allowedPeriods={periods}
-              placeholder="选择期间"
-              className="w-full"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>报告主体</Label>
-            <div className="flex items-center gap-2">
-              <Select value={scopeType} onValueChange={(v) => { setScopeType(v as 'company' | 'summary'); setScopeCode('') }}>
-                <SelectTrigger className="h-9 w-36"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="company">单体公司</SelectItem>
-                  <SelectItem value="summary">汇总主体</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={scopeCode} onValueChange={setScopeCode}>
-                <SelectTrigger className="h-9 flex-1"><SelectValue placeholder="选择主体" /></SelectTrigger>
-                <SelectContent>
-                  {scopeCompanies.length === 0 ? (
-                    <SelectItem value="__none" disabled>暂无可选主体</SelectItem>
-                  ) : (
-                    scopeCompanies.map((c) => <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>)
-                  )}
-                </SelectContent>
-              </Select>
+        <DialogBody className="grid gap-4">
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="report-title">报告标题</Label>
+              <Input id="report-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="如：2026 年 8 月经营分析报告" />
             </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label>报告模板</Label>
-            <Select value={templateCode} onValueChange={setTemplateCode}>
-              <SelectTrigger className="h-9 w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">不使用模板（从空白开始）</SelectItem>
-                {templates.map((t) => (
-                  <SelectItem key={t.code} value={t.code}>
-                    {t.name}（{t.sectionCount} 章{t.isSystem ? ' · 系统' : ''}）
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {selectedTemplate?.description && (
-              <p className="text-caption text-muted-foreground">{selectedTemplate.description}</p>
+            <div className="space-y-1.5">
+              <Label>报告期间</Label>
+              <MonthPicker
+                key={resetRef.current}
+                value={period}
+                onChange={setPeriod}
+                availablePeriods={periods}
+                allowedPeriods={periods}
+                placeholder="选择期间"
+                className="w-full"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>报告主体</Label>
+              <div className="flex items-center gap-2">
+                <Select value={scopeType} onValueChange={(v) => { setScopeType(v as 'company' | 'summary'); setScopeCode('') }}>
+                  <SelectTrigger className="h-9 w-36"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="company">单体公司</SelectItem>
+                    <SelectItem value="summary">汇总主体</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={scopeCode} onValueChange={setScopeCode}>
+                  <SelectTrigger className="h-9 flex-1"><SelectValue placeholder="选择主体" /></SelectTrigger>
+                  <SelectContent>
+                    {scopeCompanies.length === 0 ? (
+                      <SelectItem value="__none" disabled>暂无可选主体</SelectItem>
+                    ) : (
+                      scopeCompanies.map((c) => <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>)
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>报告模板</Label>
+              <Select value={templateCode} onValueChange={setTemplateCode}>
+                <SelectTrigger className="h-9 w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">不使用模板（从空白开始）</SelectItem>
+                  {templates.map((t) => (
+                    <SelectItem key={t.code} value={t.code}>
+                      {t.name}（{t.sectionCount} 章{t.isSystem ? ' · 系统' : ''}）
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedTemplate?.description && (
+                <p className="text-caption text-muted-foreground">{selectedTemplate.description}</p>
+              )}
+            </div>
+            {period && (
+              <p className="text-caption text-muted-foreground">财年：{fiscalYear}（自动取期间年份）</p>
             )}
+            {error && <FlashMessage type="error">{error}</FlashMessage>}
           </div>
-          {period && (
-            <p className="text-caption text-muted-foreground">财年：{fiscalYear}（自动取期间年份）</p>
-          )}
-          {error && <FlashMessage type="error">{error}</FlashMessage>}
-        </div>
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={createReport.isPending}>取消</Button>
           <Button onClick={handleSubmit} disabled={!canSubmit || createReport.isPending}>
@@ -617,10 +619,12 @@ function RenameReportDialog({ report, onClose, onSaved }: {
         <DialogHeader>
           <DialogTitle>重命名报告</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3">
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="报告标题" />
-          {error && <FlashMessage type="error">{error}</FlashMessage>}
-        </div>
+        <DialogBody className="grid gap-4">
+          <div className="space-y-3">
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="报告标题" />
+            {error && <FlashMessage type="error">{error}</FlashMessage>}
+          </div>
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={updateReport.isPending}>取消</Button>
           <Button onClick={handleSave} disabled={!canUpdate || updateReport.isPending || !title.trim() || title.trim() === report?.title}>保存</Button>

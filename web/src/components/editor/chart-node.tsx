@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+  Dialog, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -292,62 +292,64 @@ export function ChartInsertDialog({
           <DialogTitle>插入数据图表</DialogTitle>
           <DialogDescription>选择公司、科目与期间，图表将随最新数据实时渲染（读者亦可见）。</DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label>公司</Label>
-            <Select value={companyCode} onValueChange={(v) => { setCompanyCode(v); setSelectedSubject(null) }}>
-              <SelectTrigger className="h-9 w-full"><SelectValue placeholder="选择公司" /></SelectTrigger>
-              <SelectContent>
-                {singleCompanies.length === 0 ? (
-                  <SelectItem value="__none" disabled>暂无可选公司</SelectItem>
-                ) : (
-                  singleCompanies.map((c) => <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>)
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>科目体系</Label>
-            <Select value={subjectType} onValueChange={(v) => { setSubjectType(v as 'operating' | 'static' | 'cashflow'); setSelectedSubject(null) }}>
-              <SelectTrigger className="h-9 w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {SUBJECT_TYPE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>科目（输入编码或名称过滤）</Label>
-            <Input
-              value={keyword}
-              onChange={(e) => { setKeyword(e.target.value); setSelectedSubject(null) }}
-              placeholder="如：PL02 或 毛利"
-              className="h-9"
-            />
-            <div className="max-h-40 overflow-y-auto rounded-md border border-border">
-              {treeLoading ? (
-                <p className="px-3 py-2 text-caption text-muted-foreground">科目加载中…</p>
-              ) : matchedSubjects.length === 0 ? (
-                <p className="px-3 py-2 text-caption text-muted-foreground">无匹配科目</p>
-              ) : (
-                matchedSubjects.map((s) => (
-                  <button
-                    key={s.code}
-                    type="button"
-                    onClick={() => setSelectedSubject({ code: s.code, name: s.name })}
-                    className={cn(
-                      'flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-caption transition-colors hover:bg-muted',
-                      selectedSubject?.code === s.code ? 'bg-muted text-primary' : 'text-foreground',
-                    )}
-                  >
-                    <span className="truncate">{s.name}</span>
-                    <span className="shrink-0 tabular-nums text-muted-foreground">{s.code}</span>
-                  </button>
-                ))
-              )}
+        <DialogBody className="grid gap-4">
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>公司</Label>
+              <Select value={companyCode} onValueChange={(v) => { setCompanyCode(v); setSelectedSubject(null) }}>
+                <SelectTrigger className="h-9 w-full"><SelectValue placeholder="选择公司" /></SelectTrigger>
+                <SelectContent>
+                  {singleCompanies.length === 0 ? (
+                    <SelectItem value="__none" disabled>暂无可选公司</SelectItem>
+                  ) : (
+                    singleCompanies.map((c) => <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>)
+                  )}
+                </SelectContent>
+              </Select>
             </div>
+            <div className="space-y-1.5">
+              <Label>科目体系</Label>
+              <Select value={subjectType} onValueChange={(v) => { setSubjectType(v as 'operating' | 'static' | 'cashflow'); setSelectedSubject(null) }}>
+                <SelectTrigger className="h-9 w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {SUBJECT_TYPE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>科目（输入编码或名称过滤）</Label>
+              <Input
+                value={keyword}
+                onChange={(e) => { setKeyword(e.target.value); setSelectedSubject(null) }}
+                placeholder="如：PL02 或 毛利"
+                className="h-9"
+              />
+              <div className="max-h-40 overflow-y-auto rounded-md border border-border">
+                {treeLoading ? (
+                  <p className="px-3 py-2 text-caption text-muted-foreground">科目加载中…</p>
+                ) : matchedSubjects.length === 0 ? (
+                  <p className="px-3 py-2 text-caption text-muted-foreground">无匹配科目</p>
+                ) : (
+                  matchedSubjects.map((s) => (
+                    <button
+                      key={s.code}
+                      type="button"
+                      onClick={() => setSelectedSubject({ code: s.code, name: s.name })}
+                      className={cn(
+                        'flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-caption transition-colors hover:bg-muted',
+                        selectedSubject?.code === s.code ? 'bg-muted text-primary' : 'text-foreground',
+                      )}
+                    >
+                      <span className="truncate">{s.name}</span>
+                      <span className="shrink-0 tabular-nums text-muted-foreground">{s.code}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+            <p className="text-caption text-muted-foreground">期间：{defaultPeriod}（取报告期间）</p>
           </div>
-          <p className="text-caption text-muted-foreground">期间：{defaultPeriod}（取报告期间）</p>
-        </div>
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>取消</Button>
           <Button

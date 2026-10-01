@@ -5,7 +5,7 @@ import { FlashMessage } from '@/components/ui/flash-message'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import {
   Dialog,
-  DialogContent,
+  DialogContent, DialogBody,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -97,16 +97,18 @@ export function BatchPermissionDialog({ open, roles, onClose, onSaved }: BatchPe
             <DialogTitle>批量配置权限</DialogTitle>
             <DialogDescription>为 {roles?.length ?? 0} 个角色设置相同权限集（覆盖原权限），支持按模块批量操作</DialogDescription>
           </DialogHeader>
-          {/* 目标角色摘要：前 5 个 + 溢出计数 */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-xs text-muted-foreground">目标角色：</span>
-            {roles?.slice(0, 5).map((r) => (
-              <Badge key={r.id} variant="secondary">{r.name}</Badge>
-            ))}
-            {(roles?.length ?? 0) > 5 && <Badge variant="outline">+{roles!.length - 5} 个</Badge>}
-          </div>
-          <PermissionMatrix perms={perms} selected={selected} onToggle={toggle} onSetAll={setAll} />
-          {error && <FlashMessage type="error">{error}</FlashMessage>}
+          <DialogBody className="grid gap-4">
+            {/* 目标角色摘要：前 5 个 + 溢出计数 */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">目标角色：</span>
+              {roles?.slice(0, 5).map((r) => (
+                <Badge key={r.id} variant="secondary">{r.name}</Badge>
+              ))}
+              {(roles?.length ?? 0) > 5 && <Badge variant="outline">+{roles!.length - 5} 个</Badge>}
+            </div>
+            <PermissionMatrix perms={perms} selected={selected} onToggle={toggle} onSetAll={setAll} />
+            {error && <FlashMessage type="error">{error}</FlashMessage>}
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={onClose}>取消</Button>
             <Button onClick={save} disabled={updateBatch.isPending}>

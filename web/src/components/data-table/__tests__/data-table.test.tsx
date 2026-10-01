@@ -254,6 +254,14 @@ describe('DataTable', () => {
     const { container } = render(<DataTable columns={columns} data={rows} rowKey={(r) => r.id} />)
     expect(container.querySelector('thead')?.className).not.toContain('sticky')
   })
+
+  it('填满模式保留表头固定、隔离显示层级，且不再依赖视口减去常量', () => {
+    const { container } = render(<DataTable columns={columns} data={rows} rowKey={(r) => r.id} fillHeight />)
+    expect(container.firstChild).toHaveClass('isolate', 'flex-1', 'min-h-0')
+    expect(container.querySelector('thead')).toHaveClass('sticky', 'top-0')
+    expect(container.querySelector('[data-table-scroll]')).toHaveClass('flex-1', 'overflow-auto')
+    expect((container.querySelector('[data-table-scroll]') as HTMLElement).style.maxHeight).toBe('')
+  })
 })
 
 describe('Pagination', () => {

@@ -4,7 +4,7 @@ import { FlashMessage } from '@/components/ui/flash-message'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import {
   Dialog,
-  DialogContent,
+  DialogContent, DialogBody,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -106,8 +106,10 @@ export function PermissionDialog({ open, role, onClose, onSaved }: PermissionDia
               {locked ? '超级管理员角色固定拥有全部权限，不可修改' : '勾选该角色拥有的权限项，支持按模块批量操作'}
             </DialogDescription>
           </DialogHeader>
-          <PermissionMatrix perms={perms} selected={selected} onToggle={toggle} onSetAll={setAll} locked={locked} />
-          {error && <FlashMessage type="error">{error}</FlashMessage>}
+          <DialogBody className="grid gap-4">
+            <PermissionMatrix perms={perms} selected={selected} onToggle={toggle} onSetAll={setAll} locked={locked} />
+            {error && <FlashMessage type="error">{error}</FlashMessage>}
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={onClose}>取消</Button>
             <Button onClick={save} disabled={updatePerms.isPending || locked}>

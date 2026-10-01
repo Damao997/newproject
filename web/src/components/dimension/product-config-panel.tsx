@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
-  DialogContent,
+  DialogContent, DialogBody,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -359,61 +359,63 @@ export function ProductConfigPanel({ canCreate = false, canUpdate = false, canDe
               产品名称将展示在壹品慧关键指标表「按产品分」明细中；匹配关键词对应经营科目树收入类别下的科目名（可命中多个科目并自动求和）。
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">产品编码（唯一，创建后不可修改）</Label>
-              <Input
-                value={form.code}
-                onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
-                placeholder="如 km_kitchen"
-                disabled={!!editing}
-                autoFocus
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">产品名称</Label>
-              <Input
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="如 厨房产品销售（不含净水及服务）；子项可在名称前加空格实现缩进"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">匹配关键词</Label>
-              <Input
-                value={form.subjectKeyword}
-                onChange={(e) => setForm((f) => ({ ...f, subjectKeyword: e.target.value }))}
-                placeholder="如 厨房产品销售；合计行可逗号分隔多个，如 宣传推广,维修改造,安检"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
+          <DialogBody className="grid gap-4">
+            <div className="space-y-3">
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">排序（升序展示）</Label>
+                <Label className="text-xs text-muted-foreground">产品编码（唯一，创建后不可修改）</Label>
                 <Input
-                  type="number"
-                  value={form.sortOrder}
-                  onChange={(e) => setForm((f) => ({ ...f, sortOrder: e.target.value }))}
-                  placeholder="0"
+                  value={form.code}
+                  onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
+                  placeholder="如 km_kitchen"
+                  disabled={!!editing}
+                  autoFocus
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">状态</Label>
-                <div className="flex items-center gap-3 pt-2">
-                  {(['active', 'inactive'] as const).map((s) => (
-                    <label key={s} className={cn('flex cursor-pointer items-center gap-1.5 text-sm', form.status === s ? 'text-foreground' : 'text-muted-foreground')}>
-                      <input
-                        type="radio"
-                        className="h-3.5 w-3.5 accent-primary"
-                        checked={form.status === s}
-                        onChange={() => setForm((f) => ({ ...f, status: s }))}
-                      />
-                      {s === 'active' ? '启用' : '停用'}
-                    </label>
-                  ))}
+                <Label className="text-xs text-muted-foreground">产品名称</Label>
+                <Input
+                  value={form.name}
+                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="如 厨房产品销售（不含净水及服务）；子项可在名称前加空格实现缩进"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">匹配关键词</Label>
+                <Input
+                  value={form.subjectKeyword}
+                  onChange={(e) => setForm((f) => ({ ...f, subjectKeyword: e.target.value }))}
+                  placeholder="如 厨房产品销售；合计行可逗号分隔多个，如 宣传推广,维修改造,安检"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">排序（升序展示）</Label>
+                  <Input
+                    type="number"
+                    value={form.sortOrder}
+                    onChange={(e) => setForm((f) => ({ ...f, sortOrder: e.target.value }))}
+                    placeholder="0"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">状态</Label>
+                  <div className="flex items-center gap-3 pt-2">
+                    {(['active', 'inactive'] as const).map((s) => (
+                      <label key={s} className={cn('flex cursor-pointer items-center gap-1.5 text-sm', form.status === s ? 'text-foreground' : 'text-muted-foreground')}>
+                        <input
+                          type="radio"
+                          className="h-3.5 w-3.5 accent-primary"
+                          checked={form.status === s}
+                          onChange={() => setForm((f) => ({ ...f, status: s }))}
+                        />
+                        {s === 'active' ? '启用' : '停用'}
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>取消</Button>
             <Button onClick={handleSave} disabled={saving}>

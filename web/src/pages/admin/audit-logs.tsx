@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogBody, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Pill } from '@/components/ui/pill'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { PageContainer } from '@/components/layout/page-container'
@@ -650,65 +650,67 @@ export default function AuditLogsPage() {
             <DialogTitle>高级搜索</DialogTitle>
             <DialogDescription>组合条件精确检索审计记录；关键词可模糊匹配操作对象与详情内容</DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label className="text-[13px]">用户</Label>
-              <Input value={draft.username} onChange={(e) => patchDraft({ username: e.target.value })} placeholder="按姓名/工号搜索" />
+          <DialogBody className="grid gap-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label className="text-[13px]">用户</Label>
+                <Input value={draft.username} onChange={(e) => patchDraft({ username: e.target.value })} placeholder="按姓名/工号搜索" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[13px]">角色</Label>
+                <Select value={draft.role} onValueChange={(v) => patchDraft({ role: v })}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="全部角色" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部角色</SelectItem>
+                    {roles.map((role) => (
+                      <SelectItem key={role.code} value={role.code}>{role.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[13px]">模块</Label>
+                <Select value={draft.module} onValueChange={(v) => patchDraft({ module: v })}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="全部模块" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部模块</SelectItem>
+                    {Object.entries(AUDIT_MODULE_LABELS).map(([code, label]) => (
+                      <SelectItem key={code} value={code}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[13px]">类型</Label>
+                <Select value={draft.action} onValueChange={(v) => patchDraft({ action: v })}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="全部类型" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部类型</SelectItem>
+                    {Object.entries(AUDIT_ACTION_LABELS).map(([code, label]) => (
+                      <SelectItem key={code} value={code}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label className="text-[13px]">时间范围</Label>
+                <DateRangePicker
+                  startDate={draft.startDate}
+                  endDate={draft.endDate}
+                  onChange={(r) => patchDraft(r)}
+                  className="w-full [&_.ant-picker]:flex-1"
+                />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label className="text-[13px]">关键词</Label>
+                <Input
+                  value={draft.q}
+                  onChange={(e) => patchDraft({ q: e.target.value })}
+                  placeholder="模糊匹配操作对象 ID 与详情内容"
+                />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-[13px]">角色</Label>
-              <Select value={draft.role} onValueChange={(v) => patchDraft({ role: v })}>
-                <SelectTrigger className="w-full"><SelectValue placeholder="全部角色" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全部角色</SelectItem>
-                  {roles.map((role) => (
-                    <SelectItem key={role.code} value={role.code}>{role.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-[13px]">模块</Label>
-              <Select value={draft.module} onValueChange={(v) => patchDraft({ module: v })}>
-                <SelectTrigger className="w-full"><SelectValue placeholder="全部模块" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全部模块</SelectItem>
-                  {Object.entries(AUDIT_MODULE_LABELS).map(([code, label]) => (
-                    <SelectItem key={code} value={code}>{label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-[13px]">类型</Label>
-              <Select value={draft.action} onValueChange={(v) => patchDraft({ action: v })}>
-                <SelectTrigger className="w-full"><SelectValue placeholder="全部类型" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全部类型</SelectItem>
-                  {Object.entries(AUDIT_ACTION_LABELS).map(([code, label]) => (
-                    <SelectItem key={code} value={code}>{label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label className="text-[13px]">时间范围</Label>
-              <DateRangePicker
-                startDate={draft.startDate}
-                endDate={draft.endDate}
-                onChange={(r) => patchDraft(r)}
-                className="w-full [&_.ant-picker]:flex-1"
-              />
-            </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label className="text-[13px]">关键词</Label>
-              <Input
-                value={draft.q}
-                onChange={(e) => patchDraft({ q: e.target.value })}
-                placeholder="模糊匹配操作对象 ID 与详情内容"
-              />
-            </div>
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDraft({ ...EMPTY_FILTERS })}>清空条件</Button>
             <Button onClick={() => { setAdvancedOpen(false); applyQuery() }}>开始搜索</Button>

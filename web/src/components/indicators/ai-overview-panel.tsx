@@ -1,7 +1,7 @@
 ﻿import { useEffect } from 'react'
 import { Sparkles, Loader2, Save, Eye } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogBody, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { renderOverviewText } from '@/lib/overview-render'
 import { useAiStream } from '@/hooks/use-ai-stream'
 import { useAiOverviewStore } from '@/stores/aiOverviewStore'
@@ -91,7 +91,7 @@ export function AiOverviewDialog({ open, onOpenChange, onViewAnalyses, companyCo
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-5">
+        <DialogBody className="flex flex-col gap-3 p-5">
           {!hasData && <p className="text-body text-muted-foreground">当前筛选无指标数据，无法生成预分析。</p>}
 
           {/* 内容区：流式增长限高内部滚动，不撑高弹窗 */}
@@ -122,10 +122,10 @@ export function AiOverviewDialog({ open, onOpenChange, onViewAnalyses, companyCo
               )}
             </>
           )}
-        </div>
+        </DialogBody>
 
         {/* 底部操作 */}
-        <div className="flex items-center justify-between gap-2 border-t px-5 py-3">
+        <DialogFooter className="flex-row items-center justify-between border-t px-5 py-3 sm:justify-between">
           <span className="text-xs text-muted-foreground">{slot?.status === 'done' ? '重新生成将覆盖已保存内容' : '报告生成后自动保存'}</span>
           <Button
             variant="outline"
@@ -138,7 +138,7 @@ export function AiOverviewDialog({ open, onOpenChange, onViewAnalyses, companyCo
             {streaming ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1 h-3.5 w-3.5" />}
             {streaming ? '生成中…' : slot?.status === 'done' ? '重新生成' : '生成预分析'}
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

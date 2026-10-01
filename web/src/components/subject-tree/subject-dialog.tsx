@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Dialog,
-  DialogContent,
+  DialogContent, DialogBody,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -246,100 +246,102 @@ export function SubjectDialog({ open, mode, type, subject, flat, allSubjects, ca
             {mode === 'create' ? `新增${type === 'operating' ? '经营' : '静态'}科目` : `${subject?.name}（${subject?.code}）`}
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <Label htmlFor="subject-code">科目编码</Label>
-            <Input
-              id="subject-code"
-              value={mode === 'create' ? generatedCode ?? '' : code}
-              readOnly
-              disabled={mode === 'edit'}
-              placeholder={mode === 'create' ? '系统自动生成' : '如：OP_0201010102（编码不可修改）'}
-            />
-            {mode === 'create' && (
-              <p className="text-xs text-muted-foreground">
-                {parentCode === 'none'
-                  ? name.trim()
-                    ? '系统自动生成根科目段位编码（名称未登记段位时自动分配）'
-                    : '填写名称后由系统自动生成编码'
-                  : '系统自动生成：父码 + 同级下一序号（每级 2 位）'}
-              </p>
-            )}
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="subject-name">科目名称</Label>
-            <Input id="subject-name" value={name} onChange={(e) => handleNameChange(e.target.value)} placeholder="科目名称" />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="subject-category">类别{parentChanged && <span className="ml-1 text-xs text-muted-foreground">（随上级自动推导）</span>}</Label>
-            <Input id="subject-category" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="如：收入（留空取名称）" readOnly={parentChanged} />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="subject-value-type">值类型{mode === 'create' && !valueTypeTouched && <span className="ml-1 text-xs text-muted-foreground">（随名称自动推断，可手动调整）</span>}</Label>
-            <Select value={valueType} onValueChange={(v) => { setValueType(v as SubjectValueType); setValueTypeTouched(true) }}>
-              <SelectTrigger id="subject-value-type"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="amount">金额（万元，千分位两位小数）</SelectItem>
-                <SelectItem value="quantity">数量（整数，如户数/天数）</SelectItem>
-                <SelectItem value="ratio">比率（百分比展示，同比按增长率）</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {mode === 'edit' && (
+        <DialogBody className="grid gap-4">
+            <div className="space-y-3">
             <div className="space-y-1">
-              <Label htmlFor="subject-data-type">
-                指标类型
-                {!canConvert && <span className="ml-1 text-xs text-muted-foreground">（只读：需 data:metric:convert 权限）</span>}
-              </Label>
-              <Select
-                value={dataType}
-                onValueChange={(v) => handleTypeChange(v as SubjectDataType)}
-                disabled={!canConvert || (subject?.dataType ?? 'data') === 'display'}
-              >
-                <SelectTrigger id="subject-data-type"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="data">数据类（手工录入）</SelectItem>
-                  <SelectItem value="calc">计算类（公式计算）</SelectItem>
-                  <SelectItem value="display">展示类（只读展示）</SelectItem>
-                </SelectContent>
-              </Select>
-              {typeHint && <p className="text-xs text-muted-foreground">{typeHint}</p>}
-              {dataType === 'calc' && (subject?.dataType ?? 'data') !== 'calc' && (
-                <div className="space-y-1">
-                  <Label htmlFor="subject-calc-formula">初始公式（必填）</Label>
-                  <Input id="subject-calc-formula" value={calcFormula} onChange={(e) => setCalcFormula(e.target.value)} placeholder="如：{OP_057} / {OP_005}" maxLength={500} />
-                </div>
+              <Label htmlFor="subject-code">科目编码</Label>
+              <Input
+                id="subject-code"
+                value={mode === 'create' ? generatedCode ?? '' : code}
+                readOnly
+                disabled={mode === 'edit'}
+                placeholder={mode === 'create' ? '系统自动生成' : '如：OP_0201010102（编码不可修改）'}
+              />
+              {mode === 'create' && (
+                <p className="text-xs text-muted-foreground">
+                  {parentCode === 'none'
+                    ? name.trim()
+                      ? '系统自动生成根科目段位编码（名称未登记段位时自动分配）'
+                      : '填写名称后由系统自动生成编码'
+                    : '系统自动生成：父码 + 同级下一序号（每级 2 位）'}
+                </p>
               )}
             </div>
-          )}
-          <div className="space-y-1">
-            <Label htmlFor="subject-is-leaf">是否叶子</Label>
-            <Select value={isLeaf} onValueChange={(v) => setIsLeaf(v as 'true' | 'false')}>
-              <SelectTrigger id="subject-is-leaf"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="true">是</SelectItem>
-                <SelectItem value="false">否</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="space-y-1">
+              <Label htmlFor="subject-name">科目名称</Label>
+              <Input id="subject-name" value={name} onChange={(e) => handleNameChange(e.target.value)} placeholder="科目名称" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="subject-category">类别{parentChanged && <span className="ml-1 text-xs text-muted-foreground">（随上级自动推导）</span>}</Label>
+              <Input id="subject-category" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="如：收入（留空取名称）" readOnly={parentChanged} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="subject-value-type">值类型{mode === 'create' && !valueTypeTouched && <span className="ml-1 text-xs text-muted-foreground">（随名称自动推断，可手动调整）</span>}</Label>
+              <Select value={valueType} onValueChange={(v) => { setValueType(v as SubjectValueType); setValueTypeTouched(true) }}>
+                <SelectTrigger id="subject-value-type"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="amount">金额（万元，千分位两位小数）</SelectItem>
+                  <SelectItem value="quantity">数量（整数，如户数/天数）</SelectItem>
+                  <SelectItem value="ratio">比率（百分比展示，同比按增长率）</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {mode === 'edit' && (
+              <div className="space-y-1">
+                <Label htmlFor="subject-data-type">
+                  指标类型
+                  {!canConvert && <span className="ml-1 text-xs text-muted-foreground">（只读：需 data:metric:convert 权限）</span>}
+                </Label>
+                <Select
+                  value={dataType}
+                  onValueChange={(v) => handleTypeChange(v as SubjectDataType)}
+                  disabled={!canConvert || (subject?.dataType ?? 'data') === 'display'}
+                >
+                  <SelectTrigger id="subject-data-type"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="data">数据类（手工录入）</SelectItem>
+                    <SelectItem value="calc">计算类（公式计算）</SelectItem>
+                    <SelectItem value="display">展示类（只读展示）</SelectItem>
+                  </SelectContent>
+                </Select>
+                {typeHint && <p className="text-xs text-muted-foreground">{typeHint}</p>}
+                {dataType === 'calc' && (subject?.dataType ?? 'data') !== 'calc' && (
+                  <div className="space-y-1">
+                    <Label htmlFor="subject-calc-formula">初始公式（必填）</Label>
+                    <Input id="subject-calc-formula" value={calcFormula} onChange={(e) => setCalcFormula(e.target.value)} placeholder="如：{OP_057} / {OP_005}" maxLength={500} />
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="space-y-1">
+              <Label htmlFor="subject-is-leaf">是否叶子</Label>
+              <Select value={isLeaf} onValueChange={(v) => setIsLeaf(v as 'true' | 'false')}>
+                <SelectTrigger id="subject-is-leaf"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">是</SelectItem>
+                  <SelectItem value="false">否</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="subject-parent">上级科目</Label>
+              <Select value={parentCode} onValueChange={handleParentChange}>
+                <SelectTrigger id="subject-parent"><SelectValue placeholder="选择上级科目" /></SelectTrigger>
+                <SelectContent className="max-h-[280px]">
+                  <SelectItem value="none">无（根节点）</SelectItem>
+                  {flat
+                    .filter((f) => mode === 'create' || f.code !== subject?.code)
+                    .map((f) => (
+                      <SelectItem key={f.code} value={f.code}>
+                        <span className="font-mono text-xs">{f.code}</span> {f.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {error && <p className="text-xs text-destructive">{error}</p>}
           </div>
-          <div className="space-y-1">
-            <Label htmlFor="subject-parent">上级科目</Label>
-            <Select value={parentCode} onValueChange={handleParentChange}>
-              <SelectTrigger id="subject-parent"><SelectValue placeholder="选择上级科目" /></SelectTrigger>
-              <SelectContent className="max-h-[280px]">
-                <SelectItem value="none">无（根节点）</SelectItem>
-                {flat
-                  .filter((f) => mode === 'create' || f.code !== subject?.code)
-                  .map((f) => (
-                    <SelectItem key={f.code} value={f.code}>
-                      <span className="font-mono text-xs">{f.code}</span> {f.name}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {error && <p className="text-xs text-destructive">{error}</p>}
-        </div>
+          </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>取消</Button>
           <Button onClick={submit} disabled={pending || !name.trim()}>

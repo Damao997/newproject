@@ -11,7 +11,7 @@ import { FlashMessage } from '@/components/ui/flash-message'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  Dialog, DialogContent, DialogBody, DialogFooter, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -380,56 +380,59 @@ function ReaderShell({ report }: { report: ReportDetail }) {
             <DialogTitle>分享报告</DialogTitle>
             <DialogDescription>生成只读链接，未登录同事可直接打开（内容随原文实时更新，仅已发布报告可分享）。</DialogDescription>
           </DialogHeader>
-          {shareInfo ? (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2">
-                <span className="min-w-0 flex-1 truncate text-caption text-foreground" title={shareUrl}>{shareUrl}</span>
-                <Button size="sm" variant="outline" className="h-7 shrink-0" onClick={handleCopyShare}>
-                  <Copy className="mr-1 h-3 w-3" /> 复制
-                </Button>
+          <DialogBody className="grid gap-4">
+            {shareInfo ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2">
+                  <span className="min-w-0 flex-1 truncate text-caption text-foreground" title={shareUrl}>{shareUrl}</span>
+                  <Button size="sm" variant="outline" className="h-7 shrink-0" onClick={handleCopyShare}>
+                    <Copy className="mr-1 h-3 w-3" /> 复制
+                  </Button>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-caption text-muted-foreground">
+                  <span className="flex items-center gap-1"><Eye className="h-3.5 w-3.5" /> 已被浏览 {shareInfo.viewCount} 次</span>
+                  <span>有效期至：{shareInfo.expiresAt ? new Date(shareInfo.expiresAt).toLocaleDateString('zh-CN') : '永久'}</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Select value={expiresDays} onValueChange={setExpiresDays}>
+                    <SelectTrigger className="h-8 w-32 text-caption"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="7">7 天</SelectItem>
+                      <SelectItem value="30">30 天</SelectItem>
+                      <SelectItem value="permanent">永久</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div className="flex flex-wrap items-center justify-between gap-2 text-caption text-muted-foreground">
-                <span className="flex items-center gap-1"><Eye className="h-3.5 w-3.5" /> 已被浏览 {shareInfo.viewCount} 次</span>
-                <span>有效期至：{shareInfo.expiresAt ? new Date(shareInfo.expiresAt).toLocaleDateString('zh-CN') : '永久'}</span>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Select value={expiresDays} onValueChange={setExpiresDays}>
+                    <SelectTrigger className="h-9 w-36"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="7">7 天有效</SelectItem>
+                      <SelectItem value="30">30 天有效</SelectItem>
+                      <SelectItem value="permanent">永久有效</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <p className="text-caption text-muted-foreground">链接可随时吊销或重置；每次访问均记入审计。</p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Select value={expiresDays} onValueChange={setExpiresDays}>
-                  <SelectTrigger className="h-8 w-32 text-caption"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="7">7 天</SelectItem>
-                    <SelectItem value="30">30 天</SelectItem>
-                    <SelectItem value="permanent">永久</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button size="sm" variant="outline" className="h-8" disabled={createShare.isPending} onClick={() => handleCreateShare(false)}>
-                  更新有效期
-                </Button>
-                <Button size="sm" variant="outline" className="h-8" disabled={createShare.isPending} onClick={() => handleCreateShare(true)}>
-                  重置链接
-                </Button>
-                <Button size="sm" variant="ghost" className="h-8 text-destructive" disabled={revokeShare.isPending} onClick={handleRevokeShare}>
-                  关闭分享
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Select value={expiresDays} onValueChange={setExpiresDays}>
-                  <SelectTrigger className="h-9 w-36"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="7">7 天有效</SelectItem>
-                    <SelectItem value="30">30 天有效</SelectItem>
-                    <SelectItem value="permanent">永久有效</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button className="h-9" disabled={createShare.isPending} onClick={() => handleCreateShare(false)}>
-                  {createShare.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />} 生成分享链接
-                </Button>
-              </div>
-              <p className="text-caption text-muted-foreground">链接可随时吊销或重置；每次访问均记入审计。</p>
-            </div>
-          )}
+            )}
+          </DialogBody>
+          <DialogFooter>
+            {shareInfo ? (
+              <>
+                <Button size="sm" variant="outline" disabled={createShare.isPending} onClick={() => handleCreateShare(false)}>更新有效期</Button>
+                <Button size="sm" variant="outline" disabled={createShare.isPending} onClick={() => handleCreateShare(true)}>重置链接</Button>
+                <Button size="sm" variant="ghost" className="text-destructive" disabled={revokeShare.isPending} onClick={handleRevokeShare}>关闭分享</Button>
+              </>
+            ) : (
+              <Button disabled={createShare.isPending} onClick={() => handleCreateShare(false)}>
+                {createShare.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />} 生成分享链接
+              </Button>
+            )}
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

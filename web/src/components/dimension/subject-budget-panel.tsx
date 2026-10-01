@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
-  DialogContent,
+  DialogContent, DialogBody,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -297,69 +297,71 @@ export function SubjectBudgetPanel({ canCreate = false, canUpdate = false, canDe
               配置的主体将展示在看板主体预算达成分析中；排序值越小越靠前，停用后不再展示。
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
-            {editing ? (
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">主体</Label>
-                <div className="rounded-md border border-border px-3 py-2 text-sm text-foreground">{editing.companyName}</div>
-              </div>
-            ) : (
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">主体（选择未配置的公司/汇总主体）</Label>
-                <Select value={form.companyCode} onValueChange={(v) => setForm((f) => ({ ...f, companyCode: v }))}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="选择主体" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {entityCandidates.length > 0 && (
-                      <SelectGroup>
-                        <SelectLabel>公司</SelectLabel>
-                        {entityCandidates.map((c) => (
-                          <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
-                        ))}
-                      </SelectGroup>
-                    )}
-                    {summaryCandidates.length > 0 && (
-                      <SelectGroup>
-                        <SelectLabel>汇总主体</SelectLabel>
-                        {summaryCandidates.map((c) => (
-                          <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
-                        ))}
-                      </SelectGroup>
-                    )}
-                    {candidates.length === 0 && <SelectItem value="__none__" disabled>暂无未配置主体</SelectItem>}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">排序（升序展示）</Label>
-                <Input
-                  type="number"
-                  value={form.sortOrder}
-                  onChange={(e) => setForm((f) => ({ ...f, sortOrder: e.target.value }))}
-                  placeholder="0"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">状态</Label>
-                <div className="flex items-center gap-3 pt-2">
-                  {(['active', 'inactive'] as const).map((s) => (
-                    <label key={s} className={cn('flex cursor-pointer items-center gap-1.5 text-sm', form.status === s ? 'text-foreground' : 'text-muted-foreground')}>
-                      <input
-                        type="radio"
-                        className="h-3.5 w-3.5 accent-primary"
-                        checked={form.status === s}
-                        onChange={() => setForm((f) => ({ ...f, status: s }))}
-                      />
-                      {s === 'active' ? '启用' : '停用'}
-                    </label>
-                  ))}
+          <DialogBody className="grid gap-4">
+            <div className="space-y-3">
+              {editing ? (
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">主体</Label>
+                  <div className="rounded-md border border-border px-3 py-2 text-sm text-foreground">{editing.companyName}</div>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">主体（选择未配置的公司/汇总主体）</Label>
+                  <Select value={form.companyCode} onValueChange={(v) => setForm((f) => ({ ...f, companyCode: v }))}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="选择主体" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {entityCandidates.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel>公司</SelectLabel>
+                          {entityCandidates.map((c) => (
+                            <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
+                          ))}
+                        </SelectGroup>
+                      )}
+                      {summaryCandidates.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel>汇总主体</SelectLabel>
+                          {summaryCandidates.map((c) => (
+                            <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
+                          ))}
+                        </SelectGroup>
+                      )}
+                      {candidates.length === 0 && <SelectItem value="__none__" disabled>暂无未配置主体</SelectItem>}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">排序（升序展示）</Label>
+                  <Input
+                    type="number"
+                    value={form.sortOrder}
+                    onChange={(e) => setForm((f) => ({ ...f, sortOrder: e.target.value }))}
+                    placeholder="0"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">状态</Label>
+                  <div className="flex items-center gap-3 pt-2">
+                    {(['active', 'inactive'] as const).map((s) => (
+                      <label key={s} className={cn('flex cursor-pointer items-center gap-1.5 text-sm', form.status === s ? 'text-foreground' : 'text-muted-foreground')}>
+                        <input
+                          type="radio"
+                          className="h-3.5 w-3.5 accent-primary"
+                          checked={form.status === s}
+                          onChange={() => setForm((f) => ({ ...f, status: s }))}
+                        />
+                        {s === 'active' ? '启用' : '停用'}
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>取消</Button>
             <Button onClick={handleSave} disabled={saving}>

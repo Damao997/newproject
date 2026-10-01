@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label'
 import { AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react'
 import {
   Dialog,
-  DialogContent,
+  DialogContent, DialogBody,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -182,48 +182,50 @@ export function ChangePasswordDialog() {
                 : `用户 ${user?.name ?? ''}，修改后需使用新密码重新登录`}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
-            <PasswordField
-              id="cp-old-password"
-              label="原密码"
-              value={oldPassword}
-              onChange={setOldPassword}
-              error={fieldErrors.oldPassword}
-              placeholder="请输入当前使用的密码"
-              autoComplete="current-password"
-              disabled={isSubmitting}
-            />
-            <PasswordField
-              id="cp-new-password"
-              label="新密码"
-              value={newPassword}
-              onChange={setNewPassword}
-              error={fieldErrors.newPassword}
-              placeholder="至少 8 位，含字母与数字"
-              autoComplete="new-password"
-              disabled={isSubmitting}
-            />
-            <PasswordField
-              id="cp-confirm-password"
-              label="确认新密码"
-              value={confirmPassword}
-              onChange={setConfirmPassword}
-              error={fieldErrors.confirmPassword}
-              placeholder="再次输入新密码"
-              autoComplete="new-password"
-              disabled={isSubmitting}
-            />
-            {error && (
-              <div
-                role="alert"
-                aria-live="polite"
-                className="flex animate-fade-in items-start gap-2 rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
-              >
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-          </div>
+          <DialogBody className="grid gap-4">
+            <div className="space-y-3">
+              <PasswordField
+                id="cp-old-password"
+                label="原密码"
+                value={oldPassword}
+                onChange={setOldPassword}
+                error={fieldErrors.oldPassword}
+                placeholder="请输入当前使用的密码"
+                autoComplete="current-password"
+                disabled={isSubmitting}
+              />
+              <PasswordField
+                id="cp-new-password"
+                label="新密码"
+                value={newPassword}
+                onChange={setNewPassword}
+                error={fieldErrors.newPassword}
+                placeholder="至少 8 位，含字母与数字"
+                autoComplete="new-password"
+                disabled={isSubmitting}
+              />
+              <PasswordField
+                id="cp-confirm-password"
+                label="确认新密码"
+                value={confirmPassword}
+                onChange={setConfirmPassword}
+                error={fieldErrors.confirmPassword}
+                placeholder="再次输入新密码"
+                autoComplete="new-password"
+                disabled={isSubmitting}
+              />
+              {error && (
+                <div
+                  role="alert"
+                  aria-live="polite"
+                  className="flex animate-fade-in items-start gap-2 rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
+                >
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+            </div>
+          </DialogBody>
           <DialogFooter>
             {force ? (
               // force 模式：不提供"取消"（避免误以为可跳过改密继续使用），改为"退出登录"

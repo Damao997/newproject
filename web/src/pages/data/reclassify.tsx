@@ -160,6 +160,7 @@ export default function DataReclassifyPage() {
 
   return (
     <PageContainer
+      viewportBound
       title="单体重分类"
       description="对单一主体的科目、跨公司、预算进行调整与重分类，保留完整调整记录"
       stickyHeader

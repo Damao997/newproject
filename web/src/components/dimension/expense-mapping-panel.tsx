@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
-  DialogContent,
+  DialogContent, DialogBody,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -378,102 +378,104 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
               展示名称将显示在看板运营费用分析中；选中的科目编码对应费用科目树的叶子科目，多个科目自动汇总求和。
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <TipLabel label={<span className="text-xs text-muted-foreground">映射编码</span>} tip="系统自动生成，创建后不可修改" />
-                <Input
-                  value={form.code}
-                  readOnly
-                  placeholder={codeLoading ? '生成中...' : '系统自动生成'}
-                  disabled={!!editing}
-                  autoFocus
-                />
+          <DialogBody className="grid gap-4">
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <TipLabel label={<span className="text-xs text-muted-foreground">映射编码</span>} tip="系统自动生成，创建后不可修改" />
+                  <Input
+                    value={form.code}
+                    readOnly
+                    placeholder={codeLoading ? '生成中...' : '系统自动生成'}
+                    disabled={!!editing}
+                    autoFocus
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">展示名称</Label>
+                  <Input
+                    value={form.name}
+                    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                    placeholder="如 人力成本"
+                  />
+                </div>
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">展示名称</Label>
-                <Input
-                  value={form.name}
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="如 人力成本"
+                <TipLabel
+                  label={<span className="text-xs text-muted-foreground">引用科目</span>}
+                  tip={'可多选，选中科目汇总为一行；标注"暂无数据"的科目导入数据/预算后才会在看板展示（已被其他映射引用的科目不在此列出）'}
                 />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <TipLabel
-                label={<span className="text-xs text-muted-foreground">引用科目</span>}
-                tip={'可多选，选中科目汇总为一行；标注"暂无数据"的科目导入数据/预算后才会在看板展示（已被其他映射引用的科目不在此列出）'}
-              />
-              <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-border p-3">
-                {(check?.candidates?.length ?? 0) === 0 && (
-                  <p className="text-xs text-muted-foreground">未检测到运营费用科目（科目树中可能尚未配置「费用 &gt; 壹品慧费用 &gt; 运营费用」）</p>
-                )}
-                {(check?.candidates ?? []).map((group) => {
-                  const available = group.items.filter((item) => !usedSubjectCodes.has(item.code))
-                  if (available.length === 0) return null
-                  return (
-                  <div key={group.group}>
-                    <p className="mb-1.5 text-xs font-medium text-foreground">{group.group}</p>
-                    <div className="grid grid-cols-2 gap-1">
-                      {available.map((item) => {
-                        const selected = form.subjectCodes.includes(item.code)
-                        return (
-                          <label
-                            key={item.code}
-                            className={cn(
-                              'flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1.5 text-xs transition-colors',
-                              selected ? 'border-primary/50 bg-primary/5 text-foreground' : 'border-border text-muted-foreground hover:bg-muted/50',
-                            )}
-                          >
-                            <Checkbox
-                              size="sm"
-                              className="shrink-0"
-                              checked={selected}
-                              onCheckedChange={() => toggleSubject(item.code)}
-                            />
-                            <span className="flex-1 truncate" title={item.name}>{item.name}</span>
-                            {!item.hasData && <span className="shrink-0 text-micro text-muted-foreground">（暂无数据）</span>}
-                            {selected && <Check className="h-3 w-3 shrink-0 text-primary" />}
-                          </label>
-                        )
-                      })}
+                <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-border p-3">
+                  {(check?.candidates?.length ?? 0) === 0 && (
+                    <p className="text-xs text-muted-foreground">未检测到运营费用科目（科目树中可能尚未配置「费用 &gt; 壹品慧费用 &gt; 运营费用」）</p>
+                  )}
+                  {(check?.candidates ?? []).map((group) => {
+                    const available = group.items.filter((item) => !usedSubjectCodes.has(item.code))
+                    if (available.length === 0) return null
+                    return (
+                    <div key={group.group}>
+                      <p className="mb-1.5 text-xs font-medium text-foreground">{group.group}</p>
+                      <div className="grid grid-cols-2 gap-1">
+                        {available.map((item) => {
+                          const selected = form.subjectCodes.includes(item.code)
+                          return (
+                            <label
+                              key={item.code}
+                              className={cn(
+                                'flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1.5 text-xs transition-colors',
+                                selected ? 'border-primary/50 bg-primary/5 text-foreground' : 'border-border text-muted-foreground hover:bg-muted/50',
+                              )}
+                            >
+                              <Checkbox
+                                size="sm"
+                                className="shrink-0"
+                                checked={selected}
+                                onCheckedChange={() => toggleSubject(item.code)}
+                              />
+                              <span className="flex-1 truncate" title={item.name}>{item.name}</span>
+                              {!item.hasData && <span className="shrink-0 text-micro text-muted-foreground">（暂无数据）</span>}
+                              {selected && <Check className="h-3 w-3 shrink-0 text-primary" />}
+                            </label>
+                          )
+                        })}
+                      </div>
                     </div>
+                    )
+                  })}
+                  {(check?.candidates?.length ?? 0) > 0 && check?.candidates?.every((g) => g.items.every((i) => usedSubjectCodes.has(i.code))) && (
+                    <p className="text-xs text-muted-foreground">全部候选科目均已被其他映射引用</p>
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">排序（升序展示）</Label>
+                  <Input
+                    type="number"
+                    value={form.sortOrder}
+                    onChange={(e) => setForm((f) => ({ ...f, sortOrder: e.target.value }))}
+                    placeholder="0"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">状态</Label>
+                  <div className="flex items-center gap-3 pt-2">
+                    {(['active', 'inactive'] as const).map((s) => (
+                      <label key={s} className={cn('flex cursor-pointer items-center gap-1.5 text-sm', form.status === s ? 'text-foreground' : 'text-muted-foreground')}>
+                        <input
+                          type="radio"
+                          className="h-3.5 w-3.5 accent-primary"
+                          checked={form.status === s}
+                          onChange={() => setForm((f) => ({ ...f, status: s }))}
+                        />
+                        {s === 'active' ? '启用' : '停用'}
+                      </label>
+                    ))}
                   </div>
-                  )
-                })}
-                {(check?.candidates?.length ?? 0) > 0 && check?.candidates?.every((g) => g.items.every((i) => usedSubjectCodes.has(i.code))) && (
-                  <p className="text-xs text-muted-foreground">全部候选科目均已被其他映射引用</p>
-                )}
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">排序（升序展示）</Label>
-                <Input
-                  type="number"
-                  value={form.sortOrder}
-                  onChange={(e) => setForm((f) => ({ ...f, sortOrder: e.target.value }))}
-                  placeholder="0"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">状态</Label>
-                <div className="flex items-center gap-3 pt-2">
-                  {(['active', 'inactive'] as const).map((s) => (
-                    <label key={s} className={cn('flex cursor-pointer items-center gap-1.5 text-sm', form.status === s ? 'text-foreground' : 'text-muted-foreground')}>
-                      <input
-                        type="radio"
-                        className="h-3.5 w-3.5 accent-primary"
-                        checked={form.status === s}
-                        onChange={() => setForm((f) => ({ ...f, status: s }))}
-                      />
-                      {s === 'active' ? '启用' : '停用'}
-                    </label>
-                  ))}
                 </div>
               </div>
             </div>
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>取消</Button>
             <Button onClick={handleSave} disabled={saving}>

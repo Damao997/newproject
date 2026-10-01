@@ -2,6 +2,32 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 分页按所在容器宽度收拢，避免侧栏展开或窄窗口时挤占表格高度。 */
+.pagination-root { container-type: inline-size; }
+/* 所有滚动区域（含 portal 弹窗）使用一致且可辨认的横纵滚动条。 */
+:root {
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: #b8b8b8;
+  --scrollbar-thumb-hover: #929292;
+  --scrollbar-thumb-active: #707070;
+}
+* { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track); }
+textarea { resize: none; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+*::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 8px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
+*::-webkit-scrollbar-thumb:active { background: var(--scrollbar-thumb-active); }
+@media (forced-colors: active) {
+  * { scrollbar-color: auto; }
+}
+@container (min-width: 900px) {
+  .pagination-slots { display: flex; }
+}
+@container (max-width: 899px) {
+  .pagination-jumper { display: none; }
+}
+
 /* 登录品牌色：注册为 <color> 支持主题切换时渐变平滑插值
  * （Chrome/Edge 85+、Safari 16.4+、Firefox 128+；旧浏览器优雅降级为直接切换，颜色值不受影响） */
 @property --login-brand-g1  { syntax: '<color>'; inherits: true; initial-value: #fff7ed; }
