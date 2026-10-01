@@ -197,7 +197,7 @@ function SubjectCell({
   return (
     <td
       className={cn(
-        'sticky z-[1] min-w-[160px] border-b border-r border-subtle bg-background px-4 align-middle shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)] transition-colors group-hover:bg-muted',
+        'sticky left-0 z-[1] min-w-[160px] border-b border-r border-subtle bg-background px-4 align-middle shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)] transition-colors group-hover:bg-muted',
         rowPad,
       )}
     >
@@ -380,12 +380,13 @@ export function MetricTree({
           <thead>
             {isOperating ? (
               <>
-                {/* 组名行：sticky top-0 固定容器顶 */}
-                <tr className="sticky top-0 z-[2] bg-ink-2">
+                {/* 组名行：sticky top-0 固定容器顶；z-[3] 高于明细表头行 z-[2]（同级时 DOM 靠后者在上层），
+                    否则「科目」th 虽为 z-[4] 也被困在本行的层叠上下文内，被明细表头行的白底盖住 */}
+                <tr className="sticky top-0 z-[3] bg-ink-2">
                   <th
                     rowSpan={2}
                     scope="col"
-                    className={cn(headBase, 'sticky left-0 z-[3] min-w-[160px] border-r bg-ink-2 text-center shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)]')}
+                    className={cn(headBase, 'sticky left-0 z-[4] min-w-[160px] border-r bg-ink-2 text-center shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)]')}
                   >
                     科目
                   </th>
