@@ -6,7 +6,8 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { useMemo, useState } from 'react'
 import {
   Dialog,
-  DialogContent,
+  DialogContent, DialogBody,
+  DialogFooter,
   DialogDescription,
   DialogHeader,
   DialogTitle,
@@ -144,69 +145,71 @@ export function HistoryDialog({ metric, formatFormula, onClose, canApprove = fal
           <DialogTitle>公式版本历史</DialogTitle>
           <DialogDescription>{metric ? `${metric.name}（${metric.code}）` : ''}</DialogDescription>
         </DialogHeader>
-        {isLoading ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">加载中…</p>
-        ) : !data || data.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">暂无历史版本</p>
-        ) : (
-          <DataTable
-            columns={historyColumns}
-            data={data}
-            rowKey={(h) => h.version}
-            density="compact"
-            caption="公式版本历史列表"
-            maxHeight="55vh"
-          />
-        )}
-        {compareVersions.length === 2 && (() => {
-          const vA = (data ?? []).find(h => h.version === compareVersions[0])
-          const vB = (data ?? []).find(h => h.version === compareVersions[1])
-          if (!vA || !vB) return null
-          const codesA = new Set((vA.formula?.match(/\{([^}]+)\}/g) ?? []).map(m => m.slice(1, -1)))
-          const codesB = new Set((vB.formula?.match(/\{([^}]+)\}/g) ?? []).map(m => m.slice(1, -1)))
-          const added = [...codesB].filter(c => !codesA.has(c))
-          const removed = [...codesA].filter(c => !codesB.has(c))
-          return (
-            <div className="mt-3 space-y-2 rounded-lg border p-3">
-              <p className="text-sm font-medium">版本对比：v{vA.version} vs v{vB.version}</p>
-              <div className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2">
-                <div className="rounded-md bg-muted/30 p-2">
-                  <p className="font-medium">v{vA.version}</p>
-                  <p className="mt-1 break-all font-mono">{vA.formula ? formatFormula(vA.formula) : '（空）'}</p>
+        <DialogBody className="grid gap-4">
+          {isLoading ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">加载中…</p>
+          ) : !data || data.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">暂无历史版本</p>
+          ) : (
+            <DataTable
+              columns={historyColumns}
+              data={data}
+              rowKey={(h) => h.version}
+              density="compact"
+              caption="公式版本历史列表"
+              maxHeight="55vh"
+            />
+          )}
+          {compareVersions.length === 2 && (() => {
+            const vA = (data ?? []).find(h => h.version === compareVersions[0])
+            const vB = (data ?? []).find(h => h.version === compareVersions[1])
+            if (!vA || !vB) return null
+            const codesA = new Set((vA.formula?.match(/\{([^}]+)\}/g) ?? []).map(m => m.slice(1, -1)))
+            const codesB = new Set((vB.formula?.match(/\{([^}]+)\}/g) ?? []).map(m => m.slice(1, -1)))
+            const added = [...codesB].filter(c => !codesA.has(c))
+            const removed = [...codesA].filter(c => !codesB.has(c))
+            return (
+              <div className="mt-3 space-y-2 rounded-lg border p-3">
+                <p className="text-sm font-medium">版本对比：v{vA.version} vs v{vB.version}</p>
+                <div className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2">
+                  <div className="rounded-md bg-muted/30 p-2">
+                    <p className="font-medium">v{vA.version}</p>
+                    <p className="mt-1 break-all font-mono">{vA.formula ? formatFormula(vA.formula) : '（空）'}</p>
+                  </div>
+                  <div className="rounded-md bg-muted/30 p-2">
+                    <p className="font-medium">v{vB.version}</p>
+                    <p className="mt-1 break-all font-mono">{vB.formula ? formatFormula(vB.formula) : '（空）'}</p>
+                  </div>
                 </div>
-                <div className="rounded-md bg-muted/30 p-2">
-                  <p className="font-medium">v{vB.version}</p>
-                  <p className="mt-1 break-all font-mono">{vB.formula ? formatFormula(vB.formula) : '（空）'}</p>
-                </div>
+                {(added.length > 0 || removed.length > 0) && (
+                  <div className="flex flex-wrap gap-1 text-xs">
+                    {added.map(c => <Badge key={c} variant="success" className="text-micro">+{formatFormula(`{${c}}`)}</Badge>)}
+                    {removed.map(c => <Badge key={c} variant="destructive" className="text-micro">-{formatFormula(`{${c}}`)}</Badge>)}
+                  </div>
+                )}
+                <Button variant="ghost" size="sm" onClick={() => setCompareVersions([])}>清除对比</Button>
               </div>
-              {(added.length > 0 || removed.length > 0) && (
-                <div className="flex flex-wrap gap-1 text-xs">
-                  {added.map(c => <Badge key={c} variant="success" className="text-micro">+{formatFormula(`{${c}}`)}</Badge>)}
-                  {removed.map(c => <Badge key={c} variant="destructive" className="text-micro">-{formatFormula(`{${c}}`)}</Badge>)}
-                </div>
-              )}
-              <Button variant="ghost" size="sm" onClick={() => setCompareVersions([])}>清除对比</Button>
+            )
+          })()}
+          {showRejectInput && (
+            <div className="mt-2 space-y-1.5">
+              <Label htmlFor="reject-reason">驳回原因</Label>
+              <Input id="reject-reason" value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="请输入驳回原因..." />
             </div>
-          )
-        })()}
+          )}
+          {actionError && <p className="text-xs text-destructive">{actionError}</p>}
+          {confirmElement}
+        </DialogBody>
         {canApprove && data && data.length > 0 && (
-          <div className="flex flex-wrap justify-end gap-2">
+          <DialogFooter>
             <Button variant="outline" size="sm" onClick={handleReject} disabled={reject.isPending}>
               驳回最新
             </Button>
             <Button size="sm" onClick={handleApprove} disabled={approve.isPending}>
               审批通过
             </Button>
-          </div>
+          </DialogFooter>
         )}
-        {showRejectInput && (
-          <div className="mt-2 space-y-1.5">
-            <Label htmlFor="reject-reason">驳回原因</Label>
-            <Input id="reject-reason" value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="请输入驳回原因..." />
-          </div>
-        )}
-        {actionError && <p className="text-xs text-destructive">{actionError}</p>}
-        {confirmElement}
       </DialogContent>
     </Dialog>
   )

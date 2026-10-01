@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label'
 import { FlashMessage } from '@/components/ui/flash-message'
 import {
   Dialog,
-  DialogContent,
+  DialogContent, DialogBody,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -53,14 +53,16 @@ export function CloneRoleDialog({ open, role, onClose, onSaved }: CloneRoleDialo
           <DialogTitle>克隆角色</DialogTitle>
           <DialogDescription>基于「{role?.name}」创建新角色，权限随原角色复制</DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <Label htmlFor="clone-name">角色名称</Label>
-            <Input id="clone-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="如 审计员-副本" autoFocus />
+        <DialogBody className="grid gap-4">
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="clone-name">角色名称</Label>
+              <Input id="clone-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="如 审计员-副本" autoFocus />
+            </div>
+            <p className="text-xs text-muted-foreground">角色编码将自动生成</p>
+            {error && <FlashMessage type="error">{error}</FlashMessage>}
           </div>
-          <p className="text-xs text-muted-foreground">角色编码将自动生成</p>
-          {error && <FlashMessage type="error">{error}</FlashMessage>}
-        </div>
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>取消</Button>
           <Button onClick={submit} disabled={cloneRole.isPending}>{cloneRole.isPending ? '克隆中...' : '克隆'}</Button>

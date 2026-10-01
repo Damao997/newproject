@@ -9,11 +9,12 @@ export interface TextareaProps
  * 多行文本门面：antd Input.TextArea，签名与原生 textarea 一致（value/onChange(event)/rows 等）。
  */
 const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ className, ...props }, ref) => {
+  ({ className, style, ...props }, ref) => {
     return (
       <AntdInput.TextArea
         ref={ref}
-        className={cn("text-sm", className)}
+        className={cn("resize-none text-sm", className)}
+        style={{ ...style, resize: 'none' }}
         {...props}
       />
     )

@@ -7,7 +7,7 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Dialog,
-  DialogContent,
+  DialogContent, DialogBody,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -202,35 +202,37 @@ export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete =
             <DialogTitle>{editingId ? '编辑公司' : '新增公司'}</DialogTitle>
             <DialogDescription>{editingId ? '编码不可修改；类型/名称可编辑' : '创建单体公司或汇总主体'}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label>公司编码</Label>
-              <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} disabled={!!editingId} placeholder="如：C001（编码不可修改）" />
-            </div>
-            <div className="space-y-1">
-              <Label>公司名称</Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="公司名称" />
-            </div>
-            {form.entityType === 'single' && (
+          <DialogBody className="grid gap-4">
+            <div className="space-y-3">
               <div className="space-y-1">
-                <Label>公司简称 <span className="text-muted-foreground font-normal">（可选，用于界面简短显示）</span></Label>
-                <Input value={form.shortName} onChange={(e) => setForm({ ...form, shortName: e.target.value })} placeholder="如：壹品慧" maxLength={100} />
+                <Label>公司编码</Label>
+                <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} disabled={!!editingId} placeholder="如：C001（编码不可修改）" />
               </div>
-            )}
-            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>类型</Label>
-                <Select value={form.entityType} onValueChange={(v) => setForm({ ...form, entityType: v as 'single' | 'summary' })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="single">单体公司</SelectItem>
-                    <SelectItem value="summary">汇总主体</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>公司名称</Label>
+                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="公司名称" />
               </div>
+              {form.entityType === 'single' && (
+                <div className="space-y-1">
+                  <Label>公司简称 <span className="text-muted-foreground font-normal">（可选，用于界面简短显示）</span></Label>
+                  <Input value={form.shortName} onChange={(e) => setForm({ ...form, shortName: e.target.value })} placeholder="如：壹品慧" maxLength={100} />
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>类型</Label>
+                  <Select value={form.entityType} onValueChange={(v) => setForm({ ...form, entityType: v as 'single' | 'summary' })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="single">单体公司</SelectItem>
+                      <SelectItem value="summary">汇总主体</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {error && <p className="text-xs text-destructive">{error}</p>}
             </div>
-            {error && <p className="text-xs text-destructive">{error}</p>}
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>取消</Button>
             <Button onClick={submit} disabled={createCompany.isPending || updateCompany.isPending || !form.name.trim()}>

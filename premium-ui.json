@@ -1,0 +1,9 @@
+{
+  "profile": "product-admin",
+  "sourceRoots": ["web/src"],
+  "canonicalMap": "DESIGN.md",
+  "commands": {
+    "verify": "npm run verify",
+    "layout": "node web/scripts/check-responsive-layout.mjs"
+  }
+}

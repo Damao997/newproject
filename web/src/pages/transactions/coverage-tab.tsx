@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogBody, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { usePermission } from '@/hooks/usePermission'
 import { useTransactionImportCoverage, useActivateImport } from '@/hooks/api-queries'
@@ -520,42 +520,44 @@ export function CoverageTab({ stickyTop = 0 }: { stickyTop?: number }) {
               {draftCellTarget ? `${getDisplayName(draftCellTarget.companyCode, undefined)} · ${draftCellTarget.period} · ${draftCellTarget.type}` : ''}
             </DialogDescription>
           </DialogHeader>
-          {targetBatches.length === 0 ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">该单元格已无可激活批次（可能已全部激活）</p>
-          ) : (
-            <ul className="max-h-[320px] space-y-2 overflow-y-auto">
-              {targetBatches.map((b) => {
-                const batchResult = batchActivate.results.get(b.id)
-                const batchActivating = activatingId === b.id
-                return (
-                  <li key={b.id} className="flex items-center gap-2 rounded-lg border p-2.5 text-sm">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate">{b.filename}</p>
-                      <p className="text-xs text-muted-foreground">{b.detailCount} 条 · {new Date(b.createdAt).toLocaleDateString('zh-CN')}</p>
-                    </div>
-                    {batchResult?.status === 'success' ? (
-                      <span className="flex shrink-0 items-center gap-1 text-xs text-success-strong">
-                        <CheckCircle2 className="h-3 w-3" />已激活
-                      </span>
-                    ) : batchResult?.status === 'failed' ? (
-                      <span className="shrink-0 max-w-[140px] truncate text-xs text-destructive" title={batchResult.error}>失败：{batchResult.error}</span>
-                    ) : canImport ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="shrink-0"
-                        disabled={activatingId !== null || batchActivate.isBusy}
-                        onClick={() => handleActivateDraftBatch(b.id)}
-                      >
-                        {batchActivating ? <Loader2 className="h-3 w-3 animate-spin" /> : '激活'}
-                      </Button>
-                    ) : null}
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-          {activateError && <p className="text-xs text-destructive">{activateError}</p>}
+          <DialogBody className="grid gap-4">
+            {targetBatches.length === 0 ? (
+              <p className="py-4 text-center text-sm text-muted-foreground">该单元格已无可激活批次（可能已全部激活）</p>
+            ) : (
+              <ul className="max-h-[320px] space-y-2 overflow-y-auto">
+                {targetBatches.map((b) => {
+                  const batchResult = batchActivate.results.get(b.id)
+                  const batchActivating = activatingId === b.id
+                  return (
+                    <li key={b.id} className="flex items-center gap-2 rounded-lg border p-2.5 text-sm">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate">{b.filename}</p>
+                        <p className="text-xs text-muted-foreground">{b.detailCount} 条 · {new Date(b.createdAt).toLocaleDateString('zh-CN')}</p>
+                      </div>
+                      {batchResult?.status === 'success' ? (
+                        <span className="flex shrink-0 items-center gap-1 text-xs text-success-strong">
+                          <CheckCircle2 className="h-3 w-3" />已激活
+                        </span>
+                      ) : batchResult?.status === 'failed' ? (
+                        <span className="shrink-0 max-w-[140px] truncate text-xs text-destructive" title={batchResult.error}>失败：{batchResult.error}</span>
+                      ) : canImport ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0"
+                          disabled={activatingId !== null || batchActivate.isBusy}
+                          onClick={() => handleActivateDraftBatch(b.id)}
+                        >
+                          {batchActivating ? <Loader2 className="h-3 w-3 animate-spin" /> : '激活'}
+                        </Button>
+                      ) : null}
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+            {activateError && <p className="text-xs text-destructive">{activateError}</p>}
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setDraftCellTarget(null); setActivateError('') }}>关闭</Button>
           </DialogFooter>

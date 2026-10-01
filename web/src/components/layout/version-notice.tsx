@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import {
   Dialog,
-  DialogContent,
+  DialogContent, DialogBody,
   DialogHeader,
   DialogTitle,
   DialogDescription,
@@ -145,9 +145,11 @@ export function VersionNotice() {
                 {openEntry.title}｜发布于 {openEntry.publishedAt}
               </DialogDescription>
             </DialogHeader>
-            <div className="max-h-[50vh] overflow-y-auto">
-              <ReleaseNotesBody entry={openEntry} />
-            </div>
+            <DialogBody className="grid gap-4">
+            <div className="min-w-0">
+                <ReleaseNotesBody entry={openEntry} />
+              </div>
+            </DialogBody>
             <DialogFooter>
               {hasNewVersion ? (
                 <>

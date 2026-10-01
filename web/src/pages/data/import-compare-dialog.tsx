@@ -1,5 +1,5 @@
 ﻿import { useMemo, useState } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -144,80 +144,82 @@ export function ImportCompareDialog({ open, onOpenChange, source, candidates, on
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
-          {/* 对比目标选择 */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-medium">对比目标批次:</span>
-            <Select value={targetId} onValueChange={setTargetId} disabled={candidates.length === 0}>
-              <SelectTrigger className="h-8 w-[320px] max-w-full">
-                <SelectValue placeholder={candidates.length === 0 ? '暂无同类型可对比批次' : '选择要对比的批次'} />
-              </SelectTrigger>
-              <SelectContent>
-                {candidates.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.filename}（{statusLabel[c.status] ?? c.status}）
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {isFetching && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-          </div>
-
-          {isError && (
-            <div className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/[0.06] p-3">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-              <p className="text-sm text-destructive">{error instanceof Error ? error.message : '对比失败，请重试'}</p>
+        <DialogBody className="grid gap-4">
+          <div className="space-y-3">
+            {/* 对比目标选择 */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium">对比目标批次:</span>
+              <Select value={targetId} onValueChange={setTargetId} disabled={candidates.length === 0}>
+                <SelectTrigger className="h-8 w-[320px] max-w-full">
+                  <SelectValue placeholder={candidates.length === 0 ? '暂无同类型可对比批次' : '选择要对比的批次'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {candidates.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.filename}（{statusLabel[c.status] ?? c.status}）
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {isFetching && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
             </div>
-          )}
 
-          {data && (
-            <>
-              {/* 汇总条 */}
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border bg-muted/30 px-3 py-2 text-body">
-                <span className="font-medium text-foreground">
-                  {data.a.filename} → {data.b.filename}
-                </span>
-                <span className="font-num text-muted-foreground">变化 {summary?.changedCount ?? 0} 项</span>
-                <span className="font-num text-muted-foreground">新增 {summary?.addedCount ?? 0} 项</span>
-                <span className="font-num text-muted-foreground">删除 {summary?.removedCount ?? 0} 项</span>
-                <span className={cn('font-num', getChangeColor(totalDelta))}>
-                  合计变动 {getChangePrefix(totalDelta)}{formatMoneyWan(totalDelta)} 万
-                </span>
-                {summary?.truncated && (
-                  <span className="text-xs text-warning-strong">结果超过 500 行已截断，仅展示变更幅度最大的部分</span>
-                )}
+            {isError && (
+              <div className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/[0.06] p-3">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                <p className="text-sm text-destructive">{error instanceof Error ? error.message : '对比失败，请重试'}</p>
               </div>
+            )}
 
-              {/* 分组 Tab */}
-              <Tabs defaultValue="changed">
-                <TabsList variant="line">
-                  <TabsTrigger value="changed">变化（{summary?.changedCount ?? 0}）</TabsTrigger>
-                  <TabsTrigger value="added">新增（{summary?.addedCount ?? 0}）</TabsTrigger>
-                  <TabsTrigger value="removed">删除（{summary?.removedCount ?? 0}）</TabsTrigger>
-                </TabsList>
-                <TabsContent value="changed">
-                  <DiffTable rows={data.changed} showOld showNew />
-                </TabsContent>
-                <TabsContent value="added">
-                  <DiffTable rows={data.added} showOld={false} showNew />
-                </TabsContent>
-                <TabsContent value="removed">
-                  <DiffTable rows={data.removed} showOld showNew={false} />
-                </TabsContent>
-              </Tabs>
-
-              {target?.status === 'active' && (
-                <p className="text-xs text-muted-foreground">目标批次生效中，回滚将恢复其被覆盖期间的数据并重新激活。</p>
-              )}
-              {rollbackError && (
-                <div className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/[0.06] p-3">
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-                  <p className="text-sm text-destructive">{rollbackError}</p>
+            {data && (
+              <>
+                {/* 汇总条 */}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border bg-muted/30 px-3 py-2 text-body">
+                  <span className="font-medium text-foreground">
+                    {data.a.filename} → {data.b.filename}
+                  </span>
+                  <span className="font-num text-muted-foreground">变化 {summary?.changedCount ?? 0} 项</span>
+                  <span className="font-num text-muted-foreground">新增 {summary?.addedCount ?? 0} 项</span>
+                  <span className="font-num text-muted-foreground">删除 {summary?.removedCount ?? 0} 项</span>
+                  <span className={cn('font-num', getChangeColor(totalDelta))}>
+                    合计变动 {getChangePrefix(totalDelta)}{formatMoneyWan(totalDelta)} 万
+                  </span>
+                  {summary?.truncated && (
+                    <span className="text-xs text-warning-strong">结果超过 500 行已截断，仅展示变更幅度最大的部分</span>
+                  )}
                 </div>
-              )}
-            </>
-          )}
-        </div>
+
+                {/* 分组 Tab */}
+                <Tabs defaultValue="changed">
+                  <TabsList variant="line">
+                    <TabsTrigger value="changed">变化（{summary?.changedCount ?? 0}）</TabsTrigger>
+                    <TabsTrigger value="added">新增（{summary?.addedCount ?? 0}）</TabsTrigger>
+                    <TabsTrigger value="removed">删除（{summary?.removedCount ?? 0}）</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="changed">
+                    <DiffTable rows={data.changed} showOld showNew />
+                  </TabsContent>
+                  <TabsContent value="added">
+                    <DiffTable rows={data.added} showOld={false} showNew />
+                  </TabsContent>
+                  <TabsContent value="removed">
+                    <DiffTable rows={data.removed} showOld showNew={false} />
+                  </TabsContent>
+                </Tabs>
+
+                {target?.status === 'active' && (
+                  <p className="text-xs text-muted-foreground">目标批次生效中，回滚将恢复其被覆盖期间的数据并重新激活。</p>
+                )}
+                {rollbackError && (
+                  <div className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/[0.06] p-3">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                    <p className="text-sm text-destructive">{rollbackError}</p>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </DialogBody>
 
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={() => handleOpenChange(false)}>关闭</Button>

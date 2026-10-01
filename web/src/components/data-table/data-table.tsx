@@ -67,6 +67,8 @@ interface DataTableProps<T> {
   density?: TableDensity
   /** 最大高度（如 '60vh'）：限高后内部垂直滚动，表头 sticky 固定 */
   maxHeight?: string
+  /** 填满有界父级的剩余空间；不传时保持自然高度。 */
+  fillHeight?: boolean
   /** 行点击回调（提供后行显示 pointer 光标，可配合 expandedKeys 实现展开） */
   onRowClick?: (row: T, rowIndex: number) => void
   /** 行额外类名（如选中行高亮），按行返回 */
@@ -130,6 +132,7 @@ export function DataTable<T>({
   dense = false,
   density,
   maxHeight,
+  fillHeight = false,
   onRowClick,
   rowClassName,
   expandedKeys,
@@ -147,6 +150,7 @@ export function DataTable<T>({
   // 密度解析：density 优先，兼容旧 dense 布尔
   const densityMode = density ?? (dense ? 'dense' : 'default')
   const pad = densityClass[densityMode]
+  const bounded = fillHeight || !!maxHeight
 
   // 排序状态：受控（传 sortKey）由外部驱动；非受控内部维护并本地排序
   const [localSort, setLocalSort] = useState<{ key: string; direction: SortDirection } | null>(null)
@@ -243,22 +247,23 @@ export function DataTable<T>({
   }
 
   // 浅灰圆角容器：与页面/卡片形成视觉分割
-  // maxHeight 限高模式：外层参与 flex 链（flex-1 min-h-0）使表格按父级剩余高度撑满，且不可设置 overflow-hidden——
-  // overflow: hidden 会创建 scroll container，截断外部吸顶（sticky）链；圆角由内部白底容器自身承担（rounded-card）
+  // 表头和冻结列隔离在表格内，避免覆盖外部页面标题及筛选栏。
   return (
     <div
       className={cn(
-        'rounded-card bg-muted/40 p-2',
-        maxHeight ? 'flex min-h-0 flex-1 flex-col' : 'overflow-hidden',
+        'relative isolate min-w-0 max-w-full overflow-hidden rounded-card bg-muted/40 p-2',
+        fillHeight && 'flex min-h-0 flex-1 flex-col',
       )}
     >
       <div
         className={cn(
           // antd Table 观感：白底容器带浅边框，与浅灰外层容器形成双层分割
           'border border-border/60 bg-background',
-          maxHeight ? 'min-h-0 flex-1 overflow-auto rounded-card' : 'overflow-x-auto',
+          bounded ? 'min-h-0 overflow-auto rounded-card' : 'overflow-x-auto',
+          fillHeight && 'flex-1',
           className,
         )}
+        data-table-scroll
         style={maxHeight ? { maxHeight } : undefined}
       >
         {/* border-separate（仅限高模式）：sticky 表头单元格边框随滚动稳定跟随，collapse 模式下边框渲染异常（对齐 metric-tree） */}
@@ -267,7 +272,7 @@ export function DataTable<T>({
             'w-full caption-bottom text-body',
             resizable && 'table-fixed',
             // 限高模式行边框下沉到单元格（separate 下 tr 边框不渲染），sticky th 边框跟随滚动
-            maxHeight && 'border-separate border-spacing-0 [&_th]:border-b [&_td]:border-b [&_th]:border-border [&_td]:border-border',
+            bounded && 'border-separate border-spacing-0 [&_th]:border-b [&_td]:border-b [&_th]:border-border [&_td]:border-border',
           )}
         >
           {resizable && (
@@ -278,8 +283,8 @@ export function DataTable<T>({
             </colgroup>
           )}
           {caption && <caption className="sr-only">{caption}</caption>}
-          <thead className={cn(!maxHeight && '[&_tr]:border-b', maxHeight && TABLE_HEADER_STICKY)}>
-            <tr className={cn('bg-muted/70', !maxHeight && 'border-b')}>
+          <thead className={cn(!bounded && '[&_tr]:border-b', bounded && TABLE_HEADER_STICKY)}>
+            <tr className={cn('bg-muted/70', !bounded && 'border-b')}>
               {cols.map((col) => {
                 const sortState = activeSort?.key === col.key ? activeSort : null
                 const stickyRight = col.sticky === 'right'
@@ -295,11 +300,11 @@ export function DataTable<T>({
                       TABLE_HEAD_BASE,
                       pad.head,
                       // 限高 sticky 表头需不透明背景 + 单元格级底边框（separate 下 tr 边框不渲染），避免滚动内容透出/边框错位
-                      maxHeight && 'border-b border-border bg-muted',
+                      bounded && 'border-b border-border bg-muted',
                       stickyLeft && 'sticky left-0 z-10 bg-muted',
                       stickyRight && 'sticky right-0 z-10 bg-muted',
                       // 冻结列 × 冻结表头交叠处需更高层级
-                      (stickyLeft || stickyRight) && maxHeight && 'z-30',
+                      (stickyLeft || stickyRight) && bounded && 'z-30',
                       resizable && 'relative',
                       col.headerClassName,
                     )}

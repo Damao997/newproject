@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
 import { FlashMessage } from '@/components/ui/flash-message'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogBody, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   Select,
   SelectContent,
@@ -163,6 +163,7 @@ export default function SalesmenManagePage() {
 
   return (
     <PageContainer
+      viewportBound
       title="业务员管理"
       description="维护催收业务员档案（姓名 / 公司归属 / 联系方式），停用后不再可指派"
       actions={
@@ -183,7 +184,7 @@ export default function SalesmenManagePage() {
       <SubPageTabs items={TRANSACTION_TABS} />
 
       {/* 筛选卡（公司口径在 Header CompanyPill 全局筛选） */}
-      <Card className="rounded-card border border-border p-4">
+      <Card className="shrink-0 rounded-card border border-border p-4">
         <FilterBar>
           <Select value={statusFilter || 'all'} onValueChange={(v) => setSalesmen({ status: v === 'all' ? '' : v, page: 1 })}>
             <SelectTrigger className="h-9 w-[120px]">
@@ -209,8 +210,8 @@ export default function SalesmenManagePage() {
       </Card>
 
       {/* 列表卡 */}
-      <Card className="rounded-card border border-border overflow-hidden">
-        <div className="flex items-center gap-2 border-b px-4 py-2.5">
+      <Card className="flex min-h-0 flex-1 flex-col rounded-card border border-border overflow-hidden">
+        <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2.5">
           <h3 className="flex items-center gap-2 text-base font-semibold tracking-tight">
             <Users className="h-4 w-4" />
             业务员列表
@@ -236,27 +237,26 @@ export default function SalesmenManagePage() {
             暂无业务员数据{keyword.trim() || statusFilter || hasSelection ? '，请调整筛选条件' : ''}
           </p>
         ) : (
-          <div className="px-2 pb-2">
+          <div className="flex min-h-0 flex-1 flex-col px-2 pb-2">
             <DataTable
               columns={columns}
               data={items}
               rowKey={(row) => row.id}
               density="compact"
               caption="业务员列表"
-              maxHeight="calc(100dvh - 340px)"
+              fillHeight
             />
           </div>
         )}
         {total > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5">
-            <span className="text-xs text-muted-foreground">共 {total} 人</span>
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5">
             <Pagination
               page={page}
               pageSize={pageSize}
               total={total}
               onPageChange={(p) => setSalesmen({ page: p })}
               onPageSizeChange={(s) => setSalesmen({ pageSize: s, page: 1 })}
-              summary=""
+              summary={`共 ${total} 人，第 ${(page - 1) * pageSize + 1}-${Math.min(page * pageSize, total)} 人`}
             />
           </div>
         )}
@@ -337,54 +337,56 @@ function SalesmanFormDialog({ open, initial, onClose }: { open: boolean; initial
             {isEdit ? `编辑 ${initial?.name} 的档案信息` : '创建后可在客商台账中指派为负责业务员'}
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="salesman-form-name">姓名（必填）</Label>
-            <Input
-              id="salesman-form-name"
-              value={values.name}
-              onChange={(e) => setValues((v) => ({ ...v, name: e.target.value }))}
-              placeholder="业务员姓名"
-            />
+        <DialogBody className="grid gap-4">
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="salesman-form-name">姓名（必填）</Label>
+              <Input
+                id="salesman-form-name"
+                value={values.name}
+                onChange={(e) => setValues((v) => ({ ...v, name: e.target.value }))}
+                placeholder="业务员姓名"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="salesman-form-companies">公司归属（可多选）</Label>
+              <AntdSelect
+                mode="multiple"
+                value={values.companyCodes}
+                onChange={(next) => setValues((v) => ({ ...v, companyCodes: next }))}
+                options={options}
+                placeholder="选择公司（可多选）"
+                aria-label="公司归属多选"
+                size={antdSizeFromClassName('h-9', 'middle')}
+                className="w-full"
+                maxTagCount={3}
+                maxTagPlaceholder={(omitted) => `等 ${omitted.length + 3} 家`}
+                popupMatchSelectWidth={false}
+                suffixIcon={<ChevronDown className="h-4 w-4 opacity-50" />}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="salesman-form-phone">联系方式（选填）</Label>
+              <Input
+                id="salesman-form-phone"
+                value={values.phone}
+                onChange={(e) => setValues((v) => ({ ...v, phone: e.target.value }))}
+                placeholder="手机号 / 电话"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="salesman-form-remark">备注（选填）</Label>
+              <Textarea
+                id="salesman-form-remark"
+                rows={2}
+                value={values.remark}
+                onChange={(e) => setValues((v) => ({ ...v, remark: e.target.value }))}
+                placeholder="如：负责区域 / 客户类型等"
+              />
+            </div>
+            {errorMsg && <FlashMessage type="error">{errorMsg}</FlashMessage>}
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="salesman-form-companies">公司归属（可多选）</Label>
-            <AntdSelect
-              mode="multiple"
-              value={values.companyCodes}
-              onChange={(next) => setValues((v) => ({ ...v, companyCodes: next }))}
-              options={options}
-              placeholder="选择公司（可多选）"
-              aria-label="公司归属多选"
-              size={antdSizeFromClassName('h-9', 'middle')}
-              className="w-full"
-              maxTagCount={3}
-              maxTagPlaceholder={(omitted) => `等 ${omitted.length + 3} 家`}
-              popupMatchSelectWidth={false}
-              suffixIcon={<ChevronDown className="h-4 w-4 opacity-50" />}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="salesman-form-phone">联系方式（选填）</Label>
-            <Input
-              id="salesman-form-phone"
-              value={values.phone}
-              onChange={(e) => setValues((v) => ({ ...v, phone: e.target.value }))}
-              placeholder="手机号 / 电话"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="salesman-form-remark">备注（选填）</Label>
-            <Textarea
-              id="salesman-form-remark"
-              rows={2}
-              value={values.remark}
-              onChange={(e) => setValues((v) => ({ ...v, remark: e.target.value }))}
-              placeholder="如：负责区域 / 客户类型等"
-            />
-          </div>
-          {errorMsg && <FlashMessage type="error">{errorMsg}</FlashMessage>}
-        </div>
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={pending}>取消</Button>
           <Button onClick={handleSubmit} disabled={pending}>

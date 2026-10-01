@@ -87,11 +87,12 @@ export function ConsolidationAdjustmentsPanel() {
   ]
 
   return (
-    <div className="space-y-2">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col space-y-2">
       {message && (
-        <p className={cn('text-xs', message.includes('失败') ? 'text-destructive' : 'text-muted-foreground')}>{message}</p>
+        <p className={cn('shrink-0 text-xs', message.includes('失败') ? 'text-destructive' : 'text-muted-foreground')}>{message}</p>
       )}
       <DataTable
+        fillHeight
         columns={columns}
         data={items}
         rowKey={(r) => r.id}
@@ -106,7 +107,7 @@ export function ConsolidationAdjustmentsPanel() {
           </div>
         )}
       />
-      <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
+      <Pagination className="shrink-0" page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
       {confirmElement}
     </div>
   )

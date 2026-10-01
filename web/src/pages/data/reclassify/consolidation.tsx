@@ -23,6 +23,7 @@ export default function DataReclassifyConsolidationPage() {
 
   return (
     <PageContainer
+      viewportBound
       title="汇总重分类"
       description="在汇总主体口径上抵消两个单体公司间的内部交易，单体报表不受影响"
       stickyHeader

@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Dialog,
   DialogContent,
+  DialogBody,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -22,6 +23,7 @@ interface LinkDialogProps {
 
 /** 链接编辑对话框：替代原生 prompt；打开时回填当前链接，清空确定 = 移除链接 */
 export function LinkDialog({ open, initialUrl, onConfirm, onCancel }: LinkDialogProps) {
+  const formId = useId()
   const [url, setUrl] = useState(initialUrl)
 
   useEffect(() => {
@@ -35,22 +37,24 @@ export function LinkDialog({ open, initialUrl, onConfirm, onCancel }: LinkDialog
           <DialogTitle>编辑链接</DialogTitle>
           <DialogDescription>输入链接地址；清空后确定将移除当前链接。</DialogDescription>
         </DialogHeader>
-        <form onSubmit={(e) => { e.preventDefault(); onConfirm(url.trim()) }}>
-          <div className="space-y-1">
-            <Label htmlFor="link-url">链接地址</Label>
-            <Input
-              id="link-url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://"
-              autoFocus
-            />
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onCancel}>取消</Button>
-            <Button type="submit">确定</Button>
-          </DialogFooter>
-        </form>
+        <DialogBody>
+          <form id={formId} noValidate onSubmit={(e) => { e.preventDefault(); onConfirm(url.trim()) }}>
+            <div className="space-y-1">
+              <Label htmlFor="link-url">链接地址</Label>
+              <Input
+                id="link-url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://"
+                autoFocus
+              />
+            </div>
+          </form>
+        </DialogBody>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onCancel}>取消</Button>
+          <Button type="submit" form={formId}>确定</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

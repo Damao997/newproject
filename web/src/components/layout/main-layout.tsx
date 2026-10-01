@@ -74,9 +74,9 @@ export function MainLayout() {
         mobileOpen={mobileOpen}
         onMobileClose={() => setMobileOpen(false)}
       />
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header onMenuClick={() => setMobileOpen(true)} />
-        <main className="flex-1 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}>
+        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}>
           {/* pt-6 恒为 24px：页面主标签（PageContainer 标题区）与 Header 保持固定间距（勿改回 lg:py-8） */}
           <div className="container mx-auto max-w-screen-2xl px-4 pt-6 pb-6 sm:px-6 lg:px-8 lg:pb-8">
             {/* Suspense 内层：路由切换时仅内容区回退到骨架，侧边栏/Header 常驻 */}

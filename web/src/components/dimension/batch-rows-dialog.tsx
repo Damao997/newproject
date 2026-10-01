@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogBody, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { AlertTriangle, CheckCircle2, Loader2, Plus, Trash2, XCircle } from 'lucide-react'
@@ -158,46 +158,48 @@ export function BatchRowsDialog<T>({
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
 
-        <div className="max-h-[55vh] space-y-3 overflow-y-auto pr-1">
-          {rows.map((row, index) => {
-            const status = statuses[index] ?? { state: 'pending' as const }
-            const invalid = status.state === 'error'
-            return (
-              <div
-                key={index}
-                className={cn(
-                  'rounded-lg border p-3',
-                  invalid ? 'border-destructive/40' : status.state === 'success' ? 'border-success/30 bg-success/5' : 'border-border',
-                )}
-              >
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-xs font-medium text-muted-foreground">第 {index + 1} 条</span>
-                  <div className="flex items-center gap-2">
-                    {status.state === 'success' && (
-                      <span className="inline-flex items-center gap-1 text-xs text-success-strong">
-                        <CheckCircle2 className="h-3.5 w-3.5" />已创建
-                      </span>
-                    )}
-                    {status.state === 'error' && (
-                      <span className="inline-flex items-center gap-1 max-w-md truncate text-xs text-destructive" title={status.message}>
-                        <XCircle className="h-3.5 w-3.5 shrink-0" />{status.message}
-                      </span>
-                    )}
-                    <Button
-                      variant="ghost" size="sm" className="h-6 px-1.5 text-destructive hover:text-destructive"
-                      onClick={() => removeRow(index)}
-                      disabled={submitting || rows.length === 1}
-                      title="移除该行"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+        <DialogBody className="grid gap-4">
+          <div className="space-y-3 pr-1">
+            {rows.map((row, index) => {
+              const status = statuses[index] ?? { state: 'pending' as const }
+              const invalid = status.state === 'error'
+              return (
+                <div
+                  key={index}
+                  className={cn(
+                    'rounded-lg border p-3',
+                    invalid ? 'border-destructive/40' : status.state === 'success' ? 'border-success/30 bg-success/5' : 'border-border',
+                  )}
+                >
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs font-medium text-muted-foreground">第 {index + 1} 条</span>
+                    <div className="flex items-center gap-2">
+                      {status.state === 'success' && (
+                        <span className="inline-flex items-center gap-1 text-xs text-success-strong">
+                          <CheckCircle2 className="h-3.5 w-3.5" />已创建
+                        </span>
+                      )}
+                      {status.state === 'error' && (
+                        <span className="inline-flex items-center gap-1 max-w-md truncate text-xs text-destructive" title={status.message}>
+                          <XCircle className="h-3.5 w-3.5 shrink-0" />{status.message}
+                        </span>
+                      )}
+                      <Button
+                        variant="ghost" size="sm" className="h-6 px-1.5 text-destructive hover:text-destructive"
+                        onClick={() => removeRow(index)}
+                        disabled={submitting || rows.length === 1}
+                        title="移除该行"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </div>
+                  {renderRowFields(row, index, (p) => patchRow(index, p), invalid, submitting, rows)}
                 </div>
-                {renderRowFields(row, index, (p) => patchRow(index, p), invalid, submitting, rows)}
-              </div>
-            )
-          })}
-        </div>
+              )
+            })}
+          </div>
+        </DialogBody>
 
         <DialogFooter className="sm:justify-between">
           <Button variant="outline" size="sm" onClick={addRow} disabled={submitting || rows.length >= maxRows}>

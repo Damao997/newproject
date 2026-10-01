@@ -361,7 +361,7 @@ export function MetricTree({
     // 浅灰圆角容器（与 DataTable 视觉一致）；flex 链（flex-1 min-h-0）使滚动容器按父级剩余高度撑满，
     // 页面内容恒一屏、不产生全局滚动条；外层不可设置 overflow-hidden：overflow: hidden 会创建 scroll container，
     // 截断内部容器 position: sticky 相对 <main> 的吸顶链（sticky 仅相对最近滚动祖先生效）
-    <div className="flex min-h-0 flex-1 flex-col rounded-card bg-muted/40 p-2">
+    <div className="relative isolate flex min-h-0 min-w-0 max-w-full flex-1 flex-col rounded-card bg-muted/40 p-2">
       <div
         className={cn('sticky min-h-0 flex-1 rounded-card bg-background', 'overflow-x-auto', 'overflow-y-auto')}
         style={

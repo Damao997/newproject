@@ -6,7 +6,7 @@ import { MonthPicker } from '@/components/ui/month-picker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Dialog,
-  DialogContent,
+  DialogContent, DialogBody,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -240,190 +240,192 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
           {readonly && meta && <ReadonlyLogMeta meta={meta} />}
         </DialogHeader>
 
-        <div className="space-y-4">
-          {/* ===== 数据范围 ===== */}
-          <section className="space-y-2">
-            <SectionTitle>数据范围</SectionTitle>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label>模板类型</Label>
-                {readonly
-                  ? <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">{TEMPLATE_LABEL[templateType] ?? templateType}</div>
-                  : (
-                    <Select value={templateType} onValueChange={(v) => { setTemplateType(v); reset(); setSelectedSubjects(new Set()) }}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="operating">经营数据</SelectItem>
-                        <SelectItem value="static">静态数据</SelectItem>
-                        <SelectItem value="cashflow">现金流量表</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
+        <DialogBody className="grid gap-4">
+          <div className="space-y-4">
+            {/* ===== 数据范围 ===== */}
+            <section className="space-y-2">
+              <SectionTitle>数据范围</SectionTitle>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label>模板类型</Label>
+                  {readonly
+                    ? <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">{TEMPLATE_LABEL[templateType] ?? templateType}</div>
+                    : (
+                      <Select value={templateType} onValueChange={(v) => { setTemplateType(v); reset(); setSelectedSubjects(new Set()) }}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="operating">经营数据</SelectItem>
+                          <SelectItem value="static">静态数据</SelectItem>
+                          <SelectItem value="cashflow">现金流量表</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                </div>
+                <div className="space-y-1">
+                  <Label>调整期间（单月） <span className="text-destructive">*</span></Label>
+                  {readonly
+                    ? <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">{period || '-'}</div>
+                    : (
+                      <>
+                        <MonthPicker className="w-full" value={period} onChange={(v) => { setPeriod(v); reset() }} availablePeriods={availablePeriods} placeholder="选择月份" />
+                      </>
+                    )}
+                </div>
               </div>
               <div className="space-y-1">
-                <Label>调整期间（单月） <span className="text-destructive">*</span></Label>
+                <Label>科目筛选（可选）</Label>
                 {readonly
-                  ? <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">{period || '-'}</div>
+                  ? (
+                      selectedSubjects.size > 0
+                        ? <div className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border bg-muted/40 px-3 py-1.5 text-sm">
+                            {[...selectedSubjects].map((code) => {
+                              const s = subjectOptions.find((x) => x.code === code)
+                              return s
+                                ? <span key={code} className="max-w-[160px] truncate rounded bg-background px-1.5 py-0.5 text-xs" title={code}>{s.name}</span>
+                                // 科目已删除：回退展示编码，保证只读详情完整还原原始参数
+                                : <span key={code} className="rounded bg-background px-1.5 py-0.5 font-mono text-xs" title={code}>{code}</span>
+                            })}
+                          </div>
+                        : <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground">全部科目</div>
+                    )
                   : (
                     <>
-                      <MonthPicker className="w-full" value={period} onChange={(v) => { setPeriod(v); reset() }} availablePeriods={availablePeriods} placeholder="选择月份" />
+                      <SubjectMultiPicker
+                        options={subjectOptions}
+                        selected={selectedSubjects}
+                        onToggle={toggleSubject}
+                        onClear={() => { setSelectedSubjects(new Set()); setPreview(null) }}
+                        placeholder="全部科目"
+                      />
+                      <p className="text-xs text-muted-foreground">不选 = 源公司全部科目；多选 = 仅对所选科目的数据执行重分类。</p>
                     </>
                   )}
               </div>
-            </div>
-            <div className="space-y-1">
-              <Label>科目筛选（可选）</Label>
-              {readonly
-                ? (
-                    selectedSubjects.size > 0
-                      ? <div className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border bg-muted/40 px-3 py-1.5 text-sm">
-                          {[...selectedSubjects].map((code) => {
-                            const s = subjectOptions.find((x) => x.code === code)
-                            return s
-                              ? <span key={code} className="max-w-[160px] truncate rounded bg-background px-1.5 py-0.5 text-xs" title={code}>{s.name}</span>
-                              // 科目已删除：回退展示编码，保证只读详情完整还原原始参数
-                              : <span key={code} className="rounded bg-background px-1.5 py-0.5 font-mono text-xs" title={code}>{code}</span>
-                          })}
-                        </div>
-                      : <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground">全部科目</div>
-                  )
-                : (
-                  <>
-                    <SubjectMultiPicker
-                      options={subjectOptions}
-                      selected={selectedSubjects}
-                      onToggle={toggleSubject}
-                      onClear={() => { setSelectedSubjects(new Set()); setPreview(null) }}
-                      placeholder="全部科目"
-                    />
-                    <p className="text-xs text-muted-foreground">不选 = 源公司全部科目；多选 = 仅对所选科目的数据执行重分类。</p>
-                  </>
+            </section>
+
+            {/* ===== 转移设置 ===== */}
+            <section className="space-y-2">
+              <SectionTitle>转移设置</SectionTitle>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="flex-1 space-y-1">
+                  <Label htmlFor="rc-source-company">源公司</Label>
+                  <Select value={sourceCompanyCode} disabled={readonly} onValueChange={(v) => { setSourceCompanyCode(v); reset() }}>
+                    <SelectTrigger id="rc-source-company"><SelectValue placeholder="选择源公司" /></SelectTrigger>
+                    <SelectContent className="max-h-[280px]">
+                      {entityCompanies.map((c) => (
+                        <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {!readonly && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="mx-auto h-9 w-9 shrink-0 text-muted-foreground sm:mx-0"
+                    aria-label="交换源公司与目标公司"
+                    title="交换源公司与目标公司"
+                    onClick={handleSwap}
+                    disabled={!sourceCompanyCode && !targetCompanyCode}
+                  >
+                    <ArrowLeftRight className="h-4 w-4" />
+                  </Button>
                 )}
-            </div>
-          </section>
-
-          {/* ===== 转移设置 ===== */}
-          <section className="space-y-2">
-            <SectionTitle>转移设置</SectionTitle>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-              <div className="flex-1 space-y-1">
-                <Label htmlFor="rc-source-company">源公司</Label>
-                <Select value={sourceCompanyCode} disabled={readonly} onValueChange={(v) => { setSourceCompanyCode(v); reset() }}>
-                  <SelectTrigger id="rc-source-company"><SelectValue placeholder="选择源公司" /></SelectTrigger>
-                  <SelectContent className="max-h-[280px]">
-                    {entityCompanies.map((c) => (
-                      <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {!readonly && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="mx-auto h-9 w-9 shrink-0 text-muted-foreground sm:mx-0"
-                  aria-label="交换源公司与目标公司"
-                  title="交换源公司与目标公司"
-                  onClick={handleSwap}
-                  disabled={!sourceCompanyCode && !targetCompanyCode}
-                >
-                  <ArrowLeftRight className="h-4 w-4" />
-                </Button>
-              )}
-              <div className="flex-1 space-y-1">
-                <Label htmlFor="rc-target-company">目标公司</Label>
-                <Select value={targetCompanyCode} disabled={readonly} onValueChange={(v) => { setTargetCompanyCode(v); reset() }}>
-                  <SelectTrigger id="rc-target-company"><SelectValue placeholder="选择目标公司" /></SelectTrigger>
-                  <SelectContent className="max-h-[280px]">
-                    {entityCompanies.filter((c) => c.code !== sourceCompanyCode).map((c) => (
-                      <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label htmlFor="rc-transfer-mode">转移方式</Label>
-                <Select value={transferMode} disabled={readonly} onValueChange={(v) => { setTransferMode(v as 'all' | 'ratio' | 'amount'); reset() }}>
-                  <SelectTrigger id="rc-transfer-mode"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">整体迁移</SelectItem>
-                    <SelectItem value="ratio">按比例部分转移</SelectItem>
-                    <SelectItem value="amount">按金额部分转移</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {transferMode === 'ratio' && (
-                <div className="space-y-1">
-                  <Label htmlFor="rc-ratio">转移比例（%）</Label>
-                  <Input
-                    id="rc-ratio"
-                    type="number"
-                    min={0}
-                    max={100}
-                    step="0.01"
-                    placeholder="如 30"
-                    value={ratioInput}
-                    disabled={readonly}
-                    aria-invalid={!!ratioError}
-                    className={cn(ratioError && 'border-destructive focus-visible:ring-destructive')}
-                    onChange={(e) => { setRatioInput(e.target.value); reset() }}
-                  />
-                  {ratioError && <p className="text-xs text-destructive">{ratioError}</p>}
+                <div className="flex-1 space-y-1">
+                  <Label htmlFor="rc-target-company">目标公司</Label>
+                  <Select value={targetCompanyCode} disabled={readonly} onValueChange={(v) => { setTargetCompanyCode(v); reset() }}>
+                    <SelectTrigger id="rc-target-company"><SelectValue placeholder="选择目标公司" /></SelectTrigger>
+                    <SelectContent className="max-h-[280px]">
+                      {entityCompanies.filter((c) => c.code !== sourceCompanyCode).map((c) => (
+                        <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              )}
-              {transferMode === 'amount' && (
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <Label htmlFor="rc-amount">转移金额（万元）</Label>
-                  <Input
-                    id="rc-amount"
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    placeholder="如 100"
-                    value={amountInput}
-                    disabled={readonly}
-                    aria-invalid={!!amountError}
-                    className={cn(amountError && 'border-destructive focus-visible:ring-destructive')}
-                    onChange={(e) => { setAmountInput(e.target.value); reset() }}
-                  />
-                  {amountError && <p className="text-xs text-destructive">{amountError}</p>}
+                  <Label htmlFor="rc-transfer-mode">转移方式</Label>
+                  <Select value={transferMode} disabled={readonly} onValueChange={(v) => { setTransferMode(v as 'all' | 'ratio' | 'amount'); reset() }}>
+                    <SelectTrigger id="rc-transfer-mode"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">整体迁移</SelectItem>
+                      <SelectItem value="ratio">按比例部分转移</SelectItem>
+                      <SelectItem value="amount">按金额部分转移</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
+                {transferMode === 'ratio' && (
+                  <div className="space-y-1">
+                    <Label htmlFor="rc-ratio">转移比例（%）</Label>
+                    <Input
+                      id="rc-ratio"
+                      type="number"
+                      min={0}
+                      max={100}
+                      step="0.01"
+                      placeholder="如 30"
+                      value={ratioInput}
+                      disabled={readonly}
+                      aria-invalid={!!ratioError}
+                      className={cn(ratioError && 'border-destructive focus-visible:ring-destructive')}
+                      onChange={(e) => { setRatioInput(e.target.value); reset() }}
+                    />
+                    {ratioError && <p className="text-xs text-destructive">{ratioError}</p>}
+                  </div>
+                )}
+                {transferMode === 'amount' && (
+                  <div className="space-y-1">
+                    <Label htmlFor="rc-amount">转移金额（万元）</Label>
+                    <Input
+                      id="rc-amount"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      placeholder="如 100"
+                      value={amountInput}
+                      disabled={readonly}
+                      aria-invalid={!!amountError}
+                      className={cn(amountError && 'border-destructive focus-visible:ring-destructive')}
+                      onChange={(e) => { setAmountInput(e.target.value); reset() }}
+                    />
+                    {amountError && <p className="text-xs text-destructive">{amountError}</p>}
+                  </div>
+                )}
+              </div>
+              {transferMode !== 'all' && (
+                <p className="text-xs text-muted-foreground">
+                  部分转移：源公司明细调减并保留，目标公司同口径明细调增（无则新建），总额不变。
+                  {transferMode === 'amount' && '按金额模式将按各明细金额占比分摊。'}
+                </p>
               )}
-            </div>
-            {transferMode !== 'all' && (
-              <p className="text-xs text-muted-foreground">
-                部分转移：源公司明细调减并保留，目标公司同口径明细调增（无则新建），总额不变。
-                {transferMode === 'amount' && '按金额模式将按各明细金额占比分摊。'}
-              </p>
+            </section>
+
+            {/* ===== 预览与执行（只读模式隐藏） ===== */}
+            {!readonly && (
+              <section className="space-y-2">
+                <SectionTitle>预览与执行</SectionTitle>
+                {!preview && !done && !error && (
+                  <p className="text-xs text-muted-foreground">设置完成后点击「预览影响」查看将变更的数据范围与金额。</p>
+                )}
+                {preview && (preview.affectedRows === 0 ? <PreviewStats items={[]} empty /> : <PreviewStats items={previewItems} />)}
+                {done && <FeedbackAlert kind="success">{done}</FeedbackAlert>}
+                {error && <FeedbackAlert kind="error">{error}</FeedbackAlert>}
+              </section>
             )}
-          </section>
+            {/* ===== 执行结果（只读模式：还原当时的执行结果统计） ===== */}
+            {readonly && result && result.length > 0 && (
+              <section className="space-y-2">
+                <SectionTitle>执行结果</SectionTitle>
+                <PreviewStats items={result} />
+              </section>
+            )}
+          </div>
+        </DialogBody>
 
-          {/* ===== 预览与执行（只读模式隐藏） ===== */}
-          {!readonly && (
-            <section className="space-y-2">
-              <SectionTitle>预览与执行</SectionTitle>
-              {!preview && !done && !error && (
-                <p className="text-xs text-muted-foreground">设置完成后点击「预览影响」查看将变更的数据范围与金额。</p>
-              )}
-              {preview && (preview.affectedRows === 0 ? <PreviewStats items={[]} empty /> : <PreviewStats items={previewItems} />)}
-              {done && <FeedbackAlert kind="success">{done}</FeedbackAlert>}
-              {error && <FeedbackAlert kind="error">{error}</FeedbackAlert>}
-            </section>
-          )}
-          {/* ===== 执行结果（只读模式：还原当时的执行结果统计） ===== */}
-          {readonly && result && result.length > 0 && (
-            <section className="space-y-2">
-              <SectionTitle>执行结果</SectionTitle>
-              <PreviewStats items={result} />
-            </section>
-          )}
-        </div>
-
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter>
           <Button variant="outline" onClick={onClose}>关闭</Button>
           {!readonly && (
             <>

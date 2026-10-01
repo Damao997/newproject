@@ -15,7 +15,7 @@ import { FlashMessage } from '@/components/ui/flash-message'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+  Dialog, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
 import { RichTextEditor } from '@/components/editor/rich-text-editor'
 import { usePermission } from '@/hooks/usePermission'
@@ -768,18 +768,20 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
               将当前章节内容留存为 v{report.currentVersion + 1} 快照，可随时查看或回滚。
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="change-summary">变更说明（可选）</Label>
-              <Textarea
-                id="change-summary"
-                value={changeSummary}
-                onChange={(e) => setChangeSummary(e.target.value)}
-                rows={3}
-                placeholder="如：更新收入结构章节、AI 润色完成"
-              />
+          <DialogBody className="grid gap-4">
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="change-summary">变更说明（可选）</Label>
+                <Textarea
+                  id="change-summary"
+                  value={changeSummary}
+                  onChange={(e) => setChangeSummary(e.target.value)}
+                  rows={3}
+                  placeholder="如：更新收入结构章节、AI 润色完成"
+                />
+              </div>
             </div>
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setVersionDialogOpen(false)} disabled={saveVersion.isPending}>取消</Button>
             <Button onClick={handleSaveVersion} disabled={saveVersion.isPending}>
@@ -798,26 +800,28 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
               将当前 {sections.length} 个章节（含未保存的本地修改）保存为自定义模板，新建报告时可一键套用。
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="template-name">模板名称</Label>
-              <Input
-                id="template-name"
-                value={templateName}
-                onChange={(e) => setTemplateName(e.target.value)}
-                placeholder="如：季度经营分析模板"
-              />
+          <DialogBody className="grid gap-4">
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="template-name">模板名称</Label>
+                <Input
+                  id="template-name"
+                  value={templateName}
+                  onChange={(e) => setTemplateName(e.target.value)}
+                  placeholder="如：季度经营分析模板"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="template-desc">说明（可选）</Label>
+                <Input
+                  id="template-desc"
+                  value={templateDesc}
+                  onChange={(e) => setTemplateDesc(e.target.value)}
+                  placeholder="模板适用场景说明"
+                />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="template-desc">说明（可选）</Label>
-              <Input
-                id="template-desc"
-                value={templateDesc}
-                onChange={(e) => setTemplateDesc(e.target.value)}
-                placeholder="模板适用场景说明"
-              />
-            </div>
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setTemplateDialogOpen(false)} disabled={createTemplate.isPending}>取消</Button>
             <Button onClick={handleSaveAsTemplate} disabled={!templateName.trim() || createTemplate.isPending}>
@@ -843,23 +847,25 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
               保存前有其他用户更新了该报告，本地未保存修改无法自动合并。建议先复制留存，再加载最新内容。
             </DialogDescription>
           </DialogHeader>
-          <div className="max-h-[45vh] space-y-2 overflow-y-auto">
-            {conflict && conflict.changed.length > 0 ? (
-              conflict.changed.map((c, i) => (
-                <div key={i} className="rounded-md border border-border">
-                  <div className="border-b bg-muted/50 px-3 py-1.5 text-body font-medium text-foreground">{c.title}</div>
-                  <p className="whitespace-pre-wrap px-3 py-2 text-caption leading-relaxed text-muted-foreground">
-                    {c.text || '（空内容）'}
-                  </p>
-                </div>
-              ))
-            ) : (
-              <p className="py-2 text-body text-muted-foreground">未检测到正文文本修改。</p>
-            )}
-            {conflict?.structural && (
-              <p className="text-caption text-warning-strong">另有章节结构调整（新增/删除/排序/标题）未在上方列出。</p>
-            )}
-          </div>
+          <DialogBody className="grid gap-4">
+            <div className="space-y-2">
+              {conflict && conflict.changed.length > 0 ? (
+                conflict.changed.map((c, i) => (
+                  <div key={i} className="rounded-md border border-border">
+                    <div className="border-b bg-muted/50 px-3 py-1.5 text-body font-medium text-foreground">{c.title}</div>
+                    <p className="whitespace-pre-wrap px-3 py-2 text-caption leading-relaxed text-muted-foreground">
+                      {c.text || '（空内容）'}
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <p className="py-2 text-body text-muted-foreground">未检测到正文文本修改。</p>
+              )}
+              {conflict?.structural && (
+                <p className="text-caption text-warning-strong">另有章节结构调整（新增/删除/排序/标题）未在上方列出。</p>
+              )}
+            </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConflict(null)}>取消</Button>
             <Button variant="outline" onClick={copyConflictText}>
@@ -1041,30 +1047,32 @@ function VersionSnapshotDialog({ reportId, version, onClose }: {
             {version ? ` · ${new Date(version.changedAt).toLocaleString('zh-CN')}${version.changedBy ? ` · ${version.changedBy}` : ''}` : ''}
           </DialogDescription>
         </DialogHeader>
-        {isLoading ? (
-          <div className="py-12 text-center text-sm text-muted-foreground">快照加载中…</div>
-        ) : !snapshot ? (
-          <div className="py-12 text-center text-sm text-muted-foreground">快照内容为空</div>
-        ) : (
-          <div className="space-y-4">
-            {snapshot.snapshot.sections.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">该版本未留存章节内容</p>
-            ) : (
-              snapshot.snapshot.sections.map((s, idx) => (
-                <div key={idx} className="rounded-md border border-border">
-                  <div className="border-b bg-muted/50 px-3 py-1.5 text-body font-medium text-foreground">
-                    {idx + 1}. {s.title}
+        <DialogBody className="grid gap-4">
+          {isLoading ? (
+            <div className="py-12 text-center text-sm text-muted-foreground">快照加载中…</div>
+          ) : !snapshot ? (
+            <div className="py-12 text-center text-sm text-muted-foreground">快照内容为空</div>
+          ) : (
+            <div className="space-y-4">
+              {snapshot.snapshot.sections.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">该版本未留存章节内容</p>
+              ) : (
+                snapshot.snapshot.sections.map((s, idx) => (
+                  <div key={idx} className="rounded-md border border-border">
+                    <div className="border-b bg-muted/50 px-3 py-1.5 text-body font-medium text-foreground">
+                      {idx + 1}. {s.title}
+                    </div>
+                    {s.missing ? (
+                      <p className="px-3 py-2 text-body text-muted-foreground">（该单项分析原文已删除）</p>
+                    ) : (
+                      <RichTextEditor value={s.content} onChange={() => {}} editable={false} className="rounded-none border-0" />
+                    )}
                   </div>
-                  {s.missing ? (
-                    <p className="px-3 py-2 text-body text-muted-foreground">（该单项分析原文已删除）</p>
-                  ) : (
-                    <RichTextEditor value={s.content} onChange={() => {}} editable={false} className="rounded-none border-0" />
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        )}
+                ))
+              )}
+            </div>
+          )}
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>关闭</Button>
         </DialogFooter>

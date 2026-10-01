@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Dialog,
-  DialogContent,
+  DialogContent, DialogBody,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -711,173 +711,175 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
             <DialogTitle>编辑公式</DialogTitle>
             <DialogDescription>{editing ? `${editing.name}（${editing.code}）` : ''}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">公式表达式</label>
-            <Input value={draftFormula} onChange={(e) => setDraftFormula(e.target.value)} placeholder="如：{PL0201} - {PL020101}" maxLength={500} />
-            {draftFormula.trim() && (
-              <p className="text-xs text-muted-foreground">中文预览：{renderColoredFormula(draftFormula)}</p>
-            )}
-            {draftFormula.trim() && (
-              formulaValidation.valid ? (
-                <p className="text-xs text-success-strong">语法校验通过</p>
-              ) : (
-                <div className="space-y-0.5">
-                  {formulaValidation.messages.map((m, i) => (
-                    <p key={i} className="text-xs text-destructive">{m}</p>
-                  ))}
-                </div>
-              )
-            )}
-            {/* 插入科目（可选期间维度后缀） */}
-            <div className="flex flex-wrap items-center gap-2">
-              <Input
-                placeholder="搜索科目..."
-                value={subjectSearch}
-                onChange={(e) => setSubjectSearch(e.target.value)}
-                className="h-9 w-full sm:w-[150px]"
-              />
-              <Select value="" onValueChange={(code) => insertSubject(code)}>
-                <SelectTrigger className="min-w-0 flex-1 sm:min-w-[180px]">
-                  <SelectValue placeholder="选择科目插入" />
-                </SelectTrigger>
-                <SelectContent className="max-h-[280px]">
-                  {filteredSubjectsForInsert.map((s) => (
-                    <SelectItem key={String(s.code)} value={String(s.code)}>
-                      <span className="font-mono text-xs">{String(s.code)}</span> {String(s.name)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={insertDim || 'current'} onValueChange={(v) => setInsertDim(v === 'current' ? '' : v)}>
-                <SelectTrigger className="w-[130px] flex-none" title="插入时附加的期间维度后缀">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="current">当前列（默认）</SelectItem>
-                  {Object.entries(DIM_LABELS).map(([dim, label]) => (
-                    <SelectItem key={dim} value={dim}>@{label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button variant="ghost" size="sm" onClick={() => setDraftFormula((prev) => (prev ? `${prev} {DAYS_YTD}` : '{DAYS_YTD}'))}>
-                插入天数
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              操作数用 {'{指标编码}'} 引用，仅支持四则运算与括号；跨期间引用用 {'{编码@维度}'}（如 @YEAR_START 年初、@YTD_ACTUAL 本年累计），{'{DAYS_YTD}'} 为财年累计天数；
-              含跨期间引用的公式在“年初/上年年初”列不参与计算。保存时后端校验并检测依赖环；清空输入并保存可移除公式。
-            </p>
-            {saveError && <p className="text-xs text-destructive">{saveError}</p>}
-          </div>
-
-          {/* AI 生成公式：自然语言描述 → 建议公式（可一键填入，保存前仍走后端校验） */}
-          <div className="space-y-2 rounded-lg border border-dashed p-3">
-            <label className="flex items-center gap-1 text-sm font-medium">
-              <Sparkles className="h-4 w-4 text-primary" /> AI 生成公式
-            </label>
-            <div className="flex flex-wrap items-center gap-2">
-              <Input
-                value={aiDesc}
-                onChange={(e) => setAiDesc(e.target.value)}
-                placeholder="用自然语言描述计算口径，如：毛利率 = 毛利 / 收入"
-                className="min-w-[200px] flex-1"
-                maxLength={200}
-              />
-              <Button variant="outline" size="sm" onClick={handleAiFormula} disabled={generateFormula.isPending || !aiDesc.trim()}>
-                {generateFormula.isPending ? '生成中...' : '生成'}
-              </Button>
-              {aiResult?.suggestedFormula && (
-                <Button variant="secondary" size="sm" onClick={() => setDraftFormula(aiResult.suggestedFormula as string)}>
-                  应用到公式
+          <DialogBody className="grid gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">公式表达式</label>
+              <Input value={draftFormula} onChange={(e) => setDraftFormula(e.target.value)} placeholder="如：{PL0201} - {PL020101}" maxLength={500} />
+              {draftFormula.trim() && (
+                <p className="text-xs text-muted-foreground">中文预览：{renderColoredFormula(draftFormula)}</p>
+              )}
+              {draftFormula.trim() && (
+                formulaValidation.valid ? (
+                  <p className="text-xs text-success-strong">语法校验通过</p>
+                ) : (
+                  <div className="space-y-0.5">
+                    {formulaValidation.messages.map((m, i) => (
+                      <p key={i} className="text-xs text-destructive">{m}</p>
+                    ))}
+                  </div>
+                )
+              )}
+              {/* 插入科目（可选期间维度后缀） */}
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  placeholder="搜索科目..."
+                  value={subjectSearch}
+                  onChange={(e) => setSubjectSearch(e.target.value)}
+                  className="h-9 w-full sm:w-[150px]"
+                />
+                <Select value="" onValueChange={(code) => insertSubject(code)}>
+                  <SelectTrigger className="min-w-0 flex-1 sm:min-w-[180px]">
+                    <SelectValue placeholder="选择科目插入" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[280px]">
+                    {filteredSubjectsForInsert.map((s) => (
+                      <SelectItem key={String(s.code)} value={String(s.code)}>
+                        <span className="font-mono text-xs">{String(s.code)}</span> {String(s.name)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={insertDim || 'current'} onValueChange={(v) => setInsertDim(v === 'current' ? '' : v)}>
+                  <SelectTrigger className="w-[130px] flex-none" title="插入时附加的期间维度后缀">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="current">当前列（默认）</SelectItem>
+                    {Object.entries(DIM_LABELS).map(([dim, label]) => (
+                      <SelectItem key={dim} value={dim}>@{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button variant="ghost" size="sm" onClick={() => setDraftFormula((prev) => (prev ? `${prev} {DAYS_YTD}` : '{DAYS_YTD}'))}>
+                  插入天数
                 </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                操作数用 {'{指标编码}'} 引用，仅支持四则运算与括号；跨期间引用用 {'{编码@维度}'}（如 @YEAR_START 年初、@YTD_ACTUAL 本年累计），{'{DAYS_YTD}'} 为财年累计天数；
+                含跨期间引用的公式在“年初/上年年初”列不参与计算。保存时后端校验并检测依赖环；清空输入并保存可移除公式。
+              </p>
+              {saveError && <p className="text-xs text-destructive">{saveError}</p>}
+            </div>
+
+            {/* AI 生成公式：自然语言描述 → 建议公式（可一键填入，保存前仍走后端校验） */}
+            <div className="space-y-2 rounded-lg border border-dashed p-3">
+              <label className="flex items-center gap-1 text-sm font-medium">
+                <Sparkles className="h-4 w-4 text-primary" /> AI 生成公式
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  value={aiDesc}
+                  onChange={(e) => setAiDesc(e.target.value)}
+                  placeholder="用自然语言描述计算口径，如：毛利率 = 毛利 / 收入"
+                  className="min-w-[200px] flex-1"
+                  maxLength={200}
+                />
+                <Button variant="outline" size="sm" onClick={handleAiFormula} disabled={generateFormula.isPending || !aiDesc.trim()}>
+                  {generateFormula.isPending ? '生成中...' : '生成'}
+                </Button>
+                {aiResult?.suggestedFormula && (
+                  <Button variant="secondary" size="sm" onClick={() => setDraftFormula(aiResult.suggestedFormula as string)}>
+                    应用到公式
+                  </Button>
+                )}
+              </div>
+              {aiError && <p className="text-xs text-destructive">{aiError}</p>}
+              {aiResult && (
+                <div className="rounded-md bg-muted/50 p-2 text-xs">
+                  <p className="break-all font-mono">{aiResult.suggestedFormula ?? '未生成建议公式，请补充描述后重试'}</p>
+                  {aiResult.explanation && <p className="mt-1 text-muted-foreground">{aiResult.explanation}</p>}
+                  {aiResult.warnings.length > 0 && <p className="mt-1 text-warning-500">警告：{aiResult.warnings.join('；')}</p>}
+                </div>
               )}
             </div>
-            {aiError && <p className="text-xs text-destructive">{aiError}</p>}
-            {aiResult && (
-              <div className="rounded-md bg-muted/50 p-2 text-xs">
-                <p className="break-all font-mono">{aiResult.suggestedFormula ?? '未生成建议公式，请补充描述后重试'}</p>
-                {aiResult.explanation && <p className="mt-1 text-muted-foreground">{aiResult.explanation}</p>}
-                {aiResult.warnings.length > 0 && <p className="mt-1 text-warning-500">警告：{aiResult.warnings.join('；')}</p>}
+
+            {/* 试算 */}
+            <div className="space-y-2 rounded-lg border border-dashed p-3">
+              <label className="flex items-center gap-1 text-sm font-medium">
+                <Calculator className="h-4 w-4 text-primary" /> 公式试算
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <Select value={trialCompany} onValueChange={setTrialCompany}>
+                  <SelectTrigger className="w-full max-w-full sm:w-[200px]">
+                    <SelectValue placeholder="选择公司" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部公司（汇总）</SelectItem>
+                    {companies.map((c) => (
+                      <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={trialPeriod} onValueChange={setTrialPeriod}>
+                  <SelectTrigger className="w-full max-w-full sm:w-[150px]">
+                    <SelectValue placeholder="期间" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">最新期间（自动）</SelectItem>
+                    {(trialPeriods || []).map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" size="sm" onClick={handleTrial} disabled={trialCalc.isPending || !draftFormula.trim()}>
+                  {trialCalc.isPending ? '试算中...' : '试算'}
+                </Button>
               </div>
-            )}
-          </div>
-
-          {/* 试算 */}
-          <div className="space-y-2 rounded-lg border border-dashed p-3">
-            <label className="flex items-center gap-1 text-sm font-medium">
-              <Calculator className="h-4 w-4 text-primary" /> 公式试算
-            </label>
-            <div className="flex flex-wrap items-center gap-2">
-              <Select value={trialCompany} onValueChange={setTrialCompany}>
-                <SelectTrigger className="w-full max-w-full sm:w-[200px]">
-                  <SelectValue placeholder="选择公司" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全部公司（汇总）</SelectItem>
-                  {companies.map((c) => (
-                    <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={trialPeriod} onValueChange={setTrialPeriod}>
-                <SelectTrigger className="w-full max-w-full sm:w-[150px]">
-                  <SelectValue placeholder="期间" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">最新期间（自动）</SelectItem>
-                  {(trialPeriods || []).map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Button variant="outline" size="sm" onClick={handleTrial} disabled={trialCalc.isPending || !draftFormula.trim()}>
-                {trialCalc.isPending ? '试算中...' : '试算'}
-              </Button>
+              {trialResult && (
+                <div className="rounded-md bg-muted/50 p-2 text-xs">
+                  <p>期间：{trialResult.period ?? '—'}　试算结果：<span className="font-num font-semibold">{trialResult.value ?? '无法计算'}</span></p>
+                  {trialResult.operands.length > 0 && (
+                    <p className="mt-1 text-muted-foreground">
+                      取值：{trialResult.operands.map((o) => `${o.name}=${o.value}`).join('，')}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
-            {trialResult && (
-              <div className="rounded-md bg-muted/50 p-2 text-xs">
-                <p>期间：{trialResult.period ?? '—'}　试算结果：<span className="font-num font-semibold">{trialResult.value ?? '无法计算'}</span></p>
-                {trialResult.operands.length > 0 && (
-                  <p className="mt-1 text-muted-foreground">
-                    取值：{trialResult.operands.map((o) => `${o.name}=${o.value}`).join('，')}
-                  </p>
-                )}
+
+            {/* 依赖影响分析 */}
+            <div className="space-y-2 rounded-lg border border-dashed p-3">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium">依赖影响分析</label>
+                <Button variant="ghost" size="sm" onClick={() => setShowDeps((v) => !v)} disabled={!editing}>
+                  {showDeps ? '收起' : '展开'}
+                </Button>
               </div>
-            )}
-          </div>
-
-          {/* 依赖影响分析 */}
-          <div className="space-y-2 rounded-lg border border-dashed p-3">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium">依赖影响分析</label>
-              <Button variant="ghost" size="sm" onClick={() => setShowDeps((v) => !v)} disabled={!editing}>
-                {showDeps ? '收起' : '展开'}
-              </Button>
+              {showDeps && editing && <DependencyPanel metricId={editing.id} />}
             </div>
-            {showDeps && editing && <DependencyPanel metricId={editing.id} />}
-          </div>
 
-          {/* 智能推荐（结构聚合） */}
-          {editing && (() => {
-            const structural = structuralFormulaOf(editing.code)
-            return (
-              <div className="space-y-2 rounded-lg border border-dashed p-3">
-                <label className="flex items-center gap-1 text-sm font-medium">
-                  <Sparkles className="h-4 w-4 text-primary" /> 智能推荐
-                </label>
-                <p className="text-xs text-muted-foreground">基于科目层级结构推荐（父子求和），点击“应用”后可试算并保存。</p>
-                {structural ? (
-                  <div className="flex flex-col gap-2 rounded-md bg-muted/50 p-2 text-xs sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0">
-                      <p><Badge variant="secondary">结构聚合</Badge> <span className="ml-1 text-muted-foreground">父子求和</span></p>
-                      <p className="mt-1 break-all font-mono">{formatFormula(structural)}</p>
+            {/* 智能推荐（结构聚合） */}
+            {editing && (() => {
+              const structural = structuralFormulaOf(editing.code)
+              return (
+                <div className="space-y-2 rounded-lg border border-dashed p-3">
+                  <label className="flex items-center gap-1 text-sm font-medium">
+                    <Sparkles className="h-4 w-4 text-primary" /> 智能推荐
+                  </label>
+                  <p className="text-xs text-muted-foreground">基于科目层级结构推荐（父子求和），点击“应用”后可试算并保存。</p>
+                  {structural ? (
+                    <div className="flex flex-col gap-2 rounded-md bg-muted/50 p-2 text-xs sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <p><Badge variant="secondary">结构聚合</Badge> <span className="ml-1 text-muted-foreground">父子求和</span></p>
+                        <p className="mt-1 break-all font-mono">{formatFormula(structural)}</p>
+                      </div>
+                      <Button size="sm" variant="secondary" className="self-end sm:self-auto" onClick={() => setDraftFormula(structural)}>应用</Button>
                     </div>
-                    <Button size="sm" variant="secondary" className="self-end sm:self-auto" onClick={() => setDraftFormula(structural)}>应用</Button>
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground">该科目无直接子级，暂无结构推荐；可手动编辑公式。</p>
-                )}
-              </div>
-            )
-          })()}
+                  ) : (
+                    <p className="text-xs text-muted-foreground">该科目无直接子级，暂无结构推荐；可手动编辑公式。</p>
+                  )}
+                </div>
+              )
+            })()}
+          </DialogBody>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditing(null)}>取消</Button>
@@ -895,62 +897,64 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
             <DialogTitle>新建计算指标</DialogTitle>
             <DialogDescription>从科目体系选择科目创建计算类指标，编码/名称/类别自动带出，可选填公式（后端校验）</DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            <div className="space-y-1">
-              <label className="text-sm font-medium">选择科目</label>
-              <Select value={createForm.subjectCode} onValueChange={(code) => setCreateForm({ ...createForm, subjectCode: code })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="选择科目体系内的科目" />
-                </SelectTrigger>
-                <SelectContent className="max-h-[280px]">
-                  {creatableSubjects.map((s) => (
-                    <SelectItem key={s.code} value={s.code}>
-                      <span className="font-mono text-xs">{s.code}</span> {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {creatableSubjects.length === 0 && (
-                <p className="text-xs text-muted-foreground">当前类型下所有科目均已有对应指标；如需将数据类指标改为计算类，请使用「转为计算类」。</p>
-              )}
-              {createForm.subjectCode && (() => {
-                const s = creatableSubjects.find((x) => x.code === createForm.subjectCode)
-                return s ? (
-                  <p className="text-xs text-muted-foreground">编码：<span className="font-mono">{s.code}</span>　名称：{s.name}　类别：{s.category}</p>
-                ) : null
-              })()}
+          <DialogBody className="grid gap-4">
+            <div className="space-y-2">
+              <div className="space-y-1">
+                <label className="text-sm font-medium">选择科目</label>
+                <Select value={createForm.subjectCode} onValueChange={(code) => setCreateForm({ ...createForm, subjectCode: code })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择科目体系内的科目" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[280px]">
+                    {creatableSubjects.map((s) => (
+                      <SelectItem key={s.code} value={s.code}>
+                        <span className="font-mono text-xs">{s.code}</span> {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {creatableSubjects.length === 0 && (
+                  <p className="text-xs text-muted-foreground">当前类型下所有科目均已有对应指标；如需将数据类指标改为计算类，请使用「转为计算类」。</p>
+                )}
+                {createForm.subjectCode && (() => {
+                  const s = creatableSubjects.find((x) => x.code === createForm.subjectCode)
+                  return s ? (
+                    <p className="text-xs text-muted-foreground">编码：<span className="font-mono">{s.code}</span>　名称：{s.name}　类别：{s.category}</p>
+                  ) : null
+                })()}
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">公式（可选）</label>
+                <Input value={createForm.formula} onChange={(e) => setCreateForm({ ...createForm, formula: e.target.value })} placeholder="如：{PL020101} / {PL02}" maxLength={500} />
+                {createForm.formula.trim() && (
+                  <p className="text-xs text-muted-foreground">中文预览：{formatFormula(createForm.formula)}</p>
+                )}
+                {createForm.formula.trim() && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          const res = await trialCalc.mutateAsync({ formula: createForm.formula.trim(), period: trialPeriod || undefined })
+                          setTrialResult(res)
+                        } catch { /* ignore */ }
+                      }}
+                      disabled={trialCalc.isPending}
+                    >
+                      {trialCalc.isPending ? '试算中...' : '试算'}
+                    </Button>
+                    {trialResult && (
+                      <span className="text-xs text-muted-foreground">
+                        结果：{trialResult.value ?? '无法计算'}（期间 {trialResult.period ?? '—'}）
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+              {createError && <p className="text-xs text-destructive">{createError}</p>}
             </div>
-            <div className="space-y-1">
-              <label className="text-sm font-medium">公式（可选）</label>
-              <Input value={createForm.formula} onChange={(e) => setCreateForm({ ...createForm, formula: e.target.value })} placeholder="如：{PL020101} / {PL02}" maxLength={500} />
-              {createForm.formula.trim() && (
-                <p className="text-xs text-muted-foreground">中文预览：{formatFormula(createForm.formula)}</p>
-              )}
-              {createForm.formula.trim() && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={async () => {
-                      try {
-                        const res = await trialCalc.mutateAsync({ formula: createForm.formula.trim(), period: trialPeriod || undefined })
-                        setTrialResult(res)
-                      } catch { /* ignore */ }
-                    }}
-                    disabled={trialCalc.isPending}
-                  >
-                    {trialCalc.isPending ? '试算中...' : '试算'}
-                  </Button>
-                  {trialResult && (
-                    <span className="text-xs text-muted-foreground">
-                      结果：{trialResult.value ?? '无法计算'}（期间 {trialResult.period ?? '—'}）
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-            {createError && <p className="text-xs text-destructive">{createError}</p>}
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
             <Button onClick={submitCreate} disabled={createMetric.isPending || !createForm.subjectCode}>
@@ -967,33 +971,35 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
             <DialogTitle>数据类指标转为计算类</DialogTitle>
             <DialogDescription>选择一个数据类指标转换为计算类，可选填初始公式（后端校验并写入版本历史）。</DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            <div className="space-y-1">
-              <label className="text-sm font-medium">选择指标</label>
-              <Select value={convertForm.id} onValueChange={(id) => setConvertForm({ ...convertForm, id })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="选择数据类指标" />
-                </SelectTrigger>
-                <SelectContent className="max-h-[280px]">
-                  {dataMetrics.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      <span className="font-mono text-xs">{m.code}</span> {m.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {dataMetrics.length === 0 && <p className="text-xs text-muted-foreground">当前类型下没有可转换的数据类指标</p>}
+          <DialogBody className="grid gap-4">
+            <div className="space-y-2">
+              <div className="space-y-1">
+                <label className="text-sm font-medium">选择指标</label>
+                <Select value={convertForm.id} onValueChange={(id) => setConvertForm({ ...convertForm, id })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择数据类指标" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[280px]">
+                    {dataMetrics.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        <span className="font-mono text-xs">{m.code}</span> {m.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {dataMetrics.length === 0 && <p className="text-xs text-muted-foreground">当前类型下没有可转换的数据类指标</p>}
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">初始公式（可选）</label>
+                <Input value={convertForm.formula} onChange={(e) => setConvertForm({ ...convertForm, formula: e.target.value })} placeholder="如：{PL020101} / {PL02}" maxLength={500} />
+                {convertForm.formula.trim() && (
+                  <p className="text-xs text-muted-foreground">中文预览：{formatFormula(convertForm.formula)}</p>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">转换后该指标将参与公式计算体系；未填公式时可事后在列表中编辑。</p>
+              {convertError && <p className="text-xs text-destructive">{convertError}</p>}
             </div>
-            <div className="space-y-1">
-              <label className="text-sm font-medium">初始公式（可选）</label>
-              <Input value={convertForm.formula} onChange={(e) => setConvertForm({ ...convertForm, formula: e.target.value })} placeholder="如：{PL020101} / {PL02}" maxLength={500} />
-              {convertForm.formula.trim() && (
-                <p className="text-xs text-muted-foreground">中文预览：{formatFormula(convertForm.formula)}</p>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground">转换后该指标将参与公式计算体系；未填公式时可事后在列表中编辑。</p>
-            {convertError && <p className="text-xs text-destructive">{convertError}</p>}
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConvertOpen(false)}>取消</Button>
             <Button onClick={submitConvertToCalc} disabled={convertMetric.isPending || !convertForm.id}>

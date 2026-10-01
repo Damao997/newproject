@@ -9,7 +9,7 @@ import { MonthPicker } from '@/components/ui/month-picker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Dialog,
-  DialogContent,
+  DialogContent, DialogBody,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -191,147 +191,149 @@ export function ConsolidationAdjustDialog({ open, onClose }: ConsolidationAdjust
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
-          {/* ===== 第一步：选择单体公司 ===== */}
-          <section className="space-y-2">
-            <SectionTitle>1. 选择内部交易的两个单体公司</SectionTitle>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-              <div className="flex-1 space-y-1">
-                <Label htmlFor="ca-single-a">单体公司 A</Label>
-                <Select value={singleA} onValueChange={(v) => { setSingleA(v); resetMatch() }}>
-                  <SelectTrigger id="ca-single-a"><SelectValue placeholder="选择单体公司 A" /></SelectTrigger>
-                  <SelectContent className="max-h-[280px]">
-                    {entityCompanies.filter((c) => c.code !== singleB).map((c) => (
-                      <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="mx-auto h-9 w-9 shrink-0 text-muted-foreground sm:mx-0"
-                aria-label="交换两个单体公司"
-                title="交换两个单体公司"
-                onClick={handleSwap}
-                disabled={!singleA && !singleB}
-              >
-                <ArrowLeftRight className="h-4 w-4" />
-              </Button>
-              <div className="flex-1 space-y-1">
-                <Label htmlFor="ca-single-b">单体公司 B</Label>
-                <Select value={singleB} onValueChange={(v) => { setSingleB(v); resetMatch() }}>
-                  <SelectTrigger id="ca-single-b"><SelectValue placeholder="选择单体公司 B" /></SelectTrigger>
-                  <SelectContent className="max-h-[280px]">
-                    {entityCompanies.filter((c) => c.code !== singleA).map((c) => (
-                      <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <Button type="button" variant="outline" size="sm" onClick={handleMatch} disabled={!singleA || !singleB || matchMutation.isPending} className="mt-1">
-              <Link2 className="mr-1 h-4 w-4" />
-              {matchMutation.isPending ? '匹配中...' : '匹配汇总主体'}
-            </Button>
-          </section>
-
-          {/* ===== 第二步：匹配到的汇总主体（默认全选可取消） ===== */}
-          {matchedSummaries.length > 0 && (
+        <DialogBody className="grid gap-4">
+          <div className="space-y-4">
+            {/* ===== 第一步：选择单体公司 ===== */}
             <section className="space-y-2">
-              <SectionTitle>2. 匹配到的汇总主体（作用于其汇总口径）</SectionTitle>
-              <div className="space-y-1.5 rounded-lg border bg-muted/20 p-3">
-                {matchedSummaries.map((s) => (
-                  <label key={s.code} className="flex cursor-pointer items-center gap-2 text-sm">
-                    <Checkbox
-                      size="sm"
-                      className="shrink-0"
-                      checked={selectedSummaries.has(s.code)}
-                      onCheckedChange={() => toggleSummary(s.code)}
-                    />
-                    <span className="min-w-0 flex-1 truncate" title={s.code}>{s.name}</span>
-                    {!s.isInternalElimination && (
-                      <Badge variant="outline" className="shrink-0 text-micro text-muted-foreground">映射未标记内部抵消</Badge>
-                    )}
-                  </label>
-                ))}
+              <SectionTitle>1. 选择内部交易的两个单体公司</SectionTitle>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="flex-1 space-y-1">
+                  <Label htmlFor="ca-single-a">单体公司 A</Label>
+                  <Select value={singleA} onValueChange={(v) => { setSingleA(v); resetMatch() }}>
+                    <SelectTrigger id="ca-single-a"><SelectValue placeholder="选择单体公司 A" /></SelectTrigger>
+                    <SelectContent className="max-h-[280px]">
+                      {entityCompanies.filter((c) => c.code !== singleB).map((c) => (
+                        <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="mx-auto h-9 w-9 shrink-0 text-muted-foreground sm:mx-0"
+                  aria-label="交换两个单体公司"
+                  title="交换两个单体公司"
+                  onClick={handleSwap}
+                  disabled={!singleA && !singleB}
+                >
+                  <ArrowLeftRight className="h-4 w-4" />
+                </Button>
+                <div className="flex-1 space-y-1">
+                  <Label htmlFor="ca-single-b">单体公司 B</Label>
+                  <Select value={singleB} onValueChange={(v) => { setSingleB(v); resetMatch() }}>
+                    <SelectTrigger id="ca-single-b"><SelectValue placeholder="选择单体公司 B" /></SelectTrigger>
+                    <SelectContent className="max-h-[280px]">
+                      {entityCompanies.filter((c) => c.code !== singleA).map((c) => (
+                        <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground">将按勾选的汇总主体分别创建抵消记录；两个单体无共同汇总主体时无法抵消。</p>
+              <Button type="button" variant="outline" size="sm" onClick={handleMatch} disabled={!singleA || !singleB || matchMutation.isPending} className="mt-1">
+                <Link2 className="mr-1 h-4 w-4" />
+                {matchMutation.isPending ? '匹配中...' : '匹配汇总主体'}
+              </Button>
             </section>
-          )}
 
-          {/* ===== 第三步：抵消设置（科目/期间/金额） ===== */}
-          <section className="space-y-2">
-            <SectionTitle>3. 抵消设置（每个选中的汇总主体各建一条记录）</SectionTitle>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {/* ===== 第二步：匹配到的汇总主体（默认全选可取消） ===== */}
+            {matchedSummaries.length > 0 && (
+              <section className="space-y-2">
+                <SectionTitle>2. 匹配到的汇总主体（作用于其汇总口径）</SectionTitle>
+                <div className="space-y-1.5 rounded-lg border bg-muted/20 p-3">
+                  {matchedSummaries.map((s) => (
+                    <label key={s.code} className="flex cursor-pointer items-center gap-2 text-sm">
+                      <Checkbox
+                        size="sm"
+                        className="shrink-0"
+                        checked={selectedSummaries.has(s.code)}
+                        onCheckedChange={() => toggleSummary(s.code)}
+                      />
+                      <span className="min-w-0 flex-1 truncate" title={s.code}>{s.name}</span>
+                      {!s.isInternalElimination && (
+                        <Badge variant="outline" className="shrink-0 text-micro text-muted-foreground">映射未标记内部抵消</Badge>
+                      )}
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">将按勾选的汇总主体分别创建抵消记录；两个单体无共同汇总主体时无法抵消。</p>
+              </section>
+            )}
+
+            {/* ===== 第三步：抵消设置（科目/期间/金额） ===== */}
+            <section className="space-y-2">
+              <SectionTitle>3. 抵消设置（每个选中的汇总主体各建一条记录）</SectionTitle>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label>调整期间（单月） <span className="text-destructive">*</span></Label>
+                  <MonthPicker className="w-full" value={period} onChange={(v) => { setPeriod(v); setError(null); setDone(null) }} availablePeriods={availablePeriods} placeholder="选择月份" />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="ca-amount">抵消金额（万元） <span className="text-destructive">*</span></Label>
+                  <Input
+                    id="ca-amount"
+                    type="number"
+                    step="0.01"
+                    placeholder="如 -100（负=调减、正=调增）"
+                    value={amountInput}
+                    aria-invalid={!!amountError}
+                    className={cn(amountError && 'border-destructive focus-visible:ring-destructive')}
+                    onChange={(e) => { setAmountInput(e.target.value); setError(null); setDone(null) }}
+                  />
+                  {amountError && <p className="text-xs text-destructive">{amountError}</p>}
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">内部交易抵消通常为调减（负数）：汇总口径的现金流入/流出将被扣减该金额。</p>
               <div className="space-y-1">
-                <Label>调整期间（单月） <span className="text-destructive">*</span></Label>
-                <MonthPicker className="w-full" value={period} onChange={(v) => { setPeriod(v); setError(null); setDone(null) }} availablePeriods={availablePeriods} placeholder="选择月份" />
+                <Label>模板类型</Label>
+                <Select value={templateType} onValueChange={(v) => { setTemplateType(v as 'operating' | 'static' | 'cashflow'); setAccountCode(''); setError(null); setDone(null) }}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="operating">经营数据</SelectItem>
+                    <SelectItem value="static">静态数据</SelectItem>
+                    <SelectItem value="cashflow">现金流量表</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1">
-                <Label htmlFor="ca-amount">抵消金额（万元） <span className="text-destructive">*</span></Label>
-                <Input
-                  id="ca-amount"
-                  type="number"
-                  step="0.01"
-                  placeholder="如 -100（负=调减、正=调增）"
-                  value={amountInput}
-                  aria-invalid={!!amountError}
-                  className={cn(amountError && 'border-destructive focus-visible:ring-destructive')}
-                  onChange={(e) => { setAmountInput(e.target.value); setError(null); setDone(null) }}
+                <Label>科目（data 类叶子，如现金流流入/流出） <span className="text-destructive">*</span></Label>
+                <SubjectPicker
+                  options={subjectOptions}
+                  value={accountCode}
+                  onChange={(code) => { setAccountCode(code); setError(null); setDone(null) }}
+                  placeholder="选择要抵消的科目"
                 />
-                {amountError && <p className="text-xs text-destructive">{amountError}</p>}
+                <p className="text-xs text-muted-foreground">计算类科目由公式计算、比率类科目不可调整，已从候选中排除。</p>
               </div>
-            </div>
-            <p className="text-xs text-muted-foreground">内部交易抵消通常为调减（负数）：汇总口径的现金流入/流出将被扣减该金额。</p>
-            <div className="space-y-1">
-              <Label>模板类型</Label>
-              <Select value={templateType} onValueChange={(v) => { setTemplateType(v as 'operating' | 'static' | 'cashflow'); setAccountCode(''); setError(null); setDone(null) }}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="operating">经营数据</SelectItem>
-                  <SelectItem value="static">静态数据</SelectItem>
-                  <SelectItem value="cashflow">现金流量表</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>科目（data 类叶子，如现金流流入/流出） <span className="text-destructive">*</span></Label>
-              <SubjectPicker
-                options={subjectOptions}
-                value={accountCode}
-                onChange={(code) => { setAccountCode(code); setError(null); setDone(null) }}
-                placeholder="选择要抵消的科目"
+            </section>
+
+            {/* ===== 调整原因 ===== */}
+            <section className="space-y-1">
+              <Label htmlFor="ca-reason">调整原因 <span className="text-destructive">*</span></Label>
+              <Textarea
+                id="ca-reason"
+                rows={2}
+                placeholder="如：A 公司与 B 公司间内部资金划转，汇总口径抵消重复计入的经营活动现金流入/流出"
+                value={reason}
+                aria-invalid={!!reasonError}
+                className={cn(reasonError && 'border-destructive focus-visible:ring-destructive')}
+                onChange={(e) => setReason(e.target.value)}
+                onBlur={() => setReasonTouched(true)}
               />
-              <p className="text-xs text-muted-foreground">计算类科目由公式计算、比率类科目不可调整，已从候选中排除。</p>
-            </div>
-          </section>
+              {reasonError && <p className="text-xs text-destructive">{reasonError}</p>}
+            </section>
 
-          {/* ===== 调整原因 ===== */}
-          <section className="space-y-1">
-            <Label htmlFor="ca-reason">调整原因 <span className="text-destructive">*</span></Label>
-            <Textarea
-              id="ca-reason"
-              rows={2}
-              placeholder="如：A 公司与 B 公司间内部资金划转，汇总口径抵消重复计入的经营活动现金流入/流出"
-              value={reason}
-              aria-invalid={!!reasonError}
-              className={cn(reasonError && 'border-destructive focus-visible:ring-destructive')}
-              onChange={(e) => setReason(e.target.value)}
-              onBlur={() => setReasonTouched(true)}
-            />
-            {reasonError && <p className="text-xs text-destructive">{reasonError}</p>}
-          </section>
+            {/* ===== 反馈 ===== */}
+            <section className="space-y-2">
+              {done && <FeedbackAlert kind="success">{done}</FeedbackAlert>}
+              {error && <FeedbackAlert kind="error">{error}</FeedbackAlert>}
+            </section>
+          </div>
+        </DialogBody>
 
-          {/* ===== 反馈 ===== */}
-          <section className="space-y-2">
-            {done && <FeedbackAlert kind="success">{done}</FeedbackAlert>}
-            {error && <FeedbackAlert kind="error">{error}</FeedbackAlert>}
-          </section>
-        </div>
-
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter>
           <Button variant="outline" onClick={onClose}>关闭</Button>
           <Button variant="destructive" onClick={handleSubmit} disabled={createMutation.isPending || matchMutation.isPending}>
             {createMutation.isPending ? '提交中...' : '执行抵消调整'}
