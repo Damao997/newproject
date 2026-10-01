@@ -59,12 +59,17 @@ export const useAiOverviewStore = create<AiOverviewStore>()((set, get) => ({
   finish: (key, seq, text) =>
     set((s) => {
       if (s.requestSeq[key] !== seq) return s
+      const slot = s.slots[key]
+      // 终态不可逆：error 后不得被 finish 覆盖（失败不冒充成功）
+      if (!slot || slot.status !== 'streaming') return s
       return { slots: { ...s.slots, [key]: { status: 'done', preview: text } } }
     }),
 
   fail: (key, seq, msg) =>
     set((s) => {
       if (s.requestSeq[key] !== seq) return s
+      const slot = s.slots[key]
+      if (!slot || slot.status === 'done') return s
       return { slots: { ...s.slots, [key]: { status: 'error', preview: '', error: msg } } }
     }),
 

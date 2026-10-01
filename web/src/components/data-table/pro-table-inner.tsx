@@ -34,7 +34,7 @@ function resolveScrollY(maxHeight: string, viewportH: number): number | undefine
   // calc(100dvh - Npx - Mpx)：吸顶页面传入的限高表达式（视口高 - 吸顶偏移 - 底部留白），支持 1~2 个减项
   const calc = /^calc\(100dvh(?: - (\d+(?:\.\d+)?)px){1,2}\)$/.exec(maxHeight.trim())
   if (calc) {
-    const total = calc.slice(1).reduce<number>((sum, n) => sum + (n ? Number(n) : 0), 0)
+    const total = [...maxHeight.matchAll(/- (\d+(?:\.\d+)?)px/g)].reduce((sum, match) => sum + Number(match[1]), 0)
     return Math.max(120, Math.round(viewportH - total))
   }
   return undefined
@@ -120,7 +120,7 @@ export default function ProTableInner<T extends Record<string, unknown>>({
   return (
     // 浅灰圆角容器（与 DataTable 一致的视觉分割）：内层白底 + overflow-hidden 裁剪 antd 表格直角为圆角
     // 主题：由 App 根部 AntdProvider 统一提供（同配方上提，含 Table 组件级 token）
-    <div className="overflow-hidden rounded-card bg-muted/40 p-2">
+    <div className="relative isolate min-w-0 max-w-full overflow-hidden rounded-card bg-muted/40 p-2">
       <div className="overflow-hidden rounded-sm bg-background">
         <ProTable<T>
           columns={proColumns}
@@ -130,7 +130,7 @@ export default function ProTableInner<T extends Record<string, unknown>>({
           options={false}
           toolBarRender={false}
           virtual
-          scroll={{ y: scrollY ?? 480 }}
+          scroll={{ x: Math.max(1000, columns.length * 140), y: scrollY ?? 480 }}
           pagination={false}
           size={tableSize}
           loading={loading}

@@ -51,6 +51,8 @@ export async function recordAudit(input: AuditInput, traceId?: string): Promise<
         ip: input.ip ?? null,
         // 兜底截断：即使调用方直接传入未处理的 UA，也不会因超长导致写入失败
         userAgent: input.userAgent ? input.userAgent.slice(0, USER_AGENT_MAX) : null,
+        // traceId 落库：与访问日志/统一响应贯穿，便于按请求溯源关联
+        traceId: traceId ? traceId.slice(0, 64) : null,
       },
     })
   } catch (err) {

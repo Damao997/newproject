@@ -3,7 +3,11 @@
   "private": true,
   "scripts": {
     "prepare": "husky",
-    "dev:up": "node scripts/dev-up.mjs"
+    "dev:up": "node scripts/dev-up.mjs",
+    "verify": "npm run verify:server && npm run verify:web",
+    "verify:server": "npm run check:naming --prefix server && npm run typecheck --prefix server && npm test --prefix server && npm run build --prefix server",
+    "verify:web": "npm run lint --prefix web && npm test --prefix web && npm run test:static --prefix web && npm run build --prefix web",
+    "verify:coverage": "npm run verify:server:coverage --prefix server && npm run verify:web --prefix web"
   },
   "devDependencies": {
     "husky": "^9.1.0",

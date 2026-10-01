@@ -13,6 +13,7 @@ export default function CollectionsPlansPage() {
 
   return (
     <PageContainer
+      viewportBound
       title="催收计划"
       description="应收款客商台账与催收计划状态流转，逾期任务优先介入"
       stickyHeader

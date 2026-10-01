@@ -80,13 +80,14 @@ describe('TransactionService.exportAgingAnalysis（真实 DB）', () => {
     const buffer = await TransactionService.exportAgingAnalysis({ groupBy: 'type', period: '2098-06', companyCodes: [CO_A, CO_B] })
     const sheet = await readSheet(buffer)
     // 表头
-    expect(sheet[0]).toEqual(['公司', '往来类型', '期末余额', '1个月', '2个月', '3个月', '4-6月', '半年以上', '1年至2年', '2年至3年', '3年以上'])
+    // 表头（数值统一万元，M10）
+    expect(sheet[0]).toEqual(['公司', '往来类型', '期末余额（万元）', '1个月（万元）', '2个月（万元）', '3个月（万元）', '4-6月（万元）', '半年以上（万元）', '1年至2年（万元）', '2年至3年（万元）', '3年以上（万元）'])
     // 行序：CO_A（组内余额倒序）→ CO_A 小计 → CO_B → CO_B 小计 → 合计
-    expect(sheet[1]).toEqual(['导出测试A', TYPE, '400', '60', '40', '0', '100', '0', '120', '80', '0'])
-    expect(sheet[2]).toEqual(['导出测试A 小计', '', '400', '60', '40', '0', '100', '0', '120', '80', '0'])
-    expect(sheet[3]).toEqual(['导出测试B', TYPE, '700', '0', '0', '0', '0', '500', '0', '0', '200'])
-    expect(sheet[4]).toEqual(['导出测试B 小计', '', '700', '0', '0', '0', '0', '500', '0', '0', '200'])
-    expect(sheet[5]).toEqual(['合计', '', '1100', '60', '40', '0', '100', '500', '120', '80', '200'])
+    expect(sheet[1]).toEqual(['导出测试A', TYPE, '0.04', '0.01', '0', '0', '0.01', '0', '0.01', '0.01', '0'])
+    expect(sheet[2]).toEqual(['导出测试A 小计', '', '0.04', '0.01', '0', '0', '0.01', '0', '0.01', '0.01', '0'])
+    expect(sheet[3]).toEqual(['导出测试B', TYPE, '0.07', '0', '0', '0', '0', '0.05', '0', '0', '0.02'])
+    expect(sheet[4]).toEqual(['导出测试B 小计', '', '0.07', '0', '0', '0', '0', '0.05', '0', '0', '0.02'])
+    expect(sheet[5]).toEqual(['合计', '', '0.11', '0.01', '0', '0', '0.01', '0.05', '0.01', '0.01', '0.02'])
     expect(sheet).toHaveLength(6)
   })
 
@@ -94,20 +95,20 @@ describe('TransactionService.exportAgingAnalysis（真实 DB）', () => {
     if (!dbReady) return
     const buffer = await TransactionService.exportAgingAnalysis({ groupBy: 'counterparty', period: '2098-06', companyCodes: [CO_A] })
     const sheet = await readSheet(buffer)
-    expect(sheet[0]).toEqual(['公司', '往来类型', '往来对象', '期末余额', '1个月', '2个月', '3个月', '4-6月', '半年以上', '1年至2年', '2年至3年', '3年以上'])
-    expect(sheet[1]).toEqual(['导出测试A', TYPE, CP_B, '300', '0', '0', '0', '100', '0', '120', '80', '0'])
-    expect(sheet[2]).toEqual(['导出测试A', TYPE, CP_A, '100', '60', '40', '0', '0', '0', '0', '0', '0'])
-    expect(sheet[3]).toEqual(['导出测试A 小计', '', '', '400', '60', '40', '0', '100', '0', '120', '80', '0'])
-    expect(sheet[4]).toEqual(['合计', '', '', '400', '60', '40', '0', '100', '0', '120', '80', '0'])
+    expect(sheet[0]).toEqual(['公司', '往来类型', '往来对象', '期末余额（万元）', '1个月（万元）', '2个月（万元）', '3个月（万元）', '4-6月（万元）', '半年以上（万元）', '1年至2年（万元）', '2年至3年（万元）', '3年以上（万元）'])
+    expect(sheet[1]).toEqual(['导出测试A', TYPE, CP_B, '0.03', '0', '0', '0', '0.01', '0', '0.01', '0.01', '0'])
+    expect(sheet[2]).toEqual(['导出测试A', TYPE, CP_A, '0.01', '0.01', '0', '0', '0', '0', '0', '0', '0'])
+    expect(sheet[3]).toEqual(['导出测试A 小计', '', '', '0.04', '0.01', '0', '0', '0.01', '0', '0.01', '0.01', '0'])
+    expect(sheet[4]).toEqual(['合计', '', '', '0.04', '0.01', '0', '0', '0.01', '0', '0.01', '0.01', '0'])
   })
 
   it('subtotalOnly：仅保留小计与合计行', async () => {
     if (!dbReady) return
     const buffer = await TransactionService.exportAgingAnalysis({ groupBy: 'type', period: '2098-06', companyCodes: [CO_A, CO_B], subtotalOnly: true })
     const sheet = await readSheet(buffer)
-    expect(sheet[1]).toEqual(['导出测试A 小计', '', '400', '60', '40', '0', '100', '0', '120', '80', '0'])
-    expect(sheet[2]).toEqual(['导出测试B 小计', '', '700', '0', '0', '0', '0', '500', '0', '0', '200'])
-    expect(sheet[3]).toEqual(['合计', '', '1100', '60', '40', '0', '100', '500', '120', '80', '200'])
+    expect(sheet[1]).toEqual(['导出测试A 小计', '', '0.04', '0.01', '0', '0', '0.01', '0', '0.01', '0.01', '0'])
+    expect(sheet[2]).toEqual(['导出测试B 小计', '', '0.07', '0', '0', '0', '0', '0.05', '0', '0', '0.02'])
+    expect(sheet[3]).toEqual(['合计', '', '0.11', '0.01', '0', '0', '0.01', '0.05', '0.01', '0.01', '0.02'])
     expect(sheet).toHaveLength(4)
   })
 

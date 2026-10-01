@@ -16,16 +16,16 @@
 ## 开发与生产并行工作流
 
 ```
-main（生产，受保护，部署基准 = 生产目录 D:\ZJYPH-prod 只检出 tag）
+main（生产，受保护，部署基准 = 生产目录 D:\ZJYPHFA 只检出 tag）
   └── develop（开发集成）
         └── feat/*、fix/*、refactor/*（短期分支）
   └── hotfix/*（从 main 派生）
 ```
 
 - **日常开发**：从 `develop` 派生 `feat/xxx` → 开发验证 → 合并回 `develop`
-- **发布**：`develop` 走 PR 合并进 `main` → 打 tag（v2026.08.x）→ 生产目录 `git checkout <tag>` → 运行 `server/scripts/deploy-zjyph.ps1`（备份 → 迁移 → 构建 → 重启 → 健康检查 → 冒烟）
+- **发布**：`develop` 走 PR 合并进 `main` → CI 通过 → 打 tag（v2026.08.x）→ 生产目录运行 `server/scripts/deploy-zjyph.ps1 -Tag <tag>`（检出 → 构建 → 备份 → 迁移 → 重启 → 健康检查 → 冒烟）
 - **紧急修复**：从 `main` 派生 `hotfix/xxx` → 修复 → 分别合回 `main` 与 `develop`
-- **部署基准**：生产目录（`D:\ZJYPH-prod`）永远从 main 的 tag 更新，严禁检出未发布的 develop/main 代码
+- **部署基准**：生产目录（`D:\ZJYPHFA`）永远从 main 的 tag 更新，严禁检出未发布的 develop/main 代码
 
 ## 提交信息规范（Conventional Commits）
 

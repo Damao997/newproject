@@ -290,7 +290,12 @@ describe('服务层集成（真实 DB）', () => {
 
   it('管理：批量覆盖角色权限（事务生效、superadmin 保护、缺角色整体拒绝）', async () => {
     if (!dbReady) return
-    const ctx = { userId: 'integration-test', traceId: 'integration', actorRoleId: 'integration-role' }
+    const actor = await basePrisma.user.findFirst({
+      where: { status: 'active' },
+      select: { id: true, roleId: true },
+    })
+    expect(actor).toBeTruthy()
+    const ctx = { userId: actor!.id, traceId: 'integration', actorRoleId: actor!.roleId }
     // 创建两个临时自定义角色（避免污染预置角色），结束后清理
     const suffix = Date.now().toString(36)
     const r1 = await AdminService.createRole({ code: `batch_a_${suffix}`, name: `批量A-${suffix}` }, ctx)

@@ -261,8 +261,12 @@ router.patch('/collections/customers/:companyCode/:counterpartyCode', requirePer
 }))
 
 // ===== 业务员与客商选项 =====
+// 业务员不参与 scope 扩展的 companyCode 注入（模型已无该字段），
+// 数据范围由 salesmanIdsByCompanies 经 SalesmanCompany 解析；
+// 未传公司参数时默认取操作者全部授权单体，避免受限用户看到全部业务员
 router.get('/salesmen', requirePermission('transactions:salesmen:view', 'view'), asyncHandler(async (req, res) => {
   const companyCodes = await normalizeCompanies(req.authUser as AuthUserContext, req.query.companyCode)
+    ?? await resolveCompanyCodes(scopeOf(req.authUser as AuthUserContext))
   const data = await CollectionService.listSalesmen({ companyCodes })
   sendOk(res, data)
 }))
@@ -287,6 +291,7 @@ router.post('/salesmen', requirePermission('transactions:salesmen:create', 'crea
 // 业务员管理（独立管理页面：列表/编辑/停用）
 router.get('/salesmen/manage', requirePermission('transactions:salesmen:view', 'view'), asyncHandler(async (req, res) => {
   const companyCodes = await normalizeCompanies(req.authUser as AuthUserContext, req.query.companyCode)
+    ?? await resolveCompanyCodes(scopeOf(req.authUser as AuthUserContext))
   const data = await CollectionService.listSalesmenManage({
     companyCodes,
     keyword: req.query.keyword ? String(req.query.keyword) : undefined,

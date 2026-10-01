@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import {
   Dialog,
-  DialogContent,
+  DialogContent, DialogBody,
   DialogDescription,
   DialogHeader,
   DialogTitle,
@@ -73,28 +73,30 @@ function ProfileDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
           <DialogTitle>个人资料</DialogTitle>
           <DialogDescription>当前登录账号的基础信息（只读）</DialogDescription>
         </DialogHeader>
-        <div className="flex items-center gap-3">
-          <Avatar className="h-12 w-12">
-            <AvatarFallback className="bg-muted text-lg text-foreground">{u ? getInitials(u.name) : 'U'}</AvatarFallback>
-          </Avatar>
-          <div className="min-w-0">
-            <p className="truncate text-base font-medium text-foreground">{u?.name ?? '未登录'}</p>
-            <p className="text-xs text-muted-foreground">{u ? getRoleName(u.role) : '—'}</p>
+        <DialogBody className="grid gap-4">
+          <div className="flex items-center gap-3">
+            <Avatar className="h-12 w-12">
+              <AvatarFallback className="bg-muted text-lg text-foreground">{u ? getInitials(u.name) : 'U'}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <p className="truncate text-base font-medium text-foreground">{u?.name ?? '未登录'}</p>
+              <p className="text-xs text-muted-foreground">{u ? getRoleName(u.role) : '—'}</p>
+            </div>
           </div>
-        </div>
-        <dl className="grid grid-cols-[88px_1fr] gap-x-3 gap-y-2.5 rounded-md border border-border/60 bg-muted/30 p-4 text-sm">
-          <dt className="text-muted-foreground">登录名</dt>
-          <dd className="text-foreground">{u?.username ?? '—'}</dd>
-          <dt className="text-muted-foreground">角色</dt>
-          <dd className="text-foreground">{u ? getRoleName(u.role) : '—'}</dd>
-          <dt className="text-muted-foreground">账号状态</dt>
-          <dd className="text-foreground">{u ? (u.status === 'active' ? '正常' : '停用') : '—'}</dd>
-          <dt className="text-muted-foreground">最近登录</dt>
-          <dd className="text-foreground">{fmtDateTime(u?.lastLoginAt)}</dd>
-          <dt className="text-muted-foreground">创建时间</dt>
-          <dd className="text-foreground">{fmtDateTime(u?.createdAt)}</dd>
-        </dl>
-        {isError && <p className="text-xs text-muted-foreground">在线资料获取失败，当前展示本地缓存信息。</p>}
+          <dl className="grid grid-cols-[88px_1fr] gap-x-3 gap-y-2.5 rounded-md border border-border/60 bg-muted/30 p-4 text-sm">
+            <dt className="text-muted-foreground">登录名</dt>
+            <dd className="text-foreground">{u?.username ?? '—'}</dd>
+            <dt className="text-muted-foreground">角色</dt>
+            <dd className="text-foreground">{u ? getRoleName(u.role) : '—'}</dd>
+            <dt className="text-muted-foreground">账号状态</dt>
+            <dd className="text-foreground">{u ? (u.status === 'active' ? '正常' : '停用') : '—'}</dd>
+            <dt className="text-muted-foreground">最近登录</dt>
+            <dd className="text-foreground">{fmtDateTime(u?.lastLoginAt)}</dd>
+            <dt className="text-muted-foreground">创建时间</dt>
+            <dd className="text-foreground">{fmtDateTime(u?.createdAt)}</dd>
+          </dl>
+          {isError && <p className="text-xs text-muted-foreground">在线资料获取失败，当前展示本地缓存信息。</p>}
+        </DialogBody>
       </DialogContent>
     </Dialog>
   )

@@ -1,9 +1,11 @@
 # 浙江壹品慧财年经营数据分析平台 — AI 开发规范
 
 > **项目身份**：`yipinhui_finance_analytics` | 内部管理口径财务数据平台 | "Excel 进、看板/报表出"
-> **技术栈**：Vite+React18+Radix UI+Shadcn/ui+Tailwind+Zustand+ECharts+TipTap / Express4.19+Prisma+PostgreSQL15+JWT
+> **技术栈**：Vite5+React19+TypeScript6+Radix UI+Shadcn/ui+Tailwind+Zustand5+ECharts6+TipTap3 / Express4.21+TypeScript5.6+Prisma5+PostgreSQL17+JWT
 > **AI 引擎**：DeepSeek API（SSE 流式） | **部署**：生产为内网 Windows 非 Docker（PM2 + 嵌入式 PG17，权威口径见 docs/plans/环境管理规范.md；Docker 为预留迁移路径） | **单位**：万元/人民币/简体中文
-> **受众**：本文件由 AI Agent 自动加载，是日常开发的唯一权威规范入口。
+> **受众**：本文件是日常开发的权威规范；`AGENTS.md` 作为跨 Agent 自动加载入口并指向本文件。
+
+> **生产发版强制入口**：凡涉及生产部署、上线、回滚、正式 tag 或 `main` 发布，必须先阅读 [`docs/plans/生产部署发布流程.md`](docs/plans/生产部署发布流程.md)，再按文档调用 `server/scripts/deploy-zjyph.ps1`。生产目录 `D:\ZJYPHFA` 只允许获取 tag、备份、部署、巡检和回滚；不得在生产目录开发、测试、stash 或直接 pull。
 
 ---
 
@@ -54,19 +56,19 @@
 
 | 层 | 前端 | 后端 |
 |----|------|------|
-| 框架 | Vite 5 + React 18 + TypeScript 5.5 | Express 4.19+ + TypeScript 5.5 |
+| 框架 | Vite 5 + React 19 + TypeScript 6 | Express 4.21 + TypeScript 5.6 |
 | UI | Radix UI + Shadcn/ui + Ant Design 5（仅 ProTable：虚拟滚动/固定列） | — |
 | 样式 | Tailwind CSS 3（preflight: false，Design Token CSS 变量化） | — |
-| 状态/缓存 | Zustand v4 + React Query v5 | — |
-| 图表 | ECharts 5.5 + echarts-for-react | 趋势/同环比/账龄堆叠/饼图 |
+| 状态/缓存 | Zustand v5 + React Query v5 | — |
+| 图表 | ECharts 6 + echarts-for-react | 趋势/同环比/账龄堆叠/饼图 |
 | 动画 | 纯 CSS Animation（transition + @keyframes，无第三方动画库） | 微交互 active:scale/hover 过渡 |
 | 图标 | Lucide React（全站图标统一） | 工具栏/导航/状态图标 16–20px |
-| Design Token | CSS 变量化（--primary: 221 83% 53% → #2563EB） | — |
+| Design Token | CSS 变量化（--primary: 29 100% 53% → #FF830F 品牌橙；侧边栏三风格 light/gradient/dark，交互色随风格切换，见 frontend-design-proposal.md v4.0） | — |
 | 富文本 | TipTap（报告编辑+AI 润色） | — |
 | ORM | — | Prisma v5（provider=postgresql） |
-| 数据库 | — | PostgreSQL 15+（生产）/ SQLite（本地开发） |
+| 数据库 | — | PostgreSQL 17（开发与 Windows 生产均使用隔离的嵌入式实例） |
 | 鉴权 | — | JWT（access 15min + refresh 7day + 轮转 + blacklist） |
-| 校验 | Zod（前后端共享，收敛到后端） | Zod + multer（fileFilter + 50MB + MIME 校验） |
+| 校验 | Zod（前后端共享，收敛到后端） | Zod + multer（数据导入 200MB / 报告图片 50MB + MIME 校验） |
 | 精度 | decimal.js | — |
 | Excel | SheetJS（预览）+ ExcelJS（导出） | SheetJS/ExcelJS（后端流式解析+unpivot） |
 | 导出 | ExcelJS + jsPDF + docx + file-saver | — |
@@ -264,6 +266,7 @@ formatMoneyWan(value) // → "1,234.56"（财务指标/数据管理，纯数值�
 | **写认证/权限/安全配置** | Read `docs/references/security.md` + `docs/plans/安全与权限规范.md` |
 | **写 AI 润色/分析/脱敏** | Read `docs/plans/AI模块规范.md` |
 | **配 Docker/Nginx/备份/部署/环境分离** | Read `docs/plans/环境管理规范.md`（当前实际方案，权威）+ `docs/references/devops.md` + `docs/plans/部署运维规范.md` |
+| **生产发布/上线/回滚/tag** | **先 Read `docs/plans/生产部署发布流程.md`（强制）**，再按 `server/scripts/deploy-zjyph.ps1` 执行；同时 Read `docs/plans/环境管理规范.md` |
 | **配错误码/响应格式/异常处理** | Read `docs/references/errorcode.md` |
 | **配日志/traceId/监控** | Read `docs/references/observability.md` |
 | **配性能优化/缓存** | Read `docs/references/performance.md` |
@@ -291,4 +294,5 @@ formatMoneyWan(value) // → "1,234.56"（财务指标/数据管理，纯数值�
 | `docs/plans/AI模块规范.md` | 双管道脱敏、四层 Prompt 防护、事实约束注入 |
 | `docs/plans/部署运维规范.md` | docker-compose、nginx、备份脚本、监控 |
 | `docs/plans/环境管理规范.md` | **开发与生产环境分离总纲**：分支管理、物理隔离、数据库分离、部署/备份/恢复、安全与运维规范（当前实际方案） |
+| `docs/plans/生产部署发布流程.md` | **生产上线唯一操作流程**：PR/CI/tag 门禁、备份、部署、验收、失败处理、回滚与 Agent 发版协议 |
 | `docs/plans/标准操作流程手册.md` | **场景化操作手册**：开发/修bug/提交/发布/脚本使用/数据流向/异常恢复的逐步操作（与规范互补） |

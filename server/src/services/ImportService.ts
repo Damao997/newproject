@@ -10,6 +10,8 @@ import { parseMergedWorkbook, type MergedSheetType } from '../lib/excel-import-m
 import { parseTransactionWorkbook, type TransactionParseResult, type TransactionResolvers, type TransactionSheetInfo, type TransactionImportIssue, type TransactionParseSummary } from '../lib/transaction-import'
 import { fyLabelOfDate, parsePeriod, formatPeriod } from '../lib/period'
 import { assertCompaniesInScope, effectiveScope } from '../lib/scope-guard'
+import { withoutScope } from '../middleware/scope-context'
+import { advisoryLockKey as sharedAdvisoryLockKey } from '../lib/advisory-lock'
 import { latestOperatingPeriod, latestStaticPeriod, latestCashflowPeriod } from './IndicatorsService'
 import { markInvalidatedReclassifications } from './ReclassificationService'
 
@@ -272,6 +274,21 @@ async function backupStaticRows(
  * 空批次自动归档、置目标批次 active；删除/归档联动重分类失效标记（cashflow 无重分类体系，不联动）。
  * transaction/budget/inventory 分支与旧逻辑一致。
  */
+/** 激活门禁：仅解析校验通过（success）且未清除的批次可激活；partial/failed/processing 一律拒绝（须修正后重新导入），旧生效数据不受影响 */
+function assertActivatable(b: { lifecycleStatus: string; status: string }): void {
+  if (b.lifecycleStatus === 'purged') throw errors.conflict('已清除的批次不可激活')
+  if (b.status !== 'success') {
+    throw errors.conflict(`批次解析状态为 ${b.status}，仅校验通过的批次（success）可激活`)
+  }
+}
+
+/**
+ * 由替换范围键生成稳定的 bigint advisory lock 键（共享实现见 lib/advisory-lock.ts）
+ */
+function advisoryLockKey(range: string): string {
+  return sharedAdvisoryLockKey(range)
+}
+
 async function activateInTx(
   tx: Prisma.TransactionClient,
   b: { id: string; dataType: ImportDataType; fiscalYear: string | null; coverageJson: unknown },
@@ -291,6 +308,14 @@ async function activateInTx(
       if (b.dataType === 'operating' || b.dataType === 'cashflow') {
         const rows = await tx.factOperating.findMany({ where: { batchId: b.id }, distinct: ['period'], select: { period: true } })
         const newPeriods = rows.map((r) => r.period)
+        // 影响范围守卫：目标批次与将被替换的旧批次数据行均须落在操作者数据范围内
+        // （批次激活是批次级状态变更，Prisma scope 扩展无法覆盖，须显式校验）。
+        // 查询须 withoutScope：守卫本身要看到范围外行才能判定越权，否则被自身 scope 过滤致盲
+        const [targetCompanyRows, oldCompanyRows] = await withoutScope(() => Promise.all([
+          tx.factOperating.findMany({ where: { batchId: b.id }, distinct: ['companyCode'], select: { companyCode: true } }),
+          tx.factOperating.findMany({ where: { batchId: { in: oldIds }, period: { in: newPeriods } }, distinct: ['companyCode'], select: { companyCode: true } }),
+        ]))
+        await assertCompaniesInScope([...targetCompanyRows, ...oldCompanyRows].map((r) => r.companyCode), undefined, '激活导入批次')
         if (newPeriods.length > 0) {
           const backed = await backupOperatingRows(tx, b.id, { batchId: { in: oldIds }, period: { in: newPeriods } }, b.dataType === 'cashflow' ? 'cashflow' : 'operating')
           deleted += backed.count
@@ -313,6 +338,12 @@ async function activateInTx(
         if (newMonths.size > 0) {
           const oldSnaps = await tx.factStatic.findMany({ where: { batchId: { in: oldIds } }, distinct: ['snapshotDate'], select: { snapshotDate: true } })
           const delDates = oldSnaps.map((s) => s.snapshotDate).filter((d) => newMonths.has(ymOfDate(d)))
+          // 影响范围守卫（同 operating：查询须 withoutScope 看见范围外行）
+          const [targetCompanyRows, oldCompanyRows] = await withoutScope(() => Promise.all([
+            tx.factStatic.findMany({ where: { batchId: b.id }, distinct: ['companyCode'], select: { companyCode: true } }),
+            tx.factStatic.findMany({ where: { batchId: { in: oldIds }, snapshotDate: { in: delDates } }, distinct: ['companyCode'], select: { companyCode: true } }),
+          ]))
+          await assertCompaniesInScope([...targetCompanyRows, ...oldCompanyRows].map((r) => r.companyCode), undefined, '激活导入批次')
           if (delDates.length > 0) {
             const backed = await backupStaticRows(tx, b.id, { batchId: { in: oldIds }, snapshotDate: { in: delDates } })
             deleted += backed.count
@@ -353,6 +384,24 @@ async function activateInTx(
       }
       const mergedKeys = [...keySet.values()]
       if (mergedKeys.length > 0) {
+        // 影响范围守卫（同 operating）：目标批次/申报范围与将被替换的旧批次三元组均须在数据范围内
+        const declaredCompanies = parseDeclaredCoverage(b.coverageJson).map((d) => d.companyCode)
+        const [targetCompanyRows, oldCompanyRows] = await withoutScope(() => Promise.all([
+          tx.transactionDetail.findMany({ where: { batchId: b.id }, distinct: ['companyCode'], select: { companyCode: true } }),
+          tx.transactionDetail.findMany({
+            where: {
+              batchId: { in: oldIds },
+              OR: mergedKeys.map((k) => ({ companyCode: k.companyCode, period: k.period, transactionType: k.transactionType })),
+            },
+            distinct: ['companyCode'],
+            select: { companyCode: true },
+          }),
+        ]))
+        await assertCompaniesInScope(
+          [...new Set([...targetCompanyRows, ...oldCompanyRows].map((r) => r.companyCode).concat(declaredCompanies))],
+          undefined,
+          '激活导入批次',
+        )
         const res = await tx.transactionDetail.deleteMany({
           where: {
             batchId: { in: oldIds },
@@ -384,6 +433,23 @@ async function activateInTx(
         ? { dataType: b.dataType, lifecycleStatus: 'active' as const, fiscalYear: b.fiscalYear, id: { not: b.id } }
         : { dataType: b.dataType, lifecycleStatus: 'active' as const, id: { not: b.id } }
     const toArchive = await tx.importBatch.findMany({ where: archiveWhere, select: { id: true } })
+    // 影响范围守卫：budget/inventory 为整体替换，目标批次与被归档旧批次覆盖的公司均须在数据范围内（查询 withoutScope）
+    const oldIdsAll = toArchive.map((x) => x.id)
+    const [targetCompanyRows, oldCompanyRows] = await withoutScope(() => Promise.all([
+      b.dataType === 'inventory'
+        ? tx.inventoryRecord.findMany({ where: { batchId: b.id }, distinct: ['companyCode'], select: { companyCode: true } })
+        : tx.factBudget.findMany({ where: { batchId: b.id }, distinct: ['companyCode'], select: { companyCode: true } }),
+      oldIdsAll.length === 0
+        ? Promise.resolve([] as { companyCode: string }[])
+        : b.dataType === 'inventory'
+          ? tx.inventoryRecord.findMany({ where: { batchId: { in: oldIdsAll } }, distinct: ['companyCode'], select: { companyCode: true } })
+          : tx.factBudget.findMany({ where: { batchId: { in: oldIdsAll } }, distinct: ['companyCode'], select: { companyCode: true } }),
+    ]))
+    await assertCompaniesInScope(
+      [...new Set([...targetCompanyRows, ...oldCompanyRows].map((r) => r.companyCode).concat(declaredCoverageCompanies(b.coverageJson)))],
+      undefined,
+      '激活导入批次',
+    )
     await tx.importBatch.updateMany({
       where: archiveWhere,
       data: { lifecycleStatus: 'archived' },
@@ -1270,10 +1336,24 @@ export const ImportService = {
   async activate(id: string, userId: string, traceId?: string): Promise<ImportBatchDto> {
     const b = await prisma.importBatch.findUnique({ where: { id } })
     if (!b) throw errors.notFound('导入批次不存在')
-    if (b.lifecycleStatus === 'active') return toDto(b)
+    assertActivatable(b)
+
+    // 按替换范围（dataType，budget 另按财年）串行化：并发激活同范围批次时互斥，
+    // 避免两个事务都在对方生效前读取旧集合导致双份有效数据
+    // ::bigint 显式转换：Prisma 以 numeric/text 传参，不转换时部分 PG 签名无法解析；
+    // IS NULL 包裹：pg_advisory_xact_lock 返回 void，Prisma $queryRaw 无法反序列化 void 列，须转为 boolean
+    const lock = advisoryLockKey(`import-activate:${b.dataType}:${b.dataType === 'budget' ? (b.fiscalYear ?? '') : ''}`)
 
     const { updated, replacedPeriods, deletedRows, markedInvalidations } = await prisma.$transaction(async (tx) => {
-      const impact = await activateInTx(tx, b, userId)
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${lock}::bigint) IS NULL AS locked`
+      // 锁内重读：并发激活同一批次时，后到者在锁定后看到已 active 直接幂等返回
+      const current = await tx.importBatch.findUnique({ where: { id } })
+      if (!current) throw errors.notFound('导入批次不存在')
+      if (current.lifecycleStatus === 'active') {
+        return { updated: current, replacedPeriods: [] as string[], deletedRows: 0, markedInvalidations: 0 }
+      }
+      assertActivatable(current)
+      const impact = await activateInTx(tx, current, userId)
       const batch = await tx.importBatch.findUniqueOrThrow({ where: { id } })
       return { updated: batch, ...impact }
     })

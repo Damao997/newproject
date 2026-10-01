@@ -44,6 +44,7 @@ export function streamAI(path: string, body: unknown, handlers: StreamHandlers):
       let buffer = ''
       let finalText = ''
       let doneEmitted = false
+      let errorEmitted = false
 
       for (;;) {
         const { done, value } = await reader.read()
@@ -65,6 +66,7 @@ export function streamAI(path: string, body: unknown, handlers: StreamHandlers):
               doneEmitted = true
               handlers.onDone?.(finalText)
             } else if (evt.type === 'error') {
+              errorEmitted = true
               handlers.onError?.(evt.error ?? 'AI 服务错误')
             }
           } catch {
@@ -72,7 +74,11 @@ export function streamAI(path: string, body: unknown, handlers: StreamHandlers):
           }
         }
       }
-      if (!doneEmitted) handlers.onDone?.(finalText)
+      // 终态不可逆：error 已上报时 EOF 不得再触发 onDone（失败不冒充成功）；
+      // 无 done 也无 error 的异常断流按错误处理（不冒充完成）
+      if (!doneEmitted && !errorEmitted) {
+        handlers.onError?.('AI 流式响应异常中断')
+      }
     } catch (err) {
       if ((err as Error).name === 'AbortError') return
       handlers.onError?.((err as Error).message || 'AI 请求异常')

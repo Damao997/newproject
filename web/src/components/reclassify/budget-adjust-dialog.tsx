@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Dialog,
-  DialogContent,
+  DialogContent, DialogBody,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -308,231 +308,233 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
           {readonly && meta && <ReadonlyLogMeta meta={meta} />}
         </DialogHeader>
 
-        <div className="space-y-4">
-          {/* ===== 数据范围 ===== */}
-          <section className="space-y-2">
-            <SectionTitle>数据范围</SectionTitle>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <DialogBody className="grid gap-4">
+          <div className="space-y-4">
+            {/* ===== 数据范围 ===== */}
+            <section className="space-y-2">
+              <SectionTitle>数据范围</SectionTitle>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label htmlFor="ba-fiscal-year">调整财年（全年） <span className="text-destructive">*</span></Label>
+                  {readonly
+                    ? <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">{fiscalYear || '-'}</div>
+                    : (
+                      <Select value={fiscalYear} onValueChange={(v) => { setFiscalYear(v); reset() }}>
+                        <SelectTrigger id="ba-fiscal-year"><SelectValue placeholder="选择财年" /></SelectTrigger>
+                        <SelectContent>
+                          {fiscalYears.map((fy) => (
+                            <SelectItem key={fy} value={fy}>{fy}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="ba-company">公司</Label>
+                  {readonly
+                    ? <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">{displayNameMap.get(companyCode) ?? companyCode}</div>
+                    : (
+                      <Select value={companyCode} onValueChange={(v) => { setCompanyCode(v); reset() }}>
+                        <SelectTrigger id="ba-company"><SelectValue placeholder="选择公司" /></SelectTrigger>
+                        <SelectContent className="max-h-[280px]">
+                          {entityCompanies.map((c) => (
+                            <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                </div>
+              </div>
+            </section>
+
+            {/* ===== 调整设置：调整方式 + 按方式展示调减侧/调增侧 ===== */}
+            <section className="space-y-2">
+              <SectionTitle>调整设置</SectionTitle>
               <div className="space-y-1">
-                <Label htmlFor="ba-fiscal-year">调整财年（全年） <span className="text-destructive">*</span></Label>
+                <Label htmlFor="ba-adjust-mode">调整方式</Label>
                 {readonly
-                  ? <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">{fiscalYear || '-'}</div>
+                  ? <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">{ADJUST_MODE_LABEL[adjustMode] ?? adjustMode}</div>
                   : (
-                    <Select value={fiscalYear} onValueChange={(v) => { setFiscalYear(v); reset() }}>
-                      <SelectTrigger id="ba-fiscal-year"><SelectValue placeholder="选择财年" /></SelectTrigger>
+                    <Select value={adjustMode} onValueChange={(v) => handleModeChange(v as AdjustMode)}>
+                      <SelectTrigger id="ba-adjust-mode"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {fiscalYears.map((fy) => (
-                          <SelectItem key={fy} value={fy}>{fy}</SelectItem>
+                        {(Object.keys(ADJUST_MODE_LABEL) as AdjustMode[]).map((m) => (
+                          <SelectItem key={m} value={m}>{ADJUST_MODE_LABEL[m]}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   )}
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="ba-company">公司</Label>
-                {readonly
-                  ? <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">{displayNameMap.get(companyCode) ?? companyCode}</div>
-                  : (
-                    <Select value={companyCode} onValueChange={(v) => { setCompanyCode(v); reset() }}>
-                      <SelectTrigger id="ba-company"><SelectValue placeholder="选择公司" /></SelectTrigger>
-                      <SelectContent className="max-h-[280px]">
-                        {entityCompanies.map((c) => (
-                          <SelectItem key={c.code} value={c.code}>{displayNameMap.get(c.code) ?? c.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-              </div>
-            </div>
-          </section>
-
-          {/* ===== 调整设置：调整方式 + 按方式展示调减侧/调增侧 ===== */}
-          <section className="space-y-2">
-            <SectionTitle>调整设置</SectionTitle>
-            <div className="space-y-1">
-              <Label htmlFor="ba-adjust-mode">调整方式</Label>
-              {readonly
-                ? <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">{ADJUST_MODE_LABEL[adjustMode] ?? adjustMode}</div>
-                : (
-                  <Select value={adjustMode} onValueChange={(v) => handleModeChange(v as AdjustMode)}>
-                    <SelectTrigger id="ba-adjust-mode"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {(Object.keys(ADJUST_MODE_LABEL) as AdjustMode[]).map((m) => (
-                        <SelectItem key={m} value={m}>{ADJUST_MODE_LABEL[m]}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-            </div>
-            <div className={cn('grid grid-cols-1 gap-3', adjustMode === 'both' && 'sm:grid-cols-2')}>
-              {/* 调减侧（decrease/both） */}
-              {adjustMode !== 'increase' && (
-              <div className="space-y-2 rounded-lg border border-destructive/25 bg-destructive/[0.06] p-3">
-                <p className="flex items-center gap-1.5 text-sm font-medium text-destructive">
-                  <MinusCircle className="h-4 w-4" />
-                  调减侧（源科目）
-                </p>
-                <div className="space-y-1">
-                  <Label>源科目 <span className="text-destructive">*</span></Label>
-                  {readonly
-                    ? (sourceAccountCode
-                        ? <div className="flex h-9 items-center gap-2 rounded-md border bg-muted/40 px-3 text-sm">
-                            <span className="font-mono text-xs text-muted-foreground">{sourceAccountCode}</span>
-                            <span className="truncate">{subjectOptions.find((s) => s.code === sourceAccountCode)?.name ?? sourceAccountCode}</span>
-                          </div>
-                        : <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground">-</div>)
-                    : (
-                      <SubjectPicker
-                        options={sourceOptions}
-                        value={sourceAccountCode}
-                        onChange={(code) => { setSourceAccountCode(code); reset() }}
-                        excludeCode={targetAccountCode}
-                        placeholder="选择要调减的科目"
-                      />
-                    )}
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="ba-decrease">{decSideQty ? '调减数量（整数）' : '调减金额（万元）'} <span className="text-destructive">*</span></Label>
-                  <Input
-                    id="ba-decrease"
-                    type="number"
-                    min={0}
-                    step={decSideQty ? 1 : '0.01'}
-                    placeholder={decSideQty ? '如 10' : '如 50'}
-                    value={decreaseInput}
-                    disabled={readonly}
-                    aria-invalid={!!decreaseError}
-                    className={cn('bg-background', decreaseError && 'border-destructive focus-visible:ring-destructive')}
-                    onChange={(e) => { setDecreaseInput(e.target.value); reset() }}
-                  />
-                  {decreaseError && <p className="text-xs text-destructive">{decreaseError}</p>}
-                </div>
-              </div>
-              )}
-
-              {/* 调增侧（increase/both） */}
-              {adjustMode !== 'decrease' && (
-              <div className="space-y-2 rounded-lg border border-success/25 bg-success/10 p-3">
-                <div className="flex items-center justify-between">
-                  <p className="flex items-center gap-1.5 text-sm font-medium text-success-strong">
-                    <PlusCircle className="h-4 w-4" />
-                    调增侧（目标科目）
+              <div className={cn('grid grid-cols-1 gap-3', adjustMode === 'both' && 'sm:grid-cols-2')}>
+                {/* 调减侧（decrease/both） */}
+                {adjustMode !== 'increase' && (
+                <div className="space-y-2 rounded-lg border border-destructive/25 bg-destructive/[0.06] p-3">
+                  <p className="flex items-center gap-1.5 text-sm font-medium text-destructive">
+                    <MinusCircle className="h-4 w-4" />
+                    调减侧（源科目）
                   </p>
-                  {!readonly && adjustMode === 'both' && (
-                    <button
-                      type="button"
-                      className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-primary transition-colors hover:bg-primary/10 disabled:pointer-events-none disabled:opacity-40"
-                      title="将调增金额设为与调减金额相等"
-                      disabled={decreaseInput === '' || !!decreaseError}
-                      onClick={() => { setIncreaseInput(decreaseInput); reset() }}
-                    >
-                      <Equal className="h-3 w-3" />
-                      等额调整
-                    </button>
-                  )}
+                  <div className="space-y-1">
+                    <Label>源科目 <span className="text-destructive">*</span></Label>
+                    {readonly
+                      ? (sourceAccountCode
+                          ? <div className="flex h-9 items-center gap-2 rounded-md border bg-muted/40 px-3 text-sm">
+                              <span className="font-mono text-xs text-muted-foreground">{sourceAccountCode}</span>
+                              <span className="truncate">{subjectOptions.find((s) => s.code === sourceAccountCode)?.name ?? sourceAccountCode}</span>
+                            </div>
+                          : <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground">-</div>)
+                      : (
+                        <SubjectPicker
+                          options={sourceOptions}
+                          value={sourceAccountCode}
+                          onChange={(code) => { setSourceAccountCode(code); reset() }}
+                          excludeCode={targetAccountCode}
+                          placeholder="选择要调减的科目"
+                        />
+                      )}
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="ba-decrease">{decSideQty ? '调减数量（整数）' : '调减金额（万元）'} <span className="text-destructive">*</span></Label>
+                    <Input
+                      id="ba-decrease"
+                      type="number"
+                      min={0}
+                      step={decSideQty ? 1 : '0.01'}
+                      placeholder={decSideQty ? '如 10' : '如 50'}
+                      value={decreaseInput}
+                      disabled={readonly}
+                      aria-invalid={!!decreaseError}
+                      className={cn('bg-background', decreaseError && 'border-destructive focus-visible:ring-destructive')}
+                      onChange={(e) => { setDecreaseInput(e.target.value); reset() }}
+                    />
+                    {decreaseError && <p className="text-xs text-destructive">{decreaseError}</p>}
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <Label>目标科目 <span className="text-destructive">*</span></Label>
-                  {readonly
-                    ? (targetAccountCode
-                        ? <div className="flex h-9 items-center gap-2 rounded-md border bg-muted/40 px-3 text-sm">
-                            <span className="font-mono text-xs text-muted-foreground">{targetAccountCode}</span>
-                            <span className="truncate">{subjectOptions.find((s) => s.code === targetAccountCode)?.name ?? targetAccountCode}</span>
-                          </div>
-                        : <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground">-</div>)
-                    : (
-                      <SubjectPicker
-                        options={targetOptions}
-                        value={targetAccountCode}
-                        onChange={(code) => { setTargetAccountCode(code); reset() }}
-                        excludeCode={sourceAccountCode}
-                        placeholder="选择要调增的科目"
-                      />
-                    )}
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="ba-increase">{incSideQty ? '调增数量（整数）' : '调增金额（万元）'} <span className="text-destructive">*</span></Label>
-                  <Input
-                    id="ba-increase"
-                    type="number"
-                    min={0}
-                    step={incSideQty ? 1 : '0.01'}
-                    placeholder={incSideQty ? '如 10' : '如 50'}
-                    value={increaseInput}
-                    disabled={readonly}
-                    aria-invalid={!!increaseError}
-                    className={cn('bg-background', increaseError && 'border-destructive focus-visible:ring-destructive')}
-                    onChange={(e) => { setIncreaseInput(e.target.value); reset() }}
-                  />
-                  {increaseError && <p className="text-xs text-destructive">{increaseError}</p>}
-                </div>
-              </div>
-              )}
-            </div>
-
-            {/* 实时净变动提示（无需等预览；只读模式隐藏） */}
-            {!readonly && (decValue > 0 || incValue > 0) && (
-              <div
-                className={cn(
-                  'rounded-md border p-2.5 text-sm',
-                  localNet !== 0 ? 'border-warning/30 bg-warning/[0.08] text-warning-strong' : 'border-muted bg-muted/30 text-muted-foreground',
                 )}
-              >
-                {localNet !== 0
-                  ? <>本次调整将使公司全年预算总额净变动 <span className="font-num font-semibold">{fmt(localNet, activeQty)}</span>{adjustMode === 'decrease' && '（仅调减）'}{adjustMode === 'increase' && '（仅调增）'}。</>
-                  : <>调减与调增等额，公司全年预算总额不变。</>}
+
+                {/* 调增侧（increase/both） */}
+                {adjustMode !== 'decrease' && (
+                <div className="space-y-2 rounded-lg border border-success/25 bg-success/10 p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="flex items-center gap-1.5 text-sm font-medium text-success-strong">
+                      <PlusCircle className="h-4 w-4" />
+                      调增侧（目标科目）
+                    </p>
+                    {!readonly && adjustMode === 'both' && (
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-primary transition-colors hover:bg-primary/10 disabled:pointer-events-none disabled:opacity-40"
+                        title="将调增金额设为与调减金额相等"
+                        disabled={decreaseInput === '' || !!decreaseError}
+                        onClick={() => { setIncreaseInput(decreaseInput); reset() }}
+                      >
+                        <Equal className="h-3 w-3" />
+                        等额调整
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <Label>目标科目 <span className="text-destructive">*</span></Label>
+                    {readonly
+                      ? (targetAccountCode
+                          ? <div className="flex h-9 items-center gap-2 rounded-md border bg-muted/40 px-3 text-sm">
+                              <span className="font-mono text-xs text-muted-foreground">{targetAccountCode}</span>
+                              <span className="truncate">{subjectOptions.find((s) => s.code === targetAccountCode)?.name ?? targetAccountCode}</span>
+                            </div>
+                          : <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground">-</div>)
+                      : (
+                        <SubjectPicker
+                          options={targetOptions}
+                          value={targetAccountCode}
+                          onChange={(code) => { setTargetAccountCode(code); reset() }}
+                          excludeCode={sourceAccountCode}
+                          placeholder="选择要调增的科目"
+                        />
+                      )}
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="ba-increase">{incSideQty ? '调增数量（整数）' : '调增金额（万元）'} <span className="text-destructive">*</span></Label>
+                    <Input
+                      id="ba-increase"
+                      type="number"
+                      min={0}
+                      step={incSideQty ? 1 : '0.01'}
+                      placeholder={incSideQty ? '如 10' : '如 50'}
+                      value={increaseInput}
+                      disabled={readonly}
+                      aria-invalid={!!increaseError}
+                      className={cn('bg-background', increaseError && 'border-destructive focus-visible:ring-destructive')}
+                      onChange={(e) => { setIncreaseInput(e.target.value); reset() }}
+                    />
+                    {increaseError && <p className="text-xs text-destructive">{increaseError}</p>}
+                  </div>
+                </div>
+                )}
               </div>
+
+              {/* 实时净变动提示（无需等预览；只读模式隐藏） */}
+              {!readonly && (decValue > 0 || incValue > 0) && (
+                <div
+                  className={cn(
+                    'rounded-md border p-2.5 text-sm',
+                    localNet !== 0 ? 'border-warning/30 bg-warning/[0.08] text-warning-strong' : 'border-muted bg-muted/30 text-muted-foreground',
+                  )}
+                >
+                  {localNet !== 0
+                    ? <>本次调整将使公司全年预算总额净变动 <span className="font-num font-semibold">{fmt(localNet, activeQty)}</span>{adjustMode === 'decrease' && '（仅调减）'}{adjustMode === 'increase' && '（仅调增）'}。</>
+                    : <>调减与调增等额，公司全年预算总额不变。</>}
+                </div>
+              )}
+            </section>
+
+            {/* ===== 调整原因 ===== */}
+            <section className="space-y-1">
+              <Label htmlFor="ba-reason">调整原因 <span className="text-destructive">*</span></Label>
+              {readonly
+                ? <div className="min-h-9 rounded-md border bg-muted/40 px-3 py-2 text-sm">{reason || '-'}</div>
+                : (
+                  <Textarea
+                    id="ba-reason"
+                    rows={2}
+                    placeholder="如：××科目全年预算调整，按实际经营计划修订"
+                    value={reason}
+                    aria-invalid={!!reasonError}
+                    className={cn(reasonError && 'border-destructive focus-visible:ring-destructive')}
+                    onChange={(e) => setReason(e.target.value)}
+                    onBlur={() => setReasonTouched(true)}
+                  />
+                )}
+              {reasonError && <p className="text-xs text-destructive">{reasonError}</p>}
+            </section>
+
+            {/* ===== 执行结果（只读模式：还原当时的执行结果统计） ===== */}
+            {readonly && result && result.length > 0 && (
+              <section className="space-y-2">
+                <SectionTitle>执行结果</SectionTitle>
+                <PreviewStats items={result} />
+              </section>
             )}
-          </section>
 
-          {/* ===== 调整原因 ===== */}
-          <section className="space-y-1">
-            <Label htmlFor="ba-reason">调整原因 <span className="text-destructive">*</span></Label>
-            {readonly
-              ? <div className="min-h-9 rounded-md border bg-muted/40 px-3 py-2 text-sm">{reason || '-'}</div>
-              : (
-                <Textarea
-                  id="ba-reason"
-                  rows={2}
-                  placeholder="如：××科目全年预算调整，按实际经营计划修订"
-                  value={reason}
-                  aria-invalid={!!reasonError}
-                  className={cn(reasonError && 'border-destructive focus-visible:ring-destructive')}
-                  onChange={(e) => setReason(e.target.value)}
-                  onBlur={() => setReasonTouched(true)}
-                />
-              )}
-            {reasonError && <p className="text-xs text-destructive">{reasonError}</p>}
-          </section>
+            {/* ===== 预览与执行（只读模式隐藏） ===== */}
+            {!readonly && (
+              <section className="space-y-2">
+                <SectionTitle>预览与执行</SectionTitle>
+                {!preview && !done && !error && (
+                  <p className="text-xs text-muted-foreground">设置完成后点击「预览影响」查看源科目匹配情况与金额变化。</p>
+                )}
+                {preview && (preview.affectedRows === 0
+                  ? <PreviewStats items={[]} empty />
+                  : <PreviewStats
+                      items={previewItems}
+                      warning={preview.netChange !== 0 ? <>本次调整将使公司全年预算总额净变动 <span className="font-num font-semibold">{fmt(preview.netChange, previewQty)}</span>，请确认业务依据。</> : undefined}
+                    />)}
+                {done && <FeedbackAlert kind="success">{done}</FeedbackAlert>}
+                {error && <FeedbackAlert kind="error">{error}</FeedbackAlert>}
+              </section>
+            )}
+          </div>
+        </DialogBody>
 
-          {/* ===== 执行结果（只读模式：还原当时的执行结果统计） ===== */}
-          {readonly && result && result.length > 0 && (
-            <section className="space-y-2">
-              <SectionTitle>执行结果</SectionTitle>
-              <PreviewStats items={result} />
-            </section>
-          )}
-
-          {/* ===== 预览与执行（只读模式隐藏） ===== */}
-          {!readonly && (
-            <section className="space-y-2">
-              <SectionTitle>预览与执行</SectionTitle>
-              {!preview && !done && !error && (
-                <p className="text-xs text-muted-foreground">设置完成后点击「预览影响」查看源科目匹配情况与金额变化。</p>
-              )}
-              {preview && (preview.affectedRows === 0
-                ? <PreviewStats items={[]} empty />
-                : <PreviewStats
-                    items={previewItems}
-                    warning={preview.netChange !== 0 ? <>本次调整将使公司全年预算总额净变动 <span className="font-num font-semibold">{fmt(preview.netChange, previewQty)}</span>，请确认业务依据。</> : undefined}
-                  />)}
-              {done && <FeedbackAlert kind="success">{done}</FeedbackAlert>}
-              {error && <FeedbackAlert kind="error">{error}</FeedbackAlert>}
-            </section>
-          )}
-        </div>
-
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter>
           <div className="flex flex-1 items-center">
             {!readonly && submitDisabledReason && <span className="text-xs text-muted-foreground">{submitDisabledReason}</span>}
           </div>

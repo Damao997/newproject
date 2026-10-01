@@ -949,12 +949,14 @@ model AuditLog {
   detail    Json?    @db.JsonB
   ip        String?
   userAgent String?  @map("user_agent") @db.VarChar(512)
+  traceId   String?  @map("trace_id") @db.VarChar(64)
   createdAt DateTime @default(now()) @map("created_at")
 
   user User? @relation(fields: [userId], references: [id])
 
   @@index([userId, createdAt])
   @@index([module, action, createdAt])
+  @@index([traceId])
   @@map("audit_log")
 }
 

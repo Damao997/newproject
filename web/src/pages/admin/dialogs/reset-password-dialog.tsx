@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label'
 import { FlashMessage } from '@/components/ui/flash-message'
 import {
   Dialog,
-  DialogContent,
+  DialogContent, DialogBody,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -56,20 +56,22 @@ export function ResetPasswordDialog({ open, user, onClose, onSuccess }: ResetPas
           <DialogTitle>重置密码 · {user?.name}</DialogTitle>
           <DialogDescription>为用户 {user?.username} 设置新密码，重置后其首次登录须修改密码</DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <Label htmlFor="reset-password">新密码</Label>
-            <Input
-              id="reset-password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="至少 8 位，含字母与数字"
-              autoFocus
-            />
+        <DialogBody className="grid gap-4">
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="reset-password">新密码</Label>
+              <Input
+                id="reset-password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="至少 8 位，含字母与数字"
+                autoFocus
+              />
+            </div>
+            {error && <FlashMessage type="error">{error}</FlashMessage>}
           </div>
-          {error && <FlashMessage type="error">{error}</FlashMessage>}
-        </div>
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>取消</Button>
           <Button onClick={submit} disabled={resetPassword.isPending}>

@@ -38,6 +38,9 @@ describe('DashboardService 纯函数', () => {
     it('负基期亏损扩大返回负比率', () => {
       expect(changeRate(-150, -100)).toBe(-0.5)
     })
+    it('小幅增长保留 4 位（0.4% 增长不得归零）', () => {
+      expect(changeRate(100.4, 100)).toBe(0.004)
+    })
   })
 
   describe('rateOf 预算达成率', () => {
@@ -424,6 +427,32 @@ describe('DashboardService 纯函数', () => {
       expect(rows[0].profit.monthActual).toBe(30)
     })
 
+    it('关键词同时命中父级与后代时收敛为不重叠子树（M3：不重复统计）', () => {
+      const cats = [{ code: 'water', name: '直饮水业务', subjectKeyword: '直饮水' }]
+      const incomeRoots = [
+        // 父级「直饮水业务收入」值 100 已包含其后代「直饮水售水收入」70
+        node({
+          code: 'P', name: '直饮水业务收入', level: 2, category: '收入', isLeaf: false,
+          values: {
+            [OPERATING_DIMS.ACTUAL_MONTH]: 100,
+            [OPERATING_DIMS.BUDGET_AMOUNT]: 1200,
+            [OPERATING_DIMS.SAME_PERIOD_ACTUAL]: 0,
+            [OPERATING_DIMS.YTD_ACTUAL]: 0,
+            [OPERATING_DIMS.SAME_PERIOD_YTD]: 0,
+          },
+          children: [income('直饮水售水收入', 3, 70, 840)],
+        }),
+        income('其他收入', 3, 50, 600),
+      ]
+      const profitByName = new Map()
+      const { rows, uncovered } = matchProductCategories(cats, incomeRoots, profitByName)
+      expect(rows).toHaveLength(1)
+      // 只按父级 100 计一次，不得叠加后代 70 变成 170
+      expect(rows[0].income.monthActual).toBe(100)
+      // 父级命中即整棵子树已覆盖；「其他收入」仍提示未覆盖
+      expect(uncovered).toEqual(['其他收入'])
+    })
+
     it('毛利镜像缺失时毛利组全 0/null', () => {
       const cats = [{ code: 'new', name: '新产品及其它', subjectKeyword: '新产品' }]
       const incomeRoots = [income('新产品及其它收入', 3, 10, 120)]
@@ -519,7 +548,7 @@ describe('DashboardService 纯函数', () => {
       expect(row.monthYoy).toBe(0.25) // (100-80)/80
       expect(row.ytdActual).toBe(1100)
       expect(row.ytdRate).toBe(61.11) // 1100/1800 × 100
-      expect(row.ytdYoy).toBe(0.22) // (1100-900)/900
+      expect(row.ytdYoy).toBe(0.2222) // (1100-900)/900，changeRate 保留 4 位
     })
 
     it('映射引用的缺失编码静默跳过，其余科目正常聚合', () => {

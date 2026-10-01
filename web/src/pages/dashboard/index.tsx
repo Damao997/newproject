@@ -11,7 +11,10 @@ import { ReceivablesCard } from './receivables-card'
 import { InventoryPieCard } from './inventory-pie-card'
 import { QuickEntries } from './quick-entries'
 import { ExpenseStructureCard } from './expense-structure-card'
+import { TrendSection } from './trend-section'
+import { AlertsCard } from './alerts-card'
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react'
+import { usePageStore } from '@/stores/pageStateStore'
 import { useSummaryMemberValues, type MemberBreakdown } from '@/hooks/use-summary-member-values'
 import { kpiRootMatcher } from '@/components/charts/kpi-card'
 import type { KpiData } from '@/types'
@@ -61,10 +64,13 @@ export default function DashboardPage() {
     }
   }, [data?.degraded, data?.companyCode, data?.companyType, setDimFilter])
 
-  // 点击 KPI 卡片：记录返回标记后跳转指标页。公司/期间口径已上收全局 periodStore（页面内主体切换亦回写全局），
-  // 指标页读取同一全局口径，无需再同步 dimFilter/periodFilter
-  const handleKpiClick = useCallback(() => {
+  // 点击 KPI 卡片：记录返回标记 + 按卡片标题定位指标页科目筛选（US-06：钻取到对应科目维度）。
+  // 公司/期间口径已上收全局 periodStore（页面内主体切换亦回写全局），指标页读取同一全局口径
+  const handleKpiClick = useCallback((title?: string) => {
     sessionStorage.setItem('dashboard.fromDashboard', '1')
+    // US-06：标题（收入/毛利/净利润/回款）→ 指标页科目关键字筛选预填
+    const subjectMap: Record<string, string> = { 收入: '收入', 毛利: '毛利', 净利润: '净利润', 回款: '回款' }
+    if (title && subjectMap[title]) usePageStore.getState().setIndicators({ subjectKeyword: subjectMap[title] })
     navigate('/indicators/operating')
   }, [navigate])
 
@@ -90,7 +96,7 @@ export default function DashboardPage() {
         kpiData={kpiData}
         isEmpty={isEmpty}
         currentPeriod={currentPeriod}
-        handleKpiClick={handleKpiClick}
+        onKpiDrill={handleKpiClick}
         companyCode={companyCode}
         kpiBreakdown={kpiBreakdown}
         isLoading={isLoading}
@@ -106,7 +112,8 @@ interface DashboardViewProps {
   kpiData: KpiData[]
   isEmpty: boolean
   currentPeriod: string
-  handleKpiClick: () => void
+  /** US-06：按 KPI 标题钻取（预填指标页科目筛选后跳转） */
+  onKpiDrill: (title: string) => void
   companyCode: string | undefined
   /** 汇总主体 KPI 悬浮明细数据源（仅汇总口径非空，见 DashboardPage） */
   kpiBreakdown?: {
@@ -122,7 +129,7 @@ function DashboardView(props: DashboardViewProps) {
     kpiData,
     isEmpty,
     currentPeriod,
-    handleKpiClick,
+    onKpiDrill,
     companyCode,
     kpiBreakdown,
     isLoading = false,
@@ -158,7 +165,7 @@ function DashboardView(props: DashboardViewProps) {
       {kpiData.length > 0 && (
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
           {kpiData.map((kpi, i) => (
-            <KpiCard key={kpi.title + '-' + i} data={kpi} index={i} onClick={handleKpiClick} breakdown={kpiBreakdown} />
+            <KpiCard key={kpi.title + '-' + i} data={kpi} index={i} onClick={() => onKpiDrill(kpi.title)} breakdown={kpiBreakdown} />
           ))}
         </div>
       )}
@@ -167,6 +174,12 @@ function DashboardView(props: DashboardViewProps) {
           当前主体/期间暂无核心 KPI 数据，可在顶部切换筛选或前往「数据导入」激活批次。
         </div>
       )}
+
+      {/* 财年趋势（US-05：收入/毛利折线+柱状+预算线，月度/累计切换）+ 预警提醒（US-13） */}
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+        <TrendSection />
+        <AlertsCard />
+      </div>
 
       {/* 费用结构（真实运营费用分析，圆环） */}
       <ExpenseStructureCard period={currentPeriod || undefined} companyCode={companyCode} />

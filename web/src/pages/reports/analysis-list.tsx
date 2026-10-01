@@ -9,7 +9,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { MonthPicker } from '@/components/ui/month-picker'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+  Dialog, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -414,10 +414,12 @@ function EditAnalysisDialog({ item, onClose, onSave, saving }: {
             {item ? `${getDisplayName(item.companyCode, item.companyName)} · ${item.subjectName ?? item.subjectCode} · ${item.period}（公司/科目/期间不可变更）` : ''}
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="分析标题" />
-          <RichTextEditor value={content} onChange={setContent} editable placeholder="撰写分析结论…" polishEnabled />
-        </div>
+        <DialogBody className="grid gap-4">
+          <div className="space-y-3">
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="分析标题" />
+            <RichTextEditor value={content} onChange={setContent} editable placeholder="撰写分析结论…" polishEnabled />
+          </div>
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>取消</Button>
           <Button onClick={() => item && onSave(item.id, title, content)} disabled={saving || !title.trim()}>保存</Button>
@@ -454,16 +456,18 @@ function InsertReportDialog({
             将「{target?.title}」作为引用章节追加到报告，章节实时展示该预分析最新内容（重新生成后自动更新）。
           </DialogDescription>
         </DialogHeader>
-        <Select value={reportId} onValueChange={onReportIdChange}>
-          <SelectTrigger className="h-8 w-full"><SelectValue placeholder="选择草稿报告" /></SelectTrigger>
-          <SelectContent>
-            {reports.length === 0 ? (
-              <SelectItem value="__none" disabled>暂无草稿报告</SelectItem>
-            ) : (
-              reports.map((r) => <SelectItem key={r.id} value={r.id}>{r.title}</SelectItem>)
-            )}
-          </SelectContent>
-        </Select>
+        <DialogBody className="grid gap-4">
+          <Select value={reportId} onValueChange={onReportIdChange}>
+            <SelectTrigger className="h-8 w-full"><SelectValue placeholder="选择草稿报告" /></SelectTrigger>
+            <SelectContent>
+              {reports.length === 0 ? (
+                <SelectItem value="__none" disabled>暂无草稿报告</SelectItem>
+              ) : (
+                reports.map((r) => <SelectItem key={r.id} value={r.id}>{r.title}</SelectItem>)
+              )}
+            </SelectContent>
+          </Select>
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={busy}>取消</Button>
           <Button onClick={onConfirm} disabled={busy || !reportId}><FilePlus2 className="mr-1 h-4 w-4" /> 插入章节</Button>

@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogBody, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import {
   Select,
   SelectContent,
@@ -150,34 +150,36 @@ function UpdateStatusDialog({ row, onClose }: { row: CustomerLedgerItem | null; 
             {row?.counterpartyName || row?.counterpartyCode} · 应收金额 {fmtAmount(row?.closingBalance ?? null)}
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="update-status-select">新状态（当前：{row ? STATUS_LABELS[currentStatus] : '-'}）</Label>
-            {allowed.length === 0 ? (
-              <p className="text-sm text-muted-foreground">当前为终态，不可再流转（仍可补录实际回收金额）</p>
-            ) : (
-              <Select value={status} onValueChange={setStatus}>
-                <SelectTrigger id="update-status-select">
-                  <SelectValue placeholder="保持不变" />
-                </SelectTrigger>
-                <SelectContent>
-                  {allowed.map((s) => (
-                    <SelectItem key={s} value={s}>{STATUS_LABELS[s]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+        <DialogBody className="grid gap-4">
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="update-status-select">新状态（当前：{row ? STATUS_LABELS[currentStatus] : '-'}）</Label>
+              {allowed.length === 0 ? (
+                <p className="text-sm text-muted-foreground">当前为终态，不可再流转（仍可补录实际回收金额）</p>
+              ) : (
+                <Select value={status} onValueChange={setStatus}>
+                  <SelectTrigger id="update-status-select">
+                    <SelectValue placeholder="保持不变" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allowed.map((s) => (
+                      <SelectItem key={s} value={s}>{STATUS_LABELS[s]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="update-actual-amount">实际回收金额</Label>
+              <Input id="update-actual-amount" type="number" placeholder="选填" value={actualAmount} onChange={(e) => setActualAmount(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="update-status-note">催收状态说明（≤500 字）</Label>
+              <Textarea id="update-status-note" rows={3} maxLength={500} placeholder="如：客户承诺月底回款，逾期部分已开票待付款…" value={statusNote} onChange={(e) => setStatusNote(e.target.value)} />
+            </div>
+            {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="update-actual-amount">实际回收金额</Label>
-            <Input id="update-actual-amount" type="number" placeholder="选填" value={actualAmount} onChange={(e) => setActualAmount(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="update-status-note">催收状态说明（≤500 字）</Label>
-            <Textarea id="update-status-note" rows={3} maxLength={500} placeholder="如：客户承诺月底回款，逾期部分已开票待付款…" value={statusNote} onChange={(e) => setStatusNote(e.target.value)} />
-          </div>
-          {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
-        </div>
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={handleClose}>取消</Button>
           <Button disabled={updateMutation.isPending} onClick={handleSubmit}>
@@ -220,35 +222,39 @@ function LogsDialog({ row, canUpdate, onClose }: { row: CustomerLedgerItem | nul
           <DialogTitle>催收记录</DialogTitle>
           <DialogDescription>{row?.counterpartyName || row?.counterpartyCode}</DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
-          {isLoading ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">加载中…</p>
-          ) : !logs?.length ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">暂无催收记录</p>
-          ) : (
-            <ul className="max-h-64 space-y-2 overflow-y-auto">
-              {logs.map((log) => (
-                <li key={log.id} className="rounded-lg border p-2.5 text-sm">
-                  <p>{log.content}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{new Date(log.actionTime).toLocaleString('zh-CN')}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-          {canUpdate && (
-            <div className="space-y-2">
-              <Label htmlFor="collection-log-content">催收记录内容</Label>
-              <Textarea id="collection-log-content" placeholder="记录本次催收情况..." value={content} onChange={(e) => setContent(e.target.value)} rows={3} />
-              {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
-              <div className="flex justify-end">
-                <Button size="sm" disabled={addMutation.isPending} onClick={handleAdd}>
-                  {addMutation.isPending ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
-                  添加记录
-                </Button>
+        <DialogBody className="grid gap-4">
+          <div className="space-y-3">
+            {isLoading ? (
+              <p className="py-4 text-center text-sm text-muted-foreground">加载中…</p>
+            ) : !logs?.length ? (
+              <p className="py-4 text-center text-sm text-muted-foreground">暂无催收记录</p>
+            ) : (
+              <ul className="space-y-2">
+                {logs.map((log) => (
+                  <li key={log.id} className="rounded-lg border p-2.5 text-sm">
+                    <p>{log.content}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{new Date(log.actionTime).toLocaleString('zh-CN')}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {canUpdate && (
+              <div className="space-y-2">
+                <Label htmlFor="collection-log-content">催收记录内容</Label>
+                <Textarea id="collection-log-content" placeholder="记录本次催收情况..." value={content} onChange={(e) => setContent(e.target.value)} rows={3} />
+                {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        </DialogBody>
+        {canUpdate && (
+          <DialogFooter>
+            <Button size="sm" disabled={addMutation.isPending} onClick={handleAdd}>
+              {addMutation.isPending ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
+              添加记录
+            </Button>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   )
@@ -418,7 +424,9 @@ function GenerateSuggestionsDialog({ companyCode, open, onSuccess, onClose }: { 
             批量生成催收建议（覆盖逾期 6 个月及以上）；同键已存在未完结计划的公司×客商×科目将自动跳过。
           </DialogDescription>
         </DialogHeader>
-        {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
+        <DialogBody className="grid gap-4">
+          {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={handleClose}>取消</Button>
           <Button disabled={generateMutation.isPending} onClick={handleGenerate}>
@@ -591,9 +599,9 @@ export function CollectionsTab({ stickyTop = 0 }: { stickyTop?: number }) {
   ], [getDisplayName, canUpdate, setUpdatingRow, setLogsRow, setBilledTarget, setSalesmanTarget])
 
   return (
-    <div className="space-y-4">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col space-y-2">
       {/* 筛选卡：客商状态 / 客商关键词（吸顶；公司/期间全局口径在 Header 筛选） */}
-      <Card className="sticky z-10 rounded-card p-4" style={{ top: stickyTop }}>
+      <Card className="sticky z-10 shrink-0 rounded-card p-3" style={{ top: stickyTop }}>
       <FilterBar>
         <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v === 'all' ? '' : v); setPage(1) }}>
           <SelectTrigger className={`h-9 ${FILTER_WIDTH.period}`}>
@@ -627,7 +635,7 @@ export function CollectionsTab({ stickyTop = 0 }: { stickyTop?: number }) {
         )}
       </FilterBar>
       {stats && (
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-dashed border-border pt-2.5 text-xs">
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-dashed border-border pt-2 text-xs">
           {(Object.keys(STATUS_LABELS) as (CollectionStatus | 'unplanned')[]).map((s) => (
             <button
               key={s}
@@ -652,36 +660,34 @@ export function CollectionsTab({ stickyTop = 0 }: { stickyTop?: number }) {
       )}
 
       {/* 应收款客商台账（表格卡） */}
-      <Card className="rounded-card border border-border overflow-hidden">
-        <div className="pt-4">
+      <Card className="flex min-h-0 flex-1 flex-col rounded-card border border-border overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col pt-2">
           {isLoading ? (
             <div className="py-8 text-center text-sm text-muted-foreground">加载中…</div>
           ) : items.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">暂无应收款客商数据</div>
           ) : (
-            <div className="px-2 pb-2">
+            <div className="flex min-h-0 flex-1 flex-col px-2 pb-2">
               <DataTable
                 columns={ledgerColumns}
                 data={items}
                 rowKey={(row) => `${row.companyCode}|${row.counterpartyCode}`}
                 density="compact"
                 caption="应收款客商台账"
-                maxHeight={`calc(100dvh - ${stickyTop}px - 24px)`}
+                fillHeight
               />
             </div>
           )}
         </div>
         {/* 分页：并入表格卡底部 border-t 行 */}
         {total > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5">
-            <span className="text-xs text-muted-foreground">共 {total} 条</span>
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5">
             <Pagination
               page={page}
               pageSize={pageSize}
               total={total}
               onPageChange={setPage}
               onPageSizeChange={setPageSize}
-              summary=""
             />
           </div>
         )}

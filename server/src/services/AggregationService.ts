@@ -44,6 +44,16 @@ function round2(n: number): number {
   return Number(n.toFixed(2))
 }
 
+/** 比率类（0-1 小数）结果保留 4 位：round2 会把 100/300 截成 0.33、12.34% 截成 0.12 */
+function round4(n: number): number {
+  return Number(n.toFixed(4))
+}
+
+/** 按节点值类型舍入：比率 4 位，金额/数量 2 位 */
+function roundByType(valueType: ValueNode['valueType'], n: number): number {
+  return valueType === 'ratio' ? round4(n) : round2(n)
+}
+
 /** 去除重分类影响时的回放统计（透出给上层做前端提示） */
 export interface ReclassifyReversalMeta {
   appliedLogs: number
@@ -337,7 +347,7 @@ export function applyCalcLayer(
       }
       let v: number
       try {
-        v = round2(evaluateFormula(formula, rec))
+        v = roundByType(node.valueType, evaluateFormula(formula, rec))
       } catch {
         v = node.values[d] ?? 0
       }
@@ -403,7 +413,7 @@ export function buildTree(
     if (node.children.length === 0) {
       if (node.dataType === 'display') return
       const v = leafValues.get(node.code)
-      if (v) for (const d of dims) node.values[d] = round2(v[d] ?? 0)
+      if (v) for (const d of dims) node.values[d] = roundByType(node.valueType, v[d] ?? 0)
       return
     }
     for (const child of node.children) aggregate(child)
@@ -411,7 +421,13 @@ export function buildTree(
     if (node.dataType === 'data' && directCodes?.has(node.code)) {
       const v = leafValues.get(node.code)
       if (v) {
-        for (const d of dims) node.values[d] = round2(v[d] ?? 0)
+        // 逐维度直填：该维度存在直填行取直填值，否则回退子级求和
+        // （某月缺直填快照时不得被 0 吞没子级数据）
+        for (const d of dims) {
+          node.values[d] = v[d] !== undefined
+            ? roundByType(node.valueType, v[d]!)
+            : round2(node.children.reduce((sum, c) => sum + (c.values[d] ?? 0), 0))
+        }
         return
       }
     }
@@ -421,6 +437,22 @@ export function buildTree(
   }
   roots.forEach(aggregate)
   return roots
+}
+
+/** 多公司树合并：以首棵树为骨架，按科目编码对齐逐维度求和（per-company 分桶构建后调用） */
+function mergeCompanyTrees(rootsList: ValueNode[][]): ValueNode[] {
+  if (rootsList.length === 0) return []
+  const byCode = new Map(flattenValueTree(rootsList[0]).map((n) => [n.code, n]))
+  for (const roots of rootsList.slice(1)) {
+    for (const n of flattenValueTree(roots)) {
+      const target = byCode.get(n.code)
+      if (!target) continue
+      for (const d of Object.keys(target.values)) {
+        target.values[d] = round2((target.values[d] ?? 0) + (n.values[d] ?? 0))
+      }
+    }
+  }
+  return rootsList[0]
 }
 
 export const AggregationService = {
@@ -542,22 +574,49 @@ export const AggregationService = {
     // 构建同选定期静态树，CURRENT_AMOUNT → ACTUAL_MONTH，SAME_PERIOD_AMOUNT → SAME_PERIOD_ACTUAL；
     // 外部树以 skipExternal 构建，避免两树互引时无限递归。
     let externalByDim: Map<string, Record<string, number>> | undefined
+    let externalAllDims: Record<string, Record<string, number>> | undefined
     const needsExternal = !opts?.skipExternal && calc.some((m) => m.dependsOn.some((d) => d.startsWith('BS')))
     if (needsExternal && companyCodes.length > 0) {
       // 外部树透传同一去重分类口径（meta 不透传，避免重复计数）
       const stFlat = flattenValueTree(await AggregationService.buildStaticTree(companyCodes, period, { skipExternal: true, excludeReclassify: opts?.excludeReclassify, consolidationSummaryCode: opts?.consolidationSummaryCode }))
       const current: Record<string, number> = {}
       const same: Record<string, number> = {}
+      externalAllDims = {}
       for (const n of stFlat) {
         current[n.code] = n.values[STATIC_DIMS.CURRENT_AMOUNT] ?? 0
         same[n.code] = n.values[STATIC_DIMS.SAME_PERIOD_AMOUNT] ?? 0
+        // 全维快照：供跨维度公式的复合键引用（如 {BS0101@CURRENT_AMOUNT}）
+        externalAllDims[n.code] = { ...n.values }
       }
       externalByDim = new Map([
         [OPERATING_DIMS.ACTUAL_MONTH, current],
         [OPERATING_DIMS.SAME_PERIOD_ACTUAL, same],
       ])
     }
-    applyCalcLayer(tree, calc, Object.keys(EMPTY_OPERATING), externalByDim)
+    // 跨维度公式列语义（与静态树同构）：本期/累计列按字面维度取值，
+    // 同期列平移为去年口径；预算列无跨期口径 → 置 0。
+    // 缺失本上下文时跨维度公式会静默算 0（操作数查不到复合键）
+    let crossDim: CrossDimOptions | undefined
+    if (calc.some((m) => hasCrossDimRefs(m.formula))) {
+      const identity: Record<string, string> = {}
+      for (const dim of [...Object.values(OPERATING_DIMS), ...Object.values(STATIC_DIMS)]) identity[dim] = dim
+      const shiftToSamePeriod: Record<string, string> = {
+        [OPERATING_DIMS.ACTUAL_MONTH]: OPERATING_DIMS.SAME_PERIOD_ACTUAL,
+        [OPERATING_DIMS.YTD_ACTUAL]: OPERATING_DIMS.SAME_PERIOD_YTD,
+      }
+      crossDim = {
+        dimMap: new Map([
+          [OPERATING_DIMS.ACTUAL_MONTH, identity],
+          [OPERATING_DIMS.YTD_ACTUAL, identity],
+          [OPERATING_DIMS.SAME_PERIOD_ACTUAL, shiftToSamePeriod],
+          [OPERATING_DIMS.SAME_PERIOD_YTD, shiftToSamePeriod],
+        ]),
+        zeroDims: new Set([OPERATING_DIMS.BUDGET_AMOUNT]),
+        pseudoByDim: new Map(),
+        externalAllDims,
+      }
+    }
+    applyCalcLayer(tree, calc, Object.keys(EMPTY_OPERATING), externalByDim, crossDim)
     return tree
   },
 
@@ -568,38 +627,45 @@ export const AggregationService = {
    */
   async buildStaticTree(companyCodes: string[], period: string, opts?: BuildTreeOpts): Promise<ValueNode[]> {
     const subjects = await loadSubjects('static')
-    const leafValues = new Map<string, Record<string, number>>()
-    // 数据类父级直填优先判定依据：仅统计存在自身导入事实行的科目（重分类/汇总抵消叠加值不算直填行）
-    const directCodes = new Set<string>()
-    const setDim = (acc: string, dim: string, v: number): void => {
-      const rec = leafValues.get(acc) ?? { ...EMPTY_STATIC }
-      rec[dim] = v
-      leafValues.set(acc, rec)
-    }
-    const addDim = (acc: string, dim: string, dv: number): void => {
-      const rec = leafValues.get(acc) ?? { ...EMPTY_STATIC }
-      rec[dim] = round2((rec[dim] ?? 0) + dv)
-      leafValues.set(acc, rec)
-    }
-    if (companyCodes.length > 0) {
-      const batchIds = await activeBatchIds('static')
+    const prev = periodMinusYears(period, 1)
+    // 年初快照月 = 财年起始月前一月（上年期末余额时点，如 S=4 且 FY2026 → 2026-03）
+    const opening = fiscalYearOpeningSnapshotPeriod(period)
+    // 输出维度 → 目标快照月份
+    const dimTargets: [string, string][] = [
+      [STATIC_DIMS.CURRENT_AMOUNT, period],
+      [STATIC_DIMS.YEAR_START, opening],
+      [STATIC_DIMS.SAME_PERIOD_AMOUNT, prev],
+      [STATIC_DIMS.LAST_YEAR_START, periodMinusYears(opening, 1)],
+    ]
+    // 按公司分桶构建后合并：直填判定以「公司×科目×月份」为粒度——
+    // 某公司某月存在直填行取直填值，否则回退该公司子级求和，再跨公司合并。
+    // 旧实现先跨公司汇总再判定直填，甲公司的直填行会吞没乙公司缺父级的子级数据（合查少计）。
+    const batchIds = companyCodes.length > 0 ? await activeBatchIds('static') : []
+    const reversal = opts?.excludeReclassify && batchIds.length > 0
+      ? await ReclassifyReversalService.buildReversalDeltas('static')
+      : null
+    const companyRoots: ValueNode[][] = []
+    for (const co of companyCodes) {
+      const leafValues = new Map<string, Record<string, number>>()
+      // 数据类父级直填判定依据：该公司存在自身导入事实行的科目（重分类差额叠加不算直填行）
+      const directCodes = new Set<string>()
+      const setDim = (acc: string, dim: string, v: number): void => {
+        const rec = leafValues.get(acc) ?? {}
+        rec[dim] = v
+        leafValues.set(acc, rec)
+      }
+      const addDim = (acc: string, dim: string, dv: number): void => {
+        const rec = leafValues.get(acc) ?? {}
+        rec[dim] = round2((rec[dim] ?? 0) + dv)
+        leafValues.set(acc, rec)
+      }
       if (batchIds.length > 0) {
-        const prev = periodMinusYears(period, 1)
-        // 年初快照月 = 财年起始月前一月（上年期末余额时点，如 S=4 且 FY2026 → 2026-03）
-        const opening = fiscalYearOpeningSnapshotPeriod(period)
-        // 输出维度 → 目标快照月份
-        const dimTargets: [string, string][] = [
-          [STATIC_DIMS.CURRENT_AMOUNT, period],
-          [STATIC_DIMS.YEAR_START, opening],
-          [STATIC_DIMS.SAME_PERIOD_AMOUNT, prev],
-          [STATIC_DIMS.LAST_YEAR_START, periodMinusYears(opening, 1)],
-        ]
         const grouped = await prisma.factStatic.groupBy({
           by: ['accountCode', 'snapshotDate'],
-          where: { companyCode: { in: companyCodes }, batchId: { in: batchIds } },
+          where: { companyCode: co, batchId: { in: batchIds } },
           _sum: { value: true },
         })
-        // 按 (accountCode, 月份) 汇总（同月多公司/多快照日期合计）
+        // 按 (accountCode, 月份) 汇总（同月多快照日期合计）
         const monthSum = new Map<string, number>()
         for (const g of grouped) {
           const d = g.snapshotDate as Date
@@ -614,41 +680,44 @@ export const AggregationService = {
             if (v !== undefined) setDim(acc, dim, v)
           }
         }
-        // 去除重分类影响：差额按快照月份匹配四个输出维度叠加
-        if (opts?.excludeReclassify) {
-          const companySet = new Set(companyCodes)
-          const stRes = await ReclassifyReversalService.buildReversalDeltas('static')
-          for (const d of stRes.deltas) {
-            if (!companySet.has(d.companyCode) || !d.snapshotMonth) continue
+        // 去除重分类影响：差额按快照月份匹配四个输出维度叠加（按公司分桶过滤）
+        if (reversal) {
+          for (const d of reversal.deltas) {
+            if (d.companyCode !== co || !d.snapshotMonth) continue
             for (const [dim, tPeriod] of dimTargets) {
               if (d.snapshotMonth === tPeriod) addDim(d.accountCode, dim, d.delta)
             }
           }
-          if (opts.reclassifyMeta) {
-            opts.reclassifyMeta.appliedLogs += stRes.appliedLogs
-            opts.reclassifyMeta.skippedLogs += stRes.skippedLogs
-          }
         }
-        // 汇总抵消：仅汇总主体查询链路叠加（内部公司间交易在汇总口径的抵消，单体报表不受影响）。
-        // 静态树四维目标均为快照月（期/年初/同期/上年年初），抵消单月期间直接映射对应目标月。
-        if (opts?.consolidationSummaryCode) {
-          const adjustments = await prisma.consolidationAdjustment.findMany({
-            where: {
-              summaryCompanyCode: opts.consolidationSummaryCode,
-              templateType: 'static',
-              deletedAt: null,
-            },
-            select: { accountCode: true, period: true, amount: true },
-          })
-          for (const a of adjustments) {
-            for (const [dim, tPeriod] of dimTargets) {
-              if (a.period === tPeriod) addDim(a.accountCode, dim, a.amount)
-            }
+      }
+      companyRoots.push(buildTree(subjects, leafValues, EMPTY_STATIC, directCodes))
+    }
+    if (reversal && opts?.reclassifyMeta) {
+      opts.reclassifyMeta.appliedLogs += reversal.appliedLogs
+      opts.reclassifyMeta.skippedLogs += reversal.skippedLogs
+    }
+    const tree = mergeCompanyTrees(companyRoots)
+    // 汇总抵消：仅汇总主体查询链路在合并树上叠加（抵消单无公司归属，单体报表不受影响）。
+    // 静态树四维目标均为快照月（期/年初/同期/上年年初），抵消单月期间直接映射对应目标月。
+    if (opts?.consolidationSummaryCode && companyCodes.length > 0) {
+      const adjustments = await prisma.consolidationAdjustment.findMany({
+        where: {
+          summaryCompanyCode: opts.consolidationSummaryCode,
+          templateType: 'static',
+          deletedAt: null,
+        },
+        select: { accountCode: true, period: true, amount: true },
+      })
+      const byCode = new Map(flattenValueTree(tree).map((n) => [n.code, n]))
+      for (const a of adjustments) {
+        for (const [dim, tPeriod] of dimTargets) {
+          if (a.period === tPeriod) {
+            const n = byCode.get(a.accountCode)
+            if (n) n.values[dim] = round2((n.values[dim] ?? 0) + a.amount)
           }
         }
       }
     }
-    const tree = buildTree(subjects, leafValues, EMPTY_STATIC, directCodes)
     const calc = await loadCalcFormulas('static')
     /**
      * 跨树依赖契约：当静态计算类科目引用经营科目（PL_ 前缀）时，需调用 buildOperatingTree
@@ -805,8 +874,29 @@ export const AggregationService = {
     }
     const tree = buildTree(subjects, leafValues, EMPTY_CASHFLOW)
     const calc = await loadCalcFormulas('cashflow')
+    // 跨维度公式列语义（与经营树同构）：本期/累计列按字面维度取值，同期列平移为去年口径，
+    // 预算列无跨期口径 → 置 0；缺失本上下文时跨维度公式会静默算 0
+    let crossDim: CrossDimOptions | undefined
+    if (calc.some((m) => hasCrossDimRefs(m.formula))) {
+      const identity: Record<string, string> = {}
+      for (const dim of Object.values(CASHFLOW_DIMS)) identity[dim] = dim
+      const shiftToSamePeriod: Record<string, string> = {
+        [CASHFLOW_DIMS.ACTUAL_MONTH]: CASHFLOW_DIMS.SAME_PERIOD_ACTUAL,
+        [CASHFLOW_DIMS.YTD_ACTUAL]: CASHFLOW_DIMS.SAME_PERIOD_YTD,
+      }
+      crossDim = {
+        dimMap: new Map([
+          [CASHFLOW_DIMS.ACTUAL_MONTH, identity],
+          [CASHFLOW_DIMS.YTD_ACTUAL, identity],
+          [CASHFLOW_DIMS.SAME_PERIOD_ACTUAL, shiftToSamePeriod],
+          [CASHFLOW_DIMS.SAME_PERIOD_YTD, shiftToSamePeriod],
+        ]),
+        zeroDims: new Set([CASHFLOW_DIMS.BUDGET_AMOUNT]),
+        pseudoByDim: new Map(),
+      }
+    }
     // 计算层先行：派生实际值维度并执行 calc 科目的子级求和公式（预算维度此时无回填值，子级求和恒 0 无影响）
-    applyCalcLayer(tree, calc, Object.keys(EMPTY_CASHFLOW))
+    applyCalcLayer(tree, calc, Object.keys(EMPTY_CASHFLOW), undefined, crossDim)
     // 预算回填：年度预算模板仅直填流入/流出层（calc 类且带子级求和公式），
     // 必须放在公式层之后回填，否则回填值会被子级求和公式覆盖为 0
     if (companyCodes.length > 0) {
@@ -837,7 +927,7 @@ export const AggregationService = {
       ).map((m) => m.code),
     )
     const netOnly = calc.filter((m) => (m.dependsOn ?? []).some((d) => calcClassCodes.has(d)))
-    if (netOnly.length > 0) applyCalcLayer(tree, netOnly, Object.keys(EMPTY_CASHFLOW))
+    if (netOnly.length > 0) applyCalcLayer(tree, netOnly, Object.keys(EMPTY_CASHFLOW), undefined, crossDim)
     return tree
   },
 }

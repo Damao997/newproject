@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Dialog,
-  DialogContent,
+  DialogContent, DialogBody,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -63,19 +63,21 @@ export function useConfirm() {
           <DialogTitle>{state.title ?? '确认操作'}</DialogTitle>
           {state.description && <DialogDescription>{state.description}</DialogDescription>}
         </DialogHeader>
-        {state.requireInput && (
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">
-              请输入 <span className="font-mono font-semibold text-foreground">{state.requireInput}</span> 以确认操作
-            </Label>
-            <Input
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              placeholder={state.requireInput}
-              autoFocus
-            />
-          </div>
-        )}
+        <DialogBody className="grid gap-4">
+          {state.requireInput && (
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">
+                请输入 <span className="font-mono font-semibold text-foreground">{state.requireInput}</span> 以确认操作
+              </Label>
+              <Input
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                placeholder={state.requireInput}
+                autoFocus
+              />
+            </div>
+          )}
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => settle(false)}>{state.cancelText ?? '取消'}</Button>
           <Button variant={state.danger ? 'destructive' : 'default'} onClick={() => settle(true)} disabled={!inputConfirmed}>

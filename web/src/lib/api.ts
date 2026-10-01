@@ -616,6 +616,15 @@ class ApiClient {
     })
   }
 
+  /** 首页近 N 月收入/毛利趋势（US-05：折线+柱状，同比对照） */
+  async getDashboardTrend(months = 12): Promise<TrendData[]> {
+    return this.request({
+      method: 'GET',
+      url: '/dashboard/trend',
+      params: { months },
+    })
+  }
+
   // Indicators API
   async getOperatingIndicators(params: FilterParams): Promise<PaginatedResponse<any>> {
     return this.request({
@@ -1061,6 +1070,19 @@ class ApiClient {
   async exportData(params: FilterParams & { format: 'excel' | 'pdf' }): Promise<Blob> {
     const response = await this.client.get('/data/export', {
       params,
+      responseType: 'blob',
+    })
+    return response.data as any
+  }
+
+  /** 交叉表导出（当前交叉数值 xlsx，服务端审计；PDF 由前端从当前数据生成） */
+  async exportCrossTable(params: { subjectType: string; period?: string; companyCodes?: string[] }): Promise<Blob> {
+    const response = await this.client.get('/data/cross-table/export', {
+      params: {
+        subjectType: params.subjectType,
+        period: params.period,
+        companyCodes: params.companyCodes && params.companyCodes.length > 0 ? params.companyCodes.join(',') : undefined,
+      },
       responseType: 'blob',
     })
     return response.data as any

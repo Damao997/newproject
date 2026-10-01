@@ -44,8 +44,9 @@ const GROUP_BY_OPTIONS = [
   { value: 'account', label: '按会计科目' },
 ] as const
 
+/** 表格数值统一万元（接口底层为元，与摘要卡/导出口径一致；两位小数） */
 function fmtAmount(v: number): string {
-  return v.toLocaleString('zh-CN', { maximumFractionDigits: 2 })
+  return (v / 10000).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 export default function TransactionsAgingPage() {
@@ -278,7 +279,7 @@ export default function TransactionsAgingPage() {
                   <th className="text-left">往来类型</th>
                   <th className="text-left">{groupBy === 'account' ? '会计科目' : groupBy === 'counterparty' ? '往来客商' : '明细维度'}</th>
                   <th className="text-center">对象</th>
-                  <th className="text-right">期末余额</th>
+                  <th className="text-right">期末余额（万元）</th>
                   {AGING_GROUPS.map((g) => (
                     <th key={g} className="px-2 py-2 text-right">{g}</th>
                   ))}

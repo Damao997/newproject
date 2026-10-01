@@ -436,3 +436,42 @@ describe('AIProxyService.overviewStream 归档集成（mock chatStream + archive
     expect(mocks.recordAudit).toHaveBeenCalledWith(expect.objectContaining({ detail: expect.objectContaining({ archived: false }) }), undefined)
   })
 })
+
+let h10DbReady = false
+beforeAll(async () => {
+  try { await basePrisma.$queryRaw`SELECT 1`; h10DbReady = true } catch { h10DbReady = false }
+})
+
+describe('overviewStream ALL 归档全量守卫（真实 DB，H10 回归）', () => {
+  const rows = () => [
+    opRow({ code: 'OP_01', name: '燃气具收入', valueType: 'amount', actual: 1200, ytd: 7000, yoy: 12.3 }),
+  ]
+
+  it('受限范围用户缺省主体（全部口径）可流式预览但不归档', async () => {
+    if (!h10DbReady) return
+    mocks.chatStream.mockImplementation(async (_s: string, _u: string, onToken: (d: string) => void) => {
+      onToken('一、整体指标趋势概览')
+      onToken('受限用户预览内容。')
+    })
+    mocks.archiveOverview.mockClear()
+    const { finalText } = await AIProxyService.overviewStream(
+      { period: '2026-07', operating: rows(), static: [], userId: 'u1', scope: { companyCode: null, scopeValue: '', dataScopeCodes: ['EN999901'] } },
+      () => {},
+    )
+    expect(finalText).toContain('受限用户预览内容')
+    expect(mocks.archiveOverview).not.toHaveBeenCalled()
+  })
+
+  it('受限范围用户显式传 ALL 同样不归档', async () => {
+    if (!h10DbReady) return
+    mocks.chatStream.mockImplementation(async (_s: string, _u: string, onToken: (d: string) => void) => {
+      onToken('内容。')
+    })
+    mocks.archiveOverview.mockClear()
+    await AIProxyService.overviewStream(
+      { companyCode: 'ALL', period: '2026-07', operating: rows(), static: [], userId: 'u1', scope: { companyCode: null, scopeValue: '', dataScopeCodes: ['EN999901'] } },
+      () => {},
+    )
+    expect(mocks.archiveOverview).not.toHaveBeenCalled()
+  })
+})

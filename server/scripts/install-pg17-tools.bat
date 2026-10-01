@@ -1,7 +1,7 @@
 @echo off
 rem ============================================================
 rem  PostgreSQL 17 命令行工具安装脚本（ZJYPH 生产备份工具）
-rem  安装到 D:\ZJYPH-tools\pgsql，装完自动清理临时服务与数据目录
+rem  默认安装到 <仓库根目录>\tools\pgsql，装完自动清理临时服务与数据目录
 rem  用法：右键本文件 -> 以管理员身份运行
 rem  安装包路径可用参数覆盖：install-pg17-tools.bat "D:\下载\postgresql-17.x-windows-x64.exe"
 rem ============================================================
@@ -9,9 +9,10 @@ setlocal
 
 rem 安装包路径：优先取参数，缺省用默认下载位置（可按实际环境修改）
 set "INSTALLER=%~1"
-if "%INSTALLER%"=="" set "INSTALLER=C:\Users\85988\Downloads\postgresql-17.10-2-windows-x64.exe"
-set PREFIX=D:\ZJYPH-tools\pgsql
-set DATADIR=D:\ZJYPH-tools\pgdata-installer
+if "%INSTALLER%"=="" set "INSTALLER=%USERPROFILE%\Downloads\postgresql-17.10-2-windows-x64.exe"
+for %%I in ("%~dp0..\..") do set "PROD_ROOT=%%~fI"
+set "PREFIX=%PROD_ROOT%\tools\pgsql"
+set "DATADIR=%PROD_ROOT%\tools\pgdata-installer"
 
 rem 临时超级用户密码：每次运行随机生成（不进版本库），安装完成后提示修改
 set "SUPER_PASSWORD=ZjyphTmp%RANDOM%%RANDOM%!"

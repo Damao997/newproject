@@ -101,89 +101,91 @@ export function Pagination({
   }
 
   return (
-    <div className={cn('flex flex-wrap items-center justify-between gap-2', className)}>
-      <p className="text-sm text-muted-foreground font-num">
-        {summary ?? `共 ${total} 条，第 ${rangeStart}-${rangeEnd} 条`}
-      </p>
-      <div className="flex flex-wrap items-center gap-2">
-        {onPageSizeChange && (
-          <Select
-            value={String(pageSize)}
-            onValueChange={(v) => {
-              // 每页条数变化后回到第 1 页，避免原页码越界
-              onPageSizeChange(Number(v))
-              onPageChange(1)
-            }}
+    <div className={cn('pagination-root w-full', className)}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground font-num">
+          {summary ?? `共 ${total} 条，第 ${rangeStart}-${rangeEnd} 条`}
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          {onPageSizeChange && (
+            <Select
+              value={String(pageSize)}
+              onValueChange={(v) => {
+                // 每页条数变化后回到第 1 页，避免原页码越界
+                onPageSizeChange(Number(v))
+                onPageChange(1)
+              }}
+            >
+              <SelectTrigger className="h-9 w-[110px]" aria-label="每页条数">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {sizeOptions.map((n) => (
+                  <SelectItem key={n} value={String(n)}>每页 {n} 条</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={current <= 1}
+            onClick={() => onPageChange(current - 1)}
           >
-            <SelectTrigger className="h-9 w-[110px]" aria-label="每页条数">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {sizeOptions.map((n) => (
-                <SelectItem key={n} value={String(n)}>每页 {n} 条</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={current <= 1}
-          onClick={() => onPageChange(current - 1)}
-        >
-          上一页
-        </Button>
-        <div className="hidden items-center gap-2 sm:flex">
-          {slots.map((slot, index) => {
-            if (slot.kind === 'placeholder') {
-              return <span key={`ph-${index}`} aria-hidden className="inline-block h-9 min-w-9" />
-            }
-            if (slot.kind === 'ellipsis') {
+            上一页
+          </Button>
+          <div className="pagination-slots hidden items-center gap-2">
+            {slots.map((slot, index) => {
+              if (slot.kind === 'placeholder') {
+                return <span key={`ph-${index}`} aria-hidden className="inline-block h-9 min-w-9" />
+              }
+              if (slot.kind === 'ellipsis') {
+                return (
+                  <span
+                    key={`ell-${index}`}
+                    className="inline-flex h-9 min-w-9 items-center justify-center text-sm text-muted-foreground"
+                  >
+                    …
+                  </span>
+                )
+              }
               return (
-                <span
-                  key={`ell-${index}`}
-                  className="inline-flex h-9 min-w-9 items-center justify-center text-sm text-muted-foreground"
+                <Button
+                  key={slot.page}
+                  variant={slot.page === current ? 'default' : 'outline'}
+                  size="sm"
+                  className="min-w-9 font-num"
+                  onClick={() => onPageChange(slot.page)}
                 >
-                  …
-                </span>
+                  {slot.page}
+                </Button>
               )
-            }
-            return (
-              <Button
-                key={slot.page}
-                variant={slot.page === current ? 'default' : 'outline'}
-                size="sm"
-                className="min-w-9 font-num"
-                onClick={() => onPageChange(slot.page)}
-              >
-                {slot.page}
-              </Button>
-            )
-          })}
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={current >= totalPages}
-          onClick={() => onPageChange(current + 1)}
-        >
-          下一页
-        </Button>
-        {showJumper && totalPages > 1 && (
-          <div className="flex items-center gap-1 text-sm text-muted-foreground">
-            <span className="whitespace-nowrap">跳至</span>
-            <Input
-              value={jumpValue}
-              onChange={(e) => setJumpValue(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') submitJump() }}
-              placeholder={String(current)}
-              aria-label="跳转页码"
-              className="h-9 w-14 text-center font-num"
-            />
-            <span className="whitespace-nowrap">/ {totalPages} 页</span>
-            <Button variant="outline" size="sm" onClick={submitJump}>跳转</Button>
+            })}
           </div>
-        )}
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={current >= totalPages}
+            onClick={() => onPageChange(current + 1)}
+          >
+            下一页
+          </Button>
+          {showJumper && totalPages > 1 && (
+            <div className="pagination-jumper flex items-center gap-1 text-sm text-muted-foreground">
+              <span className="whitespace-nowrap">跳至</span>
+              <Input
+                value={jumpValue}
+                onChange={(e) => setJumpValue(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') submitJump() }}
+                placeholder={String(current)}
+                aria-label="跳转页码"
+                className="h-9 w-14 text-center font-num"
+              />
+              <span className="whitespace-nowrap">/ {totalPages} 页</span>
+              <Button variant="outline" size="sm" onClick={submitJump}>跳转</Button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

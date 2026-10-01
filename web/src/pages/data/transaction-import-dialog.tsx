@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogBody, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn, formatWan } from '@/lib/utils'
@@ -143,177 +143,179 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
           </DialogDescription>
         </DialogHeader>
 
-        {/* Step 1: 选择文件 */}
-        {step === 'select' && (
-          <div className="space-y-3">
-            <div
-              className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed py-10 text-center hover:bg-muted/50"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Upload className="mb-2 h-8 w-8 text-muted-foreground" />
-              <p className="text-sm">点击选择账龄报表文件（.xls/.xlsx，最多 12 个）</p>
-              <p className="mt-1 text-xs text-muted-foreground">按 Sheet 名自动识别 应收/其他应收/预收/应付/其他应付/预付</p>
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept=".xls,.xlsx"
-                className="hidden"
-                onChange={(e) => handleFilesSelected(e.target.files)}
-              />
+        <DialogBody className="grid gap-4">
+          {/* Step 1: 选择文件 */}
+          {step === 'select' && (
+            <div className="space-y-3">
+              <div
+                className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed py-10 text-center hover:bg-muted/50"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="mb-2 h-8 w-8 text-muted-foreground" />
+                <p className="text-sm">点击选择账龄报表文件（.xls/.xlsx，最多 12 个）</p>
+                <p className="mt-1 text-xs text-muted-foreground">按 Sheet 名自动识别 应收/其他应收/预收/应付/其他应付/预付</p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".xls,.xlsx"
+                  className="hidden"
+                  onChange={(e) => handleFilesSelected(e.target.files)}
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium">文件金额单位:</span>
+                <Select value={valueUnit} onValueChange={setValueUnit}>
+                  <SelectTrigger className="h-8 w-[110px] shrink-0">
+                    <SelectValue placeholder="单位" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="yuan">元</SelectItem>
+                    <SelectItem value="wan">万元</SelectItem>
+                  </SelectContent>
+                </Select>
+                <span className="text-xs text-muted-foreground">ERP 账龄报表默认元；选万元将 ×10000 归一为元存储</span>
+              </div>
+              {files.length > 0 && (
+                <ul className="max-h-40 space-y-1 overflow-y-auto text-sm">
+                  {files.map((f) => (
+                    <li key={f.name} className="flex items-center gap-2">
+                      <FileSpreadsheet className="h-4 w-4 shrink-0 text-success" />
+                      <span className="truncate">{f.name}</span>
+                      <span className="ml-auto shrink-0 text-xs text-muted-foreground">{(f.size / 1024).toFixed(0)} KB</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium">文件金额单位:</span>
-              <Select value={valueUnit} onValueChange={setValueUnit}>
-                <SelectTrigger className="h-8 w-[110px] shrink-0">
-                  <SelectValue placeholder="单位" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="yuan">元</SelectItem>
-                  <SelectItem value="wan">万元</SelectItem>
-                </SelectContent>
-              </Select>
-              <span className="text-xs text-muted-foreground">ERP 账龄报表默认元；选万元将 ×10000 归一为元存储</span>
-            </div>
-            {files.length > 0 && (
-              <ul className="max-h-40 space-y-1 overflow-y-auto text-sm">
-                {files.map((f) => (
-                  <li key={f.name} className="flex items-center gap-2">
-                    <FileSpreadsheet className="h-4 w-4 shrink-0 text-success" />
-                    <span className="truncate">{f.name}</span>
-                    <span className="ml-auto shrink-0 text-xs text-muted-foreground">{(f.size / 1024).toFixed(0)} KB</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
+          )}
 
-        {/* Step 2: 预览 */}
-        {step === 'preview' && (
-          <div className="space-y-3">
-            {previews.map((p) => (
-              <div key={p.filename} className="rounded-lg border p-3 text-sm">
-                <div className="flex items-center gap-2 font-medium">
-                  {p.errorCount > 0 ? <AlertTriangle className="h-4 w-4 text-warning" /> : <CheckCircle2 className="h-4 w-4 text-success" />}
-                  <span className="truncate">{p.filename}</span>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  <span>期间: {p.summary.periods.join(', ') || '-'}</span>
-                  <span>公司: {p.summary.companies.join(', ') || '-'}</span>
-                  <span>记录: {p.recordCount}</span>
-                  <span>客商: {p.summary.counterpartyCount}</span>
-                  <span>期末余额合计: {formatAmount(p.summary.totalClosingBalance)}</span>
-                  {p.summary.internalCount > 0 && <span>内部往来: {p.summary.internalCount}</span>}
-                  {p.summary.duplicateCount > 0 && <span className="text-warning-strong">文件内重复合并: {p.summary.duplicateCount}</span>}
-                </div>
-                {p.sheets.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {p.sheets.map((s) => (
-                      <span key={s.sheetName} className={cn('rounded px-1.5 py-0.5 text-xs', s.direction === 'AR' ? 'bg-info/10 text-info' : 'bg-destructive/10 text-destructive')}>
-                        {s.transactionType} · {s.recordCount} 条{s.cutoffDate ? ` · 截止 ${s.cutoffDate}` : ''}
-                      </span>
-                    ))}
+          {/* Step 2: 预览 */}
+          {step === 'preview' && (
+            <div className="space-y-3">
+              {previews.map((p) => (
+                <div key={p.filename} className="rounded-lg border p-3 text-sm">
+                  <div className="flex items-center gap-2 font-medium">
+                    {p.errorCount > 0 ? <AlertTriangle className="h-4 w-4 text-warning" /> : <CheckCircle2 className="h-4 w-4 text-success" />}
+                    <span className="truncate">{p.filename}</span>
                   </div>
-                )}
-                {/* 空模板状态：格式正确但无数据行，激活后将按申报范围标记该期该类型为「无往来数据」 */}
-                {p.recordCount === 0 && p.errorCount === 0 && (
-                  <p className="mt-2 rounded bg-info/10 px-2 py-1 text-xs text-info">
-                    空模板：格式正确但无数据行，激活后将申报覆盖该 公司×期间×往来类型 为「无往来数据」
-                  </p>
-                )}
-                {p.errorCount > 0 && (
-                  <div className="mt-2 rounded bg-warning/[0.08] p-2 text-xs text-warning-strong">
-                    <p className="font-medium">解析错误 {p.errorCount} 条（错误行将跳过）：</p>
-                    <ul className="mt-1 max-h-24 space-y-0.5 overflow-y-auto">
-                      {p.errors.slice(0, 10).map((e, i) => (
-                        <li key={i}>{e.sheet} 第{e.row}行 {e.column}列: {e.message}</li>
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span>期间: {p.summary.periods.join(', ') || '-'}</span>
+                    <span>公司: {p.summary.companies.join(', ') || '-'}</span>
+                    <span>记录: {p.recordCount}</span>
+                    <span>客商: {p.summary.counterpartyCount}</span>
+                    <span>期末余额合计: {formatAmount(p.summary.totalClosingBalance)}</span>
+                    {p.summary.internalCount > 0 && <span>内部往来: {p.summary.internalCount}</span>}
+                    {p.summary.duplicateCount > 0 && <span className="text-warning-strong">文件内重复合并: {p.summary.duplicateCount}</span>}
+                  </div>
+                  {p.sheets.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {p.sheets.map((s) => (
+                        <span key={s.sheetName} className={cn('rounded px-1.5 py-0.5 text-xs', s.direction === 'AR' ? 'bg-info/10 text-info' : 'bg-destructive/10 text-destructive')}>
+                          {s.transactionType} · {s.recordCount} 条{s.cutoffDate ? ` · 截止 ${s.cutoffDate}` : ''}
+                        </span>
                       ))}
-                    </ul>
-                  </div>
-                )}
-                {p.warningCount > 0 && (
-                  <p className="mt-1 text-xs text-muted-foreground">另有 {p.warningCount} 条一致性警告（账龄与期末余额差异），不影响入库</p>
-                )}
-                {/* 激活影响预告：新增/替换的 公司×期间×类型 组合 */}
-                {p.activationImpact && (p.activationImpact.newKeys.length > 0 || p.activationImpact.overlappingKeys.length > 0) && (
-                  <div className="mt-2 space-y-1 text-xs">
-                    {p.activationImpact.newKeys.length > 0 && (
-                      <p className="text-muted-foreground">激活后新增 {p.activationImpact.newKeys.length} 个组合：{p.activationImpact.newKeys.slice(0, 3).map((k) => `${k.companyCode} ${k.period} ${k.transactionType}`).join('、')}{p.activationImpact.newKeys.length > 3 ? ' 等' : ''}</p>
-                    )}
-                    {p.activationImpact.overlappingKeys.length > 0 && (
-                      <p className="font-medium text-warning-strong">
-                        激活后将替换 {p.activationImpact.overlappingKeys.length} 个已生效组合：
-                        {p.activationImpact.overlappingKeys.slice(0, 3).map((k) => `${k.companyCode} ${k.period} ${k.transactionType}(现有${k.existingCount}条)`).join('、')}
-                        {p.activationImpact.overlappingKeys.length > 3 ? ' 等' : ''}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+                    </div>
+                  )}
+                  {/* 空模板状态：格式正确但无数据行，激活后将按申报范围标记该期该类型为「无往来数据」 */}
+                  {p.recordCount === 0 && p.errorCount === 0 && (
+                    <p className="mt-2 rounded bg-info/10 px-2 py-1 text-xs text-info">
+                      空模板：格式正确但无数据行，激活后将申报覆盖该 公司×期间×往来类型 为「无往来数据」
+                    </p>
+                  )}
+                  {p.errorCount > 0 && (
+                    <div className="mt-2 rounded bg-warning/[0.08] p-2 text-xs text-warning-strong">
+                      <p className="font-medium">解析错误 {p.errorCount} 条（错误行将跳过）：</p>
+                      <ul className="mt-1 max-h-24 space-y-0.5 overflow-y-auto">
+                        {p.errors.slice(0, 10).map((e, i) => (
+                          <li key={i}>{e.sheet} 第{e.row}行 {e.column}列: {e.message}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {p.warningCount > 0 && (
+                    <p className="mt-1 text-xs text-muted-foreground">另有 {p.warningCount} 条一致性警告（账龄与期末余额差异），不影响入库</p>
+                  )}
+                  {/* 激活影响预告：新增/替换的 公司×期间×类型 组合 */}
+                  {p.activationImpact && (p.activationImpact.newKeys.length > 0 || p.activationImpact.overlappingKeys.length > 0) && (
+                    <div className="mt-2 space-y-1 text-xs">
+                      {p.activationImpact.newKeys.length > 0 && (
+                        <p className="text-muted-foreground">激活后新增 {p.activationImpact.newKeys.length} 个组合：{p.activationImpact.newKeys.slice(0, 3).map((k) => `${k.companyCode} ${k.period} ${k.transactionType}`).join('、')}{p.activationImpact.newKeys.length > 3 ? ' 等' : ''}</p>
+                      )}
+                      {p.activationImpact.overlappingKeys.length > 0 && (
+                        <p className="font-medium text-warning-strong">
+                          激活后将替换 {p.activationImpact.overlappingKeys.length} 个已生效组合：
+                          {p.activationImpact.overlappingKeys.slice(0, 3).map((k) => `${k.companyCode} ${k.period} ${k.transactionType}(现有${k.existingCount}条)`).join('、')}
+                          {p.activationImpact.overlappingKeys.length > 3 ? ' 等' : ''}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
-        {/* Step 3: 上传结果 + 激活 */}
-        {step === 'result' && (
-          <div className="space-y-2">
-            {(() => {
-              const pendingCount = results.filter((r) => r.batch && !activatedIds.has(r.batch.id)).length
-              const doneCount = [...batchActivate.results.values()].filter((r) => r.status === 'success').length
-              const failCount = batchActivate.results.size - doneCount
-              return (pendingCount > 0 || batchActivate.isBusy || batchActivate.results.size > 0) && (
-                <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
-                  <Button size="sm" className="shrink-0" disabled={batchActivate.isBusy || activateMutation.isPending || pendingCount === 0} onClick={handleActivateAll}>
-                    {batchActivate.isBusy ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <CheckCircle2 className="mr-1 h-3 w-3" />}
-                    全部激活{pendingCount > 0 ? `（${pendingCount}）` : ''}
-                  </Button>
-                  {batchActivate.progress && (
-                    <span className="text-xs text-muted-foreground">
-                      正在激活 {batchActivate.progress.done}/{batchActivate.progress.total}：{batchActivate.progress.currentFilename || '-'}
-                    </span>
-                  )}
-                  {!batchActivate.isBusy && batchActivate.results.size > 0 && (
-                    <span className="text-xs text-muted-foreground">完成：成功 {doneCount} 个，失败 {failCount} 个</span>
-                  )}
-                </div>
-              )
-            })()}
-            {results.map((r) => (
-              <div key={r.filename} className="flex items-center gap-2 rounded-lg border p-3 text-sm">
-                {r.error ? <XCircle className="h-4 w-4 shrink-0 text-destructive" /> : <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate">{r.filename}</p>
-                  {r.error ? (
-                    <p className="text-xs text-destructive">{r.error}</p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">入库 {r.batch?.detailCount ?? 0} 条{(r.batch?.errorCount ?? 0) > 0 ? `，错误 ${r.batch?.errorCount} 条` : ''}</p>
-                  )}
-                </div>
-                {r.batch && (() => {
-                  const batchResult = batchActivate.results.get(r.batch!.id)
-                  const batchActivating = batchActivate.isBusy && batchActivate.progress?.currentId === r.batch!.id
-                  if (activatedIds.has(r.batch!.id) || batchResult?.status === 'success') {
-                    return <span className="shrink-0 rounded bg-success/10 px-2 py-0.5 text-xs text-success-strong">已激活</span>
-                  }
-                  if (batchResult?.status === 'failed') {
-                    return <span className="shrink-0 max-w-[200px] truncate text-xs text-destructive" title={batchResult.error}>激活失败：{batchResult.error}</span>
-                  }
-                  return (
-                    <Button size="sm" variant="outline" className="shrink-0" disabled={batchActivate.isBusy || activateMutation.isPending} onClick={() => handleActivate(r.batch!.id)}>
-                      {batchActivating || (activateMutation.isPending && !batchActivate.isBusy) ? <Loader2 className="h-3 w-3 animate-spin" /> : '激活'}
+          {/* Step 3: 上传结果 + 激活 */}
+          {step === 'result' && (
+            <div className="space-y-2">
+              {(() => {
+                const pendingCount = results.filter((r) => r.batch && !activatedIds.has(r.batch.id)).length
+                const doneCount = [...batchActivate.results.values()].filter((r) => r.status === 'success').length
+                const failCount = batchActivate.results.size - doneCount
+                return (pendingCount > 0 || batchActivate.isBusy || batchActivate.results.size > 0) && (
+                  <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
+                    <Button size="sm" className="shrink-0" disabled={batchActivate.isBusy || activateMutation.isPending || pendingCount === 0} onClick={handleActivateAll}>
+                      {batchActivate.isBusy ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <CheckCircle2 className="mr-1 h-3 w-3" />}
+                      全部激活{pendingCount > 0 ? `（${pendingCount}）` : ''}
                     </Button>
-                  )
-                })()}
-              </div>
-            ))}
-            <p className="text-xs text-muted-foreground">激活后按 公司 × 期间 × 往来类型 替换旧生效数据；未激活批次不参与分析，可稍后在「导入质量概览」列表或往来分析「导入覆盖」页中查看并激活。</p>
-          </div>
-        )}
+                    {batchActivate.progress && (
+                      <span className="text-xs text-muted-foreground">
+                        正在激活 {batchActivate.progress.done}/{batchActivate.progress.total}：{batchActivate.progress.currentFilename || '-'}
+                      </span>
+                    )}
+                    {!batchActivate.isBusy && batchActivate.results.size > 0 && (
+                      <span className="text-xs text-muted-foreground">完成：成功 {doneCount} 个，失败 {failCount} 个</span>
+                    )}
+                  </div>
+                )
+              })()}
+              {results.map((r) => (
+                <div key={r.filename} className="flex items-center gap-2 rounded-lg border p-3 text-sm">
+                  {r.error ? <XCircle className="h-4 w-4 shrink-0 text-destructive" /> : <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate">{r.filename}</p>
+                    {r.error ? (
+                      <p className="text-xs text-destructive">{r.error}</p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">入库 {r.batch?.detailCount ?? 0} 条{(r.batch?.errorCount ?? 0) > 0 ? `，错误 ${r.batch?.errorCount} 条` : ''}</p>
+                    )}
+                  </div>
+                  {r.batch && (() => {
+                    const batchResult = batchActivate.results.get(r.batch!.id)
+                    const batchActivating = batchActivate.isBusy && batchActivate.progress?.currentId === r.batch!.id
+                    if (activatedIds.has(r.batch!.id) || batchResult?.status === 'success') {
+                      return <span className="shrink-0 rounded bg-success/10 px-2 py-0.5 text-xs text-success-strong">已激活</span>
+                    }
+                    if (batchResult?.status === 'failed') {
+                      return <span className="shrink-0 max-w-[200px] truncate text-xs text-destructive" title={batchResult.error}>激活失败：{batchResult.error}</span>
+                    }
+                    return (
+                      <Button size="sm" variant="outline" className="shrink-0" disabled={batchActivate.isBusy || activateMutation.isPending} onClick={() => handleActivate(r.batch!.id)}>
+                        {batchActivating || (activateMutation.isPending && !batchActivate.isBusy) ? <Loader2 className="h-3 w-3 animate-spin" /> : '激活'}
+                      </Button>
+                    )
+                  })()}
+                </div>
+              ))}
+              <p className="text-xs text-muted-foreground">激活后按 公司 × 期间 × 往来类型 替换旧生效数据；未激活批次不参与分析，可稍后在「导入质量概览」列表或往来分析「导入覆盖」页中查看并激活。</p>
+            </div>
+          )}
 
-        {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
+          {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
 
-        {confirmElement}
+          {confirmElement}
+        </DialogBody>
 
         <DialogFooter>
           {step === 'select' && (

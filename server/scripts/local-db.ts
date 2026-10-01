@@ -17,8 +17,8 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') })
  * 连接串（与 .env 对齐，端口受 DB_PORT 控制，默认 5432）：
  *   postgresql://postgres:postgres@localhost:5432/yipinhui_finance
  *
- * 警告：仅限本地开发使用。严禁在生产目录（如 D:\ZJYPH-prod\server）执行本命令。
- * 生产数据库由 PM2 托管（zjyph-postgres，端口 5433，数据目录 D:\ZJYPH-data），
+ * 警告：仅限本地开发使用。严禁在生产目录（如 D:\ZJYPHFA\server）执行本命令。
+ * 生产数据库由 PM2 托管（zjyph-postgres，端口 5433，数据目录由 ZJYPH_DATA_DIR 确定），
  * 管理请使用 pm2 / npm run db:prod / deploy-zjyph.ps1 / backup-zjyph.ps1。
  */
 

@@ -21,6 +21,24 @@ import inventoryRouter from './routes/inventory'
 import toolsRouter from './routes/tools'
 
 /**
+ * 访问日志脱敏：剥离查询串（可能携带 token 类凭证），公开分享链接的
+ * 令牌路径段替换为占位——日志读取者不得借此获得可用分享凭证。
+ */
+function sanitizePathForLog(raw: string): string {
+  const path = raw.split('?')[0]
+  return path.replace(/(\/shared\/)[0-9a-fA-F-]{8,}/i, '$1:token')
+}
+
+/**
+ * 后端只信任直接连入的本机回环代理。公网与局域网流量统一先到
+ * serve-static:8080，由它根据 socket 来源清洗并重写 X-Forwarded-*，再从回环地址转给后端。
+ * 客户端若绕过前端直连 3100，其 socket 地址非回环，客户端自带 XFF 不会被信任。
+ */
+export function isTrustedProxy(ip: string): boolean {
+  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1'
+}
+
+/**
  * 构建 Express 应用并装配中间件链：
  *   traceId → helmet → cors → express.json → 通用限流 → 路由 → 404 → 全局错误处理
  * 认证路由内部再叠加 auth/rate-limit/audit（登录限流在 /auth/login）。
@@ -28,8 +46,7 @@ import toolsRouter from './routes/tools'
 export function createApp(): Application {
   const app = express()
 
-  // 位于反向代理之后，信任代理以正确解析客户端 IP
-  app.set('trust proxy', 1)
+  app.set('trust proxy', isTrustedProxy)
 
   // 链路追踪最先执行，保证后续中间件/错误处理均可用 traceId
   app.use(traceId)
@@ -41,7 +58,7 @@ export function createApp(): Application {
       const user = req.authUser?.username ?? 'anonymous'
       const ip = req.ip ?? '-' // trust proxy 可信口径，客户端伪造的 XFF 首段被忽略
       const ms = Date.now() - start
-      logger.info(req.traceId, `${req.method} ${req.originalUrl} → ${res.statusCode} [user=${user}] [ip=${ip}] ${ms}ms`)
+      logger.info(req.traceId, `${req.method} ${sanitizePathForLog(req.originalUrl)} → ${res.statusCode} [user=${user}] [ip=${ip}] ${ms}ms`)
     })
     next()
   })

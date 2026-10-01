@@ -68,6 +68,26 @@ describe('auditMeta', () => {
 })
 
 describe('recordAudit', () => {
+  it('写入 trace_id（与访问日志/响应 traceId 贯穿）', async () => {
+    mocks.prisma.auditLog.create.mockResolvedValue({})
+    await recordAudit({ module: 'auth', action: 'login' }, 'trace-abc-123')
+    expect(mocks.prisma.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ traceId: 'trace-abc-123' }) }),
+    )
+  })
+
+  it('traceId 缺省落 null；超长截断至 64 字符', async () => {
+    mocks.prisma.auditLog.create.mockResolvedValue({})
+    await recordAudit({ module: 'data', action: 'import' })
+    expect(mocks.prisma.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ traceId: null }) }),
+    )
+    const long = 't'.repeat(100)
+    await recordAudit({ module: 'data', action: 'import' }, long)
+    expect(mocks.prisma.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ traceId: 't'.repeat(64) }) }),
+    )
+  })
   it('userAgent 落库', async () => {
     mocks.prisma.auditLog.create.mockResolvedValue({})
     await recordAudit({ module: 'auth', action: 'login', ip: '1.2.3.4', userAgent: 'Mozilla/5.0' })

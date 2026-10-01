@@ -220,7 +220,7 @@ export function ReclassifyLogsPanel({ canRevert, canReapplySubject = false, onRe
   })
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col space-y-2">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col space-y-2">
       {/* 筛选工具条（吸顶） */}
       <Card className="sticky z-10 shrink-0 rounded-card px-4 py-2.5" style={{ top: stickyTop }}>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -249,7 +249,7 @@ export function ReclassifyLogsPanel({ canRevert, canReapplySubject = false, onRe
         density="compact"
         emptyText={isFetching ? '加载中…' : '暂无重分类记录'}
         onRowClick={(r) => onViewDetail?.(r)}
-        maxHeight={`calc(100dvh - ${stickyTop}px - 24px)`}
+        fillHeight
       />
       <Pagination className="shrink-0" page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
       {confirmElement}

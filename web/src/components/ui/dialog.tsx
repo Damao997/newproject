@@ -6,12 +6,12 @@ import { cn } from "@/lib/utils"
  * Dialog 门面：antd Modal。
  *
  * 保持 Radix Dialog 的组合 API（Dialog/DialogContent/DialogHeader/DialogTitle/
- * DialogDescription/DialogFooter/DialogTrigger/DialogClose），全站 30+ 弹窗零改动。
+ * DialogDescription/DialogFooter/DialogTrigger/DialogClose）；正文统一使用 DialogBody。
  *
  * 关键映射：
  * - 受控 open/onOpenChange（全站统一用法，DialogTrigger 实际未使用，仍保留兜底实现）
- * - DialogContent 的 className 中 max-w-{md..4xl} 解析为 Modal width；max-h-[XXvh] 解析为 body 限高
- * - 内容渲染在内层 wrapper div（复刻 Radix 的 grid gap-4 p-6 布局），Tailwind 类完全可控，
+ * - DialogContent 的 className 中 max-w-{md..4xl} 解析为 Modal width；max-h-[XXvh] 限制整个弹窗高度
+ * - 内层 flex 三段布局固定标题和按钮，仅 DialogBody 滚动；Tailwind 类完全可控，
  *   不与 antd 样式产生优先级冲突；调用方传 p-0/flex 等类由 twMerge 正常覆盖
  * - ESC/点击遮罩/右上角关闭 → onOpenChange(false)；遮罩色与圆角走 AntdProvider token
  */
@@ -122,7 +122,7 @@ function parseWidth(className: string): number | undefined {
   return undefined
 }
 
-/** className 中 max-h-[XXvh] → body 限高 */
+/** className 中 max-h-[XXvh] → 整个弹窗限高 */
 function parseMaxHeight(className: string): string | undefined {
   const m = /max-h-\[(\d+)vh\]/.exec(className)
   return m ? `${m[1]}vh` : undefined
@@ -133,7 +133,7 @@ interface DialogContentProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
-  ({ className, children, ...props }) => {
+  ({ className, children, style, ...props }, ref) => {
     const ctx = React.useContext(DialogContext)
     const width = className ? parseWidth(className) : undefined
     const maxHeight = className ? parseMaxHeight(className) : undefined
@@ -147,11 +147,20 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
         centered
         destroyOnHidden
         width={width}
-        styles={{ body: { padding: 0, maxHeight, overflowY: maxHeight ? 'auto' : undefined } }}
+        styles={{
+          content: { padding: 0, overflow: 'hidden' },
+          body: { padding: 0, display: 'flex', minHeight: 0 },
+        }}
       >
-        {/* 内容 wrapper：复刻 Radix DialogContent 的 grid gap-4 p-6 布局；
+        {/* 内容 wrapper：固定头尾与可滚动正文的 flex 布局；
             调用方 className（p-0/flex/max-h 等）经 twMerge 正常覆盖 */}
-        <div className={cn("grid gap-4 p-6", className)} {...props}>
+        <div
+          ref={ref}
+          data-dialog-content
+          className={cn("flex min-h-0 w-full flex-col gap-4 p-6", className, "overflow-hidden")}
+          style={{ ...style, boxSizing: 'border-box', maxHeight: maxHeight ? `min(${maxHeight}, calc(100dvh - 32px))` : 'calc(100dvh - 32px)' }}
+          {...props}
+        >
           {children}
         </div>
       </Modal>
@@ -160,12 +169,25 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
 )
 DialogContent.displayName = "DialogContent"
 
+/** 正文是弹窗唯一的纵向滚动区域；标题和底部按钮作为同级节点固定。 */
+const DialogBody = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div
+      ref={ref}
+      data-dialog-body
+      className={cn("min-h-0 min-w-0 flex-auto overflow-y-auto overscroll-contain", className)}
+      {...props}
+    />
+  ),
+)
+DialogBody.displayName = "DialogBody"
+
 const DialogHeader = ({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
-    className={cn("flex flex-col space-y-1.5 text-center sm:text-left", className)}
+    className={cn("flex shrink-0 flex-col space-y-1.5 text-center sm:text-left", className)}
     {...props}
   />
 )
@@ -176,7 +198,7 @@ const DialogFooter = ({
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
-    className={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2", className)}
+    className={cn("flex shrink-0 flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end", className)}
     {...props}
   />
 )
@@ -209,6 +231,7 @@ export {
   DialogClose,
   DialogTrigger,
   DialogContent,
+  DialogBody,
   DialogHeader,
   DialogFooter,
   DialogTitle,

@@ -128,6 +128,10 @@ export function IndicatorPage({ subjectType, description }: { subjectType: 'oper
   const isLoading = isOperating ? operatingQuery.isLoading : isCashflow ? cashflowQuery.isLoading : staticQuery.isLoading
   // isFetching：筛选刷新中（已保留旧数据），用于轻量视觉反馈而非整块替换
   const isFetching = isOperating ? operatingQuery.isFetching : isCashflow ? cashflowQuery.isFetching : staticQuery.isFetching
+  // 查询错误显式化：失败不得冒充「无数据」空态
+  const activeError = isOperating ? operatingQuery.error : isCashflow ? cashflowQuery.error : staticQuery.error
+  // 刷新中表格展示的是旧数据：禁止导出，避免把「过期快照」当成当前筛选结果带走
+  const exportStale = isFetching
   // 去重分类口径下无法回溯的记录数（批次已替换/缺快照；现金流无重分类口径）
   const skippedReclassifyLogs = (isOperating ? operatingQuery.data?.skippedReclassifyLogs : staticQuery.data?.skippedReclassifyLogs) ?? 0
 
@@ -355,7 +359,7 @@ export function IndicatorPage({ subjectType, description }: { subjectType: 'oper
           canCreateReports={can('reports', 'create')} canViewReports={can('reports', 'view')} canExport={can('indicators', 'export')}
           aiPreparing={overviewPreparing} aiDisabled={isLoading || !hasOverviewData || overviewPreparing}
           onAiPreAnalyze={() => setAiNeedData(true)} onViewAnalyses={() => navigate('/reports/analyses')}
-          exporting={exporting} exportDisabled={isLoading || activeItems.length === 0 || exporting} onExport={handleExport}
+          exporting={exporting} exportDisabled={isLoading || exportStale || activeItems.length === 0 || exporting} onExport={handleExport}
         />
       }
     >
@@ -425,6 +429,19 @@ export function IndicatorPage({ subjectType, description }: { subjectType: 'oper
                   ))}
                 </div>
               ))}
+            </div>
+          ) : activeError && !isLoading ? (
+            /* 错误状态：显式区分于空数据，提供重试 */
+            <div className="flex flex-col items-center justify-center gap-2 py-16">
+              <p className="flex items-center gap-2 text-sm text-destructive">
+                <TriangleAlert className="h-4 w-4" /> 数据加载失败，请稍后重试
+              </p>
+              <p className="text-xs text-muted-foreground/70">
+                {activeError instanceof Error ? activeError.message : '请求异常'}
+              </p>
+              <Button variant="fused" size="sm" className="mt-1" onClick={() => void (isOperating ? operatingQuery.refetch() : isCashflow ? cashflowQuery.refetch() : staticQuery.refetch())}>
+                重试
+              </Button>
             </div>
           ) : activeTree.length === 0 ? (
             /* 空状态：引导调整筛选或一键重置 */

@@ -1,19 +1,46 @@
 /**
- * ZJYPH 生产环境 PM2 进程配置（Windows / 非 Docker）
+ * ZJYPH Windows 生产环境 PM2 配置。
  *
- * 三个进程，全部由 PM2 托管（自动重启 + 开机自启）：
- *   zjyph-postgres  生产 PostgreSQL（嵌入式实例，127.0.0.1:5433，数据目录 D:\ZJYPH-data）
- *   zjyph-backend   后端 API（dist/server.js，端口 3100，读取 server/.env）
- *   zjyph-frontend  前端静态托管（web/dist，端口 8080，SPA fallback，依赖全局 serve 包）
- *
- * 用法：
- *   pm2 start zjyph-ecosystem.config.cjs
- *   pm2 save && pm2 startup   （首次配置开机自启）
- * 日志输出：D:\ZJYPH-prod\logs\（由 pm2-logrotate 轮转，保留 30 天）
+ * 路径默认从当前仓库根目录推导，不绑定盘符；端口可由本地
+ * ops-panel/runtime-config.json 或 ZJYPH_* 环境变量覆盖。
+ * runtime-config.json 含现场配置，不进入 Git；缺失时使用安全默认值。
  */
-const path = require('path')
+const fs = require('node:fs')
+const path = require('node:path')
 
-const LOG_DIR = 'D:/ZJYPH-prod/logs'
+const PROD_ROOT = path.resolve(__dirname, '..')
+const RUNTIME_FILE = process.env.ZJYPH_RUNTIME_CONFIG || path.join(PROD_ROOT, 'ops-panel', 'runtime-config.json')
+const DEFAULT_RUNTIME = {
+  services: { postgresPort: 5433, backendPort: 3100, frontendPort: 8080 },
+  access: { frontendOrigin: '' },
+}
+
+function loadRuntime() {
+  try {
+    const value = JSON.parse(fs.readFileSync(RUNTIME_FILE, 'utf8'))
+    return {
+      services: { ...DEFAULT_RUNTIME.services, ...(value.services || {}) },
+      access: { ...DEFAULT_RUNTIME.access, ...(value.access || {}) },
+    }
+  } catch {
+    return DEFAULT_RUNTIME
+  }
+}
+
+function port(name, runtimeValue) {
+  const value = Number(process.env[name] || runtimeValue)
+  if (!Number.isInteger(value) || value < 1 || value > 65535) throw new Error(`${name} 端口非法`)
+  return value
+}
+
+const runtime = loadRuntime()
+const postgresPort = port('ZJYPH_PG_PORT', runtime.services.postgresPort)
+const backendPort = port('ZJYPH_BACKEND_PORT', runtime.services.backendPort)
+const frontendPort = port('ZJYPH_FRONTEND_PORT', runtime.services.frontendPort)
+const logDir = path.resolve(process.env.ZJYPH_LOG_DIR || path.join(PROD_ROOT, 'logs'))
+const backendEnv = { NODE_ENV: 'production', PORT: String(backendPort) }
+const frontendOrigin = process.env.ZJYPH_FRONTEND_ORIGIN || runtime.access.frontendOrigin
+if (frontendOrigin) backendEnv.FRONTEND_ORIGIN = frontendOrigin
 
 module.exports = {
   apps: [
@@ -23,10 +50,11 @@ module.exports = {
       script: 'scripts/prod-db.ts',
       interpreter: 'node',
       node_args: ['--import', 'tsx'],
+      env: { ZJYPH_PG_PORT: String(postgresPort) },
       autorestart: true,
       max_memory_restart: '1G',
-      out_file: path.join(LOG_DIR, 'postgres.out.log'),
-      error_file: path.join(LOG_DIR, 'postgres.err.log'),
+      out_file: path.join(logDir, 'postgres.out.log'),
+      error_file: path.join(logDir, 'postgres.err.log'),
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
       merge_logs: true,
     },
@@ -35,23 +63,27 @@ module.exports = {
       cwd: __dirname,
       script: 'dist/src/server.js',
       autorestart: true,
-      // 1.5G：导入走 multer memoryStorage（上限 200MB × 解析峰值），500M 会被 PM2 误杀大文件导入
-      max_memory_restart: '1.5G',
-      out_file: path.join(LOG_DIR, 'backend.out.log'),
-      error_file: path.join(LOG_DIR, 'backend.err.log'),
+      // 导入使用 memoryStorage（上限 200MB × 解析峰值）
+      max_memory_restart: '1536M',
+      out_file: path.join(logDir, 'backend.out.log'),
+      error_file: path.join(logDir, 'backend.err.log'),
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
       merge_logs: true,
-      env: { NODE_ENV: 'production' },
+      env: backendEnv,
     },
     {
       name: 'zjyph-frontend',
-      cwd: path.join(__dirname, '..', 'web'),
+      cwd: path.join(PROD_ROOT, 'web'),
       script: 'serve-static.cjs',
       autorestart: true,
-      out_file: path.join(LOG_DIR, 'frontend.out.log'),
-      error_file: path.join(LOG_DIR, 'frontend.err.log'),
+      out_file: path.join(logDir, 'frontend.out.log'),
+      error_file: path.join(logDir, 'frontend.err.log'),
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
       merge_logs: true,
+      env: {
+        PORT: String(frontendPort),
+        BACKEND_PORT: String(backendPort),
+      },
     },
   ],
 }

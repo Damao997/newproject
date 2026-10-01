@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
+import { activeTransactionBatchWhere } from './TransactionService'
 
 /**
  * 应收款客商台账服务：从 transaction_detail 聚合应收账款客商（公司×客商粒度），
@@ -72,7 +73,7 @@ export const CustomerLedgerService = {
     let period = params.period
     if (!period) {
       const latest = await prisma.transactionDetail.findFirst({
-        where: { period: { not: null } },
+        where: { period: { not: null }, AND: [await activeTransactionBatchWhere()] },
         select: { period: true },
         orderBy: { period: 'desc' },
       })
@@ -106,6 +107,8 @@ export const CustomerLedgerService = {
     }
     if (params.companyCodes) where.companyCode = { in: params.companyCodes }
     if (inactiveCodes.length) where.accountCode = { notIn: inactiveCodes }
+    // 生效批次口径：草稿/归档批次不参与台账统计
+    where.AND = [await activeTransactionBatchWhere()]
 
     const rows = await prisma.transactionDetail.groupBy({
       by: ['companyCode', 'counterpartyCode'],
