@@ -7,7 +7,9 @@ import {
   getLastSeenUpdateVersion,
   markUpdateSeen,
   markVersionRead,
+  sortReleasesDesc,
 } from '@/lib/app-version'
+import type { ReleaseEntry } from '@/lib/app-version'
 
 /**
  * app-version 边界测试。
@@ -37,6 +39,35 @@ describe('compareVersions 版本号比较', () => {
     expect(compareVersions('v2026.08.1', 'dev')).toBeGreaterThan(0)
     expect(compareVersions('unknown', 'v2026.08.1')).toBeLessThan(0)
     expect(compareVersions('unknown', 'dev')).toBe(0)
+  })
+})
+
+describe('sortReleasesDesc 历史版本倒序', () => {
+  const make = (version: string, publishedAt: string): ReleaseEntry => ({
+    version,
+    publishedAt,
+    title: version,
+    notes: [],
+  })
+
+  it('按发布时间倒序，不依赖输入顺序', () => {
+    const input = [
+      make('v2026.09.1', '2026-09-11'),
+      make('v2026.10.3', '2026-10-02'),
+      make('v2026.08.1', '2026-08-07'),
+    ]
+    expect(sortReleasesDesc(input).map((r) => r.version)).toEqual(['v2026.10.3', 'v2026.09.1', 'v2026.08.1'])
+  })
+
+  it('发布时间相同时按版本号倒序', () => {
+    const input = [make('v2026.10.1', '2026-10-01'), make('v2026.10.2', '2026-10-01')]
+    expect(sortReleasesDesc(input).map((r) => r.version)).toEqual(['v2026.10.2', 'v2026.10.1'])
+  })
+
+  it('不修改入参数组', () => {
+    const input = [make('v2026.08.1', '2026-08-07'), make('v2026.10.3', '2026-10-02')]
+    sortReleasesDesc(input)
+    expect(input.map((r) => r.version)).toEqual(['v2026.08.1', 'v2026.10.3'])
   })
 })
 

@@ -54,6 +54,19 @@ export function compareVersions(a: string, b: string): number {
   return 0
 }
 
+/**
+ * 历史版本倒序：按发布时间倒序，发布时间相同时按版本号倒序（返回新数组）。
+ * 历史版本列表统一经此函数排序，不依赖 release-notes.json 的人工维护顺序。
+ */
+export function sortReleasesDesc(releases: ReleaseEntry[]): ReleaseEntry[] {
+  return [...releases].sort((a, b) => {
+    if (a.publishedAt !== b.publishedAt) {
+      return a.publishedAt < b.publishedAt ? 1 : -1
+    }
+    return compareVersions(b.version, a.version)
+  })
+}
+
 export function getLastReadVersion(): string | null {
   return localStorage.getItem(READ_VERSION_STORAGE_KEY)
 }

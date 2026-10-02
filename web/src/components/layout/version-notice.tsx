@@ -1,5 +1,5 @@
-﻿import { useEffect, useMemo, useState } from 'react'
-import { RefreshCw, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { ChevronLeft, ChevronRight, History, Info, RefreshCw, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import {
@@ -18,9 +18,11 @@ import {
   getLastSeenUpdateVersion,
   markUpdateSeen,
   markVersionRead,
+  sortReleasesDesc,
   type ReleaseEntry,
   type ReleaseNoteItem,
 } from '@/lib/app-version'
+import { useNoticeStore } from '@/stores/noticeStore'
 
 const NOTE_TYPE_META: Record<ReleaseNoteItem['type'], { label: string; variant: BadgeProps['variant'] }> = {
   feature: { label: '新功能', variant: 'success' },
@@ -43,11 +45,16 @@ function ReleaseNotesBody({ entry }: { entry: ReleaseEntry }) {
   )
 }
 
+/** 公告弹窗内部视图：main=最新公告内容；list=历史版本列表；detail=某版本详情 */
+type NoticeViewState = 'main' | 'list' | 'detail'
+
 /**
  * 版本更新公告（登录后全局挂载，见 MainLayout）：
  * - 发现新版本（服务器已发布更新、本地仍是旧版）：底部常驻横幅 + 公告弹窗，可一键刷新；
  * - 当前已是最新且公告未读：自动弹窗展示本次更新内容，确认后写 localStorage；
- * - 开发环境（无 meta app-version）或发布说明拉取失败：静默不渲染。
+ * - 顶栏用户菜单「更新公告」：手动打开公告弹窗，随时查看更新内容与历史版本；
+ * - 历史版本：主视图提供显著入口 → 倒序版本列表 → 单个版本完整公告（非最新版明确标注为历史版本）；
+ * - 开发环境（无 meta app-version）或发布说明拉取失败：静默不渲染（手动入口除外）。
  */
 export function VersionNotice() {
   const currentVersion = useMemo(() => getCurrentVersion(), [])
@@ -55,6 +62,12 @@ export function VersionNotice() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [autoDialog, setAutoDialog] = useState<ReleaseEntry | null>(null)
   const [bannerDismissed, setBannerDismissed] = useState(false)
+  const [view, setView] = useState<NoticeViewState>('main')
+  const [selected, setSelected] = useState<ReleaseEntry | null>(null)
+
+  const noticeOpen = useNoticeStore((s) => s.open)
+  const noticeInitialView = useNoticeStore((s) => s.initialView)
+  const closeNotice = useNoticeStore((s) => s.closeNotice)
 
   useEffect(() => {
     let cancelled = false
@@ -66,7 +79,9 @@ export function VersionNotice() {
     }
   }, [])
 
-  const latest = releases[0]
+  // 历史版本列表统一按发布时间倒序，不依赖 release-notes.json 的人工维护顺序
+  const sorted = useMemo(() => sortReleasesDesc(releases), [releases])
+  const latest = sorted[0]
   const isDev = currentVersion === 'dev'
   const hasNewVersion =
     !!latest && !isDev && compareVersions(latest.version, currentVersion) > 0
@@ -87,15 +102,41 @@ export function VersionNotice() {
     }
   }, [latest, currentVersion, isDev])
 
+  // 顶栏「更新公告」入口：打开弹窗并进入指定视图
+  useEffect(() => {
+    if (!noticeOpen) return
+    setView(noticeInitialView)
+    setSelected(null)
+  }, [noticeOpen, noticeInitialView])
+
   const closeAuto = () => {
     setAutoDialog(null)
     if (latest) markVersionRead(latest.version)
   }
 
-  if (isDev || !latest || releases.length === 0) return null
+  const handleClose = () => {
+    closeAuto()
+    setDialogOpen(false)
+    closeNotice()
+    setView('main')
+    setSelected(null)
+  }
 
-  const showDialog = dialogOpen || autoDialog !== null
-  const openEntry = dialogOpen ? latest : autoDialog
+  // 开发环境且非手动打开时静默不渲染；手动入口即使无数据也需给出可见反馈
+  const canRender = noticeOpen || (!isDev && !!latest && sorted.length > 0)
+  if (!canRender) return null
+
+  const showDialog = dialogOpen || autoDialog !== null || noticeOpen
+  const openEntry = dialogOpen || noticeOpen ? latest : autoDialog
+  // 视图兜底：缺少入口/选中项时回落到列表，避免弹窗空白
+  const activeView: NoticeViewState =
+    view === 'main' && !openEntry ? 'list' : view === 'detail' && !selected ? 'list' : view
+
+  const titleText = hasNewVersion
+    ? `发现新版本 ${openEntry?.version ?? latest?.version ?? ''}`
+    : autoDialog
+      ? `欢迎使用 ${openEntry?.version ?? ''}`
+      : '更新公告'
 
   return (
     <>
@@ -123,50 +164,152 @@ export function VersionNotice() {
         </div>
       )}
 
-      {/* 公告弹窗：新版本详情 + 立即刷新；或当前版本的欢迎公告 */}
       <Dialog
         open={showDialog}
         onOpenChange={(o) => {
-          if (!o) {
-            closeAuto()
-            setDialogOpen(false)
-          }
+          if (!o) handleClose()
         }}
       >
-        {openEntry && (
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>
-                {hasNewVersion
-                  ? `发现新版本 ${openEntry.version}`
-                  : `欢迎使用 ${openEntry.version}`}
-              </DialogTitle>
-              <DialogDescription>
-                {openEntry.title}｜发布于 {openEntry.publishedAt}
-              </DialogDescription>
-            </DialogHeader>
-            <DialogBody className="grid gap-4">
-            <div className="min-w-0">
-                <ReleaseNotesBody entry={openEntry} />
-              </div>
-            </DialogBody>
-            <DialogFooter>
-              {hasNewVersion ? (
-                <>
-                  <Button variant="outline" onClick={closeAuto}>
-                    稍后再说
+        <DialogContent className="max-w-md">
+          {/* 主视图：最新公告内容 + 历史版本入口 */}
+          {activeView === 'main' && openEntry && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{titleText}</DialogTitle>
+                <DialogDescription>
+                  {openEntry.title}｜发布于 {openEntry.publishedAt}
+                </DialogDescription>
+              </DialogHeader>
+              <DialogBody className="grid gap-4">
+                <div className="min-w-0">
+                  <ReleaseNotesBody entry={openEntry} />
+                </div>
+                {sorted.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setView('list')}
+                    className="flex w-full items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2.5 text-left transition-colors hover:bg-muted"
+                  >
+                    <span className="flex items-center gap-2 text-body text-foreground">
+                      <History className="h-4 w-4 shrink-0 text-primary" />
+                      查看历史版本更新
+                    </span>
+                    <span className="flex shrink-0 items-center gap-1 text-caption text-muted-foreground">
+                      共 {sorted.length} 个版本
+                      <ChevronRight className="h-4 w-4" />
+                    </span>
+                  </button>
+                )}
+              </DialogBody>
+              <DialogFooter>
+                {hasNewVersion ? (
+                  <>
+                    <Button variant="outline" onClick={handleClose}>
+                      稍后再说
+                    </Button>
+                    <Button onClick={() => window.location.reload()}>
+                      <RefreshCw className="mr-1 h-4 w-4" />
+                      立即刷新
+                    </Button>
+                  </>
+                ) : autoDialog ? (
+                  <Button onClick={handleClose}>我知道了</Button>
+                ) : (
+                  <Button variant="outline" onClick={handleClose}>
+                    关闭
                   </Button>
-                  <Button onClick={() => window.location.reload()}>
-                    <RefreshCw className="mr-1 h-4 w-4" />
-                    立即刷新
-                  </Button>
-                </>
-              ) : (
-                <Button onClick={closeAuto}>我知道了</Button>
-              )}
-            </DialogFooter>
-          </DialogContent>
-        )}
+                )}
+              </DialogFooter>
+            </>
+          )}
+
+          {/* 历史版本列表：按发布时间倒序 */}
+          {activeView === 'list' && (
+            <>
+              <DialogHeader>
+                <DialogTitle>历史版本更新</DialogTitle>
+                <DialogDescription>
+                  {sorted.length > 0 ? `按发布时间倒序，共 ${sorted.length} 个版本` : '暂无更新公告记录'}
+                </DialogDescription>
+              </DialogHeader>
+              <DialogBody className="-mx-1">
+                {sorted.length === 0 ? (
+                  <p className="px-1 py-8 text-center text-body text-muted-foreground">暂无更新公告记录</p>
+                ) : (
+                  <ul className="divide-y divide-border/60">
+                    {sorted.map((r) => (
+                      <li key={r.version}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelected(r)
+                            setView('detail')
+                          }}
+                          className="flex w-full items-center gap-3 rounded-md px-1 py-3 text-left transition-colors hover:bg-muted/60"
+                        >
+                          <span className="min-w-0 flex-1">
+                            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <span className="text-body font-medium text-foreground">{r.version}</span>
+                              {r.version === latest?.version && <Badge variant="info">最新</Badge>}
+                              <span className="text-caption text-muted-foreground">{r.publishedAt}</span>
+                            </span>
+                            <span className="mt-1 line-clamp-2 block text-body text-muted-foreground">
+                              {r.title}
+                            </span>
+                          </span>
+                          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </DialogBody>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setView('main')}>
+                  返回
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+
+          {/* 历史版本详情：完整公告内容 + 历史版本标注 */}
+          {activeView === 'detail' && selected && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex flex-wrap items-center gap-2">
+                  {selected.version}
+                  {selected.version === latest?.version ? (
+                    <Badge variant="info">最新版本</Badge>
+                  ) : (
+                    <Badge variant="warning">历史版本</Badge>
+                  )}
+                </DialogTitle>
+                <DialogDescription>
+                  {selected.title}｜发布于 {selected.publishedAt}
+                </DialogDescription>
+              </DialogHeader>
+              <DialogBody className="grid gap-4">
+                {selected.version !== latest?.version && latest && (
+                  <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/[0.08] px-3 py-2 text-caption text-warning-strong">
+                    <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>
+                      当前查看的是历史版本 {selected.version}，最新版本为 {latest.version}
+                    </span>
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <ReleaseNotesBody entry={selected} />
+                </div>
+              </DialogBody>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setView('list')}>
+                  <ChevronLeft className="mr-1 h-4 w-4" />
+                  返回列表
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
       </Dialog>
     </>
   )

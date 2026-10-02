@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Check, Key, LogOut, Palette, User } from 'lucide-react'
+import { Check, Key, LogOut, Megaphone, Palette, User } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { SIDEBAR_STYLE_OPTIONS, useThemeStore } from '@/stores/themeStore'
+import { useNoticeStore } from '@/stores/noticeStore'
 import { SIDEBAR_PRESETS } from '@/lib/chart-theme'
 import { api } from '@/lib/api'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -106,6 +107,7 @@ export function UserChip() {
   const { user, logout, openPasswordDialog } = useAuthStore()
   const sidebarStyle = useThemeStore((s) => s.sidebarStyle)
   const setSidebarStyle = useThemeStore((s) => s.setSidebarStyle)
+  const openNotice = useNoticeStore((s) => s.openNotice)
   const [profileOpen, setProfileOpen] = useState(false)
 
   // DropdownMenu 门面只收集 Trigger/Content 两类子节点，弹窗需作为兄弟节点渲染
@@ -145,6 +147,10 @@ export function UserChip() {
         <DropdownMenuItem onClick={() => openPasswordDialog(!!user?.mustChangePassword)}>
           <Key className="mr-2 h-4 w-4" />
           <span>修改密码</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => openNotice('main')}>
+          <Megaphone className="mr-2 h-4 w-4" />
+          <span>更新公告</span>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         {/* 主题色切换区：普通按钮组而非 MenuItem，点击不关闭菜单，可连续预览各主题 */}
