@@ -111,7 +111,16 @@ function createServer(options = {}) {
       let filePath = path.normalize(path.join(root, pathname))
       if (!isInsideRoot(root, filePath)) { res.writeHead(403); return res.end('forbidden') }
       const stat = fs.existsSync(filePath) && fs.statSync(filePath)
-      if (!stat || !stat.isFile()) filePath = path.join(root, 'index.html') // SPA fallback
+      if (!stat || !stat.isFile()) {
+        // SPA 回退只用于前端路由（无扩展名路径）。缺失的静态资源（如构建产物 /assets/xxx.js）
+        // 必须返回 404：若回退成 index.html，浏览器会把 HTML 当模块加载而报
+        // 「Failed to fetch dynamically imported module」，掩盖真实原因（部署后旧页面引用失效产物）。
+        if (path.extname(pathname) !== '') {
+          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
+          return res.end(req.method === 'HEAD' ? undefined : 'not found')
+        }
+        filePath = path.join(root, 'index.html') // SPA fallback
+      }
       const data = fs.readFileSync(filePath)
       res.writeHead(200, {
         'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream',

@@ -2,6 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { isChunkLoadError } from '@/lib/chunk-reload'
 
 interface ErrorBoundaryProps {
   children: ReactNode
@@ -29,6 +30,12 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   private retry = () => {
+    // 构建产物加载失败（部署后旧页面引用失效 chunk）：React.lazy 会缓存失败的 Promise，
+    // 仅重置状态会立刻再次抛出，必须整页刷新才能拿到新的 index.html 与产物
+    if (isChunkLoadError(this.state.message)) {
+      window.location.reload()
+      return
+    }
     this.setState({ hasError: false, message: '' })
   }
 

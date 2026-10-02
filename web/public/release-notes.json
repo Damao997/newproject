@@ -1,6 +1,21 @@
 {
   "releases": [
     {
+      "version": "v2026.10.5",
+      "publishedAt": "2026-10-02",
+      "title": "修复更新后旧页面切换菜单报错的问题",
+      "notes": [
+        {
+          "type": "fix",
+          "text": "修复版本更新后，仍停留在旧页面的浏览器切换菜单时出现「页面渲染出错 / Failed to fetch dynamically imported module」的问题"
+        },
+        {
+          "type": "improvement",
+          "text": "页面检测到构建产物已更新时会自动刷新一次加载最新版本，无需手动刷新；若仍遇到异常，点击「重试」也会重新加载页面"
+        }
+      ]
+    },
+    {
       "version": "v2026.10.4",
       "publishedAt": "2026-10-02",
       "title": "公告支持查看历史版本更新",

@@ -1,7 +1,9 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const os = require('node:os')
 const path = require('node:path')
-const { clientIpForProxy, isInsideRoot, proxyHeaders, withoutHopByHopHeaders } = require('./serve-static.cjs')
+const { clientIpForProxy, createServer, isInsideRoot, proxyHeaders, withoutHopByHopHeaders } = require('./serve-static.cjs')
 
 function request(remoteAddress, headers = {}) {
   return { socket: { remoteAddress }, headers }
@@ -42,4 +44,34 @@ test('静态文件只能位于根目录内部', () => {
   const root = path.resolve('C:/app/dist')
   assert.equal(isInsideRoot(root, path.join(root, 'assets/app.js')), true)
   assert.equal(isInsideRoot(root, path.resolve('C:/app/dist-private/secret.txt')), false)
+})
+
+// 部署会替换带 hash 的构建产物；旧页面请求已失效 chunk 时必须 404，
+// 否则 SPA 回退会把 index.html 当 JS 返回，浏览器报
+// 「Failed to fetch dynamically imported module」（2026-10-02 生产事故根因）
+test('缺失的构建产物返回 404，前端路由仍回退 index.html', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'zjyph-static-'))
+  fs.writeFileSync(path.join(root, 'index.html'), '<!doctype html><div id="root"></div>')
+  fs.mkdirSync(path.join(root, 'assets'))
+  fs.writeFileSync(path.join(root, 'assets', 'app-abc123.js'), 'console.log(1)')
+
+  const server = createServer({ root, backendPort: 3100 })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const { port } = server.address()
+  try {
+    const missingAsset = await fetch(`http://127.0.0.1:${port}/assets/old-hash.js`)
+    assert.equal(missingAsset.status, 404)
+
+    const route = await fetch(`http://127.0.0.1:${port}/indicators/operating`)
+    assert.equal(route.status, 200)
+    assert.match(route.headers.get('content-type'), /text\/html/)
+    assert.match(await route.text(), /id="root"/)
+
+    const existingAsset = await fetch(`http://127.0.0.1:${port}/assets/app-abc123.js`)
+    assert.equal(existingAsset.status, 200)
+    assert.match(existingAsset.headers.get('content-type'), /text\/javascript/)
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+    fs.rmSync(root, { recursive: true, force: true })
+  }
 })
