@@ -1,3 +1,5 @@
+import { StatTile } from '@/components/ui/stat-tile'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useMemo, useState } from 'react'
 import { Download, Loader2, MoreHorizontal, Plus, RefreshCw, Search } from 'lucide-react'
 import { PageContainer } from '@/components/layout/page-container'
@@ -78,18 +80,8 @@ function UserAvatar({ user }: { user: User }) {
 }
 
 function KpiCard({ label, value, sub, dotClass, subClass }: { label: string; value: number; sub: string; dotClass: string; subClass?: string }) {
-  return (
-    <div className="rounded-card border border-border bg-card px-5 py-4">
-      <div className="text-[13px] text-muted-foreground">
-        <span className={cn('mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle', dotClass)} />
-        {label}
-      </div>
-      <div className="mt-1 text-[24px] font-semibold tabular-nums">{value}</div>
-      <div className={cn('mt-1 text-xs', subClass ?? 'text-muted-foreground')}>{sub}</div>
-    </div>
-  )
+  return <StatTile label={label} value={value} accent={dotClass} foot={<span className={subClass}>{sub}</span>} />
 }
-
 export default function UsersPage() {
   const { can } = usePermission()
   const canCreate = can('admin:users', 'create')
@@ -245,7 +237,6 @@ export default function UsersPage() {
   return (
     <PageContainer
       title="用户管理"
-      description="管理平台所有用户账号、角色分配与权限控制"
       actions={
         <>
           {canExport && (
@@ -264,7 +255,7 @@ export default function UsersPage() {
       }
     >
       {/* KPI 紧凑条：4 卡片（当前查询结果派生） */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {kpis.map((c) => (
           <KpiCard key={c.label} label={c.label} value={c.value} sub={c.sub} dotClass={c.dotClass} subClass={c.subClass} />
         ))}
@@ -298,7 +289,7 @@ export default function UsersPage() {
           </div>
 
           {/* 筛选行 */}
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div data-filter-bar className="flex flex-wrap items-center gap-2.5">
             <div className="relative min-w-[220px] flex-1 sm:max-w-[280px]">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -308,18 +299,10 @@ export default function UsersPage() {
                 className="h-8 pl-8 text-[13px]"
               />
             </div>
-            <div className="relative inline-flex h-8 min-w-[110px] items-center rounded-md border border-border bg-card px-2.5 text-[13px] text-foreground">
-              <select
-                value={statusFilter}
-                onChange={(e) => handleStatusFilter(e.target.value)}
-                className="absolute inset-0 cursor-pointer appearance-none bg-transparent pl-1 pr-6 text-[13px] text-foreground outline-none"
-              >
-                <option value="all">状态</option>
-                <option value="active">启用</option>
-                <option value="inactive">已停用</option>
-              </select>
-              <span className="pointer-events-none ml-auto text-muted-foreground">▾</span>
-            </div>
+            <Select value={statusFilter} onValueChange={handleStatusFilter}>
+              <SelectTrigger className="h-9 w-[120px]" aria-label="用户状态"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="all">全部状态</SelectItem><SelectItem value="active">启用</SelectItem><SelectItem value="inactive">已停用</SelectItem></SelectContent>
+            </Select>
             <div className="ml-auto">
               <Button variant="outline" size="sm" onClick={resetFilters}>
                 <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
@@ -340,7 +323,7 @@ export default function UsersPage() {
 
           {/* 用户表 */}
           <div className="overflow-x-auto rounded-card border border-border bg-background">
-            <table className="data-table-report data-table-report--striped">
+            <table data-ui-table className="data-table-report data-table-report--striped">
               <thead>
                 <tr>
                   <th scope="col" className="text-left">用户</th>

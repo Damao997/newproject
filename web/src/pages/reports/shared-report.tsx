@@ -85,7 +85,6 @@ export function SharedReportPage() {
             )}
 
             <footer className="flex flex-wrap items-center justify-between gap-2 pb-6 text-caption text-muted-foreground">
-              <span>— 报告完 · 由「{report.companyScope.name ?? report.companyScope.code}」经营数据分析平台分享 —</span>
               <Button variant="outline" size="sm" className="h-7" onClick={() => navigate('/login')}>
                 <LogIn className="mr-1 h-3 w-3" /> 登录查看更多
               </Button>

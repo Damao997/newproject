@@ -12,6 +12,7 @@ import { useCompanies, useTransactionAccounts } from '@/hooks/api-queries'
 import { cn, formatWan } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ChevronDown } from 'lucide-react'
+import { DistributionBar } from '@/components/charts/distribution-bar'
 
 export const TRANSACTION_TYPES = ['应收账款', '其他应收款', '预收账款', '应付账款', '其他应付款', '预付账款']
 // 默认展示口径：浙江省公司汇总（汇总主体编码 ET0001，后端按汇总映射展开为成员合并口径）
@@ -61,34 +62,22 @@ export function PartyTypeTag({ partyType }: { partyType?: string }) {
   return <span className={cn('rounded px-1.5 py-0.5 text-xs', meta.className)}>{meta.label}</span>
 }
 
-/** 8 段账龄堆叠条色阶：绿→青→蓝→紫→黄→橙→红（success/info/warning/destructive 系，同系两段深浅区分） */
-export const AGING_BAR_COLORS = [
-  'bg-success', 'bg-success/60',
-  'bg-info', 'bg-info/60',
-  'bg-warning', 'bg-warning/60',
-  'bg-destructive/60', 'bg-destructive',
-] as const
-
-/** 账龄堆叠条：按 8 段占比渲染（总余额 ≤0 时不渲染）；各段 title 显示段名与金额（万） */
-export function AgingStackBar({ aging, closingBalance, className }: { aging: Record<string, number>; closingBalance: number; className?: string }) {
-  const total = closingBalance > 0 ? closingBalance : Object.values(aging).reduce((s, v) => s + (v ?? 0), 0)
-  if (total <= 0) return null
-  return (
-    <div className={cn('flex h-1.5 w-full overflow-hidden rounded-full bg-muted', className)}>
-      {AGING_GROUPS.map((g, i) => {
-        const v = aging[g] ?? 0
-        if (v <= 0) return null
-        return (
-          <div
-            key={g}
-            className={AGING_BAR_COLORS[i]}
-            style={{ width: `${Math.max((v / total) * 100, 1)}%` }}
-            title={`${g}：${formatWan(v)} 万`}
-          />
-        )
-      })}
-    </div>
-  )
+/** 小卡片显示八段完整金额；展开明细时统一为标签、轨道、金额、占比。 */
+export function AgingDistribution({ aging, closingBalance, variant = 'summary' }: {
+  aging: Record<string, number>; closingBalance: number; variant?: 'summary' | 'comparison'
+}) {
+  const maximum = Math.max(0, ...AGING_GROUPS.map((g) => Math.abs(aging[g] ?? 0)))
+  const color = (i: number) => i < 4 ? 'hsl(var(--chart-1))' : i < 6 ? 'hsl(var(--warning))' : 'hsl(var(--destructive))'
+  return <div className={cn('aging-distribution distribution-list', variant === 'summary' && 'aging-summary')}
+    data-aging-distribution={variant}>
+    {AGING_GROUPS.map((g, i) => {
+      const value = aging[g] ?? 0
+      return <DistributionBar key={g} label={g} value={value !== 0 ? formatWan(value) : '-'}
+        variant={variant === 'comparison' ? 'comparison' : 'default'}
+        meta={variant === 'comparison' ? (closingBalance > 0 ? `${(value / closingBalance * 100).toFixed(1)}%` : '–') : undefined}
+        width={maximum > 0 ? Math.abs(value) / maximum * 100 : 0} color={color(i)} />
+    })}
+  </div>
 }
 
 /** 账龄风险分档（供总览卡片/分析抽屉复用）：danger=3年+>20%、watch=3年+≥5%、good=其余；余额≤0 返回 null */

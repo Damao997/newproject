@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type Ref } from 'react'
+import { useRetainedState } from '@/hooks/use-retained-state'
+import { useFormModel, useFormValue, ModelFormFields } from '@/components/forms/form-model'
+import { useFormClose } from '@/components/forms/form-navigation'
+import { useEffect, useState, type Ref } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   FileText, CheckCircle2, Archive, Search, Plus, Pencil, MoreHorizontal, Trash2, Download, Loader2, RefreshCw, FileDown, BookOpen,
@@ -6,14 +9,12 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { FlashMessage } from '@/components/ui/flash-message'
-import { MonthPicker } from '@/components/ui/month-picker'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import {
-  Dialog, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+  Dialog, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -29,10 +30,10 @@ import { useStickyHeader } from '@/hooks/useStickyHeader'
 import { usePermission } from '@/hooks/usePermission'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import {
-  useReports, useCreateReport, useUpdateReport, useDeleteReport,
-  useCompanies, useAvailablePeriods, useReportTemplates,
+  useReports, useUpdateReport, useDeleteReport,
 } from '@/hooks/api-queries'
 import { REPORT_STATUS_LABEL, REPORT_STATUS_BADGE_VARIANT } from '@/lib/constants'
+import { CreateReportDialog } from './create-report-form'
 import { api } from '@/lib/api'
 import { exportReportToDocx, exportReportToPdf } from '@/lib/report-export'
 import type { ReportListItem } from '@/hooks/api-queries'
@@ -87,12 +88,11 @@ export default function ReportsPage() {
 
   return (
     <PageContainer
+      navigation={<SubPageTabs items={REPORTS_TABS} />}
       title="分析报告中心"
-      description="汇总报告按周期编制单项分析生成，支持多版本管理与 Word / PDF 导出"
       stickyHeader
       headerRef={headerRef}
     >
-      <SubPageTabs items={REPORTS_TABS} />
       <ReportsList filterRef={filterRef} stickyTop={headerHeight} />
     </PageContainer>
   )
@@ -111,11 +111,11 @@ function ReportsList({ filterRef, stickyTop }: ReportsListProps) {
   const canDelete = can('reports', 'delete')
   const canExport = can('reports', 'export')
 
-  const [keyword, setKeyword] = useState('')
-  const [status, setStatus] = useState<StatusFilter>('')
-  const [sortBy, setSortBy] = useState<SortOption>('updatedAt-desc')
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(12)
+  const [keyword, setKeyword] = useRetainedState('reports.keyword', '')
+  const [status, setStatus] = useRetainedState<StatusFilter>('reports.status', '')
+  const [sortBy, setSortBy] = useRetainedState<SortOption>('reports.sort', 'updatedAt-desc')
+  const [page, setPage] = useRetainedState('reports.page', 1)
+  const [pageSize, setPageSize] = useRetainedState('reports.pageSize', 12)
 
   const [sortField, sortDirection] = sortBy.split('-') as ['updatedAt' | 'title' | 'currentVersion', 'asc' | 'desc']
   const { data, isLoading, isError, error, refetch } = useReports({
@@ -186,7 +186,7 @@ function ReportsList({ filterRef, stickyTop }: ReportsListProps) {
   return (
     <div className="space-y-4">
       {/* 工具栏：关键词搜索 + 状态段控 + 重置 */}
-      <Card ref={filterRef} className="sticky z-10 rounded-card p-3.5" style={{ top: stickyTop }}>
+      <Card variant="filter" ref={filterRef} className="sticky z-10 rounded-card p-3.5" style={{ top: stickyTop }}>
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative w-[280px] max-w-full">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -221,7 +221,7 @@ function ReportsList({ filterRef, stickyTop }: ReportsListProps) {
       </Card>
 
       {/* 状态 Tabs + 报告网格 */}
-      <Card className="rounded-card">
+      <div className="reports-content">
         <div className="px-6">
           <div className="flex items-center gap-7 overflow-x-auto border-b border-border">
             {STATUS_TABS.map((t) => {
@@ -300,7 +300,7 @@ function ReportsList({ filterRef, stickyTop }: ReportsListProps) {
             </div>
           )}
         </div>
-      </Card>
+      </div>
 
       <CreateReportDialog
         open={creating}
@@ -343,13 +343,13 @@ function ReportCard({
   const scopeTypeLabel = item.companyScope.type === 'summary' ? '汇总主体' : '单体公司'
 
   return (
-    <div className="group flex flex-col rounded-lg border border-border bg-card p-5 transition-all hover:border-primary hover:shadow-[0_4px_12px_rgba(22,119,255,0.08)]">
+    <Card variant="report" className="report-card flex flex-col">
       <div className="mb-3 flex items-start justify-between gap-3">
         <StatusIcon status={item.status} />
         <StatusTag status={item.status} />
       </div>
-      <h3 className="mb-1.5 line-clamp-2 text-[15px] font-semibold leading-snug text-foreground" title={item.title}>{item.title}</h3>
-      <p className="line-clamp-1 text-xs leading-relaxed text-muted-foreground" title={`${scopeTypeLabel} · ${scopeName}`}>
+      <h3 className="mb-1.5 line-clamp-2 text-lg font-semibold leading-snug text-foreground" title={item.title}>{item.title}</h3>
+      <p className="line-clamp-1 text-sm leading-relaxed text-muted-foreground" title={`${scopeTypeLabel} · ${scopeName}`}>
         {scopeTypeLabel} · {scopeName}
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2.5 border-t border-border pt-3 text-xs text-muted-foreground">
@@ -357,15 +357,15 @@ function ReportCard({
         <span>期间 {item.period}</span>
         <span>v{item.currentVersion}</span>
       </div>
-      <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground/80">
+      <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <circle cx="12" cy="12" r="9" />
           <path d="M12 7v5l3 2" />
         </svg>
         <span>更新于 {new Date(item.updatedAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
       </div>
-      <div className="mt-3 flex items-center gap-2">
-        <Button size="sm" variant="fused" className="h-7 flex-1 px-2 text-xs" onClick={onEdit}>
+      <div className="report-card-actions mt-auto flex items-center gap-2 pt-5">
+        <Button size="sm" variant="fused" className="h-9 flex-1 px-3 text-sm" onClick={onEdit}>
           {item.status === 'draft' ? (
             <><Pencil className="mr-1 h-3.5 w-3.5" /> 编辑</>
           ) : (
@@ -373,13 +373,13 @@ function ReportCard({
           )}
         </Button>
         {canUpdate && nextStatus && (
-          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={statusUpdating} onClick={() => onStatusChange(nextStatus)}>
+          <Button size="sm" variant="outline" className="h-9 px-3 text-sm" disabled={statusUpdating} onClick={() => onStatusChange(nextStatus)}>
             {statusUpdating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : nextStatus.label}
           </Button>
         )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" aria-label="更多操作" className="h-7 w-7 px-0">
+            <Button variant="ghost" size="sm" aria-label="更多操作" className="h-9 w-9 px-0">
               <MoreHorizontal className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -415,7 +415,7 @@ function ReportCard({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-    </div>
+    </Card>
   )
 }
 
@@ -427,7 +427,7 @@ function StatusIcon({ status }: { status: string }) {
   }[status] ?? { Icon: FileText, className: 'bg-blue-1 text-blue-8' }
   const { Icon, className } = styles
   return (
-    <div className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px]', className)}>
+    <div className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl', className)}>
       <Icon className="h-[22px] w-[22px]" strokeWidth={2} />
     </div>
   )
@@ -441,149 +441,6 @@ function StatusTag({ status }: { status: string }) {
   )
 }
 
-/** 新建报告：标题 + 期间（财年自动取期间年份）+ 报告主体（单体/汇总）+ 可选模板 */
-function CreateReportDialog({ open, onClose, onCreated }: {
-  open: boolean
-  onClose: () => void
-  onCreated: (title: string) => void
-}) {
-  const { can } = usePermission()
-  const canCreate = can('reports', 'create')
-  const createReport = useCreateReport()
-  const { data: companies } = useCompanies()
-  const { data: periodsData } = useAvailablePeriods()
-  const { data: templatesData } = useReportTemplates()
-  const templates = useMemo(() => templatesData?.items ?? [], [templatesData])
-  const periods = useMemo(() => [...(periodsData?.periods ?? [])].sort((a, b) => b.localeCompare(a)), [periodsData])
-
-  const [title, setTitle] = useState('')
-  const [period, setPeriod] = useState('')
-  const [scopeType, setScopeType] = useState<'company' | 'summary'>('company')
-  const [scopeCode, setScopeCode] = useState('')
-  const [templateCode, setTemplateCode] = useState('none')
-  const [error, setError] = useState<string | null>(null)
-  const resetRef = useRef(0)
-
-  // 注意：后端 companyDto 的 type 实际值为 'entity' | 'summary'（本页选择器的 'company' 为历史口径，此处映射）
-  const scopeCompanies = useMemo(
-    () => (companies ?? []).filter((c) => c.type === (scopeType === 'company' ? 'entity' : 'summary')),
-    [companies, scopeType],
-  )
-  const fiscalYear = period ? period.slice(0, 4) : ''
-  const canSubmit = canCreate && title.trim() && period && scopeCode
-  const selectedTemplate = templates.find((t) => t.code === templateCode)
-
-  // 打开时重置表单（open 翻转沿触发）
-  useEffect(() => {
-    if (open) {
-      resetRef.current += 1
-      setTitle('')
-      setPeriod('')
-      setScopeType('company')
-      setScopeCode('')
-      setTemplateCode('none')
-      setError(null)
-    }
-  }, [open])
-
-  const handleSubmit = async () => {
-    if (!canSubmit) return
-    setError(null)
-    try {
-      await createReport.mutateAsync({
-        title: title.trim(),
-        fiscalYear,
-        period,
-        companyScope: { type: scopeType, code: scopeCode },
-        templateCode: templateCode === 'none' ? undefined : templateCode,
-      })
-      onCreated(title.trim())
-    } catch (e) {
-      setError((e as Error).message || '创建失败')
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>新建报告</DialogTitle>
-          <DialogDescription>选择报告主体与期间；章节依据该主体范围下的单项分析生成（实时引用）。</DialogDescription>
-        </DialogHeader>
-        <DialogBody className="grid gap-4">
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="report-title">报告标题</Label>
-              <Input id="report-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="如：2026 年 8 月经营分析报告" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>报告期间</Label>
-              <MonthPicker
-                key={resetRef.current}
-                value={period}
-                onChange={setPeriod}
-                availablePeriods={periods}
-                allowedPeriods={periods}
-                placeholder="选择期间"
-                className="w-full"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>报告主体</Label>
-              <div className="flex items-center gap-2">
-                <Select value={scopeType} onValueChange={(v) => { setScopeType(v as 'company' | 'summary'); setScopeCode('') }}>
-                  <SelectTrigger className="h-9 w-36"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="company">单体公司</SelectItem>
-                    <SelectItem value="summary">汇总主体</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={scopeCode} onValueChange={setScopeCode}>
-                  <SelectTrigger className="h-9 flex-1"><SelectValue placeholder="选择主体" /></SelectTrigger>
-                  <SelectContent>
-                    {scopeCompanies.length === 0 ? (
-                      <SelectItem value="__none" disabled>暂无可选主体</SelectItem>
-                    ) : (
-                      scopeCompanies.map((c) => <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>)
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>报告模板</Label>
-              <Select value={templateCode} onValueChange={setTemplateCode}>
-                <SelectTrigger className="h-9 w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">不使用模板（从空白开始）</SelectItem>
-                  {templates.map((t) => (
-                    <SelectItem key={t.code} value={t.code}>
-                      {t.name}（{t.sectionCount} 章{t.isSystem ? ' · 系统' : ''}）
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {selectedTemplate?.description && (
-                <p className="text-caption text-muted-foreground">{selectedTemplate.description}</p>
-              )}
-            </div>
-            {period && (
-              <p className="text-caption text-muted-foreground">财年：{fiscalYear}（自动取期间年份）</p>
-            )}
-            {error && <FlashMessage type="error">{error}</FlashMessage>}
-          </div>
-        </DialogBody>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={createReport.isPending}>取消</Button>
-          <Button onClick={handleSubmit} disabled={!canSubmit || createReport.isPending}>
-            {createReport.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />} 创建
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 /** 重命名报告 */
 function RenameReportDialog({ report, onClose, onSaved }: {
   report: ReportListItem | null
@@ -592,15 +449,11 @@ function RenameReportDialog({ report, onClose, onSaved }: {
 }) {
   const canUpdate = usePermission().can('reports', 'update')
   const updateReport = useUpdateReport()
-  const [title, setTitle] = useState('')
-  const [loadedId, setLoadedId] = useState<string | null>(null)
+  const model = useFormModel({title: ('') as string}, {"title":"请输入报告标题"})
+  const [title, setTitle] = useFormValue(model, "title")
   const [error, setError] = useState<string | null>(null)
 
-  if (report && report.id !== loadedId) {
-    setLoadedId(report.id)
-    setTitle(report.title)
-    setError(null)
-  }
+  useEffect(() => { model.form.reset({ title: report?.title ?? '' }); setError(null) }, [report?.id, model.form])
 
   const handleSave = async () => {
     if (!report || !title.trim()) return
@@ -613,23 +466,26 @@ function RenameReportDialog({ report, onClose, onSaved }: {
     }
   }
 
+  const formClose = useFormClose({ dirty: model.form.formState.isDirty, busy: model.pending || updateReport.isPending, enabled: !!report, onClose: onClose })
+
   return (
-    <Dialog open={!!report} onOpenChange={(o) => { if (!o) onClose() }}>
+    <><Dialog open={!!report} busy={model.pending || updateReport.isPending} onOpenChange={(next) => { if (!next) formClose.requestClose() }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>重命名报告</DialogTitle>
         </DialogHeader>
-        <DialogBody className="grid gap-4">
+        <DialogBody className="grid gap-4"><ModelFormFields model={model}>
           <div className="space-y-3">
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="报告标题" />
+            <label htmlFor="report-rename" className="block text-sm font-medium">报告标题</label>
+            <Input id="report-rename" name="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="报告标题" />
             {error && <FlashMessage type="error">{error}</FlashMessage>}
           </div>
-        </DialogBody>
+        </ModelFormFields></DialogBody>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={updateReport.isPending}>取消</Button>
-          <Button onClick={handleSave} disabled={!canUpdate || updateReport.isPending || !title.trim() || title.trim() === report?.title}>保存</Button>
+          <Button variant="outline" onClick={formClose.requestClose} disabled={updateReport.isPending}>取消</Button>
+          <Button onClick={model.submit(handleSave)} disabled={!canUpdate || updateReport.isPending || !title.trim() || title.trim() === report?.title}>保存</Button>
         </DialogFooter>
       </DialogContent>
-    </Dialog>
+    </Dialog>{formClose.element}</>
   )
 }

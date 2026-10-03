@@ -72,6 +72,14 @@ export interface ButtonProps
   loading?: boolean
 }
 
+/** 保持可访问名称稳定，不让加载图标的名称混入按钮文字。 */
+function buttonText(children: React.ReactNode): string {
+  return React.Children.toArray(children).map(child => {
+    if (typeof child === 'string' || typeof child === 'number') return String(child)
+    return React.isValidElement<{ children?: React.ReactNode }>(child) ? buttonText(child.props.children) : ''
+  }).join('').trim()
+}
+
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, loading, children, ...props }, ref) => {
     if (asChild) {
@@ -104,6 +112,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         danger={danger}
         size={antdSize}
         loading={loading}
+        autoInsertSpace={false}
         className={cn(
           'inline-flex items-center justify-center whitespace-nowrap active:scale-[0.97]',
           size === 'icon' && 'h-8 w-8 p-0',
@@ -111,8 +120,9 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
           className,
         )}
         {...rest}
+        aria-label={rest['aria-label'] ?? (buttonText(children) || undefined)}
       >
-        {children}
+        <span className="button-content">{children}</span>
       </AntdButton>
     )
   }

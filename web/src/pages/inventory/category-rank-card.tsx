@@ -3,7 +3,7 @@ import type { EChartsOption } from 'echarts'
 import ReactECharts, { echarts } from '@/components/charts/echarts-core'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatMoneyWan } from '@/lib/utils'
-import { CHART_FONT, getChartInk, getChartSeries, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
+import { CHART_FONT, getChartInk, getChartSeries, getHorizontalBarStyle, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
 import { useThemeStore } from '@/stores/themeStore'
 import { BarChart3 } from 'lucide-react'
 import type { InventoryCategoryRow } from '@/hooks/api-queries'
@@ -19,15 +19,15 @@ export function CategoryRankCard({ categories, loading, onCategoryClick }: {
   loading?: boolean
   onCategoryClick?: (code: string) => void
 }) {
-  // 分类色板跟随当前侧边栏风格：按序轮转，首位为风格主色；主页面恒白，图表框架色恒定
-  const sidebarStyle = useThemeStore((s) => s.sidebarStyle)
+  // 分类色板跟随当前侧边栏风格：按序轮转，首位为风格主色；坐标、网格和浮层随全站风格同步
+  const sidebarStyle = useThemeStore((s) => s.printing ? 'light' : s.sidebarStyle)
   // 后端已按金额降序附 rank；横向条形图 yAxis 需倒序以使第一名在顶部
   const ranked = useMemo(() => [...categories].sort((a, b) => a.rank - b.rank), [categories])
   // ECharts click 回调仅能拿到 name，这里维护 名称→编码 映射用于钻取
   const nameToCode = useMemo(() => new Map(ranked.map((c) => [c.name, c.code])), [ranked])
 
   const option = useMemo<EChartsOption>(() => {
-    const ink = getChartInk()
+    const ink = getChartInk(sidebarStyle)
     const seriesColors = getChartSeries(sidebarStyle)
     const byRow = new Map(ranked.map((c) => [c.name, c]))
     return {
@@ -55,37 +55,38 @@ export function CategoryRankCard({ categories, loading, onCategoryClick }: {
             + line('占比', row.share === 0 ? '-' : `${row.share.toFixed(1)}%`)
             + line('同比', row.yoy === 0 ? '-' : `${row.yoy >= 0 ? '+' : ''}${row.yoy.toFixed(1)}%`)
             + line('较年初', yearStartChange === 0 ? '-' : `${yearStartChange >= 0 ? '+' : ''}${yearStartChange.toFixed(1)}%`)
-            + `<div style="margin-top:6px;color:${ink.axis};font-size:11px">点击钻取该品类明细</div>`
+            + `<div style="margin-top:6px;color:${ink.axis};font-size:12px">点击钻取该品类明细</div>`
         },
       },
-      grid: { top: 8, right: 96, bottom: 8, left: 8, containLabel: true },
+      grid: { top: 8, right: 140, bottom: 8, left: 0, containLabel: true },
       xAxis: {
         type: 'value',
         axisLine: { show: false },
         axisTick: { show: false },
         splitLine: { lineStyle: { color: ink.grid, type: 'dashed' } },
-        axisLabel: { color: ink.axis, fontSize: 11 },
+        axisLabel: { color: ink.axis, fontSize: 12 },
       },
       yAxis: {
         type: 'category',
         inverse: true,
         data: ranked.map((c) => c.name),
-        axisLine: { lineStyle: { color: ink.grid } },
+        axisLine: { show: false },
         axisTick: { show: false },
-        axisLabel: { color: ink.sub, fontSize: 11 },
+        axisLabel: { color: ink.sub, fontSize: 12, width: 104, overflow: 'break', lineHeight: 16 },
       },
       series: [
         {
           type: 'bar',
-          barWidth: 12,
+          ...getHorizontalBarStyle(sidebarStyle),
+
           data: ranked.map((c, i) => ({
             value: c.current,
-            itemStyle: { color: seriesColors[i % seriesColors.length], borderRadius: [0, 4, 4, 0] },
+            itemStyle: { color: seriesColors[i % seriesColors.length], borderRadius: [6, 6, 6, 6] },
           })),
           label: {
             show: true,
             position: 'right',
-            fontSize: 10,
+            fontSize: 12,
             color: ink.axis,
             fontFamily: CHART_FONT,
             // 金额 + 占比双信息，dataIndex 对应 ranked 顺序

@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useFormTask } from '@/components/forms/form-task'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { usePageStore } from '@/stores/pageStateStore'
 import { usePeriodStore } from '@/stores/periodStore'
@@ -47,6 +48,8 @@ export const errorColumns: DataTableColumn<ImportErrorRow>[] = [
  */
 export function useImportFlow(opts: { importsData: PaginatedResponse<ImportBatch> | undefined }) {
   const { importsData } = opts
+  const task = useFormTask()
+  const previewTask = useFormTask()
   const { confirm, element: confirmElement } = useConfirm()
   const queryClient = useQueryClient()
 
@@ -100,6 +103,12 @@ export function useImportFlow(opts: { importsData: PaginatedResponse<ImportBatch
   // 多表合并预览结果（templateType === 'merged' 时使用，按类型分桶）
   const [mergedPreview, setMergedPreview] = useState<MergedPreviewResult | null>(null)
 
+  // 文件及口径变化后旧预览立即失效；异步结果仅适用于原请求快照。
+  const inputSignature = JSON.stringify([templateType, valueUnit, budgetFiscalYear])
+  const currentInput = useRef({ inputSignature, selectedFile })
+  currentInput.current = { inputSignature, selectedFile }
+  useEffect(() => { setPreviewResult(null); setMergedPreview(null) }, [inputSignature, selectedFile])
+
   // ---- 质量概览 ----
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null)
   const { data: batchDetail, isFetching: detailFetching } = useImport(selectedBatchId)
@@ -111,8 +120,8 @@ export function useImportFlow(opts: { importsData: PaginatedResponse<ImportBatch
 
   const recentBatches = useMemo(() => importsData?.items ?? [], [importsData])
   const selectedBatch = useMemo(
-    () => recentBatches.find((b) => b.id === selectedBatchId) ?? null,
-    [recentBatches, selectedBatchId],
+    () => recentBatches.find((b) => b.id === selectedBatchId) ?? (uploadMutation.data?.id === selectedBatchId ? uploadMutation.data : null),
+    [recentBatches, selectedBatchId, uploadMutation.data],
   )
 
   // ---- 批次多选（仅 draft 可勾选，用于批量激活） ----
@@ -212,14 +221,17 @@ export function useImportFlow(opts: { importsData: PaginatedResponse<ImportBatch
     setFileError(null)
     setPreviewResult(null)
     setMergedPreview(null)
+    const requestSignature = inputSignature
+    const requestFile = selectedFile
+    const current = () => requestSignature === currentInput.current.inputSignature && requestFile === currentInput.current.selectedFile
     try {
       if (templateType === 'merged') {
         const res = await api.previewMergedImport(selectedFile, valueUnit)
-        setMergedPreview(res)
+        if (current()) setMergedPreview(res)
         return
       }
       const res = await previewMutation.mutateAsync({ file: selectedFile, templateType, valueUnit, ...(templateType === 'budget' ? { fiscalYear: budgetFiscalYear } : {}) })
-      setPreviewResult(res)
+      if (current()) setPreviewResult(res)
     } catch (err) {
       setFileError(err instanceof Error ? err.message : '预览失败')
     }
@@ -339,8 +351,8 @@ export function useImportFlow(opts: { importsData: PaginatedResponse<ImportBatch
     previewResult,
     setPreviewResult,
     mergedPreview,
-    previewing: previewMutation.isPending,
-    uploading: uploadMutation.isPending,
+    previewing: previewTask.pending || previewMutation.isPending,
+    uploading: task.pending || uploadMutation.isPending,
     // 质量概览区（BatchPanel）
     selectedBatchId,
     setSelectedBatchId,
@@ -357,9 +369,9 @@ export function useImportFlow(opts: { importsData: PaginatedResponse<ImportBatch
     activateMsg,
     setActivateMsg,
     batchActivate,
-    activating: activateMutation.isPending,
-    archiving: archiveMutation.isPending,
-    purging: purgeMutation.isPending,
+    activating: task.pending || activateMutation.isPending,
+    archiving: task.pending || archiveMutation.isPending,
+    purging: task.pending || purgeMutation.isPending,
     // 批次差异对比（ImportCompareDialog）
     compareSource,
     setCompareSource,
@@ -370,13 +382,13 @@ export function useImportFlow(opts: { importsData: PaginatedResponse<ImportBatch
     handleFileSelect,
     handleDragOver,
     handleDrop,
-    handleUpload,
+    handleUpload: () => task.run(handleUpload).then(() => undefined),
     handleCancel,
-    handlePreview,
-    handleActivate,
-    handleRowActivate,
-    handleBatchActivate,
-    handleArchive,
-    handlePurgeBatch,
+    handlePreview: () => previewTask.run(handlePreview).then(() => undefined),
+    handleActivate: () => task.run(handleActivate).then(() => undefined),
+    handleRowActivate: (batch: ImportBatch) => task.run(() => handleRowActivate(batch)).then(() => undefined),
+    handleBatchActivate: () => task.run(handleBatchActivate).then(() => undefined),
+    handleArchive: (batch: ImportBatch) => task.run(() => handleArchive(batch)).then(() => undefined),
+    handlePurgeBatch: (batch: ImportBatch) => task.run(() => handlePurgeBatch(batch)).then(() => undefined),
   }
 }

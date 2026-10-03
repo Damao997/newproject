@@ -1,37 +1,57 @@
-import { useNavigate } from 'react-router-dom'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { Link } from 'react-router-dom'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useActivePath } from './sidebar/use-active-path'
 
-export interface SubPageTab {
-  /** 完整路由路径：Tab 激活匹配与跳转目标 */
-  path: string
-  label: string
-}
+export interface SubPageTab { path: string; label: string }
 
-/**
- * 模块内子页 Tab 条（导航两级化后的分类切换层）：
- * - 路由驱动：切换即 navigate 到子页真实路径（刷新/分享/权限校验沿用路由层）；
- * - 激活：pathname 精确匹配 Tab path，非法/未知路径兜底高亮第一项；
- * - 样式：line 线条式变体（选中主色短横线指示器 + 底部贯穿分割线，未选中态弱化）；
- * - 响应式：窄屏 TabsList 横向滚动（TabsTrigger 自带 whitespace-nowrap）。
- */
+/** 可收藏的分类使用路由链接；同一页口径切换仍由共享 Radix Tabs 负责。 */
 export function SubPageTabs({ items }: { items: SubPageTab[] }) {
   const pathname = useActivePath()
-  const navigate = useNavigate()
-  const active = items.find((t) => pathname === t.path) ?? items[0]
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const [overflow, setOverflow] = useState({ before: false, after: false })
+  const active = items.find((item) => item.path === pathname) ?? items[0]
 
-  if (items.length === 0) return null
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+    const measure = () => {
+      const before = viewport.scrollLeft > 2
+      const after = viewport.scrollLeft + viewport.clientWidth < viewport.scrollWidth - 2
+      setOverflow((previous) => previous.before === before && previous.after === after ? previous : { before, after })
+    }
+    viewport.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    const observer = new ResizeObserver(measure)
+    observer.observe(viewport)
+    const list = viewport.firstElementChild
+    if (list) observer.observe(list)
+    viewport.addEventListener('scroll', measure, { passive: true })
+    measure()
+    return () => { observer.disconnect(); viewport.removeEventListener('scroll', measure) }
+  }, [pathname, items])
 
-  return (
-    // shrink-0：视口撑满布局（页面根 h-[calc(100dvh-…)] 的 flex 链）下 Tab 条不参与压缩，表格区 flex-1 自适应剩余空间
-    <Tabs value={active?.path} onValueChange={(v) => navigate(v)} className="shrink-0">
-      <TabsList variant="line" className="max-w-full overflow-x-auto">
-        {items.map((t) => (
-          <TabsTrigger key={t.path} value={t.path} className="shrink-0">
-            {t.label}
-          </TabsTrigger>
-        ))}
-      </TabsList>
-    </Tabs>
-  )
+  const scroll = (direction: number) => {
+    const viewport = viewportRef.current
+    viewport?.scrollBy({ left: direction * viewport.clientWidth * .7, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+  }
+  const moveFocus = (event: KeyboardEvent<HTMLAnchorElement>, index: number) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || event.altKey || event.ctrlKey || event.metaKey) return
+    event.preventDefault()
+    const links = viewportRef.current?.querySelectorAll<HTMLAnchorElement>('a')
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + items.length) % items.length
+    links?.[next]?.focus()
+    links?.[next]?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }
+
+  if (!items.length) return null
+  return <nav aria-label="模块分类" className="module-tabs min-w-0 shrink-0">
+    <button type="button" className="module-tabs-scroll" aria-label="查看前面的分类" disabled={!overflow.before} hidden={!overflow.before && !overflow.after} onClick={() => scroll(-1)}><ChevronLeft className="h-4 w-4" /></button>
+    <div ref={viewportRef} className="module-tabs-viewport">
+      <div className="module-tabs-list">
+        {items.map((item, index) => <Link key={item.path} to={item.path} aria-current={item === active ? 'page' : undefined}
+          className="module-tab" onKeyDown={(event) => moveFocus(event, index)}>{item.label}</Link>)}
+      </div>
+    </div>
+    <button type="button" className="module-tabs-scroll" aria-label="查看后面的分类" disabled={!overflow.after} hidden={!overflow.before && !overflow.after} onClick={() => scroll(1)}><ChevronRight className="h-4 w-4" /></button>
+  </nav>
 }

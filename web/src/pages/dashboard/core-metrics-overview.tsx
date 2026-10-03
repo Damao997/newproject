@@ -1,5 +1,6 @@
 import { AlertLight, ExpenseAlertLight } from '@/components/ui/alert-light'
 import { Button } from '@/components/ui/button'
+import { MagnitudeValue, magnitudeMaximum } from '@/components/ui/magnitude-value'
 import { DeltaTag } from '@/components/ui/delta-tag'
 import { EmptyState } from '@/components/ui/empty-state'
 import { TableSkeleton } from '@/components/ui/skeleton-blocks'
@@ -96,6 +97,14 @@ export function CoreMetricsOverview({ period, companyCode }: CoreMetricsOverview
       return row ? { key, label, valueType: row.valueType, g: row.values } : null
     })
     .filter((r): r is { key: string; label: string; valueType: 'amount' | 'quantity' | 'ratio'; g: KeyMetricsGroup } => r !== null)
+  const amountRows = rows.filter((r) => r.valueType === 'amount')
+  const maxima = {
+    monthBudget: magnitudeMaximum(amountRows.map((r) => r.g.monthBudget)),
+    monthActual: magnitudeMaximum(amountRows.map((r) => r.g.monthActual)),
+    annualBudget: magnitudeMaximum(amountRows.map((r) => r.g.annualBudget)),
+    ytdActual: magnitudeMaximum(amountRows.map((r) => r.g.ytdActual)),
+    deviation: magnitudeMaximum(amountRows.map((r) => r.g.ytdBudget ? r.g.ytdActual - r.g.ytdBudget : null)),
+  }
   const analysisItems = buildGapAnalysisItems(rows, period)
   if (rows.length === 0) {
     return (
@@ -111,8 +120,8 @@ export function CoreMetricsOverview({ period, companyCode }: CoreMetricsOverview
         <h3 className="text-base font-semibold text-foreground">整体核心指标总览</h3>
         <span className="text-xs text-muted-foreground">金额单位：万元；比率为百分比</span>
       </div>
-      <div className="overflow-x-auto">
-        <table className="data-table-report data-table-report--striped">
+      <div className="detail-table-scroll overflow-auto">
+        <table data-ui-table data-detail-table data-comparison-matrix data-compact-matrix className="data-table-report data-table-report--striped">
           <thead>
             <tr className="border-b border-border">
               <th rowSpan={2} className="text-left w-[10em]">指标名称</th>
@@ -142,14 +151,14 @@ export function CoreMetricsOverview({ period, companyCode }: CoreMetricsOverview
               return (
                 <tr key={key}>
                   <td className="whitespace-nowrap px-3 py-2 text-left text-sm font-medium text-foreground">{label}</td>
-                  <td className={TD_CLS}><BudgetCell value={g.monthBudget} isRatio={isRatio} /></td>
-                  <td className={TD_CLS}><ActualCell value={g.monthActual} isRatio={isRatio} /></td>
+                  <td className={TD_CLS}><MagnitudeValue value={valueType === 'amount' ? g.monthBudget : null} maximum={maxima.monthBudget}><BudgetCell value={g.monthBudget} isRatio={isRatio} /></MagnitudeValue></td>
+                  <td className={TD_CLS}><MagnitudeValue value={valueType === 'amount' ? g.monthActual : null} maximum={maxima.monthActual}><ActualCell value={g.monthActual} isRatio={isRatio} /></MagnitudeValue></td>
                   <td className={TD_CLS}><RateCell value={g.monthRate} /></td>
                   <td className={TD_CLS}><DeltaTag value={g.monthYoy} /></td>
                   <td className={TD_CLS}><DeltaTag value={g.monthMom} /></td>
-                  <td className={`${TD_CLS} border-l border-border`}><BudgetCell value={g.annualBudget} isRatio={isRatio} /></td>
-                  <td className={TD_CLS}><ActualCell value={g.ytdActual} isRatio={isRatio} /></td>
-                  <td className={TD_CLS}><DeviationCell g={g} isRatio={isRatio} /></td>
+                  <td className={`${TD_CLS} border-l border-border`}><MagnitudeValue value={valueType === 'amount' ? g.annualBudget : null} maximum={maxima.annualBudget}><BudgetCell value={g.annualBudget} isRatio={isRatio} /></MagnitudeValue></td>
+                  <td className={TD_CLS}><MagnitudeValue value={valueType === 'amount' ? g.ytdActual : null} maximum={maxima.ytdActual}><ActualCell value={g.ytdActual} isRatio={isRatio} /></MagnitudeValue></td>
+                  <td className={TD_CLS}><MagnitudeValue value={valueType === 'amount' && g.ytdBudget ? g.ytdActual - g.ytdBudget : null} maximum={maxima.deviation}><DeviationCell g={g} isRatio={isRatio} /></MagnitudeValue></td>
                   <td className={TD_CLS}><RateCell value={g.annualRate} /></td>
                   <td className={`${TD_CLS} text-center`}>
                     {isExpense ? <ExpenseAlertLight rate={alertRate} /> : <AlertLight rate={alertRate} />}

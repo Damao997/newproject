@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, useLocation, useSearchParams } from 'react-router-dom'
+import { createBrowserRouter, createRoutesFromElements, RouterProvider, Outlet, Route, Navigate, useLocation, useSearchParams } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { AntdProvider } from '@/components/ui/antd-provider'
@@ -7,7 +7,10 @@ import { MainLayout } from '@/components/layout/main-layout'
 import { RequirePermission } from '@/components/layout/require-permission'
 import { HomeRedirect } from '@/components/layout/home-redirect'
 import { ErrorBoundary } from '@/components/layout/error-boundary'
+import { FormNavigationProvider } from '@/components/forms/form-navigation'
+import { DocumentTitle } from '@/components/layout/document-title'
 
+const SettingsPage = lazy(() => import('@/pages/settings'))
 const LoginPage = lazy(() => import('@/pages/login'))
 const DashboardPage = lazy(() => import('@/pages/dashboard'))
 const DashboardAnalysisKeyMetricsPage = lazy(() => import('@/pages/dashboard/analysis/key-metrics'))
@@ -42,6 +45,9 @@ const ReportReader = lazy(() => import('@/pages/reports/report-reader').then((m)
 const SharedReportPage = lazy(() => import('@/pages/reports/shared-report').then((m) => ({ default: m.SharedReportPage })))
 const ToolsLookupPage = lazy(() => import('@/pages/tools/enterprise-lookup'))
 const DataBrowsePage = lazy(() => import('@/pages/data/browse'))
+const ImportWorkflowPage = lazy(() => import('@/pages/data/import-workflow'))
+const ReclassifyWorkflowPage = lazy(() => import('@/pages/data/reclassify-workflow'))
+const ConsolidationWorkflowPage = lazy(() => import('@/pages/data/reclassify-workflow').then((module) => ({ default: module.ConsolidationWorkflow })))
 const DataImportPage = lazy(() => import('@/pages/data/import'))
 const DataReclassifyPage = lazy(() => import('@/pages/data/reclassify'))
 const DataReclassifyConsolidationPage = lazy(() => import('@/pages/data/reclassify/consolidation'))
@@ -104,27 +110,17 @@ function LegacyQueryRedirect() {
   return null
 }
 
-function App() {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <AntdProvider>
-      <TooltipProvider>
-        <BrowserRouter>
-          <ErrorBoundary>
-            {/* 外层 Suspense 覆盖非 MainLayout 路由（登录页等懒加载）；MainLayout 内另有内层 Suspense 渲染路由级骨架 */}
-            <Suspense
-              fallback={
-                <div className="flex h-screen items-center justify-center" role="status" aria-label="页面加载中">
-                  <div className="skeleton h-8 w-48 rounded" />
-                </div>
-              }
-            >
-              <Routes>
+function RouterFrame() {
+  return <FormNavigationProvider><DocumentTitle /><ErrorBoundary><Suspense fallback={<div className="flex h-screen items-center justify-center" role="status" aria-label="页面加载中"><div className="skeleton h-8 w-48 rounded" /></div>}><Outlet /></Suspense></ErrorBoundary></FormNavigationProvider>
+}
+const router = createBrowserRouter(createRoutesFromElements(<Route element={<RouterFrame />}>
               <Route path="/login" element={<LoginPage />} />
               {/* 报告公开分享页（/shared/:token）：免登录，token 即授权（MainLayout 之外） */}
               <Route path="/shared/:token" element={<SharedReportPage />} />
               <Route path="/" element={<MainLayout />}>
                 {/* 根路径：权限感知首页（无匹配权限 → /no-access） */}
+                <Route path="settings" element={<Navigate to="/settings/profile" replace />} />
+                <Route path="settings/:section" element={<SettingsPage />} />
                 <Route index element={<HomeRedirect />} />
                 <Route path="dashboard" element={<RequirePermission resource="dashboard" action="view"><DashboardPage /></RequirePermission>} />
                 {/* 首页看板 · 经营分析：壹品慧关键指标表（默认）/ 壹品慧业务现金流分析 / 应收账款账龄分析表 / 存货库龄分析表 / 品类预算达成 / 公司预算达成 / 运营费用 / 核心指标分析 */}
@@ -164,7 +160,10 @@ function App() {
                 {/* 数据管理：根路径按旧 query 或默认重定向到数据浏览 */}
                 <Route path="data" element={<RequirePermission resource="data:browse" action="view"><LegacyQueryRedirect /></RequirePermission>} />
                 <Route path="data/browse" element={<RequirePermission resource="data:browse" action="view"><DataBrowsePage /></RequirePermission>} />
-                <Route path="data/import" element={<RequirePermission resource="data:browse" action="view"><DataImportPage /></RequirePermission>} />
+                <Route path="data/import/new" element={<RequirePermission resource="data:browse" action="view"><ImportWorkflowPage /></RequirePermission>} />
+<Route path="data/reclassify/new" element={<RequirePermission resource="data:browse" action="view"><ReclassifyWorkflowPage /></RequirePermission>} />
+<Route path="data/reclassify/consolidation/new" element={<RequirePermission resource="data:browse" action="view"><ConsolidationWorkflowPage /></RequirePermission>} />
+<Route path="data/import" element={<RequirePermission resource="data:browse" action="view"><DataImportPage /></RequirePermission>} />
                 <Route path="data/reclassify" element={<RequirePermission resource="data:browse" action="view"><DataReclassifyPage /></RequirePermission>} />
                 <Route path="data/reclassify/consolidation" element={<RequirePermission resource="data:browse" action="view"><DataReclassifyConsolidationPage /></RequirePermission>} />
                 <Route path="data/dimensions/:sub" element={<RequirePermission resource="data:browse" action="view"><DataDimensionsPage /></RequirePermission>} />
@@ -182,14 +181,8 @@ function App() {
               </Route>
               {/* 未知路径：权限感知首页 */}
               <Route path="*" element={<HomeRedirect />} />
-              </Routes>
-            </Suspense>
-          </ErrorBoundary>
-        </BrowserRouter>
-      </TooltipProvider>
-      </AntdProvider>
-    </QueryClientProvider>
-  )
+              </Route>))
+function App() {
+  return <QueryClientProvider client={queryClient}><AntdProvider><TooltipProvider><RouterProvider router={router} /></TooltipProvider></AntdProvider></QueryClientProvider>
 }
-
 export default App

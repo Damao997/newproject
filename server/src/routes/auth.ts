@@ -1,3 +1,5 @@
+import multer from 'multer'
+import { PersonalSettingsService } from '../services/PersonalSettingsService'
 import { Router, type Request, type Response, type NextFunction, type RequestHandler } from 'express'
 import { AuthService } from '../services/AuthService'
 import { authenticate } from '../middleware/auth'
@@ -93,4 +95,34 @@ router.put(
   }),
 )
 
+
+router.patch('/profile', authenticate, asyncHandler(async (req, res) => {
+  if (!req.authUser) throw errors.unauthorized()
+  sendOk(res, await PersonalSettingsService.updateProfile(req.authUser.userId, req.body, auditMeta(req)))
+}))
+router.get('/preferences', authenticate, asyncHandler(async (req, res) => {
+  if (!req.authUser) throw errors.unauthorized()
+  sendOk(res, await PersonalSettingsService.getPreferences(req.authUser))
+}))
+router.patch('/preferences', authenticate, asyncHandler(async (req, res) => {
+  if (!req.authUser) throw errors.unauthorized()
+  sendOk(res, await PersonalSettingsService.updatePreferences(req.authUser, req.body, auditMeta(req)))
+}))
+const avatarUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024, files: 1 } }).single('avatar')
+router.post('/avatar', authenticate, (req, res, next) => {
+  avatarUpload(req, res, cause => next(cause ? errors.badRequest('请选择 2MB 以内的图片文件') : undefined))
+}, asyncHandler(async (req, res) => {
+  if (!req.authUser) throw errors.unauthorized()
+  sendOk(res, await PersonalSettingsService.updateAvatar(req.authUser.userId, req.file, auditMeta(req)))
+}))
+router.delete('/avatar', authenticate, asyncHandler(async (req, res) => {
+  if (!req.authUser) throw errors.unauthorized()
+  sendOk(res, await PersonalSettingsService.removeAvatar(req.authUser.userId, auditMeta(req)))
+}))
+router.get('/avatar', authenticate, asyncHandler(async (req, res) => {
+  if (!req.authUser) throw errors.unauthorized()
+  const buffer = await PersonalSettingsService.getAvatar(req.authUser.userId)
+  res.setHeader('Cache-Control', 'private, no-store')
+  res.type('image/webp').send(buffer)
+}))
 export default router

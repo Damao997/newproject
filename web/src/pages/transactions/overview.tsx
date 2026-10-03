@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PageContainer } from '@/components/layout/page-container'
+import { FilterBar } from '@/components/layout/filter-bar'
 import { SubPageTabs } from '@/components/layout/sub-page-tabs'
 import { TRANSACTION_TABS } from '@/components/layout/module-tabs'
 import { Card } from '@/components/ui/card'
@@ -13,7 +14,7 @@ import { usePermission } from '@/hooks/usePermission'
 import { TransactionImportDialog } from '@/pages/data/transaction-import-dialog'
 import { TransactionTrendCard } from './trend-card'
 import { TransactionAnalysisDrawer } from './analysis-drawer'
-import { PartyTypeSelect, PartyTypeTag, AgingStackBar, agingRisk, AGING_GROUPS } from './shared'
+import { PartyTypeSelect, PartyTypeTag, AgingDistribution, agingRisk, AGING_GROUPS } from './shared'
 import { cn, formatWan } from '@/lib/utils'
 import { ArrowRight, FileText, RefreshCw, Upload } from 'lucide-react'
 import type { TransactionOverviewItem } from '@/types'
@@ -36,6 +37,7 @@ function directionLabel(direction: string): string {
 export default function TransactionsOverviewPage() {
   // 页面特有筛选持久化（切路由/刷新后恢复）：对象类型多选
   const setTransactionsTab = usePageStore((s) => s.setTransactionsTab)
+  const cardView = usePageStore(s => s.transactions.overview.cardView)
   const party = usePageStore((s) => s.transactions.overview.party)
   const setOverview = useCallback(
     (patch: Partial<TransactionOverviewState>) => setTransactionsTab('overview', patch),
@@ -62,64 +64,42 @@ export default function TransactionsOverviewPage() {
     return [...list].sort((a, b) => TRANSACTION_TYPES.indexOf(a.transactionType) - TRANSACTION_TYPES.indexOf(b.transactionType))
   }, [data])
 
-  const totalClosing = rows.reduce((s, r) => s + r.totalClosingBalance, 0)
-  const totalRecords = rows.reduce((s, r) => s + r.recordCount, 0)
-  // 长账龄（3年+）余额与类型数（跨六类型汇总）
-  const longAging = rows.reduce((s, r) => s + (r.aging['3年以上'] ?? 0), 0)
-  const riskyTypes = rows.filter((r) => (r.aging['3年以上'] ?? 0) > 0).length
-
   return (
     <PageContainer
+      navigation={<SubPageTabs items={TRANSACTION_TABS} />}
       title="往来总览"
-      description="应收 / 应付 / 预收 / 预付等往来余额汇总，多维度账龄结构一览"
-      actions={
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" disabled={isFetching} onClick={() => refetch()}>
-            <RefreshCw className={cn('mr-1.5 h-3.5 w-3.5', isFetching && 'animate-spin')} />
-            刷新
-          </Button>
-          {canImport && (
-            <Button size="sm" onClick={() => setImportOpen(true)}>
-              <Upload className="mr-1.5 h-3.5 w-3.5" />
-              导入
-            </Button>
-          )}
-        </div>
-      }
     >
-      <SubPageTabs items={TRANSACTION_TABS} />
 
       {/* 筛选卡（吸顶）：对象类型多选（公司/期间已上收顶部 Header 全局筛选） */}
-      <Card className="sticky top-0 z-10 rounded-card border border-border p-4">
-        <div className="flex flex-wrap items-center gap-3">
+      <Card variant="filter" className="sticky top-0 z-10 rounded-card border border-border p-4">
+        <FilterBar
+          actions={
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" disabled={isFetching} onClick={() => refetch()}>
+                <RefreshCw className={cn('mr-1.5 h-3.5 w-3.5', isFetching && 'animate-spin')} />
+                刷新
+              </Button>
+              {canImport && (
+                <Button size="sm" onClick={() => setImportOpen(true)}>
+                  <Upload className="mr-1.5 h-3.5 w-3.5" />
+                  导入
+                </Button>
+              )}
+            </div>
+          }
+        >
           <PartyTypeSelect value={party} onChange={(v) => setOverview({ party: v })} />
+          <div role="radiogroup" aria-label="往来卡片展示" className="app-tabs-list" data-tabs-variant="segmented">
+            {(['amount', 'details'] as const).map(value => <label key={value} className="transaction-view-option">
+              <input type="radio" name="transaction-card-view" className="transaction-view-input" checked={cardView === value} onChange={() => setOverview({ cardView: value })} aria-label={value === 'amount' ? '金额' : '明细'} />
+              <span className="app-tab-trigger" data-state={cardView === value ? 'active' : 'inactive'}>{value === 'amount' ? '金额' : '明细'}</span>
+            </label>)}
+          </div>
           {period && (
             <span className="text-xs text-muted-foreground">当前期间：{period}</span>
           )}
-        </div>
+        </FilterBar>
       </Card>
-
-      {/* 汇总条：期末余额合计 / 笔数合计 / 3年+ 长账龄 */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Card className="rounded-card p-4">
-          <p className="text-sm text-muted-foreground">期末余额合计</p>
-          <p className="mt-1 font-num text-2xl font-semibold tabular-nums text-foreground">
-            {isLoading ? <Skeleton className="h-8 w-28" /> : <>{formatWan(totalClosing)}<span className="ml-1 text-sm font-normal text-muted-foreground">万</span></>}
-          </p>
-        </Card>
-        <Card className="rounded-card p-4">
-          <p className="text-sm text-muted-foreground">记录笔数合计</p>
-          <p className="mt-1 font-num text-2xl font-semibold tabular-nums text-foreground">
-            {isLoading ? <Skeleton className="h-8 w-20" /> : totalRecords.toLocaleString('zh-CN')}
-          </p>
-        </Card>
-        <Card className="rounded-card p-4">
-          <p className="text-sm text-muted-foreground">3 年以上长账龄</p>
-          <p className={cn('mt-1 font-num text-2xl font-semibold tabular-nums', longAging > 0 ? 'text-destructive' : 'text-foreground')}>
-            {isLoading ? <Skeleton className="h-8 w-28" /> : <>{formatWan(longAging)}<span className="ml-1 text-sm font-normal text-muted-foreground">万 · {riskyTypes} 个类型</span></>}
-          </p>
-        </Card>
-      </div>
 
       {/* 六大往来类型汇总卡 */}
       {isError ? (
@@ -152,7 +132,7 @@ export default function TransactionsOverviewPage() {
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {rows.map((row) => (
-            <TypeSummaryCard key={row.transactionType} row={row} period={period ?? ''} />
+            <TypeSummaryCard key={row.transactionType} row={row} details={cardView === 'details'} period={period ?? ''} />
           ))}
         </div>
       )}
@@ -188,8 +168,9 @@ export default function TransactionsOverviewPage() {
   )
 }
 
-/** 单类型汇总卡：期末余额 + 笔数（内部/外部）+ 账龄堆叠条 + 风险提示 + 分析入口 */
-function TypeSummaryCard({ row, period }: { row: TransactionOverviewItem; period: string }) {
+/** 单类型汇总卡：期末余额、笔数、八段账龄摘要、风险提示及分析入口。 */
+const TYPE_TONES: Record<string, 1 | 2 | 3 | 4> = { '应收账款': 1, '其他应收款': 4, '预收账款': 3, '应付账款': 2, '其他应付款': 4, '预付账款': 3 }
+function TypeSummaryCard({ row, period, details }: { row: TransactionOverviewItem; period: string; details: boolean }) {
   const companies = usePeriodStore((s) => s.companyCodes)
   const risk = agingRisk(row.aging, row.totalClosingBalance)
   // 分析抽屉按 公司×类型 粒度快照：恰好单选一家公司时预填
@@ -197,25 +178,27 @@ function TypeSummaryCard({ row, period }: { row: TransactionOverviewItem; period
   const [analysisOpen, setAnalysisOpen] = useState(false)
 
   return (
-    <Card className="rounded-card border border-border p-5">
-      <div className="flex items-center justify-between gap-2">
+    <Card variant="metric" data-transaction-card={row.transactionType} data-view={details ? 'details' : 'amount'} data-metric-tone={TYPE_TONES[row.transactionType] ?? 1} className="transaction-summary-card">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-base font-semibold text-foreground">{row.transactionType}</h3>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5" hidden={!details}>
           <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{directionLabel(row.direction)}</span>
           {row.internalCount > 0 && <PartyTypeTag partyType="internal" />}
           {row.externalCount > 0 && <PartyTypeTag partyType="external" />}
         </div>
       </div>
-      <div className="mt-3 font-num text-2xl font-semibold leading-tight tabular-nums text-foreground">
+      <div className="transaction-summary-value mt-3 font-num font-semibold leading-tight tabular-nums text-foreground">
         {formatWan(row.totalClosingBalance)}
         <span className="ml-1 text-sm font-normal text-muted-foreground">万</span>
       </div>
+      <div className="transaction-card-disclosure" aria-hidden={!details} inert={!details}>
+      <div className="transaction-card-disclosure-inner"><div className="transaction-card-details">
       <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
         <span>记录 <span className="font-num tabular-nums text-foreground">{row.recordCount.toLocaleString('zh-CN')}</span> 笔</span>
         {row.internalCount > 0 && <span>内部 <span className="font-num tabular-nums text-foreground">{row.internalCount.toLocaleString('zh-CN')}</span></span>}
       </div>
       <div className="mt-3">
-        <AgingStackBar aging={row.aging} closingBalance={row.totalClosingBalance} />
+        <AgingDistribution aging={row.aging} closingBalance={row.totalClosingBalance} />
       </div>
       {risk ? (
         <p className={cn(
@@ -227,8 +210,9 @@ function TypeSummaryCard({ row, period }: { row: TransactionOverviewItem; period
       ) : (
         <p className="mt-2 text-xs text-muted-foreground">暂无余额数据</p>
       )}
-      <div className="mt-3 flex items-center justify-between border-t border-dashed border-border pt-3">
-        <span className="text-xs text-muted-foreground">{period ? `期间 ${period}` : ''}</span>
+      </div></div></div>
+      <div className="mt-3 flex items-center justify-between gap-2 pt-3">
+        <span className="text-xs text-muted-foreground">{details && period ? `期间 ${period}` : '期末余额 · 万元'}</span>
         <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-primary" onClick={() => setAnalysisOpen(true)}>
           <FileText className="mr-1 h-3 w-3" />
           单项分析

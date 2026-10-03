@@ -1,3 +1,5 @@
+import { useFormModel, useFormSet } from '@/components/forms/form-model'
+import { useFormClose } from '@/components/forms/form-navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { FlashMessage } from '@/components/ui/flash-message'
@@ -27,7 +29,8 @@ interface PermissionDialogProps {
 export function PermissionDialog({ open, role, onClose, onSaved }: PermissionDialogProps) {
   const { data: allPerms } = usePermissions()
   const updatePerms = useUpdateRolePermissions()
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const model = useFormModel({ selected: [] as string[] })
+  const [selected, setSelected] = useFormSet(model, 'selected')
   const [error, setError] = useState<string | null>(null)
   const { confirm, element: confirmElement } = useConfirm()
 
@@ -40,8 +43,8 @@ export function PermissionDialog({ open, role, onClose, onSaved }: PermissionDia
   useEffect(() => {
     if (!open || !role) return
     setError(null)
-    setSelected(new Set((role.permissions ?? []).map(permKey)))
-  }, [open, role])
+    model.form.reset({ selected: (role.permissions ?? []).map(permKey) })
+  }, [open, role, model.form])
 
   const toggle = (key: string) => {
     setSelected((prev) => {
@@ -96,9 +99,11 @@ export function PermissionDialog({ open, role, onClose, onSaved }: PermissionDia
     }
   }
 
+  const close = useFormClose({ dirty: model.form.formState.isDirty, busy: model.pending || updatePerms.isPending, enabled: open, onClose })
+
   return (
     <>
-      <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <Dialog open={open} busy={model.pending || updatePerms.isPending} onOpenChange={(next) => { if (!next) close.requestClose() }}>
         <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>权限配置 · {role?.name}</DialogTitle>
@@ -107,17 +112,18 @@ export function PermissionDialog({ open, role, onClose, onSaved }: PermissionDia
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="grid gap-4">
-            <PermissionMatrix perms={perms} selected={selected} onToggle={toggle} onSetAll={setAll} locked={locked} />
+            <PermissionMatrix perms={perms} selected={selected} onToggle={toggle} onSetAll={setAll} locked={locked || model.pending || updatePerms.isPending} />
             {error && <FlashMessage type="error">{error}</FlashMessage>}
           </DialogBody>
           <DialogFooter>
-            <Button variant="outline" onClick={onClose}>取消</Button>
-            <Button onClick={save} disabled={updatePerms.isPending || locked}>
+            <Button variant="outline" onClick={close.requestClose}>取消</Button>
+            <Button onClick={model.submit(save)} disabled={updatePerms.isPending || locked}>
               {updatePerms.isPending ? '保存中...' : '保存'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {close.element}
       {confirmElement}
     </>
   )

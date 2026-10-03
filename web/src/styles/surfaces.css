@@ -1,0 +1,291 @@
+/* 全站数据表面：色彩由四主题原始配方派生，专业表格只统一外观。 */
+.app-card { min-width: 0; background: hsl(var(--card)); box-shadow: var(--antd-shadow-1); }
+.app-card[data-card-variant='filter'] { padding: 16px; background: hsl(var(--surface-filter)); box-shadow: none; }
+.app-card[data-card-variant='metric'] { --metric-surface: var(--metric-surface-1); --metric-ink: var(--metric-ink-1); border-color: transparent; background: hsl(var(--metric-surface)); box-shadow: none; }
+.app-card[data-metric-tone='1'] { --metric-surface: var(--metric-surface-1); --metric-ink: var(--metric-ink-1); }
+.app-card[data-metric-tone='2'] { --metric-surface: var(--metric-surface-2); --metric-ink: var(--metric-ink-2); }
+.app-card[data-metric-tone='3'] { --metric-surface: var(--metric-surface-3); --metric-ink: var(--metric-ink-3); }
+.app-card[data-metric-tone='4'] { --metric-surface: var(--metric-surface-4); --metric-ink: var(--metric-ink-4); }
+.app-card[data-card-variant='metric']:not(.kpi-card) { padding: 24px; }
+.card-header { gap: 6px; }
+.card-header h3 { font-size: 16px; line-height: 1.5; }
+.card-content, .card-footer { min-width: 0; }
+.stat-tile .font-num { overflow-wrap: anywhere; }
+.button-content { display: inline-flex; min-width: 0; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; line-height: 1.4; }
+.button-content > svg { flex-shrink: 0; margin: 0; }
+:is(.app-card[data-card-variant='filter'], [data-filter-bar]) :is(.ant-input:not(textarea), .ant-input-affix-wrapper, .ant-select-single) { min-height: 36px; }
+:is(.app-card[data-card-variant='filter'], [data-filter-bar]) .ant-input-affix-wrapper .ant-input { min-height: 0; }
+:is(.app-card[data-card-variant='filter'], [data-filter-bar]) .ant-select-single .ant-select-selector { min-height: 36px; align-items: center; }
+:is(.app-card[data-card-variant='filter'], [data-filter-bar]) .ant-btn { min-height: 36px; }
+:is(.app-card[data-card-variant='filter'], [data-filter-bar]) .ant-input-affix-wrapper { align-items: center; }
+
+/* 首页指标：金额独立占行，达成率和累计信息有明确阅读顺序。 */
+.kpi-card { container-type: inline-size; }
+.kpi-content { padding: 24px; }
+.kpi-card .ant-statistic-content { font-size: clamp(28px, 14cqw, 34px) !important; letter-spacing: -.035em; overflow-wrap: anywhere; line-height: 1.2; }
+.kpi-card .ant-statistic { min-width: 0; }
+.kpi-card[data-value-size="long"] .ant-statistic-content { font-size: clamp(22px, 10cqw, 28px) !important; }
+.kpi-value-row > .min-w-0 { flex-basis: 100%; }
+.kpi-rate { display: flex; width: 100%; align-items: baseline; justify-content: space-between; flex-direction: row-reverse; gap: 8px; margin-top: 4px; }
+.kpi-rate .text-lg { font-size: 16px; }
+.kpi-details { padding-top: 2px; }
+.kpi-card .bg-border\/60 { background: hsl(var(--metric-ink) / .12); }
+.kpi-content > div:first-child > svg { color: hsl(var(--metric-ink)); background: hsl(var(--card) / .6); border-radius: 50%; width: 26px; height: 26px; padding: 5px; box-sizing: border-box; }
+.kpi-card[role='link'] { transition: transform 180ms ease, box-shadow 180ms ease; }
+.kpi-card[role='link']:hover { transform: translateY(-3px); box-shadow: 0 10px 24px hsl(var(--foreground) / .07); }
+
+/* 报告卡的动作始终可见，静态卡片不产生悬浮位移。 */
+.reports-content > div { padding: 0 !important; }
+.report-card { padding: 24px; box-shadow: none; }
+.report-card:focus-within { border-color: hsl(var(--primary) / .5); }
+.report-card-actions .ant-btn { flex-shrink: 0; }
+.report-card h3 { min-height: 54px; }
+.report-card-actions > .ant-btn:first-child { min-width: 0; }
+.alert-item[data-severity='error'] { background: hsl(var(--destructive-50)); }
+.alert-item[data-severity='warning'] { background: hsl(var(--warning-50)); }
+.alert-item[data-severity='info'] { background: hsl(var(--info-50)); }
+
+/* 单层表面取代灰色嵌套框；滚动、冻结、虚拟行的几何仍由原组件控制。 */
+.table-surface { border: 1px solid hsl(var(--border-subtle)); background: hsl(var(--card)); }
+.app-card .table-surface { border: 0; }
+.table-scroll { scrollbar-gutter: stable; isolation: isolate; }
+[data-ui-table] { color: hsl(var(--foreground)); font-variant-numeric: tabular-nums; }
+[data-ui-table] > thead > tr > th { background: hsl(var(--table-head)); border-color: hsl(var(--border-subtle)); color: hsl(var(--foreground)); }
+[data-ui-table] > thead > tr > th[scope='colgroup'] { background: hsl(var(--table-group)); }
+[data-ui-table] > tbody > tr { --table-row-surface: var(--card); background: hsl(var(--table-row-surface)); transition: background-color 140ms ease; }
+[data-ui-table].metric-table > tbody > tr:nth-child(even),
+[data-ui-table].data-table-report--striped > tbody > tr:nth-child(even) { --table-row-surface: var(--table-stripe); }
+[data-ui-table] > tbody > tr[data-row-level='0'] { --table-row-surface: var(--table-group); font-weight: 600; }
+[data-ui-table] > tbody > tr:hover { --table-row-surface: var(--table-hover); }
+[data-ui-table] > tbody > tr[aria-selected='true'] { --table-row-surface: var(--table-selected); }
+[data-ui-table] > tbody > tr > td { border-color: hsl(var(--border-subtle)); }
+[data-ui-table] .table-sticky-cell { background: hsl(var(--table-row-surface, var(--card))); }
+[data-ui-table] .table-sticky-head { box-shadow: 5px 0 8px -7px hsl(var(--foreground) / .25); }
+[data-ui-table] > tfoot > tr,
+[data-ui-table] > tbody > tr.report-total-row { --table-row-surface: var(--table-group); background: hsl(var(--table-group)); font-weight: 600; }
+[data-ui-table] thead button { cursor: pointer; border-radius: 4px; }
+.table-virtual .ant-table-thead > tr > th { background: hsl(var(--table-head)); }
+.table-virtual .ant-table-container { border: 0; }
+.table-virtual .ant-table-tbody > tr > td { border-color: hsl(var(--border-subtle)); }
+
+/* 表单分组使用轻分隔和清晰标签，校验与离开保护仍由共享表单负责。 */
+.form-section + .form-section { border-top: 1px solid hsl(var(--border-subtle)); padding-top: 24px; }
+.form-section > div:first-child { padding-bottom: 2px; }
+.form-field > div:first-child label { font-size: 13px; font-weight: 600; }
+.form-field .ant-input, .form-field .ant-select-selector { box-shadow: none; }
+.form-field .ant-input:focus, .form-field .ant-select-focused .ant-select-selector { box-shadow: 0 0 0 3px hsl(var(--primary) / .1); }
+.workflow-summary { background: hsl(var(--surface-filter)); border-color: hsl(var(--border-subtle)); }
+:root[data-sidebar='dark'] .app-card { box-shadow: none; }
+
+@media (max-width: 767px) {
+  .card-header, .card-content, .card-footer { padding-left: 16px !important; padding-right: 16px !important; }
+  .kpi-content, .report-card, .app-card[data-card-variant='metric']:not(.kpi-card) { padding: 16px; }
+  .card-header { flex-wrap: wrap; }
+  .report-card h3 { min-height: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kpi-card[role='link'] { transition: none; }
+  .kpi-card[role='link']:hover { transform: none; }
+  [data-ui-table] > tbody > tr { transition: none; }
+}
+@media print {
+  .app-card, .table-surface, .report-card, .kpi-card { box-shadow: none !important; }
+  [data-ui-table] > thead > tr > th { background: hsl(var(--muted)) !important; }
+}
+
+/* 顶栏承接页面主标题，页面只保留局部筛选与内容。 */
+.header-inner { display: flex; min-height: 64px; align-items: center; gap: 24px; padding: 12px 24px; box-sizing: border-box; }
+.header-leading { flex: 1; }
+.header-page-context { width: 100%; }
+.header-title-host .page-title { margin: 0; font-size: 22px; line-height: 1.3; letter-spacing: -.025em; overflow-wrap: anywhere; }
+.header-title-host .page-heading { min-height: 32px; }
+.header-title-host .page-title-help:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+.header-controls { flex-shrink: 0; }
+.page-head[hidden], .module-tabs-scroll[hidden] { display: none; }
+
+/* 路由分类强调当前位置，卡片内的口径切换使用安静的同系分段控件。 */
+.module-tabs { display: flex; align-items: center; gap: 6px; max-width: 100%; }
+.module-tabs-viewport { min-width: 0; flex: 1; overflow-x: auto; padding: 3px; }
+.module-tabs-list { display: flex; gap: 6px; width: max-content; }
+.module-tab { display: inline-flex; min-height: 40px; align-items: center; padding: 9px 16px; border: 1px solid transparent; border-radius: 14px; color: hsl(var(--muted-foreground)); font-size: 14px; font-weight: 500; white-space: nowrap; text-decoration: none; transition: background-color 160ms ease, color 160ms ease; }
+.module-tab:hover { color: hsl(var(--foreground)); background: hsl(var(--muted)); }
+.module-tab[aria-current='page'] { color: hsl(var(--primary-foreground)); background: hsl(var(--primary)); font-weight: 600; box-shadow: 0 3px 9px hsl(var(--primary) / .12); }
+.module-tab:focus-visible, .module-tabs-scroll:focus-visible, .app-tab-trigger:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+.module-tabs-scroll { display: flex; width: 32px; height: 36px; flex-shrink: 0; align-items: center; justify-content: center; border: 1px solid hsl(var(--border-subtle)); border-radius: 12px; background: hsl(var(--card)); color: hsl(var(--foreground)); cursor: pointer; }
+.module-tabs-scroll:hover:not(:disabled) { border-color: hsl(var(--primary) / .4); color: hsl(var(--primary)); }
+.module-tabs-scroll:disabled { opacity: .35; cursor: default; }
+.app-tabs-list { gap: 3px; padding: 3px; min-height: 40px; border: 1px solid hsl(var(--border-subtle)); border-radius: 14px; background: hsl(var(--surface-filter)); overflow-x: auto; justify-content: flex-start; box-sizing: border-box; }
+.app-tabs-list[data-tabs-variant='segmented'] { min-height: 36px; }
+.app-tab-trigger { min-height: 32px; padding: 5px 12px; border: 0; border-radius: 10px; background: transparent; color: hsl(var(--muted-foreground)); cursor: pointer; transition: background-color 160ms ease, color 160ms ease; }
+.app-tabs-list[data-tabs-variant='segmented'] .app-tab-trigger { min-height: 28px; font-size: 13px; }
+.app-tab-trigger:hover:not(:disabled) { color: hsl(var(--foreground)); background: hsl(var(--card) / .5); }
+.app-tab-trigger[data-state='active'] { color: hsl(var(--primary)); background: hsl(var(--card)); box-shadow: 0 1px 4px hsl(var(--foreground) / .07); font-weight: 600; }
+
+/* 条形图为完整标签和数值预留一行；轨道单独占行，手机不压缩金额。 */
+.distribution-row { min-width: 0; padding: 10px 0; }
+.distribution-row + .distribution-row { border-top: 1px solid hsl(var(--border-subtle)); }
+.distribution-row-info { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; margin-bottom: 8px; }
+.distribution-row-label { min-width: 0; flex: 1 1 120px; font-size: 13px; font-weight: 500; line-height: 1.5; overflow-wrap: anywhere; }
+.distribution-row-values { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: 10px; max-width: 100%; font-size: 13px; }
+.distribution-row-value { color: hsl(var(--foreground)); font-weight: 600; }
+.distribution-row-meta { display: inline-flex; align-items: baseline; gap: 10px; color: hsl(var(--muted-foreground)); font-size: 12px; }
+.distribution-row-track { height: 8px; overflow: hidden; border-radius: 999px; background: hsl(var(--muted)); }
+.distribution-row-fill { height: 100%; border-radius: inherit; background: hsl(var(--chart-1)); }
+
+/* 主数据列和科目层级形成阅读锚点；金额右对齐，专业密度保持原值。 */
+.metric-table > thead > tr > th:first-child { text-align: left; padding-left: 20px; }
+.metric-table > thead > tr > th[scope='colgroup'] { text-align: left; padding-left: 20px; font-weight: 700; }
+.metric-table > thead > tr > th[data-primary], .metric-table > tbody > tr > td[data-primary] { background: hsl(var(--primary) / .035); font-weight: 600; }
+.metric-table > thead > tr > th[data-primary] { background: hsl(var(--table-head)); color: hsl(var(--primary)); }
+.metric-table > tbody > tr[data-row-level='0'] > td:first-child { box-shadow: inset 3px 0 hsl(var(--primary) / .6); }
+.metric-table > tbody > tr[data-row-level='1'] > td:first-child { font-weight: 500; }
+.metric-table thead button { min-height: 28px; }
+.metric-table thead button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+.metric-table td[data-metric-column='ytd'], .metric-table th[data-metric-column='ytd'] { border-left: 1px solid hsl(var(--border-subtle)); }
+.detail-table-scroll { max-width: 100%; border-radius: 16px; border: 1px solid hsl(var(--border-subtle)); isolation: isolate; scrollbar-gutter: stable; }
+[data-detail-table] { width: 100%; min-width: 720px; border-collapse: separate; border-spacing: 0; }
+[data-detail-table] > thead { position: sticky; top: 0; z-index: 2; }
+[data-detail-table] > thead > tr > th { height: 40px; white-space: nowrap; }
+[data-detail-table] > tbody > tr > td { padding: 12px 16px; white-space: nowrap; }
+[data-detail-table] > thead > tr:first-child > th:first-child, [data-detail-table] > tbody > tr > td:first-child { position: sticky; left: 0; min-width: 180px; max-width: 260px; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; text-align: left; }
+[data-detail-table] > tbody > tr > td:first-child { z-index: 1; background: hsl(var(--table-row-surface, var(--card))); font-weight: 500; }
+[data-detail-table] > thead > tr:first-child > th:first-child { z-index: 3; }
+[data-detail-table] > tbody > tr.report-total-row > td { background: hsl(var(--table-group)); font-weight: 600; }
+@media (max-width: 767px) {
+  .header-inner { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 10px 16px; }
+  .header-title-host .page-title { font-size: 20px; }
+  .header-controls { width: 100%; justify-content: flex-end; }
+  .module-tab { min-height: 36px; padding: 7px 12px; font-size: 13px; }
+  .distribution-row-info { gap: 4px 12px; }
+  .distribution-row-label { flex-basis: 140px; }
+  [data-detail-table] > thead > tr:first-child > th:first-child, [data-detail-table] > tbody > tr > td:first-child { min-width: 140px; max-width: 180px; }
+}
+@media (prefers-reduced-motion: reduce) { .module-tab, .app-tab-trigger { transition: none; } }
+@media print {
+  .module-tabs { display: none !important; }
+  [data-detail-table] > thead > tr > th, [data-detail-table] > tbody > tr > td:first-child { position: static; }
+}
+
+.page-heading-meta { flex-shrink: 0; white-space: nowrap; }
+
+@media (max-width: 767px) {
+  .metric-table col:first-child { width: 200px !important; min-width: 200px !important; }
+  .metric-table .metric-subject-name { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+}
+
+/* 账龄比较视图：短标签、轨道、金额与占比共用一行，避免重复结构图。 */
+[data-aging-structure] { container-type: inline-size; }
+.aging-comparison-head,
+.distribution-row[data-distribution-variant='comparison'] {
+  display: grid;
+  grid-template-columns: 76px minmax(36px, 1fr) max-content 48px;
+  align-items: center;
+  column-gap: 12px;
+}
+.aging-comparison-head { margin-bottom: 4px; color: hsl(var(--muted-foreground)); font-size: 12px; line-height: 20px; }
+.aging-comparison-head > :nth-child(2) { grid-column: 3; text-align: right; min-width: 72px; }
+.aging-comparison-head > :last-child { text-align: right; }
+.aging-comparison-rows { min-width: 0; }
+.distribution-row[data-distribution-variant='comparison'] { min-height: 40px; padding: 8px 0; box-sizing: border-box; }
+.distribution-row[data-distribution-variant='comparison'] .distribution-row-info,
+.distribution-row[data-distribution-variant='comparison'] .distribution-row-values { display: contents; }
+.distribution-row[data-distribution-variant='comparison'] .distribution-row-label { grid-column: 1; grid-row: 1; font-size: 13px; }
+.distribution-row[data-distribution-variant='comparison'] .distribution-row-track { grid-column: 2; grid-row: 1; height: 8px; }
+.distribution-row[data-distribution-variant='comparison'] .distribution-row-value { grid-column: 3; grid-row: 1; min-width: 72px; font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
+.distribution-row[data-distribution-variant='comparison'] .distribution-row-meta { grid-column: 4; grid-row: 1; display: block; text-align: right; font-variant-numeric: tabular-nums; }
+[data-aging-matrix] > tbody > tr:not(.report-total-row) > td:not(:first-child) { padding: 8px; }
+[data-aging-matrix] > tbody > tr > td:nth-child(2) { border-right: 1px solid hsl(var(--border-subtle)); }
+.aging-matrix-value { display: block; min-width: 62px; padding: 6px 10px; border-radius: 8px; background: hsl(var(--chart-1) / var(--aging-cell-alpha, 0)); }
+
+/* 窄卡片仍完整显示金额，比较行恢复两层；不增加横向滚动区域。 */
+@container (max-width: 380px) {
+  .aging-comparison-head { display: none; }
+  .distribution-row[data-distribution-variant='comparison'] {
+    grid-template-columns: minmax(64px, 1fr) minmax(0, max-content) 48px;
+    row-gap: 6px; column-gap: 10px; padding: 9px 0;
+  }
+  .distribution-row[data-distribution-variant='comparison'] .distribution-row-value { grid-column: 2; overflow-wrap: anywhere; min-width: 0; }
+  .distribution-row[data-distribution-variant='comparison'] .distribution-row-meta { grid-column: 3; }
+  .distribution-row[data-distribution-variant='comparison'] .distribution-row-track { grid-column: 1 / -1; grid-row: 2; height: 6px; }
+}
+@media (forced-colors: active) {
+  .aging-matrix-value { background: transparent; }
+  .distribution-row-fill { background: Highlight; }
+}
+
+
+/* 全站同类数据组件共用排名行、金额强度与达成率读数。 */
+.distribution-list { container-type: inline-size; min-width: 0; }
+.rank-distribution-row { display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: center; gap: 12px; }
+.rank-distribution-row + .rank-distribution-row { border-top: 1px solid hsl(var(--border-subtle)); }
+.distribution-row[data-distribution-variant='ranking'] {
+  display: grid; grid-template-columns: minmax(100px, .8fr) minmax(48px, 1fr) max-content max-content;
+  align-items: center; column-gap: 16px; min-height: 44px; padding: 9px 0; box-sizing: border-box;
+}
+.distribution-row[data-distribution-variant='ranking'] .distribution-row-info,
+.distribution-row[data-distribution-variant='ranking'] .distribution-row-values { display: contents; }
+.distribution-row[data-distribution-variant='ranking'] .distribution-row-label { grid-column: 1; grid-row: 1; }
+.distribution-row[data-distribution-variant='ranking'] .distribution-row-track { grid-column: 2; grid-row: 1; height: 8px; }
+.distribution-row[data-distribution-variant='ranking'] .distribution-row-value { grid-column: 3; grid-row: 1; text-align: right; overflow-wrap: anywhere; max-width: 240px; }
+.distribution-row[data-distribution-variant='ranking'] .distribution-row-meta { grid-column: 4; grid-row: 1; justify-content: flex-end; flex-wrap: wrap; }
+
+.aging-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
+.aging-summary .distribution-row { padding: 9px 0; border-top: 1px solid hsl(var(--border-subtle)); }
+.aging-summary .distribution-row-info { display: block; margin-bottom: 5px; }
+.aging-summary .distribution-row-label { display: block; color: hsl(var(--muted-foreground)); font-size: 12px; }
+.aging-summary .distribution-row-values { justify-content: flex-start; }
+.aging-summary .distribution-row-value { overflow-wrap: anywhere; }
+.aging-summary .distribution-row-track { height: 4px; }
+
+.magnitude-value { display: block; min-width: 62px; padding: 5px 10px; border-radius: 8px; background: hsl(var(--chart-1) / var(--aging-cell-alpha, 0)); font-variant-numeric: tabular-nums; }
+[data-comparison-matrix] > tbody > tr > td:has(> .magnitude-value) { padding: 6px 8px; }
+[data-compact-matrix] > tbody > tr > td:has(> .magnitude-value) { padding: 4px 6px; }
+[data-compact-matrix] .magnitude-value { padding: 3px 6px; border-radius: 6px; }
+[data-comparison-matrix] > tbody > tr[data-matrix-subtotal] { --table-row-surface: var(--table-group); font-weight: 600; }
+[data-comparison-matrix] > tbody > tr[data-selected='true'] { --table-row-surface: var(--table-selected); }
+[data-comparison-matrix] > tbody > tr > td.sticky { background: hsl(var(--table-row-surface)); }
+[data-grouped-matrix] { border-collapse: separate; border-spacing: 0; }
+[data-grouped-matrix] > thead > tr > th:first-child,
+[data-grouped-matrix] > tbody > tr > td:first-child:not([colspan]) { position: sticky; left: 0; min-width: 160px; max-width: 220px; white-space: normal; overflow-wrap: anywhere; }
+[data-grouped-matrix] > thead > tr > th:first-child { z-index: 2; }
+[data-grouped-matrix] > tbody > tr > td:first-child:not([colspan]) { z-index: 1; background: hsl(var(--table-row-surface)); }
+[data-grouped-matrix] > tbody > tr > td:nth-child(3):not([colspan]) { min-width: 140px; max-width: 260px; white-space: normal; overflow-wrap: anywhere; }
+
+.rate-bar { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; width: 96px; min-height: 20px; vertical-align: middle; }
+.rate-bar[data-rate-variant='above'] { width: 128px; }
+.rate-bar-track { flex: 1; height: 5px; min-width: 16px; border-radius: 999px; overflow: hidden; background: hsl(var(--muted)); }
+.rate-bar-fill { display: block; height: 100%; border-radius: inherit; background: hsl(var(--chart-1)); }
+.rate-bar-value { flex-shrink: 0; font-size: 12px; font-weight: 600; color: hsl(var(--foreground)); font-variant-numeric: tabular-nums; }
+
+@container (max-width: 560px) {
+  .distribution-row[data-distribution-variant='ranking'] { grid-template-columns: minmax(0, 1fr) minmax(0, max-content); row-gap: 6px; column-gap: 12px; }
+  .distribution-row[data-distribution-variant='ranking'] .distribution-row-value { grid-column: 2; max-width: 60cqw; }
+  .distribution-row[data-distribution-variant='ranking'] .distribution-row-track { grid-column: 1; grid-row: 2; height: 6px; }
+  .distribution-row[data-distribution-variant='ranking'] .distribution-row-meta { grid-column: 2; grid-row: 2; }
+}
+@container (max-width: 240px) { .aging-summary { grid-template-columns: minmax(0, 1fr); } }
+@media (forced-colors: active) {
+  .magnitude-value { background: transparent; }
+  .rate-bar-track { outline: 1px solid CanvasText; }
+  .rate-bar-fill { background: Highlight; }
+}
+@media print {
+  [data-grouped-matrix] > thead > tr > th:first-child,
+  [data-grouped-matrix] > tbody > tr > td:first-child { position: static; }
+}
+
+/* 六类往来共用展示习惯；账龄正文留在原节点，展开和收起都平滑过渡。 */
+.transaction-view-option { cursor: pointer; display: inline-flex; }
+.transaction-view-option input:focus-visible + span { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+.transaction-summary-card { display: flex; flex-direction: column; }
+.transaction-summary-card [hidden] { display: none; }
+.transaction-summary-value { font-size: 32px; overflow-wrap: anywhere; transition: font-size 240ms ease; }
+.transaction-summary-card[data-view='details'] .transaction-summary-value { font-size: 28px; }
+.transaction-card-disclosure { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 280ms ease, opacity 200ms ease; }
+.transaction-summary-card[data-view='details'] .transaction-card-disclosure { grid-template-rows: 1fr; opacity: 1; }
+.transaction-card-disclosure-inner { overflow: hidden; min-height: 0; }
+.transaction-card-details { margin-top: 16px; padding: 12px; border-radius: 16px; background: hsl(var(--card) / .7); }
+@media (prefers-reduced-motion: reduce) { .transaction-card-disclosure, .transaction-summary-value { transition: none; } }
+
+.transaction-view-option { position: relative; }
+.transaction-view-input { position: absolute; inset: 0; margin: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }

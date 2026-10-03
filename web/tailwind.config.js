@@ -1,6 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  // 主页面恒白，无暗色 class 写入；保留 class 策略配置以防历史 dark: 变体意外触发
+  // 深色由全站主题恢复与切换时同步写入。
   darkMode: 'class',
   content: [
     "./index.html",
@@ -99,8 +99,8 @@ export default {
           "brand-fg": "hsl(var(--sidebar-brand-fg))",
         },
         finance: {
-          red: "#FF3B30",
-          green: "#34C759",
+          red: "hsl(var(--finance-red))",
+          green: "hsl(var(--finance-green))",
         },
         // 图表序列色：与 src/lib/chart-theme.ts 的 CHART_SERIES 一一对应
         chart: {
@@ -197,6 +197,7 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
         card: "var(--radius-card)",
+        pill: "9999px",
         // antd 镜像：4 / 6 / 8（与 globals.css --antd-radius-{sm,md,lg} 一一对应）
         "antd-sm": "var(--antd-radius-sm)",
         "antd-md": "var(--antd-radius-md)",
@@ -205,7 +206,7 @@ export default {
       fontFamily: {
         // 全局正文统一微软雅黑（非 Windows 环境回退 system-ui）
         sans: ['"Microsoft YaHei"', '"微软雅黑"', "system-ui", "sans-serif"],
-        mono: ["JetBrains Mono", "monospace"],
+        mono: ["Consolas", "monospace"],
         // 数字展示专用：微软雅黑 + tnum 等宽数字特性，保证表格数字对齐
         num: [
           ['"Microsoft YaHei"', '"微软雅黑"', "sans-serif"],
@@ -215,8 +216,8 @@ export default {
       fontSize: {
         // 语义字号：正文最小 12px 红线；micro 仅限装饰性后缀（单位标注/角标），caption 辅助信息，helper 小号正文/小按钮，
         // body 标准正文/表头 13px（对齐《统一表格设计标准》表头字号，如 TABLE_HEAD_BASE）
-        micro: ["10px", { lineHeight: "14px" }],
-        caption: ["11px", { lineHeight: "16px" }],
+        micro: ["12px", { lineHeight: "16px" }],
+        caption: ["12px", { lineHeight: "18px" }],
         helper: ["12px", { lineHeight: "18px" }],
         body: ["13px", { lineHeight: "20px" }],
       },

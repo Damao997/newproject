@@ -312,7 +312,7 @@ export function CoverageTab({ stickyTop = 0 }: { stickyTop?: number }) {
       )}
 
       {/* 统计卡：覆盖率大数字分档变色 + 四色堆叠比例条 + 图例计数 + 月份窗口（导入入口统一在数据管理页 /data/import）；吸顶 */}
-      <Card className="sticky z-10 rounded-card p-4" style={{ top: stickyTop }}>
+      <Card variant="filter" className="sticky z-10 rounded-card p-4" style={{ top: stickyTop }}>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <div className="flex items-baseline gap-2">
             <span className="text-sm text-muted-foreground">覆盖率</span>
@@ -393,7 +393,7 @@ export function CoverageTab({ stickyTop = 0 }: { stickyTop?: number }) {
           </div>
         </div>
         <div className="max-h-[600px] overflow-auto">
-          <table className="w-full text-sm">
+          <table data-ui-table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/50 text-foreground">
                 <th className="sticky left-0 top-0 z-30 bg-muted px-2 py-2 text-center font-medium">公司</th>

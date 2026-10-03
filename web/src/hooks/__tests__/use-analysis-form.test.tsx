@@ -9,7 +9,7 @@ import { useAnalysisForm } from '@/hooks/use-analysis-form'
 const { deleteMutateAsync } = vi.hoisted(() => ({ deleteMutateAsync: vi.fn() }))
 
 vi.mock('@/hooks/api-queries', () => ({
-  useAnalyses: () => ({ data: { items: [{ id: 'a1', title: '既有分析', content: '<p>x</p>' }] } }),
+  useAnalyses: (_params: unknown, options: { enabled?: boolean } = {}) => options.enabled === false ? {} : ({ data: { items: [{ id: 'a1', title: '既有分析', content: '<p>x</p>' }] } }),
   useCreateAnalysis: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateAnalysis: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useDeleteAnalysis: () => ({ mutateAsync: deleteMutateAsync, isPending: false }),
@@ -70,5 +70,41 @@ describe('useAnalysisForm 删除确认', () => {
     expect(await screen.findByText('删除失败，请稍后重试')).toBeInTheDocument()
     // 失败后 existingId 保留（删除按钮仍在）
     expect(screen.getByRole('button', { name: '删除' })).toBeInTheDocument()
+  })
+})
+
+
+function EditorStateHost({ existing = false }: { existing?: boolean }) {
+  const form = useAnalysisForm({
+    fetchParams: { companyCode: 'C1', subjectCode: 'S1', period: '2026-01' },
+    fetchEnabled: existing,
+    buildPayload: (title, content) => ({ companyCode: 'C1', subjectCode: 'S1', subjectType: 'transaction', fiscalYear: '2026', period: '2026-01', title, content }),
+    defaultTitle: () => '',
+  })
+  return <div>
+    <output>{form.model.form.formState.isDirty ? '有未保存修改' : '没有修改'}</output>
+    <button onClick={() => form.setContent('<p></p>')}>空段落同步</button>
+    <button onClick={() => form.setContent('<p>实际正文</p>')}>输入正文</button>
+    <div data-testid="analysis-content">{form.content}</div>
+  </div>
+}
+
+describe('单项分析正文离开保护', () => {
+  it('初始化空段落不产生未保存修改，真实输入仍参与保护', async () => {
+    render(<EditorStateHost />)
+    fireEvent.click(screen.getByRole('button', { name: '空段落同步' }))
+    expect(screen.getByText('没有修改')).toBeInTheDocument()
+    expect(screen.getByTestId('analysis-content')).toHaveTextContent('')
+    fireEvent.click(screen.getByRole('button', { name: '输入正文' }))
+    await waitFor(() => expect(screen.getByText('有未保存修改')).toBeInTheDocument())
+    expect(screen.getByTestId('analysis-content')).toHaveTextContent('<p>实际正文</p>')
+  })
+
+  it('清空已有正文仍产生修改，保留编辑器原始 HTML', async () => {
+    render(<EditorStateHost existing />)
+    await waitFor(() => expect(screen.getByTestId('analysis-content')).toHaveTextContent('<p>x</p>'))
+    fireEvent.click(screen.getByRole('button', { name: '空段落同步' }))
+    expect(screen.getByText('有未保存修改')).toBeInTheDocument()
+    expect(screen.getByTestId('analysis-content')).toHaveTextContent('<p></p>')
   })
 })

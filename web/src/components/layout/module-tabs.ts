@@ -16,12 +16,12 @@ export const REPORTS_TABS: SubPageTab[] = [
 /** 首页看板 · 经营分析：壹品慧关键指标表（默认）/ 壹品慧业务现金流分析 / 应收账款账龄分析表 / 存货库龄分析表
  * / 品类预算达成 / 公司预算达成 / 运营费用 / 核心指标分析（后三项由原综合分析卡迁入，核心指标分析末位新增） */
 export const DASHBOARD_ANALYSIS_TABS: SubPageTab[] = [
-  { path: '/dashboard/analysis/key-metrics', label: '壹品慧关键指标表' },
-  { path: '/dashboard/analysis/cash-flow', label: '壹品慧业务现金流分析' },
-  { path: '/dashboard/analysis/receivable-aging', label: '应收账款账龄分析表' },
-  { path: '/dashboard/analysis/inventory-aging', label: '存货库龄分析表' },
-  { path: '/dashboard/analysis/category-budget', label: '品类预算达成' },
-  { path: '/dashboard/analysis/subject-budget', label: '公司预算达成' },
+  { path: '/dashboard/analysis/key-metrics', label: '关键指标' },
+  { path: '/dashboard/analysis/cash-flow', label: '业务现金流' },
+  { path: '/dashboard/analysis/receivable-aging', label: '应收账龄' },
+  { path: '/dashboard/analysis/inventory-aging', label: '存货分析' },
+  { path: '/dashboard/analysis/category-budget', label: '品类预算' },
+  { path: '/dashboard/analysis/subject-budget', label: '公司预算' },
   { path: '/dashboard/analysis/expense', label: '运营费用' },
   { path: '/dashboard/analysis/core-metrics', label: '核心指标分析' },
 ]

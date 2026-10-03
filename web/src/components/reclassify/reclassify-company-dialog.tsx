@@ -1,4 +1,8 @@
-import { useMemo, useState } from 'react'
+import { companyFormSchema } from './form-schema'
+import { useFormModel, useFormValue, useFormSet, ModelFormFields } from '@/components/forms/form-model'
+import { useFormClose } from '@/components/forms/form-navigation'
+import { WorkflowProgress, WorkflowSummary } from '@/components/forms/workflow'
+import { useEffect, useRef, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -71,15 +75,16 @@ interface PreviewData {
  * 期间按单月必选（与后端口径一致）；本年累计由查询时按财年实时聚合，自动反映调整结果。
  */
 export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = 'operating', defaultSourceCompany, preset, readonly = false, meta, result, reapplyLogId }: ReclassifyCompanyDialogProps) {
-  const [templateType, setTemplateType] = useState<string>(preset?.templateType ?? defaultTemplateType)
-  const [sourceCompanyCode, setSourceCompanyCode] = useState<string>(preset?.sourceCompanyCode ?? defaultSourceCompany ?? '')
-  const [targetCompanyCode, setTargetCompanyCode] = useState<string>(preset?.targetCompanyCode ?? '')
-  const [transferMode, setTransferMode] = useState<'all' | 'ratio' | 'amount'>(preset?.transferMode ?? 'all')
+  const model = useFormModel({ selectedSubjects: Array.from((() => new Set(preset?.accountCodes ?? []))()), period: preset?.period ?? '', amountInput: (() => (preset?.amount != null ? String(preset.amount) : ''))(), ratioInput: (() => (preset?.ratio != null ? String(Math.round(preset.ratio * 10000) / 100) : ''))(), transferMode: (preset?.transferMode ?? 'all') as 'all' | 'ratio' | 'amount', targetCompanyCode: (preset?.targetCompanyCode ?? '') as string, sourceCompanyCode: (preset?.sourceCompanyCode ?? defaultSourceCompany ?? '') as string, templateType: (preset?.templateType ?? defaultTemplateType) as string }, {}, companyFormSchema)
+  const [templateType, setTemplateType] = useFormValue(model, "templateType")
+  const [sourceCompanyCode, setSourceCompanyCode] = useFormValue(model, "sourceCompanyCode")
+  const [targetCompanyCode, setTargetCompanyCode] = useFormValue(model, "targetCompanyCode")
+  const [transferMode, setTransferMode] = useFormValue(model, "transferMode")
   // 日志 ratio 为 0-1 小数，表单按百分比字符串展示
-  const [ratioInput, setRatioInput] = useState(() => (preset?.ratio != null ? String(Math.round(preset.ratio * 10000) / 100) : ''))
-  const [amountInput, setAmountInput] = useState(() => (preset?.amount != null ? String(preset.amount) : ''))
-  const [period, setPeriod] = useState(preset?.period ?? '')
-  const [selectedSubjects, setSelectedSubjects] = useState<Set<string>>(() => new Set(preset?.accountCodes ?? []))
+  const [ratioInput, setRatioInput] = useFormValue(model, "ratioInput")
+  const [amountInput, setAmountInput] = useFormValue(model, "amountInput")
+  const [period, setPeriod] = useFormValue(model, "period")
+  const [selectedSubjects, setSelectedSubjects] = useFormSet(model, "selectedSubjects")
   const [preview, setPreview] = useState<PreviewData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
@@ -116,6 +121,10 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
     amount: transferMode === 'amount' ? Number(amountInput) : undefined,
   })
 
+  const previewSignature = useRef('')
+  const valueSignature = JSON.stringify(model.values)
+  useEffect(() => { setPreview(null) }, [valueSignature])
+
   const reset = () => {
     setPreview(null)
     setError(null)
@@ -134,15 +143,6 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
     return !Number.isFinite(amt) || amt <= 0 ? '金额须大于 0' : null
   })()
 
-  const validateBeforePreview = (): string | null => {
-    if (!sourceCompanyCode || !targetCompanyCode) return '请选择源公司与目标公司'
-    if (sourceCompanyCode === targetCompanyCode) return '源公司与目标公司不能相同'
-    if (!period) return '请选择调整期间（单月）'
-    if (transferMode === 'ratio' && (ratioInput === '' || ratioError)) return ratioError ?? '请输入转移比例'
-    if (transferMode === 'amount' && (amountInput === '' || amountError)) return amountError ?? '请输入转移金额'
-    return null
-  }
-
   const handleSwap = () => {
     if (!sourceCompanyCode && !targetCompanyCode) return
     const src = sourceCompanyCode
@@ -153,13 +153,11 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
 
   const handlePreview = async () => {
     reset()
-    const invalid = validateBeforePreview()
-    if (invalid) {
-      setError(invalid)
-      return
-    }
+    const requestSignature = JSON.stringify(model.form.getValues())
     try {
       const res = await previewMutation.mutateAsync(buildPayload())
+      if (requestSignature !== JSON.stringify(model.form.getValues())) return
+      previewSignature.current = requestSignature
       setPreview(res)
     } catch (err) {
       setError(err instanceof Error ? err.message : '预览失败')
@@ -177,7 +175,7 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
   }
 
   const handleSubmit = async () => {
-    if (!preview || preview.affectedRows === 0) return
+    if (!preview || preview.affectedRows === 0 || previewSignature.current !== JSON.stringify(model.form.getValues())) return
     const sourceName = entityCompanies.find((c) => c.code === sourceCompanyCode)?.name ?? sourceCompanyCode
     const targetName = entityCompanies.find((c) => c.code === targetCompanyCode)?.name ?? targetCompanyCode
     const reapplyNote = reapplyLogId ? '提交后将更新原重分类记录状态为已生效（不新建记录）。' : ''
@@ -224,8 +222,11 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
         ]
     : []
 
+  const formBusy = model.pending || previewMutation.isPending || reclassifyMutation.isPending || reapplyMutation.isPending
+  const formClose = useFormClose({ dirty: !readonly && !done && model.form.formState.isDirty, busy: formBusy, enabled: open, onClose })
+
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={open} busy={formBusy} onOpenChange={(next) => { if (!next) formClose.requestClose() }}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-1.5">
@@ -240,18 +241,18 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
           {readonly && meta && <ReadonlyLogMeta meta={meta} />}
         </DialogHeader>
 
-        <DialogBody className="grid gap-4">
-          <div className="space-y-4">
+        <DialogBody className="grid gap-4"><ModelFormFields model={model}><fieldset disabled={formBusy} className="min-w-0 space-y-6 border-0 p-0">{!readonly && <><WorkflowProgress steps={['填写调整', '核对影响', '执行结果']} current={done ? 2 : preview ? 1 : 0} /><WorkflowSummary items={[{ label: '数据范围', value: TEMPLATE_LABEL[templateType] }, { label: '期间', value: period }, { label: '源公司', value: entityCompanies.find((item) => item.code === sourceCompanyCode)?.name }, { label: '目标公司', value: entityCompanies.find((item) => item.code === targetCompanyCode)?.name }]} /></>}
+          <div className="space-y-4" data-stage={readonly ? undefined : done ? "result" : preview ? "review" : "edit"}>
             {/* ===== 数据范围 ===== */}
-            <section className="space-y-2">
+            <section data-input-section className="space-y-2">
               <SectionTitle>数据范围</SectionTitle>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <Label>模板类型</Label>
+                  <Label htmlFor="templateType">模板类型</Label>
                   {readonly
                     ? <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">{TEMPLATE_LABEL[templateType] ?? templateType}</div>
                     : (
-                      <Select value={templateType} onValueChange={(v) => { setTemplateType(v); reset(); setSelectedSubjects(new Set()) }}>
+                      <Select name="templateType" value={templateType} onValueChange={(v) => { setTemplateType(v); reset(); setSelectedSubjects(new Set()) }}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="operating">经营数据</SelectItem>
@@ -262,12 +263,12 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
                     )}
                 </div>
                 <div className="space-y-1">
-                  <Label>调整期间（单月） <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="period">调整期间（单月） <span className="text-destructive">*</span></Label>
                   {readonly
                     ? <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">{period || '-'}</div>
                     : (
                       <>
-                        <MonthPicker className="w-full" value={period} onChange={(v) => { setPeriod(v); reset() }} availablePeriods={availablePeriods} placeholder="选择月份" />
+                        <MonthPicker name="period" className="w-full" value={period} onChange={(v) => { setPeriod(v); reset() }} availablePeriods={availablePeriods} placeholder="选择月份" />
                       </>
                     )}
                 </div>
@@ -304,12 +305,12 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
             </section>
 
             {/* ===== 转移设置 ===== */}
-            <section className="space-y-2">
+            <section data-input-section className="space-y-2">
               <SectionTitle>转移设置</SectionTitle>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                 <div className="flex-1 space-y-1">
                   <Label htmlFor="rc-source-company">源公司</Label>
-                  <Select value={sourceCompanyCode} disabled={readonly} onValueChange={(v) => { setSourceCompanyCode(v); reset() }}>
+                  <Select name="sourceCompanyCode" value={sourceCompanyCode} disabled={readonly} onValueChange={(v) => { setSourceCompanyCode(v); reset() }}>
                     <SelectTrigger id="rc-source-company"><SelectValue placeholder="选择源公司" /></SelectTrigger>
                     <SelectContent className="max-h-[280px]">
                       {entityCompanies.map((c) => (
@@ -334,7 +335,7 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
                 )}
                 <div className="flex-1 space-y-1">
                   <Label htmlFor="rc-target-company">目标公司</Label>
-                  <Select value={targetCompanyCode} disabled={readonly} onValueChange={(v) => { setTargetCompanyCode(v); reset() }}>
+                  <Select name="targetCompanyCode" value={targetCompanyCode} disabled={readonly} onValueChange={(v) => { setTargetCompanyCode(v); reset() }}>
                     <SelectTrigger id="rc-target-company"><SelectValue placeholder="选择目标公司" /></SelectTrigger>
                     <SelectContent className="max-h-[280px]">
                       {entityCompanies.filter((c) => c.code !== sourceCompanyCode).map((c) => (
@@ -348,7 +349,7 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
                   <Label htmlFor="rc-transfer-mode">转移方式</Label>
-                  <Select value={transferMode} disabled={readonly} onValueChange={(v) => { setTransferMode(v as 'all' | 'ratio' | 'amount'); reset() }}>
+                  <Select name="transferMode" value={transferMode} disabled={readonly} onValueChange={(v) => { setTransferMode(v as 'all' | 'ratio' | 'amount'); reset() }}>
                     <SelectTrigger id="rc-transfer-mode"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">整体迁移</SelectItem>
@@ -360,7 +361,7 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
                 {transferMode === 'ratio' && (
                   <div className="space-y-1">
                     <Label htmlFor="rc-ratio">转移比例（%）</Label>
-                    <Input
+                    <Input name="ratioInput"
                       id="rc-ratio"
                       type="number"
                       min={0}
@@ -373,13 +374,12 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
                       className={cn(ratioError && 'border-destructive focus-visible:ring-destructive')}
                       onChange={(e) => { setRatioInput(e.target.value); reset() }}
                     />
-                    {ratioError && <p className="text-xs text-destructive">{ratioError}</p>}
                   </div>
                 )}
                 {transferMode === 'amount' && (
                   <div className="space-y-1">
                     <Label htmlFor="rc-amount">转移金额（万元）</Label>
-                    <Input
+                    <Input name="amountInput"
                       id="rc-amount"
                       type="number"
                       min={0}
@@ -391,7 +391,6 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
                       className={cn(amountError && 'border-destructive focus-visible:ring-destructive')}
                       onChange={(e) => { setAmountInput(e.target.value); reset() }}
                     />
-                    {amountError && <p className="text-xs text-destructive">{amountError}</p>}
                   </div>
                 )}
               </div>
@@ -423,22 +422,24 @@ export function ReclassifyCompanyDialog({ open, onClose, defaultTemplateType = '
               </section>
             )}
           </div>
-        </DialogBody>
+        </fieldset></ModelFormFields></DialogBody>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>关闭</Button>
-          {!readonly && (
+          {!readonly && preview && !done && <Button variant="outline" disabled={formBusy} onClick={reset}>返回修改</Button>}
+          <Button variant="outline" onClick={formClose.requestClose}>关闭</Button>
+          {!readonly && !done && (
             <>
-              <Button variant="outline" onClick={handlePreview} disabled={previewMutation.isPending || !sourceCompanyCode || !targetCompanyCode || !period}>
+              <Button variant="outline" onClick={model.submit(handlePreview)} disabled={previewMutation.isPending || !sourceCompanyCode || !targetCompanyCode || !period}>
                 {previewMutation.isPending ? '预览中...' : '预览影响'}
               </Button>
-              <Button variant="destructive" onClick={handleSubmit} disabled={!preview || preview.affectedRows === 0 || reclassifyMutation.isPending || reapplyMutation.isPending}>
+              <Button variant="destructive" onClick={model.submit(handleSubmit)} disabled={!preview || preview.affectedRows === 0 || reclassifyMutation.isPending || reapplyMutation.isPending}>
                 {reclassifyMutation.isPending || reapplyMutation.isPending ? (reapplyLogId ? '重新应用中...' : '重分类中...') : reapplyLogId ? '重新应用' : '执行重分类'}
               </Button>
             </>
           )}
         </DialogFooter>
         {confirmElement}
+        {formClose.element}
       </DialogContent>
     </Dialog>
   )

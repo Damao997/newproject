@@ -1,5 +1,6 @@
 import { AlertLight } from '@/components/ui/alert-light'
 import { Button } from '@/components/ui/button'
+import { MagnitudeValue, magnitudeMaximum } from '@/components/ui/magnitude-value'
 import { DeltaTag } from '@/components/ui/delta-tag'
 import { EmptyState } from '@/components/ui/empty-state'
 import { TableSkeleton } from '@/components/ui/skeleton-blocks'
@@ -96,6 +97,12 @@ export function CoreMetricsContent({ period, companyCode }: CoreMetricsContentPr
   if (isLoading && !data) return <TableSkeleton rows={8} columns={12} />
   const rows = data?.rows ?? []
   const totals = data?.totals
+  const maxima = Object.fromEntries((['income', 'profit'] as const).map((group) => [group, {
+    annualBudget: magnitudeMaximum(rows.map((r) => r[group].annualBudget)),
+    monthActual: magnitudeMaximum(rows.map((r) => r[group].monthActual)),
+    ytdActual: magnitudeMaximum(rows.map((r) => r[group].ytdActual)),
+    deviation: magnitudeMaximum(rows.map((r) => r[group].ytdBudget ? r[group].ytdActual - r[group].ytdBudget : null)),
+  }]))
   const analysisItems = buildProductGapAnalysisItems(rows)
   if (rows.length === 0 || !totals) {
     return (
@@ -114,20 +121,20 @@ export function CoreMetricsContent({ period, companyCode }: CoreMetricsContentPr
         <td className={`whitespace-nowrap px-2 py-1.5 text-left text-xs ${isTotal ? 'font-semibold' : 'font-medium'} text-foreground ${indented ? 'pl-8' : ''}`}>
           {displayName}
         </td>
-        <td className={TD_CLS}><BudgetCell value={income.annualBudget} /></td>
+        <td className={TD_CLS}><MagnitudeValue value={isTotal ? null : income.annualBudget} maximum={maxima.income.annualBudget}><BudgetCell value={income.annualBudget} /></MagnitudeValue></td>
         {/* 收入完成情况 */}
-        <td className={TD_CLS}><ActualCell value={income.monthActual} /></td>
-        <td className={TD_CLS}><ActualCell value={income.ytdActual} /></td>
-        <td className={TD_CLS}><DeviationCell g={income} /></td>
+        <td className={TD_CLS}><MagnitudeValue value={isTotal ? null : income.monthActual} maximum={maxima.income.monthActual}><ActualCell value={income.monthActual} /></MagnitudeValue></td>
+        <td className={TD_CLS}><MagnitudeValue value={isTotal ? null : income.ytdActual} maximum={maxima.income.ytdActual}><ActualCell value={income.ytdActual} /></MagnitudeValue></td>
+        <td className={TD_CLS}><MagnitudeValue value={!isTotal && income.ytdBudget ? income.ytdActual - income.ytdBudget : null} maximum={maxima.income.deviation}><DeviationCell g={income} /></MagnitudeValue></td>
         <td className={TD_CLS}><PercentCell value={income.annualRate} /></td>
         <td className={`${TD_CLS} text-center`}><AlertLight rate={alertRateOf(income)} /></td>
         <td className={TD_CLS}><DeltaTag value={income.ytdYoy} /></td>
         <td className={TD_CLS}><PercentCell value={shareRateOf(income.ytdActual, totals.income.ytdActual)} /></td>
         {/* 毛利完成情况 */}
-        <td className={`${TD_CLS} border-l border-border`}><BudgetCell value={profit.annualBudget} /></td>
-        <td className={TD_CLS}><ActualCell value={profit.monthActual} /></td>
-        <td className={TD_CLS}><ActualCell value={profit.ytdActual} /></td>
-        <td className={TD_CLS}><DeviationCell g={profit} /></td>
+        <td className={`${TD_CLS} border-l border-border`}><MagnitudeValue value={isTotal ? null : profit.annualBudget} maximum={maxima.profit.annualBudget}><BudgetCell value={profit.annualBudget} /></MagnitudeValue></td>
+        <td className={TD_CLS}><MagnitudeValue value={isTotal ? null : profit.monthActual} maximum={maxima.profit.monthActual}><ActualCell value={profit.monthActual} /></MagnitudeValue></td>
+        <td className={TD_CLS}><MagnitudeValue value={isTotal ? null : profit.ytdActual} maximum={maxima.profit.ytdActual}><ActualCell value={profit.ytdActual} /></MagnitudeValue></td>
+        <td className={TD_CLS}><MagnitudeValue value={!isTotal && profit.ytdBudget ? profit.ytdActual - profit.ytdBudget : null} maximum={maxima.profit.deviation}><DeviationCell g={profit} /></MagnitudeValue></td>
         <td className={TD_CLS}><PercentCell value={profit.annualRate} /></td>
         <td className={`${TD_CLS} text-center`}><AlertLight rate={alertRateOf(profit)} /></td>
         <td className={TD_CLS}><DeltaTag value={profit.ytdYoy} /></td>
@@ -154,8 +161,8 @@ export function CoreMetricsContent({ period, companyCode }: CoreMetricsContentPr
         </div>
         <span className="text-xs text-muted-foreground">金额单位：万元；比率为百分比</span>
       </div>
-      <div className="overflow-x-auto">
-        <table className="data-table-report data-table-report--striped">
+      <div className="detail-table-scroll overflow-auto">
+        <table data-ui-table data-detail-table data-comparison-matrix data-compact-matrix className="data-table-report data-table-report--striped">
           <thead>
             <tr className="border-b border-border">
               <th rowSpan={2} className="w-[9.5em] text-left">产品类型</th>

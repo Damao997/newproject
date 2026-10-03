@@ -1,4 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { budgetFormSchema } from './form-schema'
+import { useFormModel, useFormValue, ModelFormFields } from '@/components/forms/form-model'
+import { useFormClose } from '@/components/forms/form-navigation'
+import { WorkflowProgress, WorkflowSummary } from '@/components/forms/workflow'
+import { useRef, useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -85,15 +89,16 @@ function fyLabelOf(period: string, fiscalStartMonth: number): string {
  * 后端按 fiscalYear 整体匹配）；金额类科目单位为万元，数量类按整数调整。
  */
 export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, readonly = false, meta, result, reapplyLogId }: BudgetAdjustDialogProps) {
-  const [companyCode, setCompanyCode] = useState<string>(preset?.companyCode ?? defaultCompany ?? '')
-  const [adjustMode, setAdjustMode] = useState<AdjustMode>(preset?.adjustMode ?? 'both')
-  const [sourceAccountCode, setSourceAccountCode] = useState(preset?.sourceAccountCode ?? '')
-  const [targetAccountCode, setTargetAccountCode] = useState(preset?.targetAccountCode ?? '')
-  const [decreaseInput, setDecreaseInput] = useState(() => (preset?.decreaseAmount != null ? String(preset.decreaseAmount) : ''))
-  const [increaseInput, setIncreaseInput] = useState(() => (preset?.increaseAmount != null ? String(preset.increaseAmount) : ''))
-  const [fiscalYear, setFiscalYear] = useState('')
-  const [reason, setReason] = useState(preset?.reason ?? '')
-  const [reasonTouched, setReasonTouched] = useState(false)
+  const quantityCodes = useRef(new Set<string>())
+  const model = useFormModel({ reason: preset?.reason ?? '', fiscalYear: ('') as string, increaseInput: (() => (preset?.increaseAmount != null ? String(preset.increaseAmount) : ''))(), decreaseInput: (() => (preset?.decreaseAmount != null ? String(preset.decreaseAmount) : ''))(), targetAccountCode: preset?.targetAccountCode ?? '', sourceAccountCode: preset?.sourceAccountCode ?? '', adjustMode: (preset?.adjustMode ?? 'both') as AdjustMode, companyCode: (preset?.companyCode ?? defaultCompany ?? '') as string }, {}, budgetFormSchema((code) => quantityCodes.current.has(code)))
+  const [companyCode, setCompanyCode] = useFormValue(model, "companyCode")
+  const [adjustMode, setAdjustMode] = useFormValue(model, "adjustMode")
+  const [sourceAccountCode, setSourceAccountCode] = useFormValue(model, "sourceAccountCode")
+  const [targetAccountCode, setTargetAccountCode] = useFormValue(model, "targetAccountCode")
+  const [decreaseInput, setDecreaseInput] = useFormValue(model, "decreaseInput")
+  const [increaseInput, setIncreaseInput] = useFormValue(model, "increaseInput")
+  const [fiscalYear, setFiscalYear] = useFormValue(model, "fiscalYear")
+  const [reason, setReason] = useFormValue(model, "reason")
   const [preview, setPreview] = useState<PreviewData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
@@ -115,6 +120,8 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
     [subjectsData],
   )
 
+  quantityCodes.current = new Set(subjectOptions.filter((subject) => subject.valueType === 'quantity').map((subject) => subject.code))
+
   // 已选科目的值类型：驱动单位文案/整数校验/分型格式化；both 模式源目标必须同型（候选互斥过滤）
   const sourceVt = subjectOptions.find((s) => s.code === sourceAccountCode)?.valueType ?? null
   const targetVt = subjectOptions.find((s) => s.code === targetAccountCode)?.valueType ?? null
@@ -133,7 +140,7 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
 
   // 预设期间归一化为财年标签（历史月度口径日志按财年起始月换算；key 重挂载 + 起始月异步加载双保险）
   useEffect(() => {
-    if (preset?.period) setFiscalYear(fyLabelOf(preset.period, fiscalStartMonth))
+    if (preset?.period) model.form.reset({ ...model.form.getValues(), fiscalYear: fyLabelOf(preset.period, fiscalStartMonth) })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preset?.period, fiscalStartMonth])
 
@@ -153,6 +160,10 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
     period: fiscalYear.replace('FY', ''),
     reason: reason.trim(),
   })
+
+  const previewSignature = useRef('')
+  const valueSignature = JSON.stringify(model.values)
+  useEffect(() => { setPreview(null) }, [valueSignature])
 
   const reset = () => {
     setPreview(null)
@@ -189,37 +200,20 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
     if (incSideQty && !Number.isInteger(inc)) return '数量类科目须为整数'
     return null
   })()
-  const reasonError = reasonTouched && !reason.trim() ? '请填写调整原因' : null
+  const reasonError = model.form.formState.errors.reason?.message
 
   const decValue = adjustMode === 'increase' || decreaseError || decreaseInput === '' ? 0 : Number(decreaseInput)
   const incValue = adjustMode === 'decrease' || increaseError || increaseInput === '' ? 0 : Number(increaseInput)
   const localNet = Math.round((incValue - decValue) * 100) / 100
   const activeQty = adjustMode === 'increase' ? incSideQty : decSideQty
 
-  const validateBeforePreview = (): string | null => {
-    if (!fiscalYear) return '请选择调整财年（全年）'
-    if (!companyCode) return '请选择公司'
-    if (adjustMode !== 'increase') {
-      if (!sourceAccountCode) return '请选择源科目'
-      if (decreaseInput === '' || decreaseError) return decreaseError ?? '请输入调减金额'
-    }
-    if (adjustMode !== 'decrease') {
-      if (!targetAccountCode) return '请选择目标科目'
-      if (increaseInput === '' || increaseError) return increaseError ?? '请输入调增金额'
-    }
-    if (adjustMode === 'both' && targetAccountCode === sourceAccountCode) return '源科目与目标科目不能相同'
-    return null
-  }
-
   const handlePreview = async () => {
     reset()
-    const invalid = validateBeforePreview()
-    if (invalid) {
-      setError(invalid)
-      return
-    }
+    const requestSignature = JSON.stringify(model.form.getValues())
     try {
       const res = await previewMutation.mutateAsync(buildPayload())
+      if (requestSignature !== JSON.stringify(model.form.getValues())) return
+      previewSignature.current = requestSignature
       setPreview(res)
     } catch (err) {
       setError(err instanceof Error ? err.message : '预览失败')
@@ -227,9 +221,9 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
   }
 
   const handleSubmit = async () => {
-    if (!preview || preview.affectedRows === 0) return
+    if (!preview || preview.affectedRows === 0 || previewSignature.current !== JSON.stringify(model.form.getValues())) return
     if (!reason.trim()) {
-      setReasonTouched(true)
+      model.form.setError('reason', { message: '请填写调整原因' }, { shouldFocus: true })
       setError('请填写调整原因')
       return
     }
@@ -292,8 +286,11 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
         ? '请填写调整原因'
         : null
 
+  const formBusy = model.pending || previewMutation.isPending || adjustMutation.isPending || reapplyMutation.isPending
+  const formClose = useFormClose({ dirty: !readonly && !done && model.form.formState.isDirty, busy: formBusy, enabled: open, onClose })
+
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={open} busy={formBusy} onOpenChange={(next) => { if (!next) formClose.requestClose() }}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-1.5">
@@ -308,10 +305,10 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
           {readonly && meta && <ReadonlyLogMeta meta={meta} />}
         </DialogHeader>
 
-        <DialogBody className="grid gap-4">
-          <div className="space-y-4">
+        <DialogBody className="grid gap-4"><ModelFormFields model={model}><fieldset disabled={formBusy} className="min-w-0 space-y-6 border-0 p-0">{!readonly && <><WorkflowProgress steps={['填写调整', '核对影响', '执行结果']} current={done ? 2 : preview ? 1 : 0} /><WorkflowSummary items={[{ label: '公司', value: entityCompanies.find((item) => item.code === companyCode)?.name }, { label: '财年', value: fiscalYear }, { label: '口径', value: '年度预算' }]} /></>}
+          <div className="space-y-4" data-stage={readonly ? undefined : done ? "result" : preview ? "review" : "edit"}>
             {/* ===== 数据范围 ===== */}
-            <section className="space-y-2">
+            <section data-input-section className="space-y-2">
               <SectionTitle>数据范围</SectionTitle>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
@@ -319,7 +316,7 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
                   {readonly
                     ? <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">{fiscalYear || '-'}</div>
                     : (
-                      <Select value={fiscalYear} onValueChange={(v) => { setFiscalYear(v); reset() }}>
+                      <Select name="fiscalYear" value={fiscalYear} onValueChange={(v) => { setFiscalYear(v); reset() }}>
                         <SelectTrigger id="ba-fiscal-year"><SelectValue placeholder="选择财年" /></SelectTrigger>
                         <SelectContent>
                           {fiscalYears.map((fy) => (
@@ -334,7 +331,7 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
                   {readonly
                     ? <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">{displayNameMap.get(companyCode) ?? companyCode}</div>
                     : (
-                      <Select value={companyCode} onValueChange={(v) => { setCompanyCode(v); reset() }}>
+                      <Select name="companyCode" value={companyCode} onValueChange={(v) => { setCompanyCode(v); reset() }}>
                         <SelectTrigger id="ba-company"><SelectValue placeholder="选择公司" /></SelectTrigger>
                         <SelectContent className="max-h-[280px]">
                           {entityCompanies.map((c) => (
@@ -348,14 +345,14 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
             </section>
 
             {/* ===== 调整设置：调整方式 + 按方式展示调减侧/调增侧 ===== */}
-            <section className="space-y-2">
+            <section data-input-section className="space-y-2">
               <SectionTitle>调整设置</SectionTitle>
               <div className="space-y-1">
                 <Label htmlFor="ba-adjust-mode">调整方式</Label>
                 {readonly
                   ? <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">{ADJUST_MODE_LABEL[adjustMode] ?? adjustMode}</div>
                   : (
-                    <Select value={adjustMode} onValueChange={(v) => handleModeChange(v as AdjustMode)}>
+                    <Select name="adjustMode" value={adjustMode} onValueChange={(v) => handleModeChange(v as AdjustMode)}>
                       <SelectTrigger id="ba-adjust-mode"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {(Object.keys(ADJUST_MODE_LABEL) as AdjustMode[]).map((m) => (
@@ -374,7 +371,7 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
                     调减侧（源科目）
                   </p>
                   <div className="space-y-1">
-                    <Label>源科目 <span className="text-destructive">*</span></Label>
+                    <Label htmlFor="sourceAccountCode">源科目 <span className="text-destructive">*</span></Label>
                     {readonly
                       ? (sourceAccountCode
                           ? <div className="flex h-9 items-center gap-2 rounded-md border bg-muted/40 px-3 text-sm">
@@ -383,7 +380,7 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
                             </div>
                           : <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground">-</div>)
                       : (
-                        <SubjectPicker
+                        <SubjectPicker name="sourceAccountCode"
                           options={sourceOptions}
                           value={sourceAccountCode}
                           onChange={(code) => { setSourceAccountCode(code); reset() }}
@@ -394,7 +391,7 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="ba-decrease">{decSideQty ? '调减数量（整数）' : '调减金额（万元）'} <span className="text-destructive">*</span></Label>
-                    <Input
+                    <Input name="decreaseInput"
                       id="ba-decrease"
                       type="number"
                       min={0}
@@ -406,7 +403,6 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
                       className={cn('bg-background', decreaseError && 'border-destructive focus-visible:ring-destructive')}
                       onChange={(e) => { setDecreaseInput(e.target.value); reset() }}
                     />
-                    {decreaseError && <p className="text-xs text-destructive">{decreaseError}</p>}
                   </div>
                 </div>
                 )}
@@ -433,7 +429,7 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
                     )}
                   </div>
                   <div className="space-y-1">
-                    <Label>目标科目 <span className="text-destructive">*</span></Label>
+                    <Label htmlFor="targetAccountCode">目标科目 <span className="text-destructive">*</span></Label>
                     {readonly
                       ? (targetAccountCode
                           ? <div className="flex h-9 items-center gap-2 rounded-md border bg-muted/40 px-3 text-sm">
@@ -442,7 +438,7 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
                             </div>
                           : <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground">-</div>)
                       : (
-                        <SubjectPicker
+                        <SubjectPicker name="targetAccountCode"
                           options={targetOptions}
                           value={targetAccountCode}
                           onChange={(code) => { setTargetAccountCode(code); reset() }}
@@ -453,7 +449,7 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="ba-increase">{incSideQty ? '调增数量（整数）' : '调增金额（万元）'} <span className="text-destructive">*</span></Label>
-                    <Input
+                    <Input name="increaseInput"
                       id="ba-increase"
                       type="number"
                       min={0}
@@ -465,7 +461,6 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
                       className={cn('bg-background', increaseError && 'border-destructive focus-visible:ring-destructive')}
                       onChange={(e) => { setIncreaseInput(e.target.value); reset() }}
                     />
-                    {increaseError && <p className="text-xs text-destructive">{increaseError}</p>}
                   </div>
                 </div>
                 )}
@@ -487,12 +482,12 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
             </section>
 
             {/* ===== 调整原因 ===== */}
-            <section className="space-y-1">
+            <section data-input-section className="space-y-1">
               <Label htmlFor="ba-reason">调整原因 <span className="text-destructive">*</span></Label>
               {readonly
                 ? <div className="min-h-9 rounded-md border bg-muted/40 px-3 py-2 text-sm">{reason || '-'}</div>
                 : (
-                  <Textarea
+                  <Textarea name="reason"
                     id="ba-reason"
                     rows={2}
                     placeholder="如：××科目全年预算调整，按实际经营计划修订"
@@ -500,15 +495,13 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
                     aria-invalid={!!reasonError}
                     className={cn(reasonError && 'border-destructive focus-visible:ring-destructive')}
                     onChange={(e) => setReason(e.target.value)}
-                    onBlur={() => setReasonTouched(true)}
                   />
                 )}
-              {reasonError && <p className="text-xs text-destructive">{reasonError}</p>}
             </section>
 
             {/* ===== 执行结果（只读模式：还原当时的执行结果统计） ===== */}
             {readonly && result && result.length > 0 && (
-              <section className="space-y-2">
+              <section data-input-section className="space-y-2">
                 <SectionTitle>执行结果</SectionTitle>
                 <PreviewStats items={result} />
               </section>
@@ -532,18 +525,19 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
               </section>
             )}
           </div>
-        </DialogBody>
+        </fieldset></ModelFormFields></DialogBody>
 
         <DialogFooter>
+          {!readonly && preview && !done && <Button variant="outline" disabled={formBusy} onClick={reset}>返回修改</Button>}
           <div className="flex flex-1 items-center">
             {!readonly && submitDisabledReason && <span className="text-xs text-muted-foreground">{submitDisabledReason}</span>}
           </div>
-          <Button variant="outline" onClick={onClose}>关闭</Button>
-          {!readonly && (
+          <Button variant="outline" onClick={formClose.requestClose}>关闭</Button>
+          {!readonly && !done && (
             <>
               <Button
                 variant="outline"
-                onClick={handlePreview}
+                onClick={model.submit(handlePreview)}
                 disabled={
                   previewMutation.isPending || !fiscalYear || !companyCode
                   || (adjustMode !== 'increase' && (!sourceAccountCode || !decreaseInput))
@@ -552,13 +546,14 @@ export function BudgetAdjustDialog({ open, onClose, defaultCompany, preset, read
               >
                 {previewMutation.isPending ? '预览中...' : '预览影响'}
               </Button>
-              <Button variant="destructive" onClick={handleSubmit} disabled={!preview || preview.affectedRows === 0 || !reason.trim() || adjustMutation.isPending || reapplyMutation.isPending}>
+              <Button variant="destructive" onClick={model.submit(handleSubmit)} disabled={!preview || preview.affectedRows === 0 || !reason.trim() || adjustMutation.isPending || reapplyMutation.isPending}>
                 {adjustMutation.isPending || reapplyMutation.isPending ? (reapplyLogId ? '重新应用中...' : '调整中...') : reapplyLogId ? '重新应用' : '执行调整'}
               </Button>
             </>
           )}
         </DialogFooter>
         {confirmElement}
+        {formClose.element}
       </DialogContent>
     </Dialog>
   )

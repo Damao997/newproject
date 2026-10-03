@@ -1,7 +1,9 @@
 import * as React from "react"
 import { Select as AntdSelect } from "antd"
+import type { BaseSelectRef } from 'rc-select'
 import type { DefaultOptionType } from "antd/es/select"
 import { ChevronDown } from "lucide-react"
+import { useModelAdapter } from '@/components/forms/form-model'
 import { cn } from "@/lib/utils"
 import { antdSizeFromClassName } from "./antd-size"
 
@@ -133,6 +135,11 @@ function collectOptions(nodes: React.ReactNode, options: DefaultOptionType[]): v
 }
 
 interface SelectProps {
+  id?: string
+  name?: string
+  onBlur?: () => void
+  'aria-invalid'?: boolean
+  'aria-describedby'?: string
   value?: string
   defaultValue?: string
   onValueChange?: (value: string) => void
@@ -143,7 +150,8 @@ interface SelectProps {
   'aria-label'?: string
 }
 
-const Select = ({ value, defaultValue, onValueChange, disabled, children, ...rest }: SelectProps) => {
+const Select = React.forwardRef<BaseSelectRef, SelectProps>(({ value, defaultValue, onValueChange, disabled, children, ...rest }, ref) => {
+  const adapter = useModelAdapter()
   // ---- 声明式子组件收集 ----
   let triggerProps: SelectTriggerProps | null = null
   let customDisplay: React.ReactNode | undefined
@@ -167,16 +175,21 @@ const Select = ({ value, defaultValue, onValueChange, disabled, children, ...res
   // 清洗底色类（根节点对 antd 无效）→ selector 经 arbitrary variant 类命中（恢复 hover 底色/浅边框）
   const { cleaned: cleanedClass, surfaceClasses } = extractSelectSurface(trigger?.className)
 
-  return (
+  const renderSelect = (binding?: { onBlur: () => void; ref: React.RefCallback<{ focus: () => void }>; invalid: boolean; disabled: boolean; message?: string }) => (
     <AntdSelect
+      ref={(instance) => { binding?.ref(instance); if (typeof ref === 'function') ref(instance); else if (ref) ref.current = instance }}
+      onBlur={() => { binding?.onBlur(); rest.onBlur?.() }}
+      aria-invalid={binding?.invalid ?? rest['aria-invalid'] ?? trigger?.['aria-invalid']}
+      aria-describedby={binding?.message ? (rest.id ?? trigger?.id ?? rest.name) + '-error' : rest['aria-describedby'] ?? trigger?.['aria-describedby']}
+      status={binding?.invalid || rest['aria-invalid'] ? 'error' : undefined}
       // Radix 空串语义 ↔ antd undefined（placeholder 展示）
       value={value === '' || value === undefined ? undefined : value}
       defaultValue={defaultValue === '' || defaultValue === undefined ? undefined : defaultValue}
       onChange={(v) => onValueChange?.(v ?? '')}
       options={options}
       placeholder={placeholder}
-      disabled={disabled || trigger?.disabled}
-      id={trigger?.id}
+      disabled={disabled || trigger?.disabled || binding?.disabled}
+      id={rest.id ?? trigger?.id}
       title={trigger?.title}
       aria-label={rest['aria-label'] ?? (trigger?.['aria-label'] as string | undefined)}
       size={antdSizeFromClassName(cleanedClass, 'middle')}
@@ -189,7 +202,9 @@ const Select = ({ value, defaultValue, onValueChange, disabled, children, ...res
       popupMatchSelectWidth={false}
     />
   )
-}
+  if (adapter && rest.name) return adapter.render(rest.name, (field) => <>{renderSelect(field)}{field.message && <p id={(rest.id ?? trigger?.id ?? rest.name) + '-error'} className="mt-1 text-xs text-danger">{field.message}</p>}</>)
+  return renderSelect()
+})
 Select.displayName = "Select"
 
 /** 声明式占位：由 Select root 收集 props，自身不渲染 DOM */

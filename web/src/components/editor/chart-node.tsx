@@ -3,7 +3,7 @@ import { Node, mergeAttributes, type NodeViewProps } from '@tiptap/core'
 import { ReactNodeViewRenderer, NodeViewWrapper } from '@tiptap/react'
 import { BarChart3, Loader2, TriangleAlert, X } from 'lucide-react'
 import ReactECharts, { echarts } from '@/components/charts/echarts-core'
-import { CHART_FONT, getChartInk, getChartSeries } from '@/lib/chart-theme'
+import { CHART_FONT, getChartInk, getChartSeries, tooltipShell } from '@/lib/chart-theme'
 import { useThemeStore } from '@/stores/themeStore'
 import { useReportChartData, useCompanies, useSubjectTree } from '@/hooks/api-queries'
 import { formatMoneyWan, cn } from '@/lib/utils'
@@ -93,6 +93,7 @@ function buildChartOption(labels: string[], values: Array<number | null | undefi
     animation: false,
     textStyle: { fontFamily: CHART_FONT },
     tooltip: {
+      ...tooltipShell(ink),
       trigger: 'axis' as const,
       axisPointer: { type: 'shadow' as const, shadowStyle: { color: 'rgba(0,0,0,0.04)' } },
       formatter: (params: unknown) => {
@@ -112,16 +113,16 @@ function buildChartOption(labels: string[], values: Array<number | null | undefi
       data: labels,
       axisLine: { lineStyle: { color: ink.grid } },
       axisTick: { show: false },
-      axisLabel: { color: ink.axis, fontSize: 11 },
+      axisLabel: { color: ink.axis, fontSize: 12 },
     },
     yAxis: {
       type: 'value' as const,
       name: '万元',
-      nameTextStyle: { color: ink.axis, fontSize: 11 },
+      nameTextStyle: { color: ink.axis, fontSize: 12 },
       axisLine: { show: false },
       axisTick: { show: false },
       splitLine: { lineStyle: { color: ink.grid, type: 'dashed' } },
-      axisLabel: { color: ink.axis, fontSize: 11 },
+      axisLabel: { color: ink.axis, fontSize: 12 },
     },
     series: [
       {
@@ -138,7 +139,7 @@ function buildChartOption(labels: string[], values: Array<number | null | undefi
 /** 图表 NodeView：懒渲染 + 取数 + 编辑态删除 */
 function ChartView({ node, editor, deleteNode, selected }: NodeViewProps) {
   const attrs = node.attrs as ChartAttrs
-  const sidebarStyle = useThemeStore((s) => s.sidebarStyle)
+  const sidebarStyle = useThemeStore((s) => s.printing ? 'light' : s.sidebarStyle)
   const { data, isLoading, isError, error } = useReportChartData({
     companyCode: attrs.companyCode,
     subjectCode: attrs.subjectCode,
@@ -174,7 +175,7 @@ function ChartView({ node, editor, deleteNode, selected }: NodeViewProps) {
   }, [data, isStatic])
   const option = useMemo(() => {
     if (!inView || !data) return null
-    const ink = getChartInk()
+    const ink = getChartInk(sidebarStyle)
     const seriesColors = getChartSeries(sidebarStyle)
     return buildChartOption(labels, values, [seriesColors[0], seriesColors[1], seriesColors[4]], ink)
     // eslint-disable-next-line react-hooks/exhaustive-deps

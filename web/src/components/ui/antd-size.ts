@@ -12,7 +12,7 @@ export function antdSizeFromClassName(
   fallback: 'small' | 'middle' | 'large' = 'middle',
 ): 'small' | 'middle' | 'large' {
   if (!className) return fallback
-  if (/(^|\s|\])h-8(?=\s|$)/.test(className)) return 'small'
+  if (/(^|\s|\])h-(7|8)(?=\s|$)/.test(className)) return 'small'
   if (/(^|\s|\])h-11(?=\s|$)/.test(className)) return 'large'
   if (/(^|\s|\])h-(9|10)(?=\s|$)/.test(className)) return 'middle'
   return fallback

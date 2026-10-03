@@ -1,3 +1,6 @@
+import { StatTile } from '@/components/ui/stat-tile'
+import { DistributionBar } from '@/components/charts/distribution-bar'
+import { MagnitudeValue, magnitudeMaximum } from '@/components/ui/magnitude-value'
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { Card, CardContent } from '@/components/ui/card'
@@ -17,31 +20,6 @@ interface CashFlowContentProps {
 }
 
 /** KPI 磁贴 */
-function StatTile({ label, value, unit, foot, accent, valueClass }: {
-  label: string
-  value: string
-  unit: string
-  foot: string
-  accent: string
-  valueClass?: string
-}) {
-  return (
-    <div
-      className={cn(
-        'relative flex flex-col gap-2 overflow-hidden rounded-card border border-border bg-card p-5 shadow-antd-1 transition-all duration-200 hover:shadow-antd-2',
-        "before:absolute before:bottom-0 before:left-0 before:top-0 before:w-[3px] before:content-['']",
-        accent,
-      )}
-    >
-      <span className="text-body text-muted-foreground">{label}</span>
-      <div className={cn('font-num text-2xl font-semibold leading-tight text-foreground', valueClass)}>
-        {value}
-        <span className="ml-1 text-sm font-normal text-muted-foreground">{unit}</span>
-      </div>
-      <span className="text-xs text-muted-foreground">{foot}</span>
-    </div>
-  )
-}
 
 /** 在科目树中按名称查找行（含跨层查找，取首个命中） */
 function findRow(items: CashflowRow[], name: string): CashflowRow | undefined {
@@ -181,6 +159,13 @@ export function CashFlowContent({ period, companyCode }: CashFlowContentProps) {
     { name: '自由现金流', m: fcf },
   ]
 
+  const amountMaximum = {
+    current: magnitudeMaximum(detailRows.map((r) => r.m.current)),
+    samePeriod: magnitudeMaximum(detailRows.map((r) => r.m.samePeriod)),
+    ytd: magnitudeMaximum(detailRows.map((r) => r.m.ytd)),
+    samePeriodYtd: magnitudeMaximum(detailRows.map((r) => r.m.samePeriodYtd)),
+  }
+
   return (
     <div className="animate-fade-in space-y-4">
       {/* 顶部工具条：口径摘要 + 指标分析深链 */}
@@ -243,37 +228,20 @@ export function CashFlowContent({ period, companyCode }: CashFlowContentProps) {
             净现金流对比
             <span className="ml-2 text-xs font-normal text-muted-foreground"> 单位：万元</span>
           </h3>
-          <div className="space-y-4">
-            {activityRows.map((r) => {
-              const bar = (v: number) => ({
-                width: `${actMax > 0 ? Math.max(Math.abs(v) > 0 ? 2 : 0, (Math.abs(v) / actMax) * 100) : 0}%`,
-              })
-              return (
-                <div key={r.name} className="grid grid-cols-[72px_minmax(0,1fr)_92px_minmax(0,1fr)_92px] items-center gap-3">
-                  <span className="text-body text-foreground">{r.name}</span>
-                  <div className="h-2.5 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className={cn('h-full rounded-full', r.current >= 0 ? 'bg-success-500' : 'bg-destructive')}
-                      style={bar(r.current)}
-                    />
-                  </div>
-                  <span className="text-right text-xs text-muted-foreground">
-                    本月 <span className={cn('font-num font-semibold', r.current >= 0 ? 'text-foreground' : 'text-destructive')}>{formatMoneyWan(r.current)}</span>
-                    <DeltaTag className="ml-1" value={yoyOf(r.current, r.samePeriod)} />
-                  </span>
-                  <div className="h-2.5 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className={cn('h-full rounded-full', r.ytd >= 0 ? 'bg-success-500' : 'bg-destructive')}
-                      style={bar(r.ytd)}
-                    />
-                  </div>
-                  <span className="text-right text-xs text-muted-foreground">
-                    累计 <span className={cn('font-num font-semibold', r.ytd >= 0 ? 'text-foreground' : 'text-destructive')}>{formatMoneyWan(r.ytd)}</span>
-                    <DeltaTag className="ml-1" value={yoyOf(r.ytd, r.samePeriodYtd)} />
-                  </span>
-                </div>
-              )
-            })}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            {activityRows.map((r) => (
+              <section key={r.name} className="distribution-list cashflow-comparison">
+                <h4 className="mb-1 text-sm font-semibold">{r.name}</h4>
+                {([
+                  { label: '本月', value: r.current, same: r.samePeriod },
+                  { label: '累计', value: r.ytd, same: r.samePeriodYtd },
+                ]).map((entry) => <DistributionBar key={entry.label} variant="ranking" label={entry.label}
+                  value={<span className={entry.value < 0 ? 'text-destructive' : undefined}>{formatMoneyWan(entry.value)}</span>}
+                  meta={<DeltaTag value={yoyOf(entry.value, entry.same)} />}
+                  width={actMax > 0 ? Math.max(Math.abs(entry.value) > 0 ? 2 : 0, Math.abs(entry.value) / actMax * 100) : 0}
+                  color={entry.value >= 0 ? 'hsl(var(--success))' : 'hsl(var(--destructive))'} />)}
+              </section>
+            ))}
           </div>
           <p className="mt-3 text-xs text-muted-foreground">
             现金流指标为单期间口径，无逐月序列；如需逐月趋势请前往现金流指标分析。
@@ -288,8 +256,8 @@ export function CashFlowContent({ period, companyCode }: CashFlowContentProps) {
             现金流明细
             <span className="ml-2 text-xs font-normal text-muted-foreground">  单位：万元</span>
           </h3>
-          <div className="overflow-x-auto">
-            <table className="data-table-report data-table-report--striped">
+          <div className="detail-table-scroll overflow-auto">
+            <table data-ui-table data-detail-table data-comparison-matrix className="data-table-report data-table-report--striped">
               <thead>
                 <tr>
                   <th className="text-left">科目</th>
@@ -308,14 +276,14 @@ export function CashFlowContent({ period, companyCode }: CashFlowContentProps) {
                         {r.name}
                       </td>
                       <td className={cn('text-right font-num text-sm', r.m.current < 0 && 'text-destructive')}>
-                        {formatMoneyWan(r.m.current)}
+                        <MagnitudeValue value={r.m.current} maximum={amountMaximum.current}>{formatMoneyWan(r.m.current)}</MagnitudeValue>
                       </td>
-                      <td className="text-right font-num text-sm text-muted-foreground">{formatMoneyWan(r.m.samePeriod)}</td>
+                      <td className="text-right font-num text-sm text-muted-foreground"><MagnitudeValue value={r.m.samePeriod} maximum={amountMaximum.samePeriod}>{formatMoneyWan(r.m.samePeriod)}</MagnitudeValue></td>
                       <td className="text-right"><DeltaTag value={r.m.yoy / 100} /></td>
                       <td className={cn('text-right font-num text-sm', r.m.ytd < 0 && 'text-destructive')}>
-                        {formatMoneyWan(r.m.ytd)}
+                        <MagnitudeValue value={r.m.ytd} maximum={amountMaximum.ytd}>{formatMoneyWan(r.m.ytd)}</MagnitudeValue>
                       </td>
-                      <td className="text-right font-num text-sm text-muted-foreground">{formatMoneyWan(r.m.samePeriodYtd)}</td>
+                      <td className="text-right font-num text-sm text-muted-foreground"><MagnitudeValue value={r.m.samePeriodYtd} maximum={amountMaximum.samePeriodYtd}>{formatMoneyWan(r.m.samePeriodYtd)}</MagnitudeValue></td>
                       <td className="text-right"><DeltaTag value={r.m.ytdYoy / 100} /></td>
                     </tr>
                   ))}

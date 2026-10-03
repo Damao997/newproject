@@ -1,3 +1,5 @@
+import { StatTile } from '@/components/ui/stat-tile'
+import { DistributionBar } from '@/components/charts/distribution-bar'
 import { Fragment, useMemo, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -9,7 +11,7 @@ import { useExpenseAnalysis } from '@/hooks/api-queries'
 import { AnalysisPageSkeleton } from '@/components/ui/skeleton-blocks'
 import { totalMetrics } from '../budget-total'
 import { ExpenseAnalysisCard, EXPENSE_COLUMN_GROUPS, EXPENSE_COLUMN_META } from '../expense-analysis-card'
-import { cn, formatMoneyWan } from '@/lib/utils'
+import { formatMoneyWan } from '@/lib/utils'
 import { DeltaTag } from '@/components/ui/delta-tag'
 import { getChartSeries } from '@/lib/chart-theme'
 import { usePageStore } from '@/stores/pageStateStore'
@@ -39,31 +41,6 @@ function donutSlicePath(cx: number, cy: number, r: number, start: number, end: n
 }
 
 /** KPI 磁贴：左侧 3px 色条 + 标题 + 数值 + 脚注（Σ口径，真实派生） */
-function StatTile({ label, value, unit, foot, accent, valueClass }: {
-  label: string
-  value: string
-  unit: string
-  foot: string
-  accent: string
-  valueClass?: string
-}) {
-  return (
-    <div
-      className={cn(
-        'relative flex flex-col gap-2 overflow-hidden rounded-card border border-border bg-card p-5 shadow-antd-1 transition-all duration-200 hover:shadow-antd-2',
-        "before:absolute before:bottom-0 before:left-0 before:top-0 before:w-[3px] before:content-['']",
-        accent,
-      )}
-    >
-      <span className="text-body text-muted-foreground">{label}</span>
-      <div className={cn('font-num text-2xl font-semibold leading-tight text-foreground', valueClass)}>
-        {value}
-        <span className="ml-1 text-sm font-normal text-muted-foreground">{unit}</span>
-      </div>
-      <span className="text-xs text-muted-foreground">{foot}</span>
-    </div>
-  )
-}
 
 /**
  * 运营费用分析页（真实数据：useExpenseAnalysis，跟随看板主体/期间筛选）：
@@ -72,7 +49,7 @@ function StatTile({ label, value, unit, foot, accent, valueClass }: {
  * - 底部：运营费用明细表（复用 ExpenseAnalysisCard：月度 6 列 + 累计 6 列 + 预警红绿灯）。
  */
 export function ExpenseContent({ period, companyCode }: ExpenseContentProps) {
-  const sidebarStyle = useThemeStore((s) => s.sidebarStyle)
+  const sidebarStyle = useThemeStore((s) => s.printing ? 'light' : s.sidebarStyle)
   const [amountMode, setAmountMode] = useState<AmountMode>('month')
   const hiddenExpenseColumns = usePageStore((s) => s.dashboard.hiddenExpenseColumns)
   const setDashboard = usePageStore((s) => s.setDashboard)
@@ -195,7 +172,7 @@ export function ExpenseContent({ period, companyCode }: ExpenseContentProps) {
           {pieTotal <= 0 ? (
             <EmptyState compact className="py-10" title="暂无费用金额" description="当前口径下各科目金额均为 0" />
           ) : (
-            <div className="flex flex-wrap items-center gap-6">
+            <div className="flex flex-col items-center gap-6 sm:flex-row">
               <svg viewBox="0 0 100 100" className="h-[200px] w-[200px] shrink-0" aria-label="费用结构占比饼图">
                 <circle cx={50} cy={50} r={40} fill="hsl(var(--muted))" />
                 {segments.map(({ slice, start, end }) =>
@@ -211,16 +188,10 @@ export function ExpenseContent({ period, companyCode }: ExpenseContentProps) {
                   {formatMoneyWan(pieTotal)}
                 </text>
               </svg>
-              <div className="min-w-[220px] flex-1 space-y-1.5 text-body">
-                {slices.map((s) => (
-                  <div key={s.name} className="flex items-center gap-2">
-                    <span className="h-2.5 w-2.5 shrink-0 rounded-[2px]" style={{ background: s.color }} aria-hidden />
-                    <span className="flex-1 truncate text-foreground" title={s.name}>{s.name}</span>
-                    <span className="font-num shrink-0 text-muted-foreground">
-                      {formatMoneyWan(s.value)}万 · {((s.value / pieTotal) * 100).toFixed(1)}%
-                    </span>
-                  </div>
-                ))}
+              <div className="distribution-list min-w-0 w-full flex-1">
+                {slices.map((s) => <DistributionBar key={s.name} variant="ranking" label={s.name}
+                  value={`${formatMoneyWan(s.value)}万`} meta={`${((s.value / pieTotal) * 100).toFixed(1)}%`}
+                  width={s.value / Math.max(...slices.map((slice) => slice.value)) * 100} color={s.color} />)}
               </div>
             </div>
           )}

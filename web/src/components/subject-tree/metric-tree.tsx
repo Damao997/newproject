@@ -141,7 +141,8 @@ function renderValueCells(
   const yoyOf = (key: string, value: MetricValue) => (key === 'ytdYoy' ? calcYtdYoy(value) : calcYoy(value))
   return columns.map((col) => {
     const cellBase = cn(
-      'whitespace-nowrap border-b border-subtle px-3 align-middle text-center font-num',
+      'whitespace-nowrap border-b border-subtle px-4 align-middle font-num',
+      col.kind === 'amount' ? 'text-right' : 'text-center',
       rowPad,
       col.primary && 'font-medium',
       col.secondary && 'text-muted-foreground',
@@ -164,7 +165,7 @@ function renderValueCells(
       }
     }
     return (
-      <td key={col.key} className={cellBase} style={{ minWidth: col.minWidth }}>
+      <td key={col.key} data-metric-column={col.key} data-primary={col.primary || undefined} className={cellBase} style={{ minWidth: col.minWidth }}>
         {content}
       </td>
     )
@@ -197,7 +198,7 @@ function SubjectCell({
   return (
     <td
       className={cn(
-        'sticky left-0 z-[1] min-w-[160px] border-b border-r border-subtle bg-background px-4 align-middle shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)] transition-colors group-hover:bg-muted',
+        'sticky left-0 z-[1] table-sticky-cell min-w-[160px] border-b border-r border-subtle px-4 align-middle transition-colors',
         rowPad,
       )}
     >
@@ -208,13 +209,15 @@ function SubjectCell({
             onClick={() => onToggle(node.code)}
             className="mr-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             aria-label={isExpanded ? '折叠' : '展开'}
+            aria-expanded={isExpanded}
+            title={`${isExpanded ? '折叠' : '展开'}${node.name}`}
           >
             {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
           </button>
         ) : (
           <span className="mr-1 inline-block h-5 w-5 shrink-0" />
         )}
-        <span className={cn(indentDepth === 0 && 'font-semibold', 'relative whitespace-nowrap text-foreground')}>
+        <span className={cn(indentDepth === 0 && 'font-semibold', 'metric-subject-name relative whitespace-nowrap text-foreground')}>
           {node.name}
           {/* 分析入口：行悬停/键盘聚焦时在科目名右侧浮现；absolute 锚定名称右缘（不随列宽/缩进漂移），且不占列宽 */}
           {onAnalyze && (
@@ -271,7 +274,7 @@ function MetricRows({
         const isExpanded = expandedCodes.has(node.code)
         return (
           <Fragment key={node.code}>
-            <tr className="group transition-colors hover:!bg-muted/50">
+            <tr data-row-level={depth} className="group transition-colors">
               <SubjectCell
                 node={node}
                 indentDepth={depth}
@@ -343,7 +346,7 @@ export function MetricTree({
   const colSpan = 1 + valueCols.length
   // 表头 sticky：组名行 top-0、明细行 top-GROUP_HEAD_H（组名行 h-11=44px，模块级 GROUP_HEAD_H 单一来源）
   // TABLE_HEAD_BASE（13px/500 黑字居中）为共享样式常量，对齐《统一表格设计标准》
-  const headBase = cn(TABLE_HEAD_BASE, 'h-11 border-b bg-ink-2 px-3')
+  const headBase = cn(TABLE_HEAD_BASE, 'h-11 border-b px-3')
 
   /** 排序三态循环：升序 → 降序 → 取消（受控，与 DataTable 一致；取消时 sortKey 保持键值、direction 为 null，再次点击回升序） */
   const handleSort = (key: string) => {
@@ -361,9 +364,9 @@ export function MetricTree({
     // 浅灰圆角容器（与 DataTable 视觉一致）；flex 链（flex-1 min-h-0）使滚动容器按父级剩余高度撑满，
     // 页面内容恒一屏、不产生全局滚动条；外层不可设置 overflow-hidden：overflow: hidden 会创建 scroll container，
     // 截断内部容器 position: sticky 相对 <main> 的吸顶链（sticky 仅相对最近滚动祖先生效）
-    <div className="relative isolate flex min-h-0 min-w-0 max-w-full flex-1 flex-col rounded-card bg-muted/40 p-2">
+    <div className="table-surface relative isolate flex min-h-0 min-w-0 max-w-full flex-1 flex-col rounded-card">
       <div
-        className={cn('sticky min-h-0 flex-1 rounded-card bg-background', 'overflow-x-auto', 'overflow-y-auto')}
+        className={cn('table-scroll sticky min-h-0 flex-1 rounded-card bg-background', 'overflow-x-auto', 'overflow-y-auto')}
         style={
           stickyHeaderTop > 0
             ? { top: stickyHeaderTop, maxHeight: `calc(100dvh - ${stickyHeaderTop}px - 24px)` }
@@ -372,11 +375,13 @@ export function MetricTree({
       >
         {/* border-separate：sticky 单元格边框随滚动稳定跟随（collapse 模式下边框渲染异常） */}
         {/* minWidth 兜底：窄容器下表格保持完整列宽走横向滚动，列宽永不小于各列 min-w，杜绝浏览器压缩截断 */}
-        {/* 斑马纹：tbody 偶数行浅灰底；hover:!bg-muted 加 important 盖过斑马纹选择器（[&_tbody_tr:nth-child(even)] 特异性更高，不加 important 时偶数行悬停高亮不生效） */}
-        <table
-          className="w-full caption-bottom border-separate border-spacing-0 text-body [&_tbody_tr:nth-child(even)]:bg-muted/30"
-          style={{ minWidth: isOperating ? 1128 : 464 }}
+        {/* 分组行、斑马纹与悬停共享数据表面配方；冻结科目列使用同一行底色。 */}
+        <table data-ui-table
+          className="metric-table w-full caption-bottom border-separate border-spacing-0 text-body"
+          data-table-density={density ?? 'default'}
+          style={{ minWidth: isOperating ? 1200 : 496 }}
         >
+          <colgroup><col style={{ width: 240, minWidth: 240 }} />{valueCols.map((col) => <col key={col.key} style={{ minWidth: col.minWidth }} />)}</colgroup>
           <thead>
             {isOperating ? (
               <>
@@ -386,7 +391,7 @@ export function MetricTree({
                   <th
                     rowSpan={2}
                     scope="col"
-                    className={cn(headBase, 'sticky left-0 z-[4] min-w-[160px] border-r bg-ink-2 text-center shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)]')}
+                    className={cn(headBase, 'sticky left-0 z-[4] table-sticky-head min-w-[160px] border-r text-center')}
                   >
                     科目
                   </th>
@@ -410,6 +415,8 @@ export function MetricTree({
                       <th
                         key={col.key}
                         scope="col"
+                        data-metric-column={col.key}
+                        data-primary={col.primary || undefined}
                         aria-sort={sortState ? (sortState === 'asc' ? 'ascending' : 'descending') : undefined}
                         className={cn(headBase, 'bg-background text-center')}
                         style={{ minWidth: col.minWidth }}
@@ -436,7 +443,7 @@ export function MetricTree({
               <tr className="sticky top-0 z-[2] bg-ink-2">
                 <th
                   scope="col"
-                  className={cn(headBase, 'sticky left-0 z-[3] min-w-[160px] border-r bg-ink-2 text-center shadow-[8px_0_12px_-8px_rgba(0,0,0,0.3)]')}
+                  className={cn(headBase, 'sticky left-0 z-[3] table-sticky-head min-w-[160px] border-r text-center')}
                 >
                   科目
                 </th>
@@ -446,6 +453,8 @@ export function MetricTree({
                     <th
                       key={col.key}
                       scope="col"
+                      data-metric-column={col.key}
+                      data-primary={col.primary || undefined}
                       aria-sort={sortState ? (sortState === 'asc' ? 'ascending' : 'descending') : undefined}
                       className={cn(headBase, 'text-center')}
                       style={{ minWidth: col.minWidth }}

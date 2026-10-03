@@ -24,8 +24,8 @@ interface InventoryPieCardProps {
  */
 export function InventoryPieCard({ period, companyCode }: InventoryPieCardProps) {
   const navigate = useNavigate()
-  // 分类色板跟随当前侧边栏风格：按序轮转，首位为风格主色；主页面恒白，图表框架色恒定
-  const sidebarStyle = useThemeStore((s) => s.sidebarStyle)
+  // 分类色板跟随当前侧边栏风格：按序轮转，首位为风格主色；坐标、网格和浮层随全站风格同步
+  const sidebarStyle = useThemeStore((s) => s.printing ? 'light' : s.sidebarStyle)
   /** 深链库存页：携带当前主体与期间，库存页挂载时写入 store 后清理 URL；来源标记供库存页显示「返回首页」 */
   const gotoInventory = () => {
     const params = new URLSearchParams()
@@ -44,7 +44,7 @@ export function InventoryPieCard({ period, companyCode }: InventoryPieCardProps)
   const negatives = useMemo(() => categories.filter((c) => c.current < 0), [categories])
 
   const option = useMemo<EChartsOption>(() => {
-    const ink = getChartInk()
+    const ink = getChartInk(sidebarStyle)
     const seriesColors = getChartSeries(sidebarStyle)
     const sum = pieData.reduce((s, c) => s + c.current, 0)
     return {
@@ -77,7 +77,7 @@ export function InventoryPieCard({ period, companyCode }: InventoryPieCardProps)
           center: ['50%', '50%'],
           itemStyle: { borderColor: ink.surface, borderWidth: 2, borderRadius: 4 },
           label: {
-            fontSize: 11,
+            fontSize: 12,
             color: ink.sub,
             formatter: (p: { name: string; percent?: number }) => `${p.name} ${p.percent?.toFixed(1) ?? 0}%`,
           },

@@ -1,3 +1,6 @@
+import { useFormTask } from '@/components/forms/form-task'
+import { useFormClose } from '@/components/forms/form-navigation'
+import { WorkflowProgress, WorkflowSummary } from '@/components/forms/workflow'
 import { useRef, useState } from 'react'
 import { Dialog, DialogContent, DialogBody, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -26,6 +29,7 @@ function formatAmount(v: number): string {
 }
 
 export function TransactionImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const task = useFormTask()
   const [step, setStep] = useState<Step>('select')
   const [files, setFiles] = useState<File[]>([])
   // 文件金额单位：往来模块存储口径为元，ERP 账龄报表默认元；选万元时后端 ×10000 归一为元存储
@@ -60,7 +64,7 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
 
   const handleFilesSelected = (list: FileList | null) => {
     if (!list) return
-    // 逐文件校验扩展名与大小（>50MB 过滤），与数据导入面板口径一致
+    // 逐文件校验扩展名与大小（>200MB 过滤），与数据导入面板口径一致
     const valid: File[] = []
     const invalidMessages: string[] = []
     for (const f of Array.from(list)) {
@@ -133,8 +137,10 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
     }
   }
 
+  const busy = task.pending || previewMutation.isPending || importMutation.isPending || activateMutation.isPending || batchActivate.isBusy
+  const close = useFormClose({ dirty: files.length > 0 && step !== 'result', busy, enabled: open, onClose: () => handleOpenChange(false) })
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} busy={busy} onOpenChange={(next) => { if (!next) close.requestClose() }}>
       <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>导入往来数据</DialogTitle>
@@ -144,17 +150,21 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
         </DialogHeader>
 
         <DialogBody className="grid gap-4">
+          <WorkflowProgress steps={['选择文件', '核对预览', '导入与激活结果']} current={step === 'select' ? 0 : step === 'preview' ? 1 : 2} />
+          <WorkflowSummary items={[{ label: '文件', value: files.length + ' 个' }, { label: '文件单位', value: valueUnit === 'yuan' ? '元' : '万元' }]} />
           {/* Step 1: 选择文件 */}
           {step === 'select' && (
             <div className="space-y-3">
-              <div
-                className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed py-10 text-center hover:bg-muted/50"
+              <button type="button" disabled={busy}
+                className="flex w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed py-10 text-center hover:bg-muted/50"
                 onClick={() => fileInputRef.current?.click()}
               >
                 <Upload className="mb-2 h-8 w-8 text-muted-foreground" />
                 <p className="text-sm">点击选择账龄报表文件（.xls/.xlsx，最多 12 个）</p>
                 <p className="mt-1 text-xs text-muted-foreground">按 Sheet 名自动识别 应收/其他应收/预收/应付/其他应付/预付</p>
+              </button>
                 <input
+                  disabled={busy}
                   ref={fileInputRef}
                   type="file"
                   multiple
@@ -162,11 +172,10 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
                   className="hidden"
                   onChange={(e) => handleFilesSelected(e.target.files)}
                 />
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-medium">文件金额单位:</span>
-                <Select value={valueUnit} onValueChange={setValueUnit}>
-                  <SelectTrigger className="h-8 w-[110px] shrink-0">
+              <div className="space-y-2">
+                <label htmlFor="transaction-import-unit" className="text-sm font-medium">文件金额单位</label>
+                <Select id="transaction-import-unit" disabled={busy} aria-label="文件金额单位" value={valueUnit} onValueChange={(value) => { setValueUnit(value); setPreviews([]) }}>
+                  <SelectTrigger className="h-11 w-full sm:w-[160px]">
                     <SelectValue placeholder="单位" />
                   </SelectTrigger>
                   <SelectContent>
@@ -174,7 +183,7 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
                     <SelectItem value="wan">万元</SelectItem>
                   </SelectContent>
                 </Select>
-                <span className="text-xs text-muted-foreground">ERP 账龄报表默认元；选万元将 ×10000 归一为元存储</span>
+                <p className="text-xs text-muted-foreground">选择文件中金额的实际单位。</p>
               </div>
               {files.length > 0 && (
                 <ul className="max-h-40 space-y-1 overflow-y-auto text-sm">
@@ -265,7 +274,7 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
                 const failCount = batchActivate.results.size - doneCount
                 return (pendingCount > 0 || batchActivate.isBusy || batchActivate.results.size > 0) && (
                   <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
-                    <Button size="sm" className="shrink-0" disabled={batchActivate.isBusy || activateMutation.isPending || pendingCount === 0} onClick={handleActivateAll}>
+                    <Button size="sm" className="shrink-0" disabled={batchActivate.isBusy || activateMutation.isPending || pendingCount === 0} onClick={() => task.run(handleActivateAll)}>
                       {batchActivate.isBusy ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <CheckCircle2 className="mr-1 h-3 w-3" />}
                       全部激活{pendingCount > 0 ? `（${pendingCount}）` : ''}
                     </Button>
@@ -301,7 +310,7 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
                       return <span className="shrink-0 max-w-[200px] truncate text-xs text-destructive" title={batchResult.error}>激活失败：{batchResult.error}</span>
                     }
                     return (
-                      <Button size="sm" variant="outline" className="shrink-0" disabled={batchActivate.isBusy || activateMutation.isPending} onClick={() => handleActivate(r.batch!.id)}>
+                      <Button size="sm" variant="outline" className="shrink-0" disabled={batchActivate.isBusy || activateMutation.isPending} onClick={() => task.run(() => handleActivate(r.batch!.id))}>
                         {batchActivating || (activateMutation.isPending && !batchActivate.isBusy) ? <Loader2 className="h-3 w-3 animate-spin" /> : '激活'}
                       </Button>
                     )
@@ -312,16 +321,17 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
             </div>
           )}
 
-          {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
+          {errorMsg && <p role="alert" className="text-sm text-destructive">{errorMsg}</p>}
 
           {confirmElement}
+        {close.element}
         </DialogBody>
 
         <DialogFooter>
           {step === 'select' && (
             <>
-              <Button variant="outline" onClick={() => handleOpenChange(false)}>取消</Button>
-              <Button disabled={files.length === 0 || previewMutation.isPending} onClick={handlePreview}>
+              <Button variant="outline" onClick={close.requestClose}>取消</Button>
+              <Button disabled={files.length === 0 || previewMutation.isPending} onClick={() => task.run(handlePreview)}>
                 {previewMutation.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
                 解析预览
               </Button>
@@ -329,15 +339,15 @@ export function TransactionImportDialog({ open, onOpenChange }: { open: boolean;
           )}
           {step === 'preview' && (
             <>
-              <Button variant="outline" onClick={() => setStep('select')}>上一步</Button>
-              <Button disabled={importMutation.isPending} onClick={handleImport}>
+              <Button disabled={busy} variant="outline" onClick={() => { setPreviews([]); setStep('select') }}>返回修改</Button>
+              <Button disabled={importMutation.isPending} onClick={() => task.run(handleImport)}>
                 {importMutation.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
                 确认导入
               </Button>
             </>
           )}
           {step === 'result' && (
-            <Button onClick={() => handleOpenChange(false)}>完成</Button>
+            <Button disabled={busy} onClick={close.requestClose}>完成</Button>
           )}
         </DialogFooter>
       </DialogContent>

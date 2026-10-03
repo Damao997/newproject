@@ -122,16 +122,12 @@ export function EnterpriseLookup() {
   return (
     <PageContainer
       title="企业信息查询"
-      description="企业工商信息一站式查询，辅助客户准入与风险决策"
     >
-      {/* 搜索 hero：主题主色同色相渐变（随侧边栏风格切换）+ 输入 + 最近搜索（真实查询历史） */}
-      <div className="relative overflow-hidden rounded-card bg-gradient-to-br from-primary to-[hsl(var(--primary)/0.72)] p-8 text-white shadow-antd-1">
-        <span className="pointer-events-none absolute -right-16 -top-16 h-60 w-60 rounded-full bg-white/[0.08]" aria-hidden />
-        <h2 className="relative text-[22px] font-semibold leading-tight">查询企业工商信息</h2>
-        <p className="relative mt-2 text-sm text-white/85">输入企业名称或统一社会信用代码，查询结果由数据源聚合并缓存</p>
+      {/* 搜索与最近使用的真实关键词集中呈现。 */}
+      <div className="relative overflow-hidden rounded-card border border-subtle bg-card p-5 sm:p-6 text-foreground shadow-antd-1">
 
-        <form
-          className="relative mt-5 flex items-center rounded-md bg-white p-1 shadow-[0_4px_16px_rgba(0,0,0,0.08)]"
+        <form noValidate
+          className="relative flex items-center gap-2 rounded-md border border-input bg-background p-1"
           onSubmit={(e) => {
             e.preventDefault()
             submitSearch(keyword)
@@ -141,6 +137,7 @@ export function EnterpriseLookup() {
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             className="h-9 flex-1 border-0 bg-transparent shadow-none focus-visible:ring-0"
+            aria-label="企业名称或统一社会信用代码"
             placeholder="企业名称 / 统一社会信用代码"
           />
           <Button type="submit" className="h-9 px-5" disabled={searchQuery.isFetching}>
@@ -154,8 +151,8 @@ export function EnterpriseLookup() {
         </form>
 
         {recentKeywords.length > 0 && (
-          <div className="relative mt-3.5 flex flex-wrap items-center text-[12px] text-white/75">
-            <b className="mr-2 font-semibold text-white">最近搜索:</b>
+          <div className="relative mt-3.5 flex flex-wrap items-center text-[12px] text-muted-foreground">
+            <b className="mr-2 font-semibold text-foreground">最近搜索:</b>
             {recentKeywords.map((h) => (
               <button
                 key={h}
@@ -164,7 +161,7 @@ export function EnterpriseLookup() {
                   setKeyword(h)
                   submitSearch(h)
                 }}
-                className="mr-3.5 cursor-pointer text-white/85 hover:text-white"
+                className="mr-3.5 cursor-pointer text-muted-foreground hover:text-primary"
               >
                 {h}
               </button>
@@ -181,7 +178,7 @@ export function EnterpriseLookup() {
               <EmptyState
                 icon={Search}
                 title="输入关键词开始查询"
-                description="支持企业名称或统一社会信用代码，查询结果展示工商档案与数据来源"
+
                 className="py-24"
               />
             </Card>

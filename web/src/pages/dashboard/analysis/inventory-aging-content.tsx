@@ -1,3 +1,6 @@
+import { StatTile } from '@/components/ui/stat-tile'
+import { DistributionBar } from '@/components/charts/distribution-bar'
+import { MagnitudeValue, magnitudeMaximum } from '@/components/ui/magnitude-value'
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { Card, CardContent } from '@/components/ui/card'
@@ -7,7 +10,7 @@ import { AlertTriangle, ArrowRight, Info, RefreshCw } from 'lucide-react'
 import { useInventoryDetails, useInventoryOverview } from '@/hooks/api-queries'
 import { AnalysisPageSkeleton } from '@/components/ui/skeleton-blocks'
 import { DeltaTag } from '@/components/ui/delta-tag'
-import { cn, formatMoneyWan } from '@/lib/utils'
+import { formatMoneyWan } from '@/lib/utils'
 import { getChartSeries } from '@/lib/chart-theme'
 import { useThemeStore } from '@/stores/themeStore'
 
@@ -19,31 +22,6 @@ interface InventoryAgingContentProps {
 }
 
 /** KPI 磁贴 */
-function StatTile({ label, value, unit, foot, accent, valueClass }: {
-  label: string
-  value: string
-  unit: string
-  foot: string
-  accent: string
-  valueClass?: string
-}) {
-  return (
-    <div
-      className={cn(
-        'relative flex flex-col gap-2 overflow-hidden rounded-card border border-border bg-card p-5 shadow-antd-1 transition-all duration-200 hover:shadow-antd-2',
-        "before:absolute before:bottom-0 before:left-0 before:top-0 before:w-[3px] before:content-['']",
-        accent,
-      )}
-    >
-      <span className="text-body text-muted-foreground">{label}</span>
-      <div className={cn('font-num text-2xl font-semibold leading-tight text-foreground', valueClass)}>
-        {value}
-        <span className="ml-1 text-sm font-normal text-muted-foreground">{unit}</span>
-      </div>
-      <span className="text-xs text-muted-foreground">{foot}</span>
-    </div>
-  )
-}
 
 /** 同比（总额）：（本期 − 同期）/ |同期|，小数比率（存货为占用类指标，增长红=占用上升） */
 function yoyRatio(current: number, samePeriod: number): number {
@@ -60,12 +38,18 @@ function yoyRatio(current: number, samePeriod: number): number {
  * - 说明条：库龄明细需库存数据源补充账龄字段后上线 + 跳转库存管理页。
  */
 export function InventoryAgingContent({ period, companyCode }: InventoryAgingContentProps) {
-  const sidebarStyle = useThemeStore((s) => s.sidebarStyle)
+  const sidebarStyle = useThemeStore((s) => s.printing ? 'light' : s.sidebarStyle)
   const companyCodes = companyCode ? [companyCode] : undefined
   const { data, isLoading, isError, refetch } = useInventoryOverview({ period, companyCodes })
   const { data: detailData, isLoading: detailLoading } = useInventoryDetails({ period, companyCodes })
   const detailRows = useMemo(() => detailData?.rows ?? [], [detailData])
   const categories = useMemo(() => data?.categories ?? [], [data])
+  const amountMaximum = {
+    current: magnitudeMaximum(detailRows.map((r) => r.current)),
+    yearStart: magnitudeMaximum(detailRows.map((r) => r.yearStart)),
+    samePeriod: magnitudeMaximum(detailRows.map((r) => r.samePeriod)),
+  }
+
   const palette = getChartSeries(sidebarStyle)
 
   // 同比（总额）：（本期 − 同期）/ |同期|，小数比率
@@ -109,7 +93,7 @@ export function InventoryAgingContent({ period, companyCode }: InventoryAgingCon
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-info/30 bg-info/5 px-4 py-2.5 text-sm">
         <span className="inline-flex items-center gap-2 text-info-700">
           <Info className="h-4 w-4 shrink-0" />
-          库龄（账龄段）明细暂无数据源，本页展示库存结构与周转的真实数据；库龄明细待库存数据补充账龄字段后上线
+          当前展示库存结构与周转情况，暂不提供库龄明细。
         </span>
         <Button asChild variant="outline" size="sm" className="h-8 gap-1">
           <Link to="/inventory">
@@ -153,7 +137,7 @@ export function InventoryAgingContent({ period, companyCode }: InventoryAgingCon
 
       {/* 库存品类结构（真实占比 + 同比） */}
       <Card className="border border-border shadow-antd-1">
-        <CardContent className="p-5">
+        <CardContent className="p-6">
           <h3 className="mb-3 text-base font-semibold text-foreground">
             库存品类结构
             <span className="ml-2 text-xs font-normal text-muted-foreground">本期金额占比 · 单位：万元</span>
@@ -161,45 +145,21 @@ export function InventoryAgingContent({ period, companyCode }: InventoryAgingCon
           {categories.length === 0 ? (
             <EmptyState compact className="py-10" title="暂无品类数据" />
           ) : (
-            <div className="space-y-2.5">
+            <div className="distribution-list">
               {categories.map((c, i) => (
-                  <div key={c.code} className="flex items-center gap-3">
-                    <span
-                      className="inline-block h-2.5 w-2.5 shrink-0 rounded-[2px]"
-                      style={{ background: palette[i % palette.length] }}
-                      aria-hidden
-                    />
-                    <span className="w-[9em] shrink-0 truncate text-body text-foreground" title={c.name}>{c.name}</span>
-                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
-                      <div
-                        className="h-full rounded-full"
-                        style={{
-                          width: `${maxCategory > 0 ? Math.max(c.current > 0 ? 2 : 0, (c.current / maxCategory) * 100) : 0}%`,
-                          background: palette[i % palette.length],
-                        }}
-                      />
-                    </div>
-                    <span className="w-[80px] shrink-0 text-right font-num text-body text-foreground">
-                      {formatMoneyWan(c.current)}
-                    </span>
-                    <span className="w-[56px] shrink-0 text-right font-num text-xs text-muted-foreground">
-                      {c.share.toFixed(1)}%
-                    </span>
-                    <span className="w-[76px] shrink-0 text-right">
-                      {/* 库存接口 yoy 为百分数（×100），转小数传入 */}
-                      <DeltaTag value={c.yoy / 100} />
-                    </span>
-                  </div>
+                  <DistributionBar key={c.code} variant="ranking" label={c.name} value={formatMoneyWan(c.current)}
+                    meta={<>{c.share.toFixed(1)}% <DeltaTag value={c.yoy / 100} /></>}
+                    width={maxCategory > 0 ? Math.max(c.current > 0 ? 2 : 0, (c.current / maxCategory) * 100) : 0}
+                    color={palette[i % palette.length]} />
                 ))}
               {/* 合计行 */}
-              <div className="flex items-center gap-3 border-t-2 border-border pt-2.5 font-semibold">
-                <span className="w-[9em] shrink-0 text-body">合计</span>
-                <div className="flex-1" />
-                <span className="w-[80px] shrink-0 text-right font-num text-body">{formatMoneyWan(data.total.current)}</span>
-                <span className="w-[56px] shrink-0 text-right font-num text-xs text-muted-foreground">100.0%</span>
-                <span className="w-[76px] shrink-0 text-right">
+              <div className="flex flex-wrap items-baseline justify-between gap-3 border-t border-border pt-3 font-semibold">
+                <span className="text-body">合计</span>
+                <div className="flex items-baseline gap-4 font-num text-body">
+                  <span>{formatMoneyWan(data.total.current)}</span>
+                  <span className="text-xs text-muted-foreground">100.0%</span>
                   <DeltaTag value={totalYoy} />
-                </span>
+                </div>
               </div>
             </div>
           )}
@@ -208,7 +168,7 @@ export function InventoryAgingContent({ period, companyCode }: InventoryAgingCon
 
       {/* 公司 × 品类 明细表 */}
       <Card className="border border-border shadow-antd-1">
-        <CardContent className="p-5">
+        <CardContent className="p-6">
           <h3 className="mb-3 text-base font-semibold text-foreground">
             公司 × 品类明细
             <span className="ml-2 text-xs font-normal text-muted-foreground"> {detailRows.length} 行 · 单位：万元</span>
@@ -216,8 +176,8 @@ export function InventoryAgingContent({ period, companyCode }: InventoryAgingCon
           {detailRows.length === 0 ? (
             <EmptyState compact className="py-10" title="暂无明细数据" />
           ) : (
-            <div className="max-h-[480px] overflow-auto">
-              <table className="data-table-report data-table-report--striped">
+            <div className="detail-table-scroll max-h-[480px] overflow-auto">
+              <table data-ui-table data-detail-table data-comparison-matrix className="data-table-report data-table-report--striped">
                 <thead className="sticky top-0 z-[1] bg-ink-2">
                   <tr>
                     <th className="text-left">公司</th>
@@ -235,9 +195,9 @@ export function InventoryAgingContent({ period, companyCode }: InventoryAgingCon
                           {r.companyShortName ?? r.companyName}
                         </td>
                         <td className="text-left text-body text-foreground">{r.categoryName}</td>
-                        <td className="text-right font-num text-sm text-foreground">{formatMoneyWan(r.current)}</td>
-                        <td className="text-right font-num text-sm text-muted-foreground">{formatMoneyWan(r.yearStart)}</td>
-                        <td className="text-right font-num text-sm text-muted-foreground">{formatMoneyWan(r.samePeriod)}</td>
+                        <td className="text-right font-num text-sm text-foreground"><MagnitudeValue value={r.current} maximum={amountMaximum.current}>{formatMoneyWan(r.current)}</MagnitudeValue></td>
+                        <td className="text-right font-num text-sm text-muted-foreground"><MagnitudeValue value={r.yearStart} maximum={amountMaximum.yearStart}>{formatMoneyWan(r.yearStart)}</MagnitudeValue></td>
+                        <td className="text-right font-num text-sm text-muted-foreground"><MagnitudeValue value={r.samePeriod} maximum={amountMaximum.samePeriod}>{formatMoneyWan(r.samePeriod)}</MagnitudeValue></td>
                         {/* 库存接口 yoy 为百分数（×100），转小数传入 */}
                         <td className="text-right"><DeltaTag value={r.yoy / 100} /></td>
                       </tr>

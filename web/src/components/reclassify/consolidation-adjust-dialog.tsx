@@ -1,4 +1,9 @@
-import { useMemo, useState } from 'react'
+import { Controller } from 'react-hook-form'
+import { consolidationFormSchema } from './form-schema'
+import { useFormModel, useFormValue, useFormSet, ModelFormFields } from '@/components/forms/form-model'
+import { useFormClose } from '@/components/forms/form-navigation'
+import { WorkflowProgress, WorkflowSummary } from '@/components/forms/workflow'
+import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -40,15 +45,20 @@ interface ConsolidationAdjustDialogProps {
  * 抵消金额为正=调增、负=调减；与重分类（修改单体事实行）不同，本操作不改动任何单体数据。金额单位：万元。
  */
 export function ConsolidationAdjustDialog({ open, onClose }: ConsolidationAdjustDialogProps) {
-  const [singleA, setSingleA] = useState('')
-  const [singleB, setSingleB] = useState('')
+  const model = useFormModel({ templateType: ('operating') as 'operating' | 'static' | 'cashflow', reason: ('') as string, amountInput: ('') as string, period: ('') as string, accountCode: ('') as string, selectedSummaries: [] as string[], singleB: ('') as string, singleA: ('') as string }, {}, consolidationFormSchema)
+  const [singleA, setSingleA] = useFormValue(model, "singleA")
+  const [singleB, setSingleB] = useFormValue(model, "singleB")
   const [matchedSummaries, setMatchedSummaries] = useState<CommonSummaryItem[]>([])
-  const [selectedSummaries, setSelectedSummaries] = useState<Set<string>>(new Set())
-  const [accountCode, setAccountCode] = useState('')
-  const [period, setPeriod] = useState('')
-  const [amountInput, setAmountInput] = useState('')
-  const [reason, setReason] = useState('')
-  const [reasonTouched, setReasonTouched] = useState(false)
+  const [selectedSummaries, setSelectedSummaries] = useFormSet(model, "selectedSummaries")
+  const [accountCode, setAccountCode] = useFormValue(model, "accountCode")
+  const [period, setPeriod] = useFormValue(model, "period")
+  const [amountInput, setAmountInput] = useFormValue(model, "amountInput")
+  const [reason, setReason] = useFormValue(model, "reason")
+  const [reviewing, setReviewing] = useState(false)
+  const [applying, setApplying] = useState(false)
+  const [outcomes, setOutcomes] = useState<{ code: string; name: string; status: 'success' | 'error'; message: string }[]>([])
+  const adjustmentSignature = JSON.stringify(model.values)
+  useEffect(() => { setReviewing(false) }, [adjustmentSignature])
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
 
@@ -60,7 +70,7 @@ export function ConsolidationAdjustDialog({ open, onClose }: ConsolidationAdjust
   const { displayNameMap } = useCompanyDisplayName()
 
   // 科目候选：经营/静态/现金流科目树中 data 类叶子（calc/display 由公式计算，抵消会被覆盖；比率类不可调整）
-  const [templateType, setTemplateType] = useState<'operating' | 'static' | 'cashflow'>('operating')
+  const [templateType, setTemplateType] = useFormValue(model, "templateType")
   const { data: subjectTree } = useSubjectTree(templateType)
   const subjectOptions = useMemo(
     () => (subjectTree ?? []).filter((s) => s.dataType === 'data' && s.valueType !== 'ratio'),
@@ -71,10 +81,12 @@ export function ConsolidationAdjustDialog({ open, onClose }: ConsolidationAdjust
   const createMutation = useCreateConsolidationAdjustment()
 
   const resetMatch = () => {
+    setOutcomes([])
     setMatchedSummaries([])
     setSelectedSummaries(new Set())
     setError(null)
     setDone(null)
+    setReviewing(false)
   }
 
   const handleSwap = () => {
@@ -86,6 +98,7 @@ export function ConsolidationAdjustDialog({ open, onClose }: ConsolidationAdjust
 
   /** 匹配两个单体公司共同所属的汇总主体；无共同汇总主体时给出明确提示 */
   const handleMatch = async () => {
+    if (!(await model.form.trigger(['singleA', 'singleB'], { shouldFocus: true }))) return
     if (!singleA || !singleB) {
       setError('请先选择两个单体公司')
       return
@@ -120,24 +133,12 @@ export function ConsolidationAdjustDialog({ open, onClose }: ConsolidationAdjust
     const amt = Number(amountInput)
     return !Number.isFinite(amt) || amt === 0 ? '金额须为非 0 数值（正=调增、负=调减）' : null
   })()
-  const reasonError = reasonTouched && !reason.trim() ? '请填写调整原因' : null
+  const reasonError = model.form.formState.errors.reason?.message
 
-  const validateBeforeSubmit = (): string | null => {
-    if (!singleA || !singleB) return '请选择两个单体公司'
-    if (selectedSummaries.size === 0) return '请至少选择一个匹配到的汇总主体'
-    if (!accountCode) return '请选择科目'
-    if (!period) return '请选择调整期间（单月）'
-    if (amountInput === '' || amountError) return amountError ?? '请输入调整金额'
-    if (!reason.trim()) return '请填写调整原因'
-    return null
-  }
+  const handleReview = async () => { if (done) return; setError(null); setReviewing(true) }
 
   const handleSubmit = async () => {
-    const invalid = validateBeforeSubmit()
-    if (invalid) {
-      setError(invalid)
-      return
-    }
+    if (applying || !reviewing || done) return
     const nameOf = (code: string) => matchedSummaries.find((s) => s.code === code)?.name ?? code
     const subjectName = subjectOptions.find((s) => s.code === accountCode)?.name ?? accountCode
     const amt = Number(amountInput)
@@ -150,6 +151,8 @@ export function ConsolidationAdjustDialog({ open, onClose }: ConsolidationAdjust
     })
     if (!ok) return
     setError(null)
+    setApplying(true)
+    const failedCodes: string[] = []
     // 逐汇总主体创建（同科目/期间/金额/原因）；部分失败时已成功的记录保留，可在记录面板撤销
     const failed: string[] = []
     const succeeded: string[] = []
@@ -164,25 +167,31 @@ export function ConsolidationAdjustDialog({ open, onClose }: ConsolidationAdjust
           reason: reason.trim(),
         })
         succeeded.push(nameOf(code))
+        setOutcomes((current) => [...current.filter((item) => item.code !== code), { code, name: nameOf(code), status: 'success', message: '已生效 · ' + formatMoney(amt) }])
       } catch (err) {
-        failed.push(`${nameOf(code)}（${err instanceof Error ? err.message : '失败'}）`)
+        const message = err instanceof Error ? err.message : '失败'
+        failedCodes.push(code)
+        failed.push(nameOf(code) + '（' + message + '）')
+        setOutcomes((current) => [...current.filter((item) => item.code !== code), { code, name: nameOf(code), status: 'error', message }])
       }
     }
+    setApplying(false)
     if (failed.length > 0) {
+      setSelectedSummaries(new Set(failedCodes))
+      setReviewing(false)
       setError(`部分汇总主体创建失败：${failed.join('；')}${succeeded.length > 0 ? `；已成功：${succeeded.join('、')}` : ''}`)
       return
     }
     setDone(`抵消调整已生效：${succeeded.join('、')} · ${subjectName} · ${period} · ${formatMoney(Math.abs(amt))}（${amt > 0 ? '调增' : '调减'}）。`)
-    setPeriod('')
-    setAmountInput('')
-    setReason('')
-    setAccountCode('')
-    setMatchedSummaries([])
-    setSelectedSummaries(new Set())
+    setReviewing(false)
+    model.form.reset(model.form.getValues())
   }
 
+  const formBusy = model.pending || matchMutation.isPending || applying
+  const formClose = useFormClose({ dirty: !done && model.form.formState.isDirty, busy: formBusy, enabled: open, onClose })
+
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={open} busy={formBusy} onOpenChange={(next) => { if (!next) formClose.requestClose() }}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-1.5">
@@ -191,15 +200,15 @@ export function ConsolidationAdjustDialog({ open, onClose }: ConsolidationAdjust
           </DialogTitle>
         </DialogHeader>
 
-        <DialogBody className="grid gap-4">
-          <div className="space-y-4">
+        <DialogBody className="grid gap-4"><ModelFormFields model={model}><fieldset disabled={formBusy} className="min-w-0 space-y-6 border-0 p-0"><WorkflowProgress steps={['选择公司', '填写调整', '核对影响', '执行结果']} current={done ? 3 : reviewing ? 2 : outcomes.length ? 3 : matchedSummaries.length ? 1 : 0} /><WorkflowSummary items={[{ label: '公司 A', value: entityCompanies.find((item) => item.code === singleA)?.name }, { label: '公司 B', value: entityCompanies.find((item) => item.code === singleB)?.name }, { label: '期间', value: period }, { label: '汇总主体', value: selectedSummaries.size + ' 项' }]} />
+          <div className="space-y-4" data-stage={done ? "result" : reviewing ? "review" : "edit"}>
             {/* ===== 第一步：选择单体公司 ===== */}
-            <section className="space-y-2">
+            <section data-input-section className="space-y-2">
               <SectionTitle>1. 选择内部交易的两个单体公司</SectionTitle>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                 <div className="flex-1 space-y-1">
                   <Label htmlFor="ca-single-a">单体公司 A</Label>
-                  <Select value={singleA} onValueChange={(v) => { setSingleA(v); resetMatch() }}>
+                  <Select name="singleA" value={singleA} onValueChange={(v) => { setSingleA(v); resetMatch() }}>
                     <SelectTrigger id="ca-single-a"><SelectValue placeholder="选择单体公司 A" /></SelectTrigger>
                     <SelectContent className="max-h-[280px]">
                       {entityCompanies.filter((c) => c.code !== singleB).map((c) => (
@@ -222,7 +231,7 @@ export function ConsolidationAdjustDialog({ open, onClose }: ConsolidationAdjust
                 </Button>
                 <div className="flex-1 space-y-1">
                   <Label htmlFor="ca-single-b">单体公司 B</Label>
-                  <Select value={singleB} onValueChange={(v) => { setSingleB(v); resetMatch() }}>
+                  <Select name="singleB" value={singleB} onValueChange={(v) => { setSingleB(v); resetMatch() }}>
                     <SelectTrigger id="ca-single-b"><SelectValue placeholder="选择单体公司 B" /></SelectTrigger>
                     <SelectContent className="max-h-[280px]">
                       {entityCompanies.filter((c) => c.code !== singleA).map((c) => (
@@ -232,7 +241,7 @@ export function ConsolidationAdjustDialog({ open, onClose }: ConsolidationAdjust
                   </Select>
                 </div>
               </div>
-              <Button type="button" variant="outline" size="sm" onClick={handleMatch} disabled={!singleA || !singleB || matchMutation.isPending} className="mt-1">
+              <Button type="button" variant="outline" size="sm" onClick={model.submit(handleMatch, false)} disabled={!singleA || !singleB || matchMutation.isPending} className="mt-1">
                 <Link2 className="mr-1 h-4 w-4" />
                 {matchMutation.isPending ? '匹配中...' : '匹配汇总主体'}
               </Button>
@@ -240,39 +249,35 @@ export function ConsolidationAdjustDialog({ open, onClose }: ConsolidationAdjust
 
             {/* ===== 第二步：匹配到的汇总主体（默认全选可取消） ===== */}
             {matchedSummaries.length > 0 && (
-              <section className="space-y-2">
+              <section data-input-section className="space-y-2">
                 <SectionTitle>2. 匹配到的汇总主体（作用于其汇总口径）</SectionTitle>
-                <div className="space-y-1.5 rounded-lg border bg-muted/20 p-3">
-                  {matchedSummaries.map((s) => (
-                    <label key={s.code} className="flex cursor-pointer items-center gap-2 text-sm">
-                      <Checkbox
-                        size="sm"
-                        className="shrink-0"
-                        checked={selectedSummaries.has(s.code)}
-                        onCheckedChange={() => toggleSummary(s.code)}
-                      />
-                      <span className="min-w-0 flex-1 truncate" title={s.code}>{s.name}</span>
-                      {!s.isInternalElimination && (
-                        <Badge variant="outline" className="shrink-0 text-micro text-muted-foreground">映射未标记内部抵消</Badge>
-                      )}
-                    </label>
-                  ))}
-                </div>
+                <Controller control={model.form.control} name="selectedSummaries" render={({ field, fieldState }) => <>
+                  <div role="group" aria-label="生效汇总主体" aria-invalid={!!fieldState.error} aria-describedby={fieldState.error ? 'ca-summaries-error' : undefined} className="space-y-1.5 rounded-lg border bg-muted/20 p-3">
+                    {matchedSummaries.map((s, index) => <div key={s.code} className="flex items-center gap-2 text-sm">
+                      <Checkbox ref={index === 0 ? field.ref : undefined} onBlur={field.onBlur} aria-label={s.name}
+                        checked={selectedSummaries.has(s.code)} onCheckedChange={() => toggleSummary(s.code)} className="min-w-0 flex-1">
+                        <span title={s.code}>{s.name}</span>
+                      </Checkbox>
+                      {!s.isInternalElimination && <Badge variant="outline" className="shrink-0 text-micro text-muted-foreground">映射未标记内部抵消</Badge>}
+                    </div>)}
+                  </div>
+                  {fieldState.error && <p id="ca-summaries-error" className="text-xs text-danger">{fieldState.error.message}</p>}
+                </>} />
                 <p className="text-xs text-muted-foreground">将按勾选的汇总主体分别创建抵消记录；两个单体无共同汇总主体时无法抵消。</p>
               </section>
             )}
 
             {/* ===== 第三步：抵消设置（科目/期间/金额） ===== */}
-            <section className="space-y-2">
+            <section data-input-section className="space-y-2">
               <SectionTitle>3. 抵消设置（每个选中的汇总主体各建一条记录）</SectionTitle>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <Label>调整期间（单月） <span className="text-destructive">*</span></Label>
-                  <MonthPicker className="w-full" value={period} onChange={(v) => { setPeriod(v); setError(null); setDone(null) }} availablePeriods={availablePeriods} placeholder="选择月份" />
+                  <Label htmlFor="period">调整期间（单月） <span className="text-destructive">*</span></Label>
+                  <MonthPicker name="period" className="w-full" value={period} onChange={(v) => { setPeriod(v); setError(null); setDone(null) }} availablePeriods={availablePeriods} placeholder="选择月份" />
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="ca-amount">抵消金额（万元） <span className="text-destructive">*</span></Label>
-                  <Input
+                  <Input name="amountInput"
                     id="ca-amount"
                     type="number"
                     step="0.01"
@@ -282,13 +287,12 @@ export function ConsolidationAdjustDialog({ open, onClose }: ConsolidationAdjust
                     className={cn(amountError && 'border-destructive focus-visible:ring-destructive')}
                     onChange={(e) => { setAmountInput(e.target.value); setError(null); setDone(null) }}
                   />
-                  {amountError && <p className="text-xs text-destructive">{amountError}</p>}
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">内部交易抵消通常为调减（负数）：汇总口径的现金流入/流出将被扣减该金额。</p>
               <div className="space-y-1">
-                <Label>模板类型</Label>
-                <Select value={templateType} onValueChange={(v) => { setTemplateType(v as 'operating' | 'static' | 'cashflow'); setAccountCode(''); setError(null); setDone(null) }}>
+                <Label htmlFor="templateType">模板类型</Label>
+                <Select name="templateType" value={templateType} onValueChange={(v) => { setTemplateType(v as 'operating' | 'static' | 'cashflow'); setAccountCode(''); setError(null); setDone(null) }}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="operating">经营数据</SelectItem>
@@ -298,8 +302,8 @@ export function ConsolidationAdjustDialog({ open, onClose }: ConsolidationAdjust
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label>科目（data 类叶子，如现金流流入/流出） <span className="text-destructive">*</span></Label>
-                <SubjectPicker
+                <Label htmlFor="accountCode">科目（data 类叶子，如现金流流入/流出） <span className="text-destructive">*</span></Label>
+                <SubjectPicker name="accountCode"
                   options={subjectOptions}
                   value={accountCode}
                   onChange={(code) => { setAccountCode(code); setError(null); setDone(null) }}
@@ -310,9 +314,9 @@ export function ConsolidationAdjustDialog({ open, onClose }: ConsolidationAdjust
             </section>
 
             {/* ===== 调整原因 ===== */}
-            <section className="space-y-1">
+            <section data-input-section className="space-y-1">
               <Label htmlFor="ca-reason">调整原因 <span className="text-destructive">*</span></Label>
-              <Textarea
+              <Textarea name="reason"
                 id="ca-reason"
                 rows={2}
                 placeholder="如：A 公司与 B 公司间内部资金划转，汇总口径抵消重复计入的经营活动现金流入/流出"
@@ -320,26 +324,31 @@ export function ConsolidationAdjustDialog({ open, onClose }: ConsolidationAdjust
                 aria-invalid={!!reasonError}
                 className={cn(reasonError && 'border-destructive focus-visible:ring-destructive')}
                 onChange={(e) => setReason(e.target.value)}
-                onBlur={() => setReasonTouched(true)}
               />
-              {reasonError && <p className="text-xs text-destructive">{reasonError}</p>}
             </section>
 
             {/* ===== 反馈 ===== */}
             <section className="space-y-2">
+              {reviewing && <div role="status" className="rounded-xl bg-primary/5 p-4 text-sm">将调整 {selectedSummaries.size} 个汇总主体，金额 {amountInput} 万元。请核对主体、期间和原因后执行。</div>}
+              {outcomes.length > 0 && <ul aria-label="逐项执行结果" className="space-y-2">{outcomes.map((item) => <li key={item.code} className={cn('rounded-xl border p-3 text-sm', item.status === 'success' ? 'border-success/30' : 'border-danger/30')}>
+                <span className="font-medium">{item.name}</span><span className="ml-3 text-muted-foreground">{item.status === 'success' ? '成功' : '失败'} · {item.message}</span>
+              </li>)}</ul>}
               {done && <FeedbackAlert kind="success">{done}</FeedbackAlert>}
               {error && <FeedbackAlert kind="error">{error}</FeedbackAlert>}
             </section>
           </div>
-        </DialogBody>
+        </fieldset></ModelFormFields></DialogBody>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>关闭</Button>
-          <Button variant="destructive" onClick={handleSubmit} disabled={createMutation.isPending || matchMutation.isPending}>
+          {reviewing && !done && <Button disabled={formBusy} variant="outline" onClick={() => setReviewing(false)}>返回修改</Button>}
+          <Button variant="outline" onClick={formClose.requestClose}>关闭</Button>
+          {!done && <><Button variant="outline" onClick={model.submit(handleReview)} disabled={formBusy || !matchedSummaries.length}>核对影响</Button>
+          <Button variant="destructive" onClick={model.submit(handleSubmit)} disabled={formBusy || !reviewing} loading={applying}>
             {createMutation.isPending ? '提交中...' : '执行抵消调整'}
-          </Button>
+          </Button></>}
         </DialogFooter>
         {confirmElement}
+        {formClose.element}
       </DialogContent>
     </Dialog>
   )

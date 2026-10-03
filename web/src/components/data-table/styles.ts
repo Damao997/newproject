@@ -11,11 +11,11 @@ export const TABLE_HEAD_BASE =
 
 /** 冻结列（sticky 左列）单元格基础：白底 + 右侧分隔线，hover 时跟随行高亮 */
 export const TABLE_STICKY_CELL_BASE =
-  'sticky left-0 z-[1] border-r bg-background group-hover:bg-muted/50'
+  'table-sticky-cell sticky left-0 z-[1] border-r'
 
 /** 冻结列（sticky 右列）单元格基础：白底 + 左侧分隔线，hover 时跟随行高亮（操作列固定用） */
 export const TABLE_STICKY_RIGHT_CELL_BASE =
-  'sticky right-0 z-[1] border-l bg-background group-hover:bg-muted/50'
+  'table-sticky-cell sticky right-0 z-[1] border-l'
 
 /** 限高滚动容器内 sticky 表头：不透明背景防止内容透出（配合 bg-muted 使用） */
 export const TABLE_HEADER_STICKY = 'sticky top-0 z-20'

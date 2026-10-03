@@ -1,3 +1,5 @@
+import { useFormModel, useFormSet } from '@/components/forms/form-model'
+import { useFormClose } from '@/components/forms/form-navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -29,7 +31,8 @@ interface BatchPermissionDialogProps {
 export function BatchPermissionDialog({ open, roles, onClose, onSaved }: BatchPermissionDialogProps) {
   const { data: allPerms } = usePermissions()
   const updateBatch = useUpdateRolePermissionsBatch()
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const model = useFormModel({ selected: [] as string[] })
+  const [selected, setSelected] = useFormSet(model, 'selected')
   const [error, setError] = useState<string | null>(null)
   const { confirm, element: confirmElement } = useConfirm()
 
@@ -39,8 +42,8 @@ export function BatchPermissionDialog({ open, roles, onClose, onSaved }: BatchPe
   useEffect(() => {
     if (!open) return
     setError(null)
-    setSelected(new Set())
-  }, [open])
+    model.form.reset({ selected: [] })
+  }, [open, model.form])
 
   const toggle = (key: string) => {
     setSelected((prev) => {
@@ -89,9 +92,11 @@ export function BatchPermissionDialog({ open, roles, onClose, onSaved }: BatchPe
     }
   }
 
+  const close = useFormClose({ dirty: model.form.formState.isDirty, busy: model.pending || updateBatch.isPending, enabled: open, onClose })
+
   return (
     <>
-      <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <Dialog open={open} busy={model.pending || updateBatch.isPending} onOpenChange={(next) => { if (!next) close.requestClose() }}>
         <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>批量配置权限</DialogTitle>
@@ -106,17 +111,18 @@ export function BatchPermissionDialog({ open, roles, onClose, onSaved }: BatchPe
               ))}
               {(roles?.length ?? 0) > 5 && <Badge variant="outline">+{roles!.length - 5} 个</Badge>}
             </div>
-            <PermissionMatrix perms={perms} selected={selected} onToggle={toggle} onSetAll={setAll} />
+            <PermissionMatrix perms={perms} selected={selected} onToggle={toggle} onSetAll={setAll} locked={model.pending || updateBatch.isPending} />
             {error && <FlashMessage type="error">{error}</FlashMessage>}
           </DialogBody>
           <DialogFooter>
-            <Button variant="outline" onClick={onClose}>取消</Button>
-            <Button onClick={save} disabled={updateBatch.isPending}>
+            <Button variant="outline" onClick={close.requestClose}>取消</Button>
+            <Button onClick={model.submit(save)} disabled={updateBatch.isPending}>
               {updateBatch.isPending ? '保存中...' : `应用到 ${roles?.length ?? 0} 个角色`}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {close.element}
       {confirmElement}
     </>
   )

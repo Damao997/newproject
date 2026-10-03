@@ -1,3 +1,5 @@
+import { useFormModel, ModelFormFields } from '@/components/forms/form-model'
+import { useFormClose } from '@/components/forms/form-navigation'
 import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -51,7 +53,9 @@ export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete =
   const [keyword, setKeyword] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState<CompanyForm>(emptyForm)
+  const model = useFormModel<CompanyForm>(emptyForm, {"code":"请输入公司编码","name":"请输入公司名称"})
+  const form = model.values
+  const setForm = model.setValues
   const [error, setError] = useState<string | null>(null)
   const [listError, setListError] = useState<string | null>(null)
   const showShortName = useCompanyDisplayStore((s) => s.showShortName)
@@ -84,6 +88,7 @@ export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete =
   }
 
   const submit = async () => {
+    if (!(await model.validate())) return
     setError(null)
     try {
       const payload: Record<string, unknown> = {
@@ -172,6 +177,8 @@ export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete =
       : []),
   ]
 
+  const formClose = useFormClose({ dirty: model.form.formState.isDirty, busy: model.pending || createCompany.isPending || updateCompany.isPending, enabled: dialogOpen, onClose: () => setDialogOpen(false) })
+
   return (
     <div className="space-y-4">
       {/* 搜索 + 显隐开关 + 操作按钮（吸顶） */}
@@ -196,32 +203,32 @@ export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete =
 
       <DataTable columns={columns} data={filtered} rowKey={(c) => c.id} dense emptyText={isLoading ? '加载中…' : '暂无公司'} />
 
-      <Dialog open={dialogOpen} onOpenChange={(o) => !o && setDialogOpen(false)}>
+      <><Dialog open={dialogOpen} presentation="drawer" busy={model.pending || createCompany.isPending || updateCompany.isPending} onOpenChange={(next) => { if (!next) formClose.requestClose() }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editingId ? '编辑公司' : '新增公司'}</DialogTitle>
             <DialogDescription>{editingId ? '编码不可修改；类型/名称可编辑' : '创建单体公司或汇总主体'}</DialogDescription>
           </DialogHeader>
-          <DialogBody className="grid gap-4">
+          <DialogBody className="grid gap-4"><ModelFormFields model={model}>
             <div className="space-y-3">
               <div className="space-y-1">
-                <Label>公司编码</Label>
-                <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} disabled={!!editingId} placeholder="如：C001（编码不可修改）" />
+                <Label htmlFor="code">公司编码</Label>
+                <Input name="code" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} disabled={!!editingId} placeholder="如：C001（编码不可修改）" />
               </div>
               <div className="space-y-1">
-                <Label>公司名称</Label>
-                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="公司名称" />
+                <Label htmlFor="name">公司名称</Label>
+                <Input name="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="公司名称" />
               </div>
               {form.entityType === 'single' && (
                 <div className="space-y-1">
-                  <Label>公司简称 <span className="text-muted-foreground font-normal">（可选，用于界面简短显示）</span></Label>
-                  <Input value={form.shortName} onChange={(e) => setForm({ ...form, shortName: e.target.value })} placeholder="如：壹品慧" maxLength={100} />
+                  <Label htmlFor="shortName">公司简称 <span className="text-muted-foreground font-normal">（可选，用于界面简短显示）</span></Label>
+                  <Input name="shortName" value={form.shortName} onChange={(e) => setForm({ ...form, shortName: e.target.value })} placeholder="如：壹品慧" maxLength={100} />
                 </div>
               )}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <Label>类型</Label>
-                  <Select value={form.entityType} onValueChange={(v) => setForm({ ...form, entityType: v as 'single' | 'summary' })}>
+                  <Label htmlFor="entityType">类型</Label>
+                  <Select name="entityType" value={form.entityType} onValueChange={(v) => setForm({ ...form, entityType: v as 'single' | 'summary' })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="single">单体公司</SelectItem>
@@ -232,15 +239,16 @@ export function CompanyPanel({ canCreate = false, canUpdate = false, canDelete =
               </div>
               {error && <p className="text-xs text-destructive">{error}</p>}
             </div>
-          </DialogBody>
+          </ModelFormFields></DialogBody>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>取消</Button>
-            <Button onClick={submit} disabled={createCompany.isPending || updateCompany.isPending || !form.name.trim()}>
+            <Button variant="outline" onClick={formClose.requestClose}>取消</Button>
+            <Button onClick={model.submit(submit)} disabled={createCompany.isPending || updateCompany.isPending || !form.name.trim()}>
               {createCompany.isPending || updateCompany.isPending ? '保存中...' : '保存'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {formClose.element}</>
       {confirmElement}
     </div>
   )

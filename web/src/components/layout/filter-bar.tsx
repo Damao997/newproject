@@ -6,6 +6,8 @@ interface FilterBarProps {
   stickyTop?: number
   /** 单行不换行（账龄筛选行 1 等密集布局专用，勿滥用） */
   nowrap?: boolean
+  /** 页面动作归入当前筛选区，桌面右对齐，手机整行换行。 */
+  actions?: ReactNode
   className?: string
   children: ReactNode
 }
@@ -14,9 +16,10 @@ interface FilterBarProps {
  * 筛选区容器：统一控件间距（gap-3）与排列（可换行/吸顶）。
  * 控件自身高度由各控件 className 保证（统一 h-9），宽度优先引用 FILTER_WIDTH 语义常量（见 ./filter-width）。
  */
-export function FilterBar({ stickyTop, nowrap, className, children }: FilterBarProps) {
+export function FilterBar({ stickyTop, nowrap, actions, className, children }: FilterBarProps) {
   return (
     <div
+      data-filter-bar
       className={cn(
         'flex flex-wrap items-center gap-3',
         nowrap && 'flex-nowrap',
@@ -26,6 +29,7 @@ export function FilterBar({ stickyTop, nowrap, className, children }: FilterBarP
       style={stickyTop !== undefined ? { top: stickyTop } : undefined}
     >
       {children}
+      {actions && <div data-page-actions className="ml-auto flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">{actions}</div>}
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { PageContainer } from '@/components/layout/page-container'
 import { FilterBar } from '@/components/layout/filter-bar'
+import { StatTile } from '@/components/ui/stat-tile'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Pill } from '@/components/ui/pill'
@@ -23,7 +24,7 @@ import { CalendarDays, RefreshCw } from 'lucide-react'
 const EMPTY_CATEGORIES: InventoryCategoryRow[] = []
 
 /**
- * 存货管理页：顶部四维 KPI（总额/品类占比/No.1 品类/周转天数）+ 品类占比饼图 +
+ * 存货管理页：顶部四维 KPI（总额/品类占比/最大品类金额/周转天数）+ 品类占比饼图 +
  * 品类排名条形图 + 成员单体公司占比饼图 + 财年趋势卡 + 公司×品类明细表（含导出/单项分析）。
  * 筛选：公司/期间跟随顶部 Header 全局筛选（periodStore：companyCodes null/[] = 全部公司，
  * period 必填 YYYY-MM；inventory API 期间未选择时显示空态）；页面特有筛选（品类钻取/明细维度）
@@ -33,27 +34,11 @@ const EMPTY_CATEGORIES: InventoryCategoryRow[] = []
 // ───────────────────── KPI 磁贴（沿用设计稿视觉） ─────────────────────
 interface KpiTile {
   label: string
-  icon: string
   valueText: string
   unit: string
   tone: 'orange' | 'cyan' | 'violet' | 'green'
-  emphasis?: boolean
   chip: { direction: '↑' | '↓' | '→'; text: string; tone: 'up' | 'down' | 'flat' }
   foot: string
-}
-
-const TONE_PRE: Record<KpiTile['tone'], string> = {
-  orange: 'before:bg-orange-500',
-  cyan: 'before:bg-chart-8',
-  violet: 'before:bg-chart-11',
-  green: 'before:bg-success',
-}
-
-const TONE_ICON: Record<KpiTile['tone'], { bg: string; fg: string }> = {
-  orange: { bg: 'bg-orange-50', fg: 'text-orange-700' },
-  cyan: { bg: 'bg-[hsl(var(--chart-8)/0.12)]', fg: 'text-chart-8' },
-  violet: { bg: 'bg-[hsl(var(--chart-11)/0.12)]', fg: 'text-chart-11' },
-  green: { bg: 'bg-success-50', fg: 'text-success-strong' },
 }
 
 const CHIP_CLS: Record<'up' | 'down' | 'flat', string> = {
@@ -71,50 +56,11 @@ function rateChip(rate: number): KpiTile['chip'] {
     : { direction: '↓', text: `${Math.abs(rate).toFixed(1)}%`, tone: 'down' }
 }
 
-function StatTile({ tile }: { tile: KpiTile }) {
-  return (
-    <div
-      className={cn(
-        'relative flex flex-col gap-2 overflow-hidden rounded-lg border border-border bg-card p-5',
-        "before:absolute before:bottom-0 before:left-0 before:top-0 before:w-[3px] before:content-['']",
-        TONE_PRE[tile.tone],
-        tile.emphasis && 'border-orange-300 bg-gradient-to-br from-orange-100 to-orange-50',
-      )}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm text-secondary-foreground">{tile.label}</span>
-        <span
-          className={cn(
-            'inline-flex h-7 w-7 items-center justify-center rounded-md text-sm font-semibold',
-            TONE_ICON[tile.tone].bg,
-            TONE_ICON[tile.tone].fg,
-          )}
-        >
-          {tile.icon}
-        </span>
-      </div>
-      <div
-        className={cn(
-          'truncate font-mono text-[28px] font-semibold leading-tight tabular-nums',
-          tile.emphasis ? 'text-orange-600' : 'text-foreground',
-        )}
-      >
-        {tile.valueText}
-        {tile.unit && <span className="ml-1 text-sm font-normal text-muted-foreground">{tile.unit}</span>}
-      </div>
-      <div className="flex items-center gap-2 text-xs">
-        <span
-          className={cn(
-            'inline-flex h-5 items-center rounded-sm px-1.5 font-mono text-xs tabular-nums',
-            CHIP_CLS[tile.chip.tone],
-          )}
-        >
-          {tile.chip.direction} {tile.chip.text}
-        </span>
-        <span className="truncate text-muted-foreground">{tile.foot}</span>
-      </div>
-    </div>
-  )
+/** 存货指标复用全站多彩磁贴，业务读数和红涨绿跌保持原样。 */
+function InventoryStatTile({ tile }: { tile: KpiTile }) {
+  const tones = { orange: 1, cyan: 2, violet: 4, green: 3 } as const
+  return <StatTile label={tile.label} value={tile.valueText} unit={tile.unit} tone={tones[tile.tone]}
+    foot={<span className="flex flex-wrap items-center gap-2"><span className={cn('inline-flex rounded-lg px-2 py-1 font-num tabular-nums', CHIP_CLS[tile.chip.tone])}>{tile.chip.direction} {tile.chip.text}</span><span>{tile.foot}</span></span>} />
 }
 
 // ───────────────────── 主页面 ─────────────────────
@@ -162,7 +108,7 @@ export default function InventoryPage() {
   // 行级「分析」抽屉目标（明细表行内触发，构建上下文在 DetailTable 内完成）
   const [analysisTarget, setAnalysisTarget] = useState<AnalysisTarget | null>(null)
 
-  // ===== 四维 KPI：总额 / 品类占比 / No.1 品类 / 周转天数 =====
+  // ===== 四维 KPI：总额 / 品类占比 / 最大品类金额 / 周转天数 =====
   const kpiTiles = useMemo<KpiTile[]>(() => {
     const total = overviewQuery.data?.total
     const top = overviewQuery.data?.categories[0]
@@ -172,17 +118,14 @@ export default function InventoryPage() {
     return [
       {
         label: '库存总额',
-        icon: '¥',
         valueText: formatMoneyWan(total?.current ?? 0),
         unit: '万',
         tone: 'orange',
-        emphasis: true,
         chip: rateChip(vsYearStart),
         foot: '较年初',
       },
       {
         label: '品类占比',
-        icon: '%',
         valueText: top ? top.share.toFixed(1) : '-',
         unit: '%',
         tone: 'cyan',
@@ -190,8 +133,7 @@ export default function InventoryPage() {
         foot: '最大品类',
       },
       {
-        label: 'No.1 品类',
-        icon: '类',
+        label: '最大品类金额',
         valueText: top ? formatMoneyWan(top.current) : '-',
         unit: top ? '万' : '',
         tone: 'violet',
@@ -200,7 +142,6 @@ export default function InventoryPage() {
       },
       {
         label: '库存周转天数',
-        icon: '天',
         valueText: days && days.current > 0 ? days.current.toFixed(1) : '-',
         unit: '天',
         tone: 'green',
@@ -217,7 +158,6 @@ export default function InventoryPage() {
   return (
     <PageContainer
       title="存货管理"
-      description="覆盖品类占比、库存排名、公司分布与财年趋势 · 期间与财年跟随顶部导航选择"
       actions={
         <Button variant="outline" size="sm" disabled={anyFetching} onClick={() => { overviewQuery.refetch(); detailsQuery.refetch() }}>
           <RefreshCw className={cn('mr-1.5 h-3.5 w-3.5', anyFetching && 'animate-spin')} />
@@ -226,7 +166,7 @@ export default function InventoryPage() {
       }
     >
       {/* 筛选条：全局公司/期间已上收顶部 Header，此处仅保留明细条数反馈 */}
-      <Card className="rounded-card border border-border p-4">
+      <Card variant="filter" className="rounded-card border border-border p-4">
         <FilterBar>
           {period && <Pill tone="blue">明细 {detailRows.length} 条</Pill>}
         </FilterBar>
@@ -244,9 +184,9 @@ export default function InventoryPage() {
         <>
           {/* 四维 KPI 摘要行 */}
           {overviewQuery.isLoading ? (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="加载中">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4" aria-label="加载中">
               {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="skeleton h-[136px] rounded-lg border border-border" />
+                <div key={i} className="skeleton h-[150px] rounded-card border border-border" />
               ))}
             </div>
           ) : overviewQuery.isError ? (
@@ -256,9 +196,9 @@ export default function InventoryPage() {
               fetching={overviewQuery.isFetching}
             />
           ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {kpiTiles.map((t) => (
-                <StatTile key={t.label} tile={t} />
+                <InventoryStatTile key={t.label} tile={t} />
               ))}
             </div>
           )}

@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 const SEVERITY_STYLES: Record<string, string> = {
   error: 'text-destructive',
   warning: 'text-warning-strong',
-  info: 'text-info-strong',
+  info: 'text-info',
 }
 
 /**
@@ -41,16 +41,16 @@ export function AlertsCard() {
           </div>
         ) : alerts.length === 0 ? (
           <div className="flex h-24 items-center justify-center text-sm text-muted-foreground">
-            当前无未确认预警。
+            当前无未确认预警
           </div>
         ) : (
           <ul className="space-y-2">
             {alerts.slice(0, 8).map((a) => (
-              <li key={a.id} className="flex items-start gap-2 rounded-md border border-border/60 px-3 py-2">
+              <li key={a.id} data-severity={a.severity} className="alert-item flex items-start gap-3 rounded-xl px-3 py-3">
                 <TriangleAlert className={cn('mt-0.5 h-4 w-4 shrink-0', SEVERITY_STYLES[a.severity] ?? 'text-muted-foreground')} />
                 <div className="min-w-0">
-                  <p className={cn('truncate text-sm font-medium', SEVERITY_STYLES[a.severity] ?? '')}>{a.title}</p>
-                  {a.message && <p className="truncate text-xs text-muted-foreground">{a.message}</p>}
+                  <p className={cn('text-sm font-medium', SEVERITY_STYLES[a.severity] ?? '')}>{a.title}</p>
+                  {a.message && <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{a.message}</p>}
                 </div>
               </li>
             ))}

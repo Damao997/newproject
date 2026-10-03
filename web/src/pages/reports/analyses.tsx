@@ -14,12 +14,11 @@ export default function ReportsAnalysesPage() {
 
   return (
     <PageContainer
+      navigation={<SubPageTabs items={REPORTS_TABS} />}
       title="单项分析报告"
-      description="按公司 × 科目 × 期间撰写的单项分析集中管理，可被汇总报告实时引用"
       stickyHeader
       headerRef={headerRef}
     >
-      <SubPageTabs items={REPORTS_TABS} />
       <AnalysisManager stickyTop={headerHeight} />
     </PageContainer>
   )

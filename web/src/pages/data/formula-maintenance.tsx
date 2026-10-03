@@ -1,3 +1,6 @@
+import { useFormModel, useFormValue, ModelFormFields } from '@/components/forms/form-model'
+import { useFormClose } from '@/components/forms/form-navigation'
+import { useFormTask } from '@/components/forms/form-task'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -123,22 +126,31 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
 
   // 编辑
   const [editing, setEditing] = useState<CalcMetricRow | null>(null)
-  const [draftFormula, setDraftFormula] = useState('')
+  const editModel = useFormModel({draftFormula:('') as string,trialCompany:('all') as string,trialPeriod:('') as string,aiDesc:('') as string}, {})
+  const [draftFormula, setDraftFormula] = useFormValue(editModel, "draftFormula")
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [trialCompany, setTrialCompany] = useState('all')
+  const [trialCompany, setTrialCompany] = useFormValue(editModel, "trialCompany")
   // '' = 最新期间（自动），与 transactions OverviewTab 空串语义一致
-  const [trialPeriod, setTrialPeriod] = useState('')
+  const [trialPeriod, setTrialPeriod] = useFormValue(editModel, "trialPeriod")
   const [trialResult, setTrialResult] = useState<{ value: number | null; period: string | null; operands: { code: string; name: string; value: number }[] } | null>(null)
   const [showDeps, setShowDeps] = useState(false)
+  const trialSignature = JSON.stringify([editing?.id, draftFormula, trialCompany, trialPeriod])
+  const currentTrialSignature = useRef(trialSignature)
+  currentTrialSignature.current = trialSignature
+  useEffect(() => { setTrialResult(null) }, [trialSignature])
   // 新建（仅限科目体系内尚无指标记录的科目）
   const [createOpen, setCreateOpen] = useState(false)
-  const [createForm, setCreateForm] = useState({ subjectCode: '', formula: '' })
+  const createModel = useFormModel({ subjectCode: '', formula: '' }, {"subjectCode":"请选择科目"})
+  const createForm = createModel.values
+  const setCreateForm = createModel.setValues
   const [createError, setCreateError] = useState<string | null>(null)
   // 历史
   const [historyMetric, setHistoryMetric] = useState<CalcMetricRow | null>(null)
   // 类型转换（data → calc）
   const [convertOpen, setConvertOpen] = useState(false)
-  const [convertForm, setConvertForm] = useState({ id: '', formula: '' })
+  const convertModel = useFormModel({ id: '', formula: '' }, {"id":"请选择指标"})
+  const convertForm = convertModel.values
+  const setConvertForm = convertModel.setValues
   const [convertError, setConvertError] = useState<string | null>(null)
   const { confirm, element: confirmElement } = useConfirm()
   const [listError, setListError] = useState<string | null>(null)
@@ -148,6 +160,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
   // 导入公式（JSON）：选择公式导出文件，后端逐条校验更新，结果反馈
   const importFormulas = useImportFormulas()
   const importInputRef = useRef<HTMLInputElement>(null)
+  const importTask = useFormTask()
   const [formulaImportFlash, setFormulaImportFlash] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const handleImportFormulas = async (file: File) => {
     setFormulaImportFlash(null)
@@ -177,16 +190,23 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
   }
   // AI 生成公式（编辑对话框内）：自然语言描述 → 建议公式，可一键应用到公式输入框
   const generateFormula = useGenerateFormula()
-  const [aiDesc, setAiDesc] = useState('')
+  const [aiDesc, setAiDesc] = useFormValue(editModel, "aiDesc")
   const [aiResult, setAiResult] = useState<FormulaSuggestion | null>(null)
   const [aiError, setAiError] = useState<string | null>(null)
+  const aiSignature = JSON.stringify([editing?.id, aiDesc, subjectType])
+  const currentAiSignature = useRef(aiSignature)
+  currentAiSignature.current = aiSignature
+  useEffect(() => { setAiResult(null); setAiError(null) }, [aiSignature])
+  const aiTask = useFormTask()
   const handleAiFormula = async () => {
     if (!aiDesc.trim()) return
+    const signature = currentAiSignature.current
     setAiError(null)
     try {
-      setAiResult(await generateFormula.mutateAsync({ userDescription: aiDesc.trim(), subjectType }))
+      const result = await generateFormula.mutateAsync({ userDescription: aiDesc.trim(), subjectType })
+      if (currentAiSignature.current === signature) setAiResult(result)
     } catch (err) {
-      setAiError(err instanceof Error ? err.message : 'AI 生成失败，请稍后重试')
+      if (currentAiSignature.current === signature) setAiError(err instanceof Error ? err.message : 'AI 生成失败，请稍后重试')
     }
   }
   // 公式导出：fetch 接口返回 { code:0, data:[...] }，失败时展示错误信息（不再静默忽略）
@@ -323,7 +343,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
   // 已选期间不在候选（如财年切换）时回退跟随最新，与 transactions 各 Tab 防护一致
   useEffect(() => {
     if (trialPeriod !== '' && !trialPeriods.includes(trialPeriod)) setTrialPeriod('')
-  }, [trialPeriods, trialPeriod])
+  }, [trialPeriods, trialPeriod, setTrialPeriod])
 
   // 父级编码 → 直接子级的映射（用于结构聚合推荐）
   const childrenMap = useMemo(() => {
@@ -376,7 +396,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
   // ---------- 编辑 ----------
   const openEdit = (row: CalcMetricRow) => {
     setEditing(row)
-    setDraftFormula(row.formula ?? '')
+    editModel.form.reset({ draftFormula: row.formula ?? '', trialCompany: 'all', trialPeriod: '', aiDesc: '' })
     setSaveError(null)
     setTrialResult(null)
     setShowDeps(false)
@@ -464,14 +484,16 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
   const handleTrial = async () => {
     if (!draftFormula.trim()) return
     setTrialResult(null)
+    const requestSignature = currentTrialSignature.current
     try {
       const res = await trialCalc.mutateAsync({
         formula: draftFormula.trim(),
         companyCode: trialCompany === 'all' ? undefined : trialCompany,
         period: trialPeriod || undefined,
       })
-      setTrialResult(res)
+      if (requestSignature === currentTrialSignature.current) setTrialResult(res)
     } catch (err) {
+      if (requestSignature !== currentTrialSignature.current) return
       setTrialResult({ value: null, period: null, operands: [] })
       setSaveError(err instanceof Error ? err.message : '试算失败')
     }
@@ -581,6 +603,12 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
     },
   ]
 
+  const editModelClose = useFormClose({ dirty: editModel.form.formState.isDirty, busy: editModel.pending || updateMetric.isPending || trialCalc.isPending || generateFormula.isPending, enabled: !!editing, onClose: () => setEditing(null) })
+
+  const createModelClose = useFormClose({ dirty: createModel.form.formState.isDirty, busy: createModel.pending || createMetric.isPending || trialCalc.isPending, enabled: createOpen, onClose: () => setCreateOpen(false) })
+
+  const convertModelClose = useFormClose({ dirty: convertModel.form.formState.isDirty, busy: convertModel.pending || convertMetric.isPending, enabled: convertOpen, onClose: () => setConvertOpen(false) })
+
   return (
     <div className="space-y-4">
       {/* 筛选工具条（可折叠，折叠态摘要展示当前筛选值；操作按钮随内容区折叠，与数据预览筛选卡交互一致） */}
@@ -673,7 +701,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0]
-                  if (f) void handleImportFormulas(f)
+                  if (f) void importTask.run(() => handleImportFormulas(f))
                 }}
               />
             </>
@@ -705,16 +733,16 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
       <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onPageChange={setPage} />
 
       {/* 编辑公式对话框 */}
-      <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
+      <><Dialog open={!!editing} busy={editModel.pending || updateMetric.isPending || trialCalc.isPending || generateFormula.isPending} onOpenChange={(next) => { if (!next) editModelClose.requestClose() }}>
         <DialogContent className="max-h-[85vh] w-[calc(100vw-2rem)] overflow-y-auto overflow-x-hidden rounded-lg sm:w-full sm:max-w-2xl lg:max-w-3xl">
           <DialogHeader>
             <DialogTitle>编辑公式</DialogTitle>
             <DialogDescription>{editing ? `${editing.name}（${editing.code}）` : ''}</DialogDescription>
           </DialogHeader>
-          <DialogBody className="grid gap-4">
+          <DialogBody className="grid gap-4"><ModelFormFields model={editModel}>
             <div className="space-y-2">
-              <label className="text-sm font-medium">公式表达式</label>
-              <Input value={draftFormula} onChange={(e) => setDraftFormula(e.target.value)} placeholder="如：{PL0201} - {PL020101}" maxLength={500} />
+              <label htmlFor="draftFormula" className="text-sm font-medium">公式表达式</label>
+              <Input name="draftFormula" value={draftFormula} onChange={(e) => setDraftFormula(e.target.value)} placeholder="如：{PL0201} - {PL020101}" maxLength={500} />
               {draftFormula.trim() && (
                 <p className="text-xs text-muted-foreground">中文预览：{renderColoredFormula(draftFormula)}</p>
               )}
@@ -773,18 +801,18 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
 
             {/* AI 生成公式：自然语言描述 → 建议公式（可一键填入，保存前仍走后端校验） */}
             <div className="space-y-2 rounded-lg border border-dashed p-3">
-              <label className="flex items-center gap-1 text-sm font-medium">
+              <label htmlFor="aiDesc" className="flex items-center gap-1 text-sm font-medium">
                 <Sparkles className="h-4 w-4 text-primary" /> AI 生成公式
               </label>
               <div className="flex flex-wrap items-center gap-2">
-                <Input
+                <Input name="aiDesc"
                   value={aiDesc}
                   onChange={(e) => setAiDesc(e.target.value)}
                   placeholder="用自然语言描述计算口径，如：毛利率 = 毛利 / 收入"
                   className="min-w-[200px] flex-1"
                   maxLength={200}
                 />
-                <Button variant="outline" size="sm" onClick={handleAiFormula} disabled={generateFormula.isPending || !aiDesc.trim()}>
+                <Button variant="outline" size="sm" onClick={() => { void aiTask.run(handleAiFormula) }} disabled={generateFormula.isPending || !aiDesc.trim()}>
                   {generateFormula.isPending ? '生成中...' : '生成'}
                 </Button>
                 {aiResult?.suggestedFormula && (
@@ -809,7 +837,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
                 <Calculator className="h-4 w-4 text-primary" /> 公式试算
               </label>
               <div className="flex flex-wrap items-center gap-2">
-                <Select value={trialCompany} onValueChange={setTrialCompany}>
+                <Select name="trialCompany" value={trialCompany} onValueChange={setTrialCompany}>
                   <SelectTrigger className="w-full max-w-full sm:w-[200px]">
                     <SelectValue placeholder="选择公司" />
                   </SelectTrigger>
@@ -820,7 +848,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
                     ))}
                   </SelectContent>
                 </Select>
-                <Select value={trialPeriod} onValueChange={setTrialPeriod}>
+                <Select name="trialPeriod" value={trialPeriod} onValueChange={setTrialPeriod}>
                   <SelectTrigger className="w-full max-w-full sm:w-[150px]">
                     <SelectValue placeholder="期间" />
                   </SelectTrigger>
@@ -879,29 +907,29 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
                 </div>
               )
             })()}
-          </DialogBody>
+          </ModelFormFields></DialogBody>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditing(null)}>取消</Button>
-            <Button onClick={saveFormula} disabled={updateMetric.isPending}>
+            <Button variant="outline" onClick={editModelClose.requestClose}>取消</Button>
+            <Button onClick={editModel.submit(saveFormula)} disabled={updateMetric.isPending}>
               {updateMetric.isPending ? '保存中...' : '保存'}
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </Dialog>{editModelClose.element}</>
 
       {/* 新建指标对话框（前置条件：科目体系中存在同编码科目） */}
-      <Dialog open={createOpen} onOpenChange={(open) => !open && setCreateOpen(false)}>
+      <><Dialog open={createOpen} presentation="drawer" busy={createModel.pending || createMetric.isPending || trialCalc.isPending} onOpenChange={(next) => { if (!next) createModelClose.requestClose() }}>
         <DialogContent className="max-h-[85vh] w-[calc(100vw-2rem)] overflow-y-auto rounded-lg sm:w-full">
           <DialogHeader>
             <DialogTitle>新建计算指标</DialogTitle>
             <DialogDescription>从科目体系选择科目创建计算类指标，编码/名称/类别自动带出，可选填公式（后端校验）</DialogDescription>
           </DialogHeader>
-          <DialogBody className="grid gap-4">
+          <DialogBody className="grid gap-4"><ModelFormFields model={createModel}>
             <div className="space-y-2">
               <div className="space-y-1">
-                <label className="text-sm font-medium">选择科目</label>
-                <Select value={createForm.subjectCode} onValueChange={(code) => setCreateForm({ ...createForm, subjectCode: code })}>
+                <label htmlFor="subjectCode" className="text-sm font-medium">选择科目</label>
+                <Select name="subjectCode" value={createForm.subjectCode} onValueChange={(code) => setCreateForm((previous) => ({ ...previous, subjectCode: code }))}>
                   <SelectTrigger>
                     <SelectValue placeholder="选择科目体系内的科目" />
                   </SelectTrigger>
@@ -924,8 +952,8 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
                 })()}
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium">公式（可选）</label>
-                <Input value={createForm.formula} onChange={(e) => setCreateForm({ ...createForm, formula: e.target.value })} placeholder="如：{PL020101} / {PL02}" maxLength={500} />
+                <label htmlFor="formula" className="text-sm font-medium">公式（可选）</label>
+                <Input name="formula" value={createForm.formula} onChange={(e) => setCreateForm((previous) => ({ ...previous, formula: e.target.value }))} placeholder="如：{PL020101} / {PL02}" maxLength={500} />
                 {createForm.formula.trim() && (
                   <p className="text-xs text-muted-foreground">中文预览：{formatFormula(createForm.formula)}</p>
                 )}
@@ -954,28 +982,28 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
               </div>
               {createError && <p className="text-xs text-destructive">{createError}</p>}
             </div>
-          </DialogBody>
+          </ModelFormFields></DialogBody>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
-            <Button onClick={submitCreate} disabled={createMetric.isPending || !createForm.subjectCode}>
+            <Button variant="outline" onClick={createModelClose.requestClose}>取消</Button>
+            <Button onClick={createModel.submit(submitCreate)} disabled={createMetric.isPending || !createForm.subjectCode}>
               {createMetric.isPending ? '创建中...' : '创建'}
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </Dialog>{createModelClose.element}</>
 
       {/* 类型转换对话框（data → calc，高危） */}
-      <Dialog open={convertOpen} onOpenChange={(open) => !open && setConvertOpen(false)}>
+      <><Dialog open={convertOpen} presentation="drawer" busy={convertModel.pending || convertMetric.isPending} onOpenChange={(next) => { if (!next) convertModelClose.requestClose() }}>
         <DialogContent className="max-h-[85vh] w-[calc(100vw-2rem)] overflow-y-auto rounded-lg sm:w-full">
           <DialogHeader>
             <DialogTitle>数据类指标转为计算类</DialogTitle>
             <DialogDescription>选择一个数据类指标转换为计算类，可选填初始公式（后端校验并写入版本历史）。</DialogDescription>
           </DialogHeader>
-          <DialogBody className="grid gap-4">
+          <DialogBody className="grid gap-4"><ModelFormFields model={convertModel}>
             <div className="space-y-2">
               <div className="space-y-1">
-                <label className="text-sm font-medium">选择指标</label>
-                <Select value={convertForm.id} onValueChange={(id) => setConvertForm({ ...convertForm, id })}>
+                <label htmlFor="id" className="text-sm font-medium">选择指标</label>
+                <Select name="id" value={convertForm.id} onValueChange={(id) => setConvertForm((previous) => ({ ...previous, id }))}>
                   <SelectTrigger>
                     <SelectValue placeholder="选择数据类指标" />
                   </SelectTrigger>
@@ -990,8 +1018,8 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
                 {dataMetrics.length === 0 && <p className="text-xs text-muted-foreground">当前类型下没有可转换的数据类指标</p>}
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium">初始公式（可选）</label>
-                <Input value={convertForm.formula} onChange={(e) => setConvertForm({ ...convertForm, formula: e.target.value })} placeholder="如：{PL020101} / {PL02}" maxLength={500} />
+                <label htmlFor="formula" className="text-sm font-medium">初始公式（可选）</label>
+                <Input name="formula" value={convertForm.formula} onChange={(e) => setConvertForm((previous) => ({ ...previous, formula: e.target.value }))} placeholder="如：{PL020101} / {PL02}" maxLength={500} />
                 {convertForm.formula.trim() && (
                   <p className="text-xs text-muted-foreground">中文预览：{formatFormula(convertForm.formula)}</p>
                 )}
@@ -999,15 +1027,15 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
               <p className="text-xs text-muted-foreground">转换后该指标将参与公式计算体系；未填公式时可事后在列表中编辑。</p>
               {convertError && <p className="text-xs text-destructive">{convertError}</p>}
             </div>
-          </DialogBody>
+          </ModelFormFields></DialogBody>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConvertOpen(false)}>取消</Button>
-            <Button onClick={submitConvertToCalc} disabled={convertMetric.isPending || !convertForm.id}>
+            <Button variant="outline" onClick={convertModelClose.requestClose}>取消</Button>
+            <Button onClick={convertModel.submit(submitConvertToCalc)} disabled={convertMetric.isPending || !convertForm.id}>
               {convertMetric.isPending ? '转换中...' : '确认转换'}
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </Dialog>{convertModelClose.element}</>
 
       {/* 历史/回滚对话框 */}
       <HistoryDialog
