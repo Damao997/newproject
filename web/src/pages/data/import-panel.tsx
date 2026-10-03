@@ -1,4 +1,10 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useRetainedState } from '@/hooks/use-retained-state'
+import { useCallback, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Button } from '@/components/ui/button'
+import { WorkflowProgress, WorkflowSummary } from '@/components/forms/workflow'
+import { PageHeading } from '@/components/layout/page-heading'
+import { useFormNavigation } from '@/components/forms/form-navigation'
 import { usePermission } from '@/hooks/usePermission'
 import { useImports } from '@/hooks/api-queries'
 import { Card, CardContent } from '@/components/ui/card'
@@ -21,7 +27,8 @@ import { ChevronDown, ChevronRight, Grid3X3 } from 'lucide-react'
  * 保留折叠能力并沿用原 localStorage 偏好 key；
  * 分区三（往来导入覆盖，CoverageTab）：往来批次覆盖率矩阵（公司×期间×类型）。
  */
-export function ImportPanel() {
+export function ImportPanel({ workflow = false }: { workflow?: boolean }) {
+  const navigate = useNavigate()
   const { can } = usePermission()
   const canImport = can('data:import', 'upload')
   // 高危操作（仅 superadmin 持有对应权限码）
@@ -30,12 +37,12 @@ export function ImportPanel() {
   const canViewTransactions = can('transactions', 'view')
 
   // 批次筛选状态（'all' 哨兵 = 不过滤；四类条件互不影响，重置仅清空筛选）
-  const [batchFilterValue, setBatchFilterValue] = useState<BatchFilterValue>({
+  const [batchFilterValue, setBatchFilterValue] = useRetainedState<BatchFilterValue>(workflow ? 'import.workflow.filter' : 'import.list.filter', {
     module: 'all', status: 'all', startDate: '', endDate: '',
   })
   const handleBatchFilterChange = useCallback((patch: Partial<BatchFilterValue>) => {
     setBatchFilterValue((prev) => ({ ...prev, ...patch }))
-  }, [])
+  }, [setBatchFilterValue])
   const resetBatchFilters = useCallback(() => {
     setBatchFilterValue({ module: 'all', status: 'all', startDate: '', endDate: '' })
   }, [])
@@ -63,11 +70,16 @@ export function ImportPanel() {
   )
   const { data: importsData } = useImports(batchFilterParams)
   const flow = useImportFlow({ importsData })
+  useFormNavigation(workflow && !!flow.selectedFile, workflow && (flow.uploading || flow.previewing || flow.activating))
 
   return (
     <Card className="border border-border">
       {/* 分区一：数据导入（UploadZone：文件选择/拖放/模板类型/期间/预算覆盖/上传 + 预览结果 + 导入成功条） */}
-      <UploadZone
+      {workflow && <div className="space-y-4 p-6"><PageHeading>导入数据</PageHeading>
+        <WorkflowProgress steps={['选择文件', '核对预览', '导入与激活']} current={flow.uploadedInfo || flow.selectedBatch ? 2 : flow.previewResult || flow.mergedPreview ? 1 : 0} />
+        <WorkflowSummary items={[{ label: '文件', value: flow.selectedFile?.name ?? flow.uploadedInfo?.filename }, { label: '文件单位', value: flow.valueUnit === 'yuan' ? '元' : '万元' }, { label: '预算财年', value: flow.templateType === 'budget' ? flow.budgetFiscalYear : '按数据期间' }]} /></div>}
+      {!workflow && canImport && <div className="flex flex-wrap items-center gap-3 p-6"><Button className="h-11" onClick={() => navigate('/data/import/new')}>导入数据</Button><Button variant="outline" className="h-11" onClick={() => navigate('/data/import/new?kind=transaction')}>导入往来数据</Button></div>}
+      {workflow && <UploadZone
         canImport={canImport}
         templateType={flow.templateType}
         setTemplateType={flow.setTemplateType}
@@ -87,7 +99,7 @@ export function ImportPanel() {
         activating={flow.activating}
         uploadedInfo={flow.uploadedInfo}
         selectedBatch={flow.selectedBatch}
-        setImportOpen={flow.setImportOpen}
+        setImportOpen={(open) => { if (open) navigate('/data/import/new?kind=transaction') }}
         onFileSelect={flow.handleFileSelect}
         onDragOver={flow.handleDragOver}
         onDrop={flow.handleDrop}
@@ -95,10 +107,10 @@ export function ImportPanel() {
         onCancel={flow.handleCancel}
         onPreview={flow.handlePreview}
         onActivate={flow.handleActivate}
-      />
+      />}
 
       {/* 分区二：导入质量概览 + 完整性验证 + 异常明细（可折叠） */}
-      <div className={cn(canImport && 'border-t')}>
+      {(!workflow || flow.uploadedInfo || flow.selectedBatchIds.size > 0) && <div className={cn(canImport && 'border-t')}>
         <BatchPanel
           canImport={canImport}
           canArchive={canArchive}
@@ -112,7 +124,7 @@ export function ImportPanel() {
           qualityOpen={flow.qualityOpen}
           onQualityOpenChange={flow.handleQualityOpenChange}
           qualityStats={flow.qualityStats}
-          recentBatches={flow.recentBatches}
+          recentBatches={workflow ? flow.recentBatches.filter((batch) => batch.id === flow.selectedBatchId || flow.selectedBatchIds.has(batch.id)) : flow.recentBatches}
           selectedBatch={flow.selectedBatch}
           selectedBatchId={flow.selectedBatchId}
           setSelectedBatchId={flow.setSelectedBatchId}
@@ -136,10 +148,10 @@ export function ImportPanel() {
           onArchive={flow.handleArchive}
           onPurge={flow.handlePurgeBatch}
         />
-      </div>
+      </div>}
 
       {/* 分区三：往来导入覆盖（合并自往来分析「数据质量」目录；仅持有往来查看权限的用户可见） */}
-      {canViewTransactions && (
+      {canViewTransactions && !workflow && (
         <div className="border-t">
           <Collapsible
             open={flow.coverageOpen}

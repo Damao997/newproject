@@ -1,4 +1,8 @@
-import { useMemo, useState } from 'react'
+import { subjectFormSchema } from './form-schema'
+import { useFormModel, useFormValue, ModelFormFields } from '@/components/forms/form-model'
+import { useFormClose } from '@/components/forms/form-navigation'
+import { WorkflowProgress, WorkflowSummary } from '@/components/forms/workflow'
+import { useEffect, useRef, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -83,16 +87,17 @@ const ADJUST_MODE_LABEL: Record<AdjustMode, string> = {
  * 本年累计由查询时按财年实时聚合，自动反映调整结果。
  */
 export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = 'operating', defaultCompany, preset, readonly = false, meta, result, reapplyLogId }: ReclassifySubjectDialogProps) {
-  const [templateType, setTemplateType] = useState<string>(preset?.templateType ?? defaultTemplateType)
-  const [companyCode, setCompanyCode] = useState<string>(preset?.companyCode ?? defaultCompany ?? '')
-  const [adjustMode, setAdjustMode] = useState<AdjustMode>(preset?.adjustMode ?? 'both')
-  const [sourceAccountCode, setSourceAccountCode] = useState(preset?.sourceAccountCode ?? '')
-  const [targetAccountCode, setTargetAccountCode] = useState(preset?.targetAccountCode ?? '')
-  const [decreaseInput, setDecreaseInput] = useState(() => (preset?.decreaseAmount != null ? String(preset.decreaseAmount) : ''))
-  const [increaseInput, setIncreaseInput] = useState(() => (preset?.increaseAmount != null ? String(preset.increaseAmount) : ''))
-  const [period, setPeriod] = useState(preset?.period ?? '')
-  const [reason, setReason] = useState(preset?.reason ?? '')
-  const [reasonTouched, setReasonTouched] = useState(false)
+  const quantityCodes = useRef(new Set<string>())
+  const model = useFormModel({ reason: preset?.reason ?? '', period: preset?.period ?? '', increaseInput: (() => (preset?.increaseAmount != null ? String(preset.increaseAmount) : ''))(), decreaseInput: (() => (preset?.decreaseAmount != null ? String(preset.decreaseAmount) : ''))(), targetAccountCode: preset?.targetAccountCode ?? '', sourceAccountCode: preset?.sourceAccountCode ?? '', adjustMode: (preset?.adjustMode ?? 'both') as AdjustMode, companyCode: (preset?.companyCode ?? defaultCompany ?? '') as string, templateType: (preset?.templateType ?? defaultTemplateType) as string }, {}, subjectFormSchema((code) => quantityCodes.current.has(code)))
+  const [templateType, setTemplateType] = useFormValue(model, "templateType")
+  const [companyCode, setCompanyCode] = useFormValue(model, "companyCode")
+  const [adjustMode, setAdjustMode] = useFormValue(model, "adjustMode")
+  const [sourceAccountCode, setSourceAccountCode] = useFormValue(model, "sourceAccountCode")
+  const [targetAccountCode, setTargetAccountCode] = useFormValue(model, "targetAccountCode")
+  const [decreaseInput, setDecreaseInput] = useFormValue(model, "decreaseInput")
+  const [increaseInput, setIncreaseInput] = useFormValue(model, "increaseInput")
+  const [period, setPeriod] = useFormValue(model, "period")
+  const [reason, setReason] = useFormValue(model, "reason")
   const [preview, setPreview] = useState<PreviewData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
@@ -113,6 +118,8 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
     () => (subjectsData?.items ?? []).filter((s) => s.valueType !== 'ratio' && s.dataType !== 'calc' && s.dataType !== 'display'),
     [subjectsData],
   )
+
+  quantityCodes.current = new Set(subjectOptions.filter((subject) => subject.valueType === 'quantity').map((subject) => subject.code))
 
   // 已选科目的值类型：驱动单位文案/整数校验/分型格式化；both 模式源目标必须同型（候选互斥过滤）
   const sourceVt = subjectOptions.find((s) => s.code === sourceAccountCode)?.valueType ?? null
@@ -146,6 +153,10 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
     period,
     reason: reason.trim(),
   })
+
+  const previewSignature = useRef('')
+  const valueSignature = JSON.stringify(model.values)
+  useEffect(() => { setPreview(null) }, [valueSignature])
 
   const reset = () => {
     setPreview(null)
@@ -182,7 +193,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
     if (incSideQty && !Number.isInteger(inc)) return '数量类科目须为整数'
     return null
   })()
-  const reasonError = reasonTouched && !reason.trim() ? '请填写调整原因' : null
+  const reasonError = model.form.formState.errors.reason?.message
 
   const decValue = adjustMode === 'increase' || decreaseError || decreaseInput === '' ? 0 : Number(decreaseInput)
   const incValue = adjustMode === 'decrease' || increaseError || increaseInput === '' ? 0 : Number(increaseInput)
@@ -190,30 +201,13 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
   // 当前调整口径是否为数量类（increase 模式看目标侧，其余看源侧），驱动全局分型格式化
   const activeQty = adjustMode === 'increase' ? incSideQty : decSideQty
 
-  const validateBeforePreview = (): string | null => {
-    if (!companyCode) return '请选择公司'
-    if (adjustMode !== 'increase') {
-      if (!sourceAccountCode) return '请选择源科目'
-      if (decreaseInput === '' || decreaseError) return decreaseError ?? '请输入调减金额'
-    }
-    if (adjustMode !== 'decrease') {
-      if (!targetAccountCode) return '请选择目标科目'
-      if (increaseInput === '' || increaseError) return increaseError ?? '请输入调增金额'
-    }
-    if (adjustMode === 'both' && targetAccountCode === sourceAccountCode) return '源科目与目标科目不能相同'
-    if (!period) return '请选择调整期间（单月）'
-    return null
-  }
-
   const handlePreview = async () => {
     reset()
-    const invalid = validateBeforePreview()
-    if (invalid) {
-      setError(invalid)
-      return
-    }
+    const requestSignature = JSON.stringify(model.form.getValues())
     try {
       const res = await previewMutation.mutateAsync(buildPayload())
+      if (requestSignature !== JSON.stringify(model.form.getValues())) return
+      previewSignature.current = requestSignature
       setPreview(res)
     } catch (err) {
       setError(err instanceof Error ? err.message : '预览失败')
@@ -221,9 +215,9 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
   }
 
   const handleSubmit = async () => {
-    if (!preview || preview.affectedRows === 0) return
+    if (!preview || preview.affectedRows === 0 || previewSignature.current !== JSON.stringify(model.form.getValues())) return
     if (!reason.trim()) {
-      setReasonTouched(true)
+      model.form.setError('reason', { message: '请填写调整原因' }, { shouldFocus: true })
       setError('请填写调整原因')
       return
     }
@@ -286,8 +280,11 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
         ? '请填写调整原因'
         : null
 
+  const formBusy = model.pending || previewMutation.isPending || adjustMutation.isPending || reapplyMutation.isPending
+  const formClose = useFormClose({ dirty: !readonly && !done && model.form.formState.isDirty, busy: formBusy, enabled: open, onClose })
+
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={open} busy={formBusy} onOpenChange={(next) => { if (!next) formClose.requestClose() }}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-1.5">
@@ -302,10 +299,10 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
           {readonly && meta && <ReadonlyLogMeta meta={meta} />}
         </DialogHeader>
 
-        <DialogBody className="grid gap-4">
-          <div className="space-y-4">
+        <DialogBody className="grid gap-4"><ModelFormFields model={model}><fieldset disabled={formBusy} className="min-w-0 space-y-6 border-0 p-0">{!readonly && <><WorkflowProgress steps={['填写调整', '核对影响', '执行结果']} current={done ? 2 : preview ? 1 : 0} /><WorkflowSummary items={[{ label: '公司', value: entityCompanies.find((item) => item.code === companyCode)?.name }, { label: '期间', value: period }, { label: '数据范围', value: TEMPLATE_LABEL[templateType] }]} /></>}
+          <div className="space-y-4" data-stage={readonly ? undefined : done ? "result" : preview ? "review" : "edit"}>
             {/* ===== 数据范围 ===== */}
-            <section className="space-y-2">
+            <section data-input-section className="space-y-2">
               <SectionTitle>数据范围</SectionTitle>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
@@ -313,7 +310,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                   {readonly
                     ? <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">{TEMPLATE_LABEL[templateType] ?? templateType}</div>
                     : (
-                      <Select value={templateType} onValueChange={(v) => { setTemplateType(v); reset(); setSourceAccountCode(''); setTargetAccountCode('') }}>
+                      <Select name="templateType" value={templateType} onValueChange={(v) => { setTemplateType(v); reset(); setSourceAccountCode(''); setTargetAccountCode('') }}>
                         <SelectTrigger id="rs-template-type"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="operating">经营数据</SelectItem>
@@ -325,7 +322,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="rs-company">公司</Label>
-                  <Select value={companyCode} disabled={readonly} onValueChange={(v) => { setCompanyCode(v); reset() }}>
+                  <Select name="companyCode" value={companyCode} disabled={readonly} onValueChange={(v) => { setCompanyCode(v); reset() }}>
                     <SelectTrigger id="rs-company"><SelectValue placeholder="选择公司" /></SelectTrigger>
                     <SelectContent className="max-h-[280px]">
                       {entityCompanies.map((c) => (
@@ -335,12 +332,12 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <Label>调整期间（单月） <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="period">调整期间（单月） <span className="text-destructive">*</span></Label>
                   {readonly
                     ? <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">{period || '-'}</div>
                     : (
                       <>
-                        <MonthPicker className="w-full" value={period} onChange={(v) => { setPeriod(v); reset() }} availablePeriods={availablePeriods} placeholder="选择月份" />
+                        <MonthPicker name="period" className="w-full" value={period} onChange={(v) => { setPeriod(v); reset() }} availablePeriods={availablePeriods} placeholder="选择月份" />
                       </>
                     )}
                 </div>
@@ -348,11 +345,11 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
             </section>
 
             {/* ===== 调整设置：调整方式 + 按方式展示调减侧/调增侧 ===== */}
-            <section className="space-y-2">
+            <section data-input-section className="space-y-2">
               <SectionTitle>调整设置</SectionTitle>
               <div className="space-y-1">
                 <Label htmlFor="rs-adjust-mode">调整方式</Label>
-                <Select value={adjustMode} disabled={readonly} onValueChange={(v) => handleModeChange(v as AdjustMode)}>
+                <Select name="adjustMode" value={adjustMode} disabled={readonly} onValueChange={(v) => handleModeChange(v as AdjustMode)}>
                   <SelectTrigger id="rs-adjust-mode"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {(Object.keys(ADJUST_MODE_LABEL) as AdjustMode[]).map((m) => (
@@ -370,7 +367,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                     调减侧（源科目）
                   </p>
                   <div className="space-y-1">
-                    <Label>源科目 <span className="text-destructive">*</span></Label>
+                    <Label htmlFor="sourceAccountCode">源科目 <span className="text-destructive">*</span></Label>
                     {readonly
                       ? (sourceAccountCode
                           ? <div className="flex h-9 items-center gap-2 rounded-md border bg-muted/40 px-3 text-sm">
@@ -379,7 +376,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                             </div>
                           : <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground">-</div>)
                       : (
-                        <SubjectPicker
+                        <SubjectPicker name="sourceAccountCode"
                           options={sourceOptions}
                           value={sourceAccountCode}
                           onChange={(code) => { setSourceAccountCode(code); reset() }}
@@ -390,7 +387,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="rs-decrease">{decSideQty ? '调减数量（整数）' : '调减金额（万元）'} <span className="text-destructive">*</span></Label>
-                    <Input
+                    <Input name="decreaseInput"
                       id="rs-decrease"
                       type="number"
                       min={0}
@@ -402,7 +399,6 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                       className={cn('bg-background', decreaseError && 'border-destructive focus-visible:ring-destructive')}
                       onChange={(e) => { setDecreaseInput(e.target.value); reset() }}
                     />
-                    {decreaseError && <p className="text-xs text-destructive">{decreaseError}</p>}
                   </div>
                 </div>
                 )}
@@ -429,7 +425,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                     )}
                   </div>
                   <div className="space-y-1">
-                    <Label>目标科目 <span className="text-destructive">*</span></Label>
+                    <Label htmlFor="targetAccountCode">目标科目 <span className="text-destructive">*</span></Label>
                     {readonly
                       ? (targetAccountCode
                           ? <div className="flex h-9 items-center gap-2 rounded-md border bg-muted/40 px-3 text-sm">
@@ -438,7 +434,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                             </div>
                           : <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground">-</div>)
                       : (
-                        <SubjectPicker
+                        <SubjectPicker name="targetAccountCode"
                           options={targetOptions}
                           value={targetAccountCode}
                           onChange={(code) => { setTargetAccountCode(code); reset() }}
@@ -449,7 +445,7 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="rs-increase">{incSideQty ? '调增数量（整数）' : '调增金额（万元）'} <span className="text-destructive">*</span></Label>
-                    <Input
+                    <Input name="increaseInput"
                       id="rs-increase"
                       type="number"
                       min={0}
@@ -461,7 +457,6 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                       className={cn('bg-background', increaseError && 'border-destructive focus-visible:ring-destructive')}
                       onChange={(e) => { setIncreaseInput(e.target.value); reset() }}
                     />
-                    {increaseError && <p className="text-xs text-destructive">{increaseError}</p>}
                   </div>
                 </div>
                 )}
@@ -483,12 +478,12 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
             </section>
 
             {/* ===== 调整原因 ===== */}
-            <section className="space-y-1">
+            <section data-input-section className="space-y-1">
               <Label htmlFor="rs-reason">调整原因 <span className="text-destructive">*</span></Label>
               {readonly
                 ? <div className="min-h-9 rounded-md border bg-muted/40 px-3 py-2 text-sm">{reason || '-'}</div>
                 : (
-                  <Textarea
+                  <Textarea name="reason"
                     id="rs-reason"
                     rows={2}
                     placeholder="如：××科目 5 月数据重复计算，调减重复部分"
@@ -496,15 +491,13 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
                     aria-invalid={!!reasonError}
                     className={cn(reasonError && 'border-destructive focus-visible:ring-destructive')}
                     onChange={(e) => setReason(e.target.value)}
-                    onBlur={() => setReasonTouched(true)}
                   />
                 )}
-              {reasonError && <p className="text-xs text-destructive">{reasonError}</p>}
             </section>
 
             {/* ===== 执行结果（只读模式：还原当时的执行结果统计） ===== */}
             {readonly && result && result.length > 0 && (
-              <section className="space-y-2">
+              <section data-input-section className="space-y-2">
                 <SectionTitle>执行结果</SectionTitle>
                 <PreviewStats items={result} />
               </section>
@@ -528,18 +521,19 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
               </section>
             )}
           </div>
-        </DialogBody>
+        </fieldset></ModelFormFields></DialogBody>
 
         <DialogFooter>
+          {!readonly && preview && !done && <Button variant="outline" disabled={formBusy} onClick={reset}>返回修改</Button>}
           <div className="flex flex-1 items-center">
             {!readonly && submitDisabledReason && <span className="text-xs text-muted-foreground">{submitDisabledReason}</span>}
           </div>
-          <Button variant="outline" onClick={onClose}>关闭</Button>
-          {!readonly && (
+          <Button variant="outline" onClick={formClose.requestClose}>关闭</Button>
+          {!readonly && !done && (
             <>
               <Button
                 variant="outline"
-                onClick={handlePreview}
+                onClick={model.submit(handlePreview)}
                 disabled={
                   previewMutation.isPending || !companyCode || !period
                   || (adjustMode !== 'increase' && (!sourceAccountCode || !decreaseInput))
@@ -548,13 +542,14 @@ export function ReclassifySubjectDialog({ open, onClose, defaultTemplateType = '
               >
                 {previewMutation.isPending ? '预览中...' : '预览影响'}
               </Button>
-              <Button variant="destructive" onClick={handleSubmit} disabled={!preview || preview.affectedRows === 0 || !reason.trim() || adjustMutation.isPending || reapplyMutation.isPending}>
+              <Button variant="destructive" onClick={model.submit(handleSubmit)} disabled={!preview || preview.affectedRows === 0 || !reason.trim() || adjustMutation.isPending || reapplyMutation.isPending}>
                 {adjustMutation.isPending || reapplyMutation.isPending ? (reapplyLogId ? '重新应用中...' : '调整中...') : reapplyLogId ? '重新应用' : '执行调整'}
               </Button>
             </>
           )}
         </DialogFooter>
         {confirmElement}
+        {formClose.element}
       </DialogContent>
     </Dialog>
   )

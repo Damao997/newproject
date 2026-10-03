@@ -5,7 +5,7 @@ import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
 
-const base = process.env.RESPONSIVE_BASE_URL ?? 'http://127.0.0.1:5175'
+const base = process.env.RESPONSIVE_BASE_URL ?? 'http://127.0.0.1:5177'
 const output = fileURLToPath(new URL('../audit/responsive-layout/', import.meta.url))
 await mkdir(output, { recursive: true })
 const companies = [
@@ -119,6 +119,30 @@ async function checkDialog(page, name, screenshot) {
   return before
 }
 
+async function checkWorkflow(page, name, screenshot) {
+  const content = page.locator('.saas-workflow [data-dialog-content]')
+  await content.waitFor()
+  const heading = page.locator('.header-title-host h1')
+  await heading.waitFor()
+  assert.equal(await heading.getAttribute('id'), await page.locator('.saas-workflow').getAttribute('aria-labelledby'), name + '：流程标题关联失效')
+  const titleBox = await heading.evaluate((element) => ({ top: element.getBoundingClientRect().top, bottom: element.getBoundingClientRect().bottom, viewportHeight: innerHeight }))
+  assert(titleBox.top >= -1 && titleBox.bottom <= titleBox.viewportHeight + 1, name + '：顶栏标题不可见')
+  const before = await content.evaluate((element) => {
+    const box = element.getBoundingClientRect()
+    return { left: box.left, right: box.right, viewportWidth: innerWidth, bodyHeight: element.querySelector('[data-dialog-body]').scrollHeight }
+  })
+  assert(before.left >= -1 && before.right <= before.viewportWidth + 1, name + '：流程横向越界')
+  await content.locator(':scope > div').last().scrollIntoViewIfNeeded()
+  const footer = await content.locator(':scope > div').last().evaluate((element) => ({ bottom: element.getBoundingClientRect().bottom, viewportHeight: innerHeight }))
+  assert(footer.bottom <= footer.viewportHeight + 1, name + '：操作区不可达')
+  await page.screenshot({ path: resolve(output, screenshot) })
+  return { ...before, footer }
+}
+async function closeWorkflow(page) {
+  await page.getByRole('button', { name: '返回', exact: true }).click()
+  await page.getByRole('heading', { name: '单体重分类', exact: true }).waitFor()
+}
+
 async function closeDialogWithKeyboard(page) {
   // 下拉控件有自己的 Escape 行为；先把焦点放到弹窗关闭按钮，验证模态层关闭。
   await page.locator('[data-dialog-content]').getByRole('button', { name: /^关\s*闭$/ }).focus()
@@ -148,34 +172,35 @@ try {
     }
     await page.goto(base + '/data/reclassify')
     await page.getByRole('button', { name: '科目调整', exact: true }).click()
-    report.push({ size, dialog: '科目调整', geometry: await checkDialog(page, '科目调整', `subject-dialog-${size}.png`) })
-    await closeDialogWithKeyboard(page)
+    report.push({ size, dialog: '科目调整', geometry: await checkWorkflow(page, '科目调整', `subject-dialog-${size}.png`) })
+    await closeWorkflow(page)
     await page.getByRole('button', { name: '预算调整', exact: true }).click()
-    report.push({ size, dialog: '预算调整', geometry: await checkDialog(page, '预算调整', `budget-dialog-${size}.png`) })
-    await closeDialogWithKeyboard(page)
+    report.push({ size, dialog: '预算调整', geometry: await checkWorkflow(page, '预算调整', `budget-dialog-${size}.png`) })
+    await closeWorkflow(page)
     await page.getByRole('button', { name: '跨公司调整', exact: true }).click()
-    report.push({ size, dialog: '跨公司调整', geometry: await checkDialog(page, '跨公司调整', `company-dialog-${size}.png`) })
-    await closeDialogWithKeyboard(page)
+    report.push({ size, dialog: '跨公司调整', geometry: await checkWorkflow(page, '跨公司调整', `company-dialog-${size}.png`) })
+    await closeWorkflow(page)
     await page.getByRole('button', { name: '查看调整明细', exact: true }).first().click()
     report.push({ size, dialog: '只读详情', geometry: await checkDialog(page, '只读详情', `readonly-dialog-${size}.png`) })
     await closeDialogWithKeyboard(page)
     await page.getByRole('button', { name: '重新应用', exact: true }).first().click()
-    report.push({ size, dialog: '重新应用', geometry: await checkDialog(page, '重新应用', `reapply-dialog-${size}.png`) })
+    report.push({ size, dialog: '重新应用', geometry: await checkWorkflow(page, '重新应用', `reapply-dialog-${size}.png`) })
     if (viewport.width === 800) {
       scenario.preview = 'pending'
       await page.getByRole('button', { name: '预览影响', exact: true }).click()
       await page.getByRole('button', { name: '预览中...', exact: true }).waitFor()
-      report.push({ size, dialog: '预览加载中', geometry: await checkDialog(page, '预览加载中', `pending-dialog-${size}.png`) })
+      report.push({ size, dialog: '预览加载中', geometry: await checkWorkflow(page, '预览加载中', `pending-dialog-${size}.png`) })
       await page.getByRole('button', { name: '预览影响', exact: true }).waitFor()
-      report.push({ size, dialog: '预览完成', geometry: await checkDialog(page, '预览完成', `preview-dialog-${size}.png`) })
+      report.push({ size, dialog: '预览完成', geometry: await checkWorkflow(page, '预览完成', `preview-dialog-${size}.png`) })
+      await page.getByRole('button', { name: '返回修改', exact: true }).click()
       scenario.preview = 'error'
       await page.getByRole('button', { name: '预览影响', exact: true }).click()
       await page.getByText('模拟预览失败', { exact: true }).waitFor()
-      report.push({ size, dialog: '预览错误', geometry: await checkDialog(page, '预览错误', `error-dialog-${size}.png`) })
+      report.push({ size, dialog: '预览错误', geometry: await checkWorkflow(page, '预览错误', `error-dialog-${size}.png`) })
     }
     assert.deepEqual(errors, [], `${size}：浏览器运行错误`)
     await context.close()
-    console.log(`已通过 ${size}：4 个表格页面与新建、只读、重新应用弹窗`)
+    console.log(`已通过 ${size}：4 个表格页面与新建/重新应用整页流程、只读弹窗`)
   }
   await writeFile(resolve(output, 'report.json'), JSON.stringify(report, null, 2))
 } finally {

@@ -35,10 +35,10 @@ export type NavGroupKey = 'data' | 'tools' | 'management' | 'system'
 
 /** 侧边栏分组定义：title 用于渲染分组标题（uppercase + letter-spacing，参考 AntD ProLayout 风格） */
 export const NAV_GROUPS: { key: NavGroupKey; title: string }[] = [
-  { key: 'data', title: '主数据' },
-  { key: 'tools', title: '业务工具' },
-  { key: 'management', title: '数据管理' },
-  { key: 'system', title: '系统' },
+  { key: 'data', title: '经营分析' },
+  { key: 'tools', title: '业务管理' },
+  { key: 'management', title: '数据维护' },
+  { key: 'system', title: '系统管理' },
 ]
 
 /**
@@ -64,6 +64,7 @@ export const navItems: NavItem[] = [
     resource: 'dashboard:view',
     group: 'data',
     match: [
+      '/dashboard/analysis/core-metrics',
       '/dashboard/analysis/cash-flow',
       '/dashboard/analysis/receivable-aging',
       '/dashboard/analysis/inventory-aging',
@@ -84,7 +85,7 @@ export const navItems: NavItem[] = [
     label: '往来分析',
     icon: ArrowLeftRight,
     resource: 'transactions:view',
-    group: 'data',
+    group: 'tools',
     match: [
       '/transactions/aging',
       '/transactions/account-filter',
@@ -93,7 +94,7 @@ export const navItems: NavItem[] = [
       '/transactions/collections/salesmen',
     ],
   },
-  { path: '/inventory', label: '存货管理', icon: Package, resource: 'inventory:view', group: 'data' },
+  { path: '/inventory', label: '存货管理', icon: Package, resource: 'inventory:view', group: 'tools' },
   { path: '/reports', label: '分析报告', icon: FileText, resource: 'reports:view', group: 'data' },
   {
     path: '/tools/enterprise-lookup',

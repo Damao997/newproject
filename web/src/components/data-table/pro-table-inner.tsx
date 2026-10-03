@@ -120,8 +120,8 @@ export default function ProTableInner<T extends Record<string, unknown>>({
   return (
     // 浅灰圆角容器（与 DataTable 一致的视觉分割）：内层白底 + overflow-hidden 裁剪 antd 表格直角为圆角
     // 主题：由 App 根部 AntdProvider 统一提供（同配方上提，含 Table 组件级 token）
-    <div className="relative isolate min-w-0 max-w-full overflow-hidden rounded-card bg-muted/40 p-2">
-      <div className="overflow-hidden rounded-sm bg-background">
+    <div className="table-surface table-virtual relative isolate min-w-0 max-w-full overflow-hidden rounded-card">
+      <div className="table-scroll overflow-hidden bg-background">
         <ProTable<T>
           columns={proColumns}
           dataSource={data}

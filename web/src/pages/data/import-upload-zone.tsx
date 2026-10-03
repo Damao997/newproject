@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
@@ -87,6 +87,10 @@ export function UploadZone(props: UploadZoneProps) {
     onActivate,
   } = props
 
+  const fileInput = useRef<HTMLInputElement>(null)
+  const busy = uploading || previewing || activating
+  const configLocked = busy || !!uploadedInfo
+
   // 抽样预览表列（动态列：表头来自服务端文件表头，单元格统一 font-num 数字字体）
   const sampleColumns: DataTableColumn<(string | number)[]>[] = useMemo(() => {
     if (!previewResult?.sampleRows) return []
@@ -103,62 +107,37 @@ export function UploadZone(props: UploadZoneProps) {
       {/* 分区一：数据导入（紧凑布局：标题与模板工具栏同行 + 横向拖拽区） */}
       {canImport && (
         <div className="space-y-3 p-6 pb-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="flex items-center text-base font-semibold leading-none tracking-tight">
-              <FileSpreadsheet className="mr-2 h-5 w-5" />
-              数据导入
-            </span>
-            <span className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium">模板类型:</span>
-              <Select value={templateType} onValueChange={(v) => { setTemplateType(v); setPreviewResult(null) }}>
-                <SelectTrigger className="h-8 w-[160px] max-w-full shrink-0">
-                  <SelectValue placeholder="选择模板类型" />
-                </SelectTrigger>
+          <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-2">
+              <label htmlFor="import-template" className="text-sm font-medium">数据类型</label>
+              <Select id="import-template" disabled={configLocked} aria-label="模板类型" value={templateType} onValueChange={(v) => { setTemplateType(v); setPreviewResult(null) }}>
+                <SelectTrigger className="h-11 w-full"><SelectValue placeholder="选择数据类型" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="operating">经营数据</SelectItem>
-                  <SelectItem value="static">静态数据</SelectItem>
-                  <SelectItem value="cashflow">现金流量数据</SelectItem>
-                  <SelectItem value="budget">年度预算</SelectItem>
-                  <SelectItem value="merged">多表合并（经营/静态/现金流）</SelectItem>
-                  <SelectItem value="transaction">往来明细</SelectItem>
+                  <SelectItem value="operating">经营数据</SelectItem><SelectItem value="static">静态数据</SelectItem>
+                  <SelectItem value="cashflow">现金流量数据</SelectItem><SelectItem value="budget">年度预算</SelectItem>
+                  <SelectItem value="merged">多表合并（经营/静态/现金流）</SelectItem><SelectItem value="transaction">往来明细</SelectItem>
                 </SelectContent>
               </Select>
-              <span className="text-sm font-medium">数值单位:</span>
-              <Select value={valueUnit} onValueChange={(v) => { setValueUnit(v); setPreviewResult(null) }}>
-                <SelectTrigger className="h-8 w-[110px] max-w-full shrink-0">
-                  <SelectValue placeholder="数值单位" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="yuan">元</SelectItem>
-                  <SelectItem value="wan">万元</SelectItem>
-                </SelectContent>
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="import-unit" className="text-sm font-medium">文件金额单位</label>
+              <Select id="import-unit" disabled={configLocked} aria-label="数值单位" value={valueUnit} onValueChange={(v) => { setValueUnit(v); setPreviewResult(null) }}>
+                <SelectTrigger className="h-11 w-full"><SelectValue placeholder="金额单位" /></SelectTrigger>
+                <SelectContent><SelectItem value="yuan">元</SelectItem><SelectItem value="wan">万元</SelectItem></SelectContent>
               </Select>
-              {templateType === 'budget' && (
-                <>
-                  <span className="text-sm font-medium">目标财年:</span>
-                  <Select value={budgetFiscalYear} onValueChange={(v) => { setBudgetFyOverride(v); setPreviewResult(null) }}>
-                    <SelectTrigger className="h-8 w-[110px] max-w-full shrink-0">
-                      <SelectValue placeholder="选择财年" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {fyOptions.map((fy) => (
-                        <SelectItem key={fy} value={fy}>{fy}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </>
-              )}
-              {templateType !== 'transaction' && templateType !== 'merged' && (
-                <Button variant="outline" size="sm" className="shrink-0" onClick={() => {
-                  downloadImportTemplate(templateType as 'operating' | 'static' | 'cashflow' | 'budget').catch((e) => {
-                    setFileError(e instanceof Error ? e.message : '模板下载失败')
-                  })
-                }}>
-                  <Download className="mr-2 h-4 w-4" />
-                  下载模板
-                </Button>
-              )}
-            </span>
+            </div>
+            {templateType === 'budget' && <div className="space-y-2">
+              <label htmlFor="import-year" className="text-sm font-medium">目标财年</label>
+              <Select id="import-year" disabled={configLocked} aria-label="目标财年" value={budgetFiscalYear} onValueChange={(v) => { setBudgetFyOverride(v); setPreviewResult(null) }}>
+                <SelectTrigger className="h-11 w-full"><SelectValue placeholder="选择财年" /></SelectTrigger>
+                <SelectContent>{fyOptions.map((fy) => <SelectItem key={fy} value={fy}>{fy}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>}
+            {templateType !== 'transaction' && templateType !== 'merged' && <Button variant="outline" className="h-11" onClick={() => {
+              downloadImportTemplate(templateType as 'operating' | 'static' | 'cashflow' | 'budget').catch((e) => {
+                setFileError(e instanceof Error ? e.message : '模板下载失败')
+              })
+            }}><Download className="mr-2 h-4 w-4" />下载模板</Button>}
           </div>
 
           {templateType === 'transaction' ? (
@@ -167,9 +146,9 @@ export function UploadZone(props: UploadZoneProps) {
               <Upload className="h-6 w-6 shrink-0 text-muted-foreground" />
               <div className="min-w-0 flex-1">
                 <p className="text-sm text-muted-foreground">上传六大往来账龄报表（按账龄汇总表解析，支持多文件，最多 12 个）</p>
-                <p className="text-xs text-muted-foreground">ERP 导出的 CUX_AR/AP 账龄报表（.xls/.xlsx），按 Sheet 名自动识别 应收/其他应收/预收/应付/其他应付/预付</p>
+                <p className="text-xs text-muted-foreground">支持 .xls / .xlsx，按工作表名称识别数据类型</p>
               </div>
-              <Button size="sm" className="shrink-0" onClick={() => setImportOpen(true)}>
+              <Button className="h-11 shrink-0" onClick={() => setImportOpen(true)}>
                 <Upload className="mr-2 h-4 w-4" />
                 选择文件上传
               </Button>
@@ -178,25 +157,21 @@ export function UploadZone(props: UploadZoneProps) {
             <div
               className="flex flex-wrap items-center gap-3 rounded-lg border-2 border-dashed border-muted-foreground/25 p-3 transition-colors hover:border-primary/50 hover:bg-muted/50"
               onDragOver={onDragOver}
-              onDrop={onDrop}
+              onDrop={(event) => { if (!busy) onDrop(event); else event.preventDefault() }}
             >
               <Upload className="h-6 w-6 shrink-0 text-muted-foreground" />
               <div className="min-w-0 flex-1">
                 <p className="text-sm text-muted-foreground">拖拽 .xlsx 文件到此处，或点击选择文件</p>
-                <p className="text-xs text-muted-foreground">支持 .xlsx / .xls，最大 50MB</p>
+                <p className="text-xs text-muted-foreground">支持 .xlsx / .xls，最大 200MB</p>
               </div>
-              <input type="file" accept=".xlsx,.xls" className="hidden" id="file-upload" onChange={onFileSelect} />
-              <label htmlFor="file-upload" className="shrink-0">
-                <Button variant="outline" size="sm" asChild>
-                  <span>选择文件</span>
-                </Button>
-              </label>
+              <input ref={fileInput} disabled={busy} type="file" accept=".xlsx,.xls" className="hidden" id="file-upload" onChange={onFileSelect} />
+              <Button variant="outline" className="h-11" disabled={busy} onClick={() => fileInput.current?.click()}>选择文件</Button>
             </div>
           )}
 
           {/* 模块边界：往来批次与经营/静态/预算批次统一在本页管理，激活入口两处任一可用 */}
           <p className="text-xs text-muted-foreground">
-            文件金额单位为「元」时入库自动 ÷10000 转换为万元存储（往来账龄报表为 ERP 原值，默认按元存储）；往来批次与经营/静态/预算批次统一在下方「导入质量概览」列表管理，可在本页或往来分析「导入覆盖」页激活。
+            选择文件的实际金额单位。导入后生成草稿批次，激活后数据才会生效。
           </p>
 
           {fileError && (
@@ -211,18 +186,18 @@ export function UploadZone(props: UploadZoneProps) {
               <div className="flex min-w-0 flex-1 items-center space-x-3">
                 <FileSpreadsheet className="h-6 w-6 shrink-0 text-success" />
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{selectedFile.name}</p>
+                  <p title={selectedFile.name} className="truncate text-sm font-medium">{selectedFile.name}</p>
                   <p className="text-xs text-muted-foreground">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
                 </div>
               </div>
-              <div className="flex shrink-0 items-center space-x-2">
-                <Button variant="ghost" size="sm" title="移除文件" onClick={onCancel}>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="ghost" size="sm" title="移除文件" aria-label="移除文件" disabled={busy} onClick={onCancel}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
-                <Button variant="outline" size="sm" onClick={onPreview} disabled={previewing}>
+                <Button variant="outline" className="h-11 min-w-[104px]" onClick={onPreview} disabled={busy}>
                   {previewing ? '预览中...' : '预览校验'}
                 </Button>
-                <Button size="sm" onClick={onUpload} disabled={uploading}>
+                <Button className="h-11 min-w-[104px]" onClick={onUpload} disabled={busy}>
                   {uploading ? '导入中...' : '确认导入'}
                 </Button>
               </div>
@@ -231,7 +206,7 @@ export function UploadZone(props: UploadZoneProps) {
 
           {templateType === 'merged' && mergedPreview && (
             <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
-              <p className="text-sm font-medium">多表合并预览校验结果（未写入，按 Sheet 类型分桶）</p>
+              <p className="text-sm font-medium">多表核对结果（未导入）</p>
               {mergedPreview.ignoredSheets.length > 0 && (
                 <p className="text-xs text-warning-strong">
                   未识别 Sheet（已忽略）：{mergedPreview.ignoredSheets.join('、')}。识别规则：Sheet 名须为「经营数据/静态数据/现金流量数据」或以「经营/静态/现金流」开头。
@@ -266,7 +241,7 @@ export function UploadZone(props: UploadZoneProps) {
 
           {previewResult && (
             <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
-              <p className="text-sm font-medium">预览校验结果（未写入）</p>
+              <p className="text-sm font-medium">核对结果（未导入）</p>
               {templateType === 'budget' && (
                 <p className="text-xs text-muted-foreground">
                   本文件年度预算将按「{budgetFiscalYear}」财年入库，激活后将替换该财年已生效预算。
@@ -431,7 +406,7 @@ export function UploadZone(props: UploadZoneProps) {
                   caption="导入校验错误明细"
                 />
               )}
-              <p className="text-xs text-muted-foreground">确认无误后点击“确认导入”正式写入。</p>
+              <p className="text-xs text-muted-foreground">确认导入后仍需单独激活。</p>
             </div>
           )}
 

@@ -32,6 +32,7 @@ export function NavLeafLink({
       to={item.path}
       onClick={onNavigate}
       className={cn(linkBase, isActive ? linkActive : linkIdle, collapsed && 'justify-center px-2')}
+      aria-label={item.label}
       aria-current={isActive ? 'page' : undefined}
     >
       <item.icon className={linkIcon} />

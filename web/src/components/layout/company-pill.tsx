@@ -1,112 +1,81 @@
-import { useMemo } from 'react'
-import { Building2, ChevronDown, Info } from 'lucide-react'
-import { message, Tooltip } from 'antd'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { CompanyMultiSelect } from '@/components/filters/company-select'
-import { usePeriodStore } from '@/stores/periodStore'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Building2, ChevronDown, Search, Star, X } from 'lucide-react'
 import { useCompanies } from '@/hooks/api-queries'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
+import { usePeriodStore } from '@/stores/periodStore'
+import { usePreferencesStore } from '@/stores/preferencesStore'
 import { resolveExclusiveCompanies } from '@/hooks/use-exclusive-company-filter'
-import { cn } from '@/lib/utils'
+import { HeaderFilterPanel } from './header-filter-panel'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { message } from 'antd'
+import type { InputRef } from 'antd'
 
-/**
- * 顶栏公司胶囊（与 PeriodPill 同构形态）：
- * 触发器为 `Building2 + 文本 + ChevronDown` 的 h-8 圆角胶囊，点击展开公司多选面板；
- * 写入选中项至 periodStore（companyCodes：null = 全部公司的明确语义）。
- *
- * 数据流：
- * - useCompanies 拉取公司主数据（单体/汇总分组选项内置于 CompanyMultiSelect）
- * - 主体互斥规则（单体 vs 汇总主体互斥、汇总最多一个）由 resolveExclusiveCompanies 纯函数执行，
- *   冲突提示采用 antd message 轻提示：不依赖面板开关状态（面板内提示在面板关闭后不可见），且与
- *   页面侧 FlashMessage 形态解耦，避免同一规则两处提示实现漂移。
- *
- * 加载/失败/空数据态：与 PeriodPill 同风格（骨架 / 占位文案），避免「功能不见了」的困惑。
- */
 export function CompanyPill() {
-  const companyCodes = usePeriodStore((s) => s.companyCodes)
-  const setCompanyCodes = usePeriodStore((s) => s.setCompanyCodes)
-  const { data: companies, isPending, isError } = useCompanies()
-  const { displayNameMap } = useCompanyDisplayName()
-
-  // 互斥处理：prev 取 store 当前值（null 视为未选），冲突时修剪并轻提示
-  const handleChange = (next: string[]) => {
-    const result = resolveExclusiveCompanies({
-      companies,
-      prev: usePeriodStore.getState().companyCodes ?? [],
-      next,
-    })
-    setCompanyCodes(result.next)
-    if (result.notice) message.info(result.notice)
+  const query = useCompanies()
+  const { getDisplayName: getName } = useCompanyDisplayName()
+  const selected = usePeriodStore(s => s.companyCodes) ?? []
+  const preferences = usePreferencesStore(s => s.preferences)
+  const saving = usePreferencesStore(s => s.saving)
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState<string[]>([])
+  const [search, setSearch] = useState('')
+  const [notice, setNotice] = useState<string | null>(null)
+  const searchRef = useRef<InputRef>(null)
+  const companies = query.data ?? []
+  const changeOpen = useCallback((next: boolean) => {
+    if (next) { setDraft(usePeriodStore.getState().companyCodes ?? []); setSearch(''); setNotice(null) }
+    setOpen(next)
+  }, [])
+  useEffect(() => {
+    if (!query.data) return
+    const codes = usePeriodStore.getState().companyCodes
+    if (codes?.some(code => !query.data.some(company => company.code === code))) {
+      usePeriodStore.getState().setCompanyCodes(codes.filter(code => query.data.some(company => company.code === code)))
+    }
+  }, [query.data])
+  useEffect(() => { if (!open) return; const timer = setTimeout(() => searchRef.current?.focus(), 50); return () => clearTimeout(timer) }, [open])
+  const change = (next: string[]) => {
+    const result = resolveExclusiveCompanies({ companies, prev: draft, next })
+    setDraft(result.next); setNotice(result.notice)
   }
-
-  // 快捷操作：全选单体公司（避开互斥冲突；全选全部会混入汇总主体被规则修剪，无意义）
-  const selectAllEntities = () => {
-    if (companies) handleChange(companies.filter((c) => c.type === 'entity').map((c) => c.code))
+  const favorite = async (code: string) => {
+    setNotice(null)
+    const current = usePreferencesStore.getState().preferences.favoriteCompanies
+    try { await usePreferencesStore.getState().save({ favoriteCompanies: current.includes(code) ? current.filter(c => c !== code) : [...current, code] }) }
+    catch (cause) { const text = cause instanceof Error ? cause.message : '常用公司保存失败，请重试'; setNotice(text); message.error(text) }
   }
-
-  const label = useMemo(() => {
-    if (!companyCodes || companyCodes.length === 0) return '全部公司'
-    if (companyCodes.length === 1) return displayNameMap.get(companyCodes[0]) ?? companyCodes[0]
-    return `${companyCodes.length} 家公司`
-  }, [companyCodes, displayNameMap])
-
-  if (!companies || companies.length === 0) {
-    return isPending ? (
-      <div className="h-8 w-[140px] animate-pulse rounded-md bg-muted" />
-    ) : isError ? (
-      <span className="text-sm text-muted-foreground" title="公司加载失败">公司加载失败</span>
-    ) : (
-      <span className="text-sm text-muted-foreground" title="导入公司主数据后，可筛选公司范围">暂无公司</span>
-    )
-  }
-
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label="选择公司"
-          title={`当前公司范围：${label}`}
-          className={cn(
-            'inline-flex h-8 items-center gap-2 rounded-md border border-border/60 bg-muted/50 px-3 text-sm text-foreground transition-colors',
-            'hover:bg-muted',
-          )}
-        >
-          <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="max-w-[160px] truncate font-medium">{label}</span>
-          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="start" sideOffset={6} className="w-[300px] p-3">
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <label className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
-              公司范围
-              {/* 规则说明改为 hover 展示（antd Tooltip），避免面板内长文案占位 */}
-              <Tooltip title="影响看板/指标/数据浏览的公司范围；单体公司与汇总主体不能同时筛选，汇总主体仅可选择一个。">
-                <Info className="h-3 w-3 cursor-help text-muted-foreground/70" aria-label="公司范围规则说明" />
-              </Tooltip>
-            </label>
-            <CompanyMultiSelect value={companyCodes ?? []} onChange={handleChange} className="w-full" />
-          </div>
-          <div className="flex items-center gap-4 border-t border-border/60 pt-2">
-            <button
-              type="button"
-              className="text-xs text-muted-foreground hover:text-foreground"
-              onClick={selectAllEntities}
-            >
-              全选实体
-            </button>
-            <button
-              type="button"
-              className="text-xs text-muted-foreground hover:text-foreground"
-              onClick={() => setCompanyCodes(null)}
-            >
-              全部（清空）
-            </button>
-          </div>
-        </div>
-      </PopoverContent>
-    </Popover>
-  )
+  const filtered = companies.filter(company => [company.name, company.shortName, company.code].some(value => value?.toLowerCase().includes(search.trim().toLowerCase())))
+  const groups = [
+    { label: '常用公司', rows: filtered.filter(company => preferences.favoriteCompanies.includes(company.code)) },
+    { label: '单体公司', rows: filtered.filter(company => company.type === 'entity' && !preferences.favoriteCompanies.includes(company.code)) },
+    { label: '汇总主体', rows: filtered.filter(company => company.type === 'summary' && !preferences.favoriteCompanies.includes(company.code)) },
+  ]
+  const label = selected.length === 0 ? '全部可见公司' : selected.length === 1 ? getName(selected[0]) : selected.length + ' 家公司'
+  return <HeaderFilterPanel open={open} onOpenChange={changeOpen} title="选择公司范围"
+    trigger={<button type="button" className="header-filter-trigger" aria-label="选择公司范围" aria-expanded={open} title={label}><Building2 className="h-4 w-4" /><span className="truncate">{label}</span><ChevronDown className="h-3.5 w-3.5" /></button>}
+    footer={<><span className="text-xs text-muted-foreground">{draft.length ? '已选 ' + draft.length + ' 家' : '全部授权范围'}</span><div className="flex gap-2"><Button variant="outline" size="sm" onClick={() => changeOpen(false)}>取消</Button><Button size="sm" disabled={query.isPending || query.isError || !companies.length} onClick={() => {
+      usePeriodStore.getState().setCompanyCodes(draft.filter(code => companies.some(c => c.code === code))); changeOpen(false)
+    }}>应用</Button></div></>}>
+    <div className="space-y-3"><Input ref={searchRef} aria-label="搜索公司" placeholder="搜索名称、简称或编码" value={search} className="h-9"
+      prefix={<Search className="h-4 w-4" />} onChange={event => setSearch(event.target.value)}
+      suffix={search && <button type="button" aria-label="清除公司搜索" className="p-1 text-muted-foreground hover:text-foreground" onClick={() => { setSearch(''); searchRef.current?.focus() }}><X className="h-3.5 w-3.5" /></button>} />
+      <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={query.isPending || query.isError} onClick={() => change(companies.filter(c => c.type === 'entity').map(c => c.code))}>全选单体公司</Button>
+        <Button size="sm" variant="ghost" onClick={() => change([])}>全部可见公司</Button></div>
+      <p className="text-xs text-muted-foreground">{draft.length ? draft.map(code => getName(code)).join('、') : '当前不限制公司，展示全部授权范围'}</p>
+      {notice && <p role="status" className="rounded-xl bg-muted p-3 text-sm">{notice}</p>}
+    </div>
+    <div className="company-option-list">
+      {query.isPending ? <p role="status">正在加载公司…</p> : query.isError ? <div role="alert"><p>公司加载失败</p><Button variant="outline" size="sm" onClick={() => { void query.refetch() }}>重试</Button></div>
+      : !companies.length ? <p className="text-sm text-muted-foreground">暂无可选公司</p> : !filtered.length ? <p className="text-sm text-muted-foreground">没有匹配的公司，请尝试简称或编码</p>
+      : groups.filter(group => group.rows.length).map(group => <section key={group.label}><h3 className="company-group-label">{group.label}</h3>{group.rows.map(company => <div key={company.code} className={'company-option ' + (draft.includes(company.code) ? 'is-selected' : '')}>
+        <Checkbox checked={draft.includes(company.code)} onCheckedChange={checked => change(checked ? [...draft, company.code] : draft.filter(code => code !== company.code))}>
+          <span className="company-option-name">{getName(company.code)}</span><span className="company-option-code">{company.code}{company.type === 'summary' ? ' · 汇总' : ''}</span>
+        </Checkbox>
+        <button type="button" disabled={saving} aria-label={(preferences.favoriteCompanies.includes(company.code) ? '取消常用：' : '设为常用：') + company.name}
+          aria-pressed={preferences.favoriteCompanies.includes(company.code)} className="company-favorite" onClick={() => { void favorite(company.code) }}><Star className="h-4 w-4" fill={preferences.favoriteCompanies.includes(company.code) ? 'currentColor' : 'none'} /></button>
+      </div>)}</section>)}
+    </div>
+  </HeaderFilterPanel>
 }

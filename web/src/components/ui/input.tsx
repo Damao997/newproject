@@ -1,5 +1,6 @@
 import * as React from "react"
 import { Input as AntdInput } from "antd"
+import { useModelAdapter } from '@/components/forms/form-model'
 import { cn } from "@/lib/utils"
 import { antdSizeFromClassName } from "./antd-size"
 
@@ -18,6 +19,13 @@ export interface InputProps
  */
 const Input = React.forwardRef<React.ComponentRef<typeof AntdInput>, InputProps>(
   ({ className, type, prefix, suffix, ...props }, ref) => {
+    const adapter = useModelAdapter()
+    if (adapter && props.name) return adapter.render(props.name, (field) => <><AntdInput {...props} id={props.id ?? props.name} disabled={props.disabled || field.disabled} type={type} prefix={prefix} suffix={suffix}
+      ref={(instance) => { field.ref(instance); if (typeof ref === 'function') ref(instance); else if (ref) ref.current = instance }}
+      size={antdSizeFromClassName(className, 'large')} className={cn('text-sm', className)} aria-invalid={field.invalid} status={field.invalid ? 'error' : undefined}
+      aria-describedby={field.message ? (props.id ?? props.name) + '-error' : props['aria-describedby']}
+      onBlur={(event) => { field.onBlur(); props.onBlur?.(event) }} />
+      {field.message && <p id={(props.id ?? props.name) + '-error'} className="mt-1 text-xs text-danger">{field.message}</p>}</>)
     return (
       <AntdInput
         ref={ref}

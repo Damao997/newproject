@@ -1,15 +1,15 @@
+import { useFormModel, useFormValue, ModelFormFields } from '@/components/forms/form-model'
 import { useEffect, useRef, useState } from 'react'
-import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { AlertCircle, Eye, EyeOff } from 'lucide-react'
 import { api } from '@/lib/api'
-import { getCurrentVersion } from '@/lib/app-version'
-import { resolveHomePath } from '@/lib/permissions'
 
 /** 记住用户名：仅本地保存用户名（凭证不落盘） */
 const REMEMBER_KEY = 'login-remembered-username'
@@ -21,36 +21,15 @@ const REMEMBER_KEY = 'login-remembered-username'
 const DEMO_ERROR_TEXT = '账号或密码错误，还可重试 4 次（演示态）'
 const DEMO_HINT_TEXT = '首次登录或密码过期将被引导到修改密码流程'
 
-/** 版本标签：生产读构建注入的 app-version meta（v2026.09.1 → V2026.09.1）；开发态无 meta 显示 DEV */
-const VERSION_LABEL = (() => {
-  const v = getCurrentVersion()
-  return v === 'dev' ? 'DEV' : `V${v.replace(/^v/, '')}`
-})()
-
-interface FieldErrors {
-  username?: string
-  password?: string
-}
-
-function validateUsername(value: string): string | undefined {
-  if (!value.trim()) return '请输入用户名'
-  return undefined
-}
-
-function validatePassword(value: string): string | undefined {
-  if (!value) return '请输入密码'
-  return undefined
-}
-
 export default function LoginPage() {
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [rememberMe, setRememberMe] = useState(false)
+  const model = useFormModel({ username: '', password: '', rememberMe: false }, { username: '请输入用户名', password: '请输入密码' })
+  const [username, setUsername] = useFormValue(model, 'username')
+  const [password, setPassword] = useFormValue(model, 'password')
+  const [rememberMe, setRememberMe] = useFormValue(model, 'rememberMe')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
-  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
-  const [touched, setTouched] = useState<{ username?: boolean; password?: boolean }>({})
+  const fieldErrors = { username: model.form.formState.errors.username?.message, password: model.form.formState.errors.password?.message }
   const [capsLockOn, setCapsLockOn] = useState(false)
   // 防抖：提交进行中时拦截重复提交（Enter 连按 / 双击按钮 / 自动续登期间避免手动表单覆盖）
   const submittingRef = useRef(false)
@@ -58,10 +37,12 @@ export default function LoginPage() {
   const autoLoggingInRef = useRef(false)
 
   const navigate = useNavigate()
+  const location = useLocation()
+  const requestedPath = (location.state as { returnTo?: unknown } | null)?.returnTo
+  const loginTarget = typeof requestedPath === 'string' && requestedPath.startsWith('/') && !requestedPath.startsWith('//') && !requestedPath.startsWith('/login') ? requestedPath : '/'
   const [searchParams] = useSearchParams()
   const login = useAuthStore((state) => state.login)
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
-  const user = useAuthStore((state) => state.user)
   const persistentLoginToken = useAuthStore((state) => state.persistentLoginToken)
   const setPersistentLoginToken = useAuthStore((state) => state.setPersistentLoginToken)
 
@@ -96,8 +77,9 @@ export default function LoginPage() {
       login(response.user, response.accessToken, response.refreshToken, {
         persistentLoginToken: newToken,
       })
-      navigate(resolveHomePath(response.user.permissions) ?? '/no-access')
-    } catch {
+      navigate(loginTarget)
+    } catch (error) {
+      console.error('自动续登失败，已清除本地持久令牌', error)
       // 静默失败：清空持久令牌；用户停留在登录页时仍可手动输入密码
       setPersistentLoginToken(null)
     } finally {
@@ -113,8 +95,7 @@ export default function LoginPage() {
   useEffect(() => {
     const remembered = localStorage.getItem(REMEMBER_KEY)
     if (remembered) {
-      setUsername(remembered)
-      setRememberMe(true)
+      model.form.reset({ username: remembered, password: '', rememberMe: true })
     }
     if (persistentLoginToken && !isAuthenticated) {
       void runAutoLogin(persistentLoginToken)
@@ -125,39 +106,14 @@ export default function LoginPage() {
 
   // 已登录用户访问登录页时直接回到权限感知首页（所有 hooks 之后早退，保证调用顺序稳定）
   if (isAuthenticated) {
-    return <Navigate to={resolveHomePath(user?.permissions) ?? '/no-access'} replace />
-  }
-
-  const runValidate = (field: 'username' | 'password', value: string) => {
-    const message = field === 'username' ? validateUsername(value) : validatePassword(value)
-    setFieldErrors((prev) => ({ ...prev, [field]: message }))
-    return message
-  }
-
-  const handleUsernameChange = (value: string) => {
-    setUsername(value)
-    if (touched.username) runValidate('username', value)
-  }
-
-  const handlePasswordChange = (value: string) => {
-    setPassword(value)
-    if (touched.password) runValidate('password', value)
-  }
-
-  const handleBlur = (field: 'username' | 'password') => {
-    setTouched((prev) => ({ ...prev, [field]: true }))
-    runValidate(field, field === 'username' ? username : password)
+    return <Navigate to={loginTarget} replace />
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (submittingRef.current || isLoading) return
 
-    // 提交时全量校验
-    setTouched({ username: true, password: true })
-    const usernameError = runValidate('username', username)
-    const passwordError = runValidate('password', password)
-    if (usernameError || passwordError) return
+    if (!(await model.validate())) return
 
     submittingRef.current = true
     setIsLoading(true)
@@ -180,7 +136,7 @@ export default function LoginPage() {
         persistentLoginToken: response.persistentLoginToken ?? null,
       })
       // 权限感知跳转：优先 dashboard，否则按模块优先级取第一个有权限的页面；无匹配 → /no-access
-      navigate(resolveHomePath(response.user.permissions) ?? '/no-access')
+      navigate(loginTarget)
     } catch (err) {
       setError(err instanceof Error ? err.message : '登录失败，请稍后重试')
     } finally {
@@ -190,32 +146,14 @@ export default function LoginPage() {
   }
 
   return (
-    // 粉彩淡雅版（用户定稿）：双栏 + 左侧粉彩品牌区（随 4 主题联动）+ 右侧登录表单
-    // 样式由 globals.css 基础 .login-shell 块驱动（勿加 login-shell-v6 修饰类，那会切回深蓝 v6 门面）
     <div className="login-shell">
-      {/* ========== 左侧：品牌区（仅桌面端 ≥1025px 显示，粉彩渐变随主题联动） ========== */}
-      <aside className="login-side">
-        {/* 版本号在 stack 之外（同级）：absolute 定位锚定 .login-side，固定距底 30px，不参与居中布局流 */}
-        <div className="login-brand-stack">
-          <div className="login-brand">
-            <img className="login-brand-logo" src="/logo.png" alt="浙江壹品慧" />
-            <span className="login-brand-text">浙江壹品慧经营分析平台</span>
-          </div>
-        </div>
-        <div className="login-version">{VERSION_LABEL}</div>
-      </aside>
-
-      {/* ========== 右侧：登录区（≤1024px 时品牌块并入表单上方，单栏布局） ========== */}
       <main className="login-form-wrap">
-        <div className="login-brand-mobile login-brand">
-          <img
-            className="login-brand-logo login-brand-logo-dark"
-            src="/logo.png"
-            alt="浙江壹品慧"
-          />
-          <span className="login-brand-text">浙江壹品慧经营分析平台</span>
+        <div className="login-brand">
+          <img className="login-brand-logo" src="/logo.png" alt="" />
+          <span className="login-brand-text">浙江壹品慧<span>经营分析平台</span></span>
         </div>
-        <form className="login-form" onSubmit={handleSubmit} noValidate>
+        <h1 className="login-heading">登录</h1>
+        <ModelFormFields model={model}><form className="login-form" onSubmit={handleSubmit} noValidate onKeyDown={(event) => { if (event.key === 'Enter' && event.nativeEvent.isComposing) event.preventDefault() }}>
           {/* 告警条（粉彩版：登录错误=红色 error，会话过期=黄色 warning） */}
           {showErrorBar && errorBarText && (
             <div
@@ -237,8 +175,8 @@ export default function LoginPage() {
               id="username"
               placeholder="请输入账号"
               value={username}
-              onChange={(e) => handleUsernameChange(e.target.value)}
-              onBlur={() => handleBlur('username')}
+              name="username"
+              onChange={(e) => setUsername(e.target.value)}
               autoComplete="username"
               disabled={isLoading}
               aria-invalid={!!fieldErrors.username}
@@ -248,11 +186,6 @@ export default function LoginPage() {
                 fieldErrors.username && 'login-input-error'
               )}
             />
-            {fieldErrors.username && (
-              <p id="username-error" className="login-field-err">
-                {fieldErrors.username}
-              </p>
-            )}
           </div>
 
           {/* 密码（仅眼睛按钮） */}
@@ -264,9 +197,9 @@ export default function LoginPage() {
                 type={showPassword ? 'text' : 'password'}
                 placeholder="请输入密码"
                 value={password}
-                onChange={(e) => handlePasswordChange(e.target.value)}
+                name="password"
+                onChange={(e) => setPassword(e.target.value)}
                 onBlur={() => {
-                  handleBlur('password')
                   // 失焦时清除大写锁定提示，避免切走输入框后残留
                   setCapsLockOn(false)
                 }}
@@ -282,7 +215,6 @@ export default function LoginPage() {
               />
               <button
                 type="button"
-                tabIndex={-1}
                 disabled={isLoading}
                 onClick={() => setShowPassword((v) => !v)}
                 className="login-eye"
@@ -293,11 +225,6 @@ export default function LoginPage() {
                 {showPassword ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
               </button>
             </div>
-            {fieldErrors.password && (
-              <p id="password-error" className="login-field-err">
-                {fieldErrors.password}
-              </p>
-            )}
             {capsLockOn && !fieldErrors.password && (
               <p className="login-field-tip">大写锁定已开启</p>
             )}
@@ -313,17 +240,11 @@ export default function LoginPage() {
             >
               <span className="login-check-text">7 天内免登录</span>
             </Checkbox>
-            <a
-              role="button"
-              tabIndex={0}
-              className="login-link"
-              onClick={(e) => e.preventDefault()}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') e.preventDefault()
-              }}
-            >
-              忘记密码？
-            </a>
+            <Popover>
+              <PopoverTrigger asChild><button type="button" className="login-link">忘记密码？</button></PopoverTrigger>
+              <PopoverContent className="w-64 p-4"><p className="text-sm leading-relaxed">请联系平台管理员重置密码。首次登录或密码重置后，系统会引导你设置新密码。</p></PopoverContent>
+            </Popover>
+
           </div>
 
           {/* 登录主按钮（品牌渐变随主题联动，antd 原生 loading 单 spinner） */}
@@ -344,7 +265,7 @@ export default function LoginPage() {
               <span>{showFirstLoginHint && !isDemo ? '首次登录或密码过期将被引导到修改密码流程' : DEMO_HINT_TEXT}</span>
             </p>
           )}
-        </form>
+        </form></ModelFormFields>
       </main>
     </div>
   )

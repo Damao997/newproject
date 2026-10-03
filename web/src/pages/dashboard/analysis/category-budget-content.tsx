@@ -1,3 +1,5 @@
+import { StatTile } from '@/components/ui/stat-tile'
+import { DistributionBar } from '@/components/charts/distribution-bar'
 import { useMemo } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -10,7 +12,7 @@ import { totalOf } from '../budget-total'
 import { ProductBudgetCard } from '../product-budget-card'
 import { GapAnalysisPanel } from '../core-metrics-gap-analysis'
 import { buildCategoryGapAnalysisItems } from './category-gap-analysis'
-import { cn, formatMoneyWan } from '@/lib/utils'
+import { formatMoneyWan } from '@/lib/utils'
 import { getChartSeries } from '@/lib/chart-theme'
 import { useThemeStore } from '@/stores/themeStore'
 import type { ProductBudgetRow } from '@/types'
@@ -36,31 +38,6 @@ function donutSlicePath(cx: number, cy: number, r: number, start: number, end: n
 }
 
 /** KPI 磁贴：左侧 3px 色条 + 标题 + 数值 + 脚注（真实数据派生） */
-function StatTile({ label, value, unit, foot, accent, valueClass }: {
-  label: string
-  value: string
-  unit: string
-  foot: string
-  accent: string
-  valueClass?: string
-}) {
-  return (
-    <div
-      className={cn(
-        'relative flex flex-col gap-2 overflow-hidden rounded-card border border-border bg-card p-5 shadow-antd-1 transition-all duration-200 hover:shadow-antd-2',
-        "before:absolute before:bottom-0 before:left-0 before:top-0 before:w-[3px] before:content-['']",
-        accent,
-      )}
-    >
-      <span className="text-body text-muted-foreground">{label}</span>
-      <div className={cn('font-num text-2xl font-semibold leading-tight text-foreground', valueClass)}>
-        {value}
-        <span className="ml-1 text-sm font-normal text-muted-foreground">{unit}</span>
-      </div>
-      <span className="text-xs text-muted-foreground">{foot}</span>
-    </div>
-  )
-}
 
 /** 达成率色阶：≥75 绿 / 60-75 橙 / <60 红 / null 灰 */
 function rateTone(rate: number | null): { bar: string; text: string } {
@@ -74,19 +51,15 @@ function rateTone(rate: number | null): { bar: string; text: string } {
 function RankRow({ rank, row }: { rank: number; row: ProductBudgetRow }) {
   const tone = rateTone(row.income.ytdRate)
   return (
-    <div className="grid grid-cols-[28px_minmax(0,1fr)_120px_88px_64px] items-center gap-2.5 border-b border-dashed border-border py-1.5 last:border-b-0">
+    <div className="rank-distribution-row">
       <RankBadge rank={rank} />
-      <span className="truncate text-body text-foreground" title={row.category}>{row.category}</span>
-      <span className="relative inline-block h-1.5 overflow-hidden rounded-full bg-muted" style={{ width: 120 }}>
-        <span
-          className={cn('absolute left-0 top-0 h-full rounded-full', tone.bar)}
-          style={{ width: `${Math.min(100, Math.max(0, row.income.ytdRate ?? 0))}%` }}
-        />
-      </span>
-      <span className="text-right font-num text-body text-foreground">{formatMoneyWan(row.income.ytdActual)}</span>
-      <span className={cn('text-right font-num text-xs', tone.text)}>
-        {row.income.ytdRate === null ? '–' : `${row.income.ytdRate.toFixed(1)}%`}
-      </span>
+      <div className="distribution-list min-w-0">
+        <DistributionBar variant="ranking" label={row.category} value={formatMoneyWan(row.income.ytdActual)}
+          meta={<span className={tone.text}>{row.income.ytdRate === null ? '–' : `${row.income.ytdRate.toFixed(1)}%`}</span>}
+          width={row.income.ytdRate ?? 0}
+          color={row.income.ytdRate === null ? 'hsl(var(--muted-foreground) / .4)' : row.income.ytdRate >= 75
+            ? 'hsl(var(--success))' : row.income.ytdRate >= 60 ? 'hsl(var(--warning))' : 'hsl(var(--destructive))'} />
+      </div>
     </div>
   )
 }
@@ -98,7 +71,7 @@ function RankRow({ rank, row }: { rank: number; row: ProductBudgetRow }) {
  * - 底部：品类预算达成明细表（复用 ProductBudgetCard：月度/累计口径联动 + 预警灯 + 同比）。
  */
 export function CategoryBudgetContent({ period, companyCode }: CategoryBudgetContentProps) {
-  const sidebarStyle = useThemeStore((s) => s.sidebarStyle)
+  const sidebarStyle = useThemeStore((s) => s.printing ? 'light' : s.sidebarStyle)
   const { data, isLoading, isError, refetch } = useProductBudget({ period, companyCode })
   const rows = useMemo(() => data?.rows ?? [], [data])
   const total = useMemo(() => totalOf(rows), [rows])
@@ -190,7 +163,7 @@ export function CategoryBudgetContent({ period, companyCode }: CategoryBudgetCon
             {pieTotal <= 0 ? (
               <EmptyState compact className="py-10" title="暂无预算额" description="未配置品类年度预算，无法展示占比" />
             ) : (
-              <div className="flex items-center gap-5">
+              <div className="flex flex-col items-center gap-5 sm:flex-row">
                 <svg viewBox="0 0 100 100" className="h-[200px] w-[200px] shrink-0" aria-label="品类预算占比饼图">
                   <circle cx={50} cy={50} r={40} fill="hsl(var(--muted))" />
                   {pieSlices.map((s) =>
@@ -206,17 +179,11 @@ export function CategoryBudgetContent({ period, companyCode }: CategoryBudgetCon
                     {formatMoneyWan(pieTotal)}
                   </text>
                 </svg>
-                <div className="flex-1 space-y-1.5 text-body">
-                  {pieSlices.map((s) => (
-                    <div key={s.name} className="flex items-center gap-2">
-                      <span className="h-2.5 w-2.5 shrink-0 rounded-[2px]" style={{ background: s.color }} aria-hidden />
-                      <span className="flex-1 truncate text-foreground" title={s.name}>{s.name}</span>
-                      <span className="font-num shrink-0 text-muted-foreground">
-                        {formatMoneyWan(s.value)}万 · {((s.value / pieTotal) * 100).toFixed(1)}%
-                      </span>
-                    </div>
-                  ))}
-                </div>
+              <div className="distribution-list min-w-0 w-full flex-1">
+                {pieSlices.map((s) => <DistributionBar key={s.name} variant="ranking" label={s.name}
+                  value={`${formatMoneyWan(s.value)}万`} meta={`${((s.value / pieTotal) * 100).toFixed(1)}%`}
+                  width={s.value / Math.max(...pieSlices.map((slice) => slice.value)) * 100} color={s.color} />)}
+              </div>
               </div>
             )}
           </CardContent>

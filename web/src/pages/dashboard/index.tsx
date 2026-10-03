@@ -4,12 +4,10 @@ import { Button } from '@/components/ui/button'
 import { KpiCard } from '@/components/charts/kpi-card'
 import { PageContainer } from '@/components/layout/page-container'
 import { useStickyHeader } from '@/hooks/useStickyHeader'
-import { StatusIndicator } from '@/components/ui/status-indicator'
 import { useDashboardOverview } from '@/hooks/api-queries'
 import { useDashboardFilters } from '@/hooks/useDashboardFilters'
 import { ReceivablesCard } from './receivables-card'
 import { InventoryPieCard } from './inventory-pie-card'
-import { QuickEntries } from './quick-entries'
 import { ExpenseStructureCard } from './expense-structure-card'
 import { TrendSection } from './trend-section'
 import { AlertsCard } from './alerts-card'
@@ -79,18 +77,7 @@ export default function DashboardPage() {
       title="首页看板"
       stickyHeader
       headerRef={headerRef}
-      actionsFullWidth
-      actions={
-        <div className="flex flex-wrap items-center gap-3">
-          <StatusIndicator
-            variant={isError ? 'error' : isRefreshing ? 'idle' : 'active'}
-            label={isError ? '同步失败' : isRefreshing ? '数据同步中…' : '数据已同步'}
-            colored
-            className="mr-1 hidden sm:inline-flex"
-          />
-          {isRefreshing && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-        </div>
-      }
+      actions={isRefreshing ? <span role="status" className="inline-flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" aria-hidden />正在更新</span> : undefined}
     >
       <DashboardView
         kpiData={kpiData}
@@ -142,6 +129,7 @@ function DashboardView(props: DashboardViewProps) {
       {/* 加载/错误态：保留视觉密度的同时提示用户当前数据状态 */}
       {(isLoading || isError) && (
         <div
+          role={isError ? "alert" : "status"}
           className={
             isError
               ? 'flex flex-wrap items-center gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-2 text-sm text-destructive'
@@ -163,7 +151,7 @@ function DashboardView(props: DashboardViewProps) {
 
       {/* 核心 KPI 卡区（后端返回数量即展示数量；空数据时整行不渲染，不做 mock 补位） */}
       {kpiData.length > 0 && (
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="dashboard-kpis grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {kpiData.map((kpi, i) => (
             <KpiCard key={kpi.title + '-' + i} data={kpi} index={i} onClick={() => onKpiDrill(kpi.title)} breakdown={kpiBreakdown} />
           ))}
@@ -171,12 +159,12 @@ function DashboardView(props: DashboardViewProps) {
       )}
       {isEmpty && (
         <div className="rounded-md border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-          当前主体/期间暂无核心 KPI 数据，可在顶部切换筛选或前往「数据导入」激活批次。
+          当前主体 / 期间暂无核心指标，请调整顶部筛选。
         </div>
       )}
 
       {/* 财年趋势（US-05：收入/毛利折线+柱状+预算线，月度/累计切换）+ 预警提醒（US-13） */}
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <div className="dashboard-focus grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
         <TrendSection />
         <AlertsCard />
       </div>
@@ -185,13 +173,11 @@ function DashboardView(props: DashboardViewProps) {
       <ExpenseStructureCard period={currentPeriod || undefined} companyCode={companyCode} />
 
       {/* 应收账款分析 + 存货品类分析（真实接口：应收按主体分布 / 存货品类占比，均跟随顶部筛选） */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ReceivablesCard period={currentPeriod || undefined} companyCode={companyCode} />
         <InventoryPieCard period={currentPeriod || undefined} companyCode={companyCode} />
       </div>
 
-      {/* 快捷入口：8 张 antd 风格 quick-card，跨主业务/数据/系统 */}
-      <QuickEntries />
     </>
   )
 }

@@ -1,3 +1,5 @@
+import { useFormModel, ModelFormFields } from '@/components/forms/form-model'
+import { useFormClose } from '@/components/forms/form-navigation'
 import { useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
@@ -50,7 +52,9 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<ProductCategory | null>(null)
-  const [form, setForm] = useState<CategoryForm>(EMPTY_FORM)
+  const model = useFormModel<CategoryForm>(EMPTY_FORM, {"name":"请输入品类名称","subjectKeyword":"请输入收入科目关键词"})
+  const form = model.values
+  const setForm = model.setValues
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [batchOpen, setBatchOpen] = useState(false)
@@ -88,6 +92,7 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
   }
 
   const handleSave = async () => {
+    if (!(await model.validate())) return
     if (!form.name.trim() || !form.subjectKeyword.trim()) {
       setError('品类名称与匹配关键词必填')
       return
@@ -243,6 +248,8 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
     // eslint-disable-next-line react-hooks/exhaustive-deps -- openEdit/handleDelete/checkMap 为组件内闭包/派生对象，重算代价可忽略
   }, [canUpdate, canDelete, openEdit, handleDelete, checkMap])
 
+  const formClose = useFormClose({ dirty: model.form.formState.isDirty, busy: model.pending || saving, enabled: dialogOpen, onClose: () => setDialogOpen(false) })
+
   return (
     <div className="space-y-4">
       {/* 工具栏 */}
@@ -349,7 +356,7 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
       <BatchOpMessage message={batchDelete.message} onDismiss={batchDelete.clearMessage} />
 
       {/* 新增/编辑对话框 */}
-      <Dialog open={dialogOpen} onOpenChange={(o) => { if (!o && !saving) { setDialogOpen(false); setError(null) } }}>
+      <><Dialog open={dialogOpen} presentation="drawer" busy={model.pending || saving} onOpenChange={(next) => { if (!next) formClose.requestClose() }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editing ? '编辑品类配置' : '新增品类配置'}</DialogTitle>
@@ -357,11 +364,11 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
               品类名称将展示在看板品类预算达成分析中；匹配关键词对应经营科目树收入类别下的科目名（可命中多个科目并自动求和）。
             </DialogDescription>
           </DialogHeader>
-          <DialogBody className="grid gap-4">
+          <DialogBody className="grid gap-4"><ModelFormFields model={model}>
             <div className="space-y-3">
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">品类编码（唯一，创建后不可修改）</Label>
-                <Input
+                <Label htmlFor="code" className="text-xs text-muted-foreground">品类编码（唯一，创建后不可修改）</Label>
+                <Input name="code"
                   value={form.code}
                   onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
                   placeholder="如 kitchen"
@@ -370,16 +377,16 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">品类名称</Label>
-                <Input
+                <Label htmlFor="name" className="text-xs text-muted-foreground">品类名称</Label>
+                <Input name="name"
                   value={form.name}
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                   placeholder="如 厨房产品销售（不含净水及服务）"
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">匹配关键词</Label>
-                <Input
+                <Label htmlFor="subjectKeyword" className="text-xs text-muted-foreground">匹配关键词</Label>
+                <Input name="subjectKeyword"
                   value={form.subjectKeyword}
                   onChange={(e) => setForm((f) => ({ ...f, subjectKeyword: e.target.value }))}
                   placeholder="如 厨房产品销售"
@@ -387,8 +394,8 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">排序（升序展示）</Label>
-                  <Input
+                  <Label htmlFor="sortOrder" className="text-xs text-muted-foreground">排序（升序展示）</Label>
+                  <Input name="sortOrder"
                     type="number"
                     value={form.sortOrder}
                     onChange={(e) => setForm((f) => ({ ...f, sortOrder: e.target.value }))}
@@ -413,16 +420,17 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
                 </div>
               </div>
             </div>
-          </DialogBody>
+          </ModelFormFields></DialogBody>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>取消</Button>
-            <Button onClick={handleSave} disabled={saving}>
+            <Button variant="outline" onClick={formClose.requestClose} disabled={saving}>取消</Button>
+            <Button onClick={model.submit(handleSave)} disabled={saving}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {editing ? '保存' : '创建'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {formClose.element}</>
 
       {/* 批量新增对话框（多行表单，逐条创建） */}
       <BatchRowsDialog<CategoryForm>

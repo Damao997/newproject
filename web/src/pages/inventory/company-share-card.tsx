@@ -23,8 +23,8 @@ function round2(n: number): number {
 }
 
 export function CompanyShareCard({ rows, loading }: { rows: InventoryDetailRow[]; loading?: boolean }) {
-  // 分类色板跟随当前侧边栏风格：按序轮转，首位为风格主色；主页面恒白，图表框架色恒定
-  const sidebarStyle = useThemeStore((s) => s.sidebarStyle)
+  // 分类色板跟随当前侧边栏风格：按序轮转，首位为风格主色；坐标、网格和浮层随全站风格同步
+  const sidebarStyle = useThemeStore((s) => s.printing ? 'light' : s.sidebarStyle)
   const { getDisplayName } = useCompanyDisplayName()
   // 公司 → 本期金额跨品类求和；名称跟随全局「显示简称」开关
   const companies = useMemo(() => {
@@ -47,7 +47,7 @@ export function CompanyShareCard({ rows, loading }: { rows: InventoryDetailRow[]
   const sum = useMemo(() => pieData.reduce((s, c) => s + c.current, 0), [pieData])
 
   const option = useMemo<EChartsOption>(() => {
-    const ink = getChartInk()
+    const ink = getChartInk(sidebarStyle)
     const seriesColors = getChartSeries(sidebarStyle)
     return {
       animation: false,
@@ -79,7 +79,7 @@ export function CompanyShareCard({ rows, loading }: { rows: InventoryDetailRow[]
           itemStyle: { borderColor: ink.surface, borderWidth: 2, borderRadius: 4 },
           emphasis: { scale: true, scaleSize: 4 },
           label: {
-            fontSize: 11,
+            fontSize: 12,
             color: ink.sub,
             formatter: (p: { name: string; percent?: number }) => `${p.name} ${p.percent?.toFixed(1) ?? 0}%`,
           },

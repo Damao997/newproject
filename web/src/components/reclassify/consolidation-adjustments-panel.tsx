@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useRetainedState } from '@/hooks/use-retained-state'
+import { useState, type ReactNode } from 'react'
+import { FilterBar } from '@/components/layout/filter-bar'
 import { Button } from '@/components/ui/button'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { Pagination } from '@/components/data-table/pagination'
@@ -14,8 +16,8 @@ const PAGE_SIZE = 10
  * 汇总抵消调整记录面板（内嵌于数据管理页）：分页展示汇总口径的抵消调整历史，
  * 行点击展开查看调整原因；删除即撤销抵消（软删除，聚合查询立即恢复原口径）。
  */
-export function ConsolidationAdjustmentsPanel() {
-  const [page, setPage] = useState(1)
+export function ConsolidationAdjustmentsPanel({ actions }: { actions?: ReactNode }) {
+  const [page, setPage] = useRetainedState('consolidation.list.page', 1)
   const [expandedKeys, setExpandedKeys] = useState<Set<string | number>>(new Set())
   const [message, setMessage] = useState<string | null>(null)
   const { confirm, element: confirmElement } = useConfirm()
@@ -88,6 +90,9 @@ export function ConsolidationAdjustmentsPanel() {
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col space-y-2">
+      <FilterBar className="shrink-0" actions={actions}>
+        <span className="text-sm text-muted-foreground">{total} 条调整记录</span>
+      </FilterBar>
       {message && (
         <p className={cn('shrink-0 text-xs', message.includes('失败') ? 'text-destructive' : 'text-muted-foreground')}>{message}</p>
       )}

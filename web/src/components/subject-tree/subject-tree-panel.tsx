@@ -158,7 +158,7 @@ export function SubjectTreePanel({
   return (
     <div className="space-y-4">
       {/* 筛选与控制卡片：类别下拉 + 搜索框 + 操作按钮组（吸顶） */}
-      <Card className="sticky z-10 rounded-card p-4" style={{ top: stickyTop }}>
+      <Card variant="filter" className="sticky z-10 rounded-card p-4" style={{ top: stickyTop }}>
         <div className="flex flex-col space-y-2 sm:flex-row sm:items-center sm:space-x-2 sm:space-y-0">
           <Select value={category} onValueChange={setCategory}>
             <SelectTrigger className="w-full sm:w-[200px]">

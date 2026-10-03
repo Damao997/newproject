@@ -39,7 +39,7 @@ export function NavList({ collapsed, onNavigate }: NavListProps) {
   // 折叠态保持扁平渲染（仅图标 + Tooltip），分组标题隐藏
   if (collapsed || !groupedItems) {
     return (
-      <nav className="sidebar-scroll flex-1 space-y-1 overflow-y-auto px-2 py-3 font-sans">
+      <nav aria-label="主导航" className="sidebar-scroll flex-1 space-y-1 overflow-y-auto px-2 py-3 font-sans">
         {visibleNavItems.length === 0 ? (
           <p className="px-2 py-3 text-center text-sm text-sidebar-fg/70">当前角色无可用模块</p>
         ) : (
@@ -52,14 +52,14 @@ export function NavList({ collapsed, onNavigate }: NavListProps) {
   }
 
   return (
-    <nav className="sidebar-scroll flex-1 space-y-2 overflow-y-auto px-2 py-3 font-sans">
+    <nav aria-label="主导航" className="sidebar-scroll flex-1 space-y-2 overflow-y-auto px-2 py-3 font-sans">
       {groupedItems.length === 0 ? (
         <p className="px-2 py-3 text-center text-sm text-sidebar-fg/70">当前角色无可用模块</p>
       ) : (
         groupedItems.map(({ group, items }) => (
           <div key={group.key} className="space-y-0.5">
             <p
-              className="px-3 pb-1 pt-2 text-xs uppercase tracking-[1px] text-sidebar-fg/55"
+              className="px-3 pb-1 pt-2 text-xs font-medium tracking-wide text-sidebar-icon"
               aria-label={group.title}
             >
               {group.title}

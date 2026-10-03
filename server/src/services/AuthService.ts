@@ -32,9 +32,14 @@ export interface FrontendUser {
   status: 'active' | 'inactive'
   /** 首次登录强制改密：true 时业务接口被拦截，须先改密 */
   mustChangePassword: boolean
+  avatarVersion?: string | null
   lastLoginAt?: string
   createdAt: string
   updatedAt: string
+}
+
+export interface ProfileUser extends FrontendUser {
+  email: string | null; phone: string | null; department: string | null; jobTitle: string | null
 }
 
 export interface LoginResult {
@@ -111,6 +116,7 @@ function toFrontendUser(user: UserWithRole): FrontendUser {
     id: user.id,
     username: user.username,
     name: user.displayName,
+    avatarVersion: user.avatarKey,
     role: user.role.code,
     permissions,
     dataScope,
@@ -399,12 +405,12 @@ export const AuthService = {
   },
 
   /** 获取当前用户资料（映射为前端结构） */
-  async getProfile(userId: string): Promise<FrontendUser> {
+  async getProfile(userId: string): Promise<ProfileUser> {
     const user = await prisma.user.findUnique({ where: { id: userId }, include: { role: { include: { permissions: true } } } })
     if (!user || user.status !== 'active') {
       throw errors.unauthorized('用户不存在或已停用')
     }
-    return toFrontendUser(user)
+    return { ...toFrontendUser(user), email: user.email, phone: user.phone, department: user.department, jobTitle: user.jobTitle }
   },
 
   /**

@@ -1,3 +1,4 @@
+import { useRetainedState } from '@/hooks/use-retained-state'
 import { useMemo, useState, type ReactNode } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -106,8 +107,8 @@ function AmountDetail({ log }: { log: ReclassifyLog }) {
  * 行点击或操作列「查看」打开只读详情；含快照的记录支持一键撤销（逆向恢复事实行）。
  */
 export function ReclassifyLogsPanel({ canRevert, canReapplySubject = false, onReapply, onViewDetail, actions, stickyTop = 0 }: ReclassifyLogsPanelProps & { stickyTop?: number }) {
-  const [type, setType] = useState('all')
-  const [page, setPage] = useState(1)
+  const [type, setType] = useRetainedState('reclassify.list.type', 'all')
+  const [page, setPage] = useRetainedState('reclassify.list.page', 1)
   const [message, setMessage] = useState<string | null>(null)
   const { confirm, element: confirmElement } = useConfirm()
   const { data, isFetching } = useReclassifyLogs({ page, pageSize: PAGE_SIZE, type: type === 'all' ? undefined : type })
@@ -222,12 +223,12 @@ export function ReclassifyLogsPanel({ canRevert, canReapplySubject = false, onRe
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col space-y-2">
       {/* 筛选工具条（吸顶） */}
-      <Card className="sticky z-10 shrink-0 rounded-card px-4 py-2.5" style={{ top: stickyTop }}>
+      <Card variant="filter" className="sticky z-10 shrink-0 rounded-card px-4 py-2.5" style={{ top: stickyTop }}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">类型:</span>
           <Select value={type} onValueChange={(v) => { setType(v); setPage(1) }}>
-            <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-[140px]" aria-label="重分类类型筛选"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">全部</SelectItem>
               <SelectItem value="company">跨公司</SelectItem>

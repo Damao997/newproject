@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { TooltipProvider } from '@/components/ui/tooltip'
+import { MagnitudeValue, magnitudeMaximum } from '@/components/ui/magnitude-value'
 import { TipLabel } from '@/components/ui/tip-label'
 import { useSubjectBudget } from '@/hooks/api-queries'
 import { totalOf } from './budget-total'
@@ -50,6 +51,21 @@ export function SubjectBudgetCard({ period, companyCode, mode = 'single' }: Subj
     yoy: amountMode === 'month' ? m.monthYoy : m.ytdYoy,
   })
 
+  const maxima = {
+    income: {
+      budget: magnitudeMaximum(rows.map((r) => displayOf(r.income).budget)),
+      amount: magnitudeMaximum(rows.map((r) => displayOf(r.income).amount)),
+    },
+    profit: {
+      budget: magnitudeMaximum(rows.map((r) => displayOf(r.profit).budget)),
+      amount: magnitudeMaximum(rows.map((r) => displayOf(r.profit).amount)),
+    },
+    netProfit: {
+      budget: magnitudeMaximum(rows.map((r) => displayOf(r.netProfit).budget)),
+      amount: magnitudeMaximum(rows.map((r) => displayOf(r.netProfit).amount)),
+    },
+  }
+
   return (
     <TooltipProvider>
       <div className="mb-2 flex flex-wrap items-center justify-end gap-3">
@@ -66,8 +82,8 @@ export function SubjectBudgetCard({ period, companyCode, mode = 'single' }: Subj
             <p className="text-xs text-muted-foreground">导入并激活经营数据后，将按主体展示预算达成情况</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="data-table-report data-table-report--striped">
+          <div className="detail-table-scroll overflow-auto">
+            <table data-ui-table data-detail-table data-comparison-matrix className="data-table-report data-table-report--striped">
               <thead>
                 <tr className="border-b border-border">
                   <th rowSpan={2} className="text-left w-[10em]">主体</th>
@@ -100,31 +116,21 @@ export function SubjectBudgetCard({ period, companyCode, mode = 'single' }: Subj
                   const netProfit = displayOf(row.netProfit)
                   return (
                     <tr key={row.code}>
-                      {/* 主体名单行截断（空格不计入 10 字符判定）：固定 w-[10em] + truncate，Tooltip 悬停显示完整名称 */}
-                      <td className="px-3 py-2 text-left text-sm font-medium text-foreground w-[10em]">
-                        {row.name.replace(/\s/g, '').length > 10 ? (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="block w-[10em] truncate">{row.name}</span>
-                            </TooltipTrigger>
-                            <TooltipContent side="top">{row.name}</TooltipContent>
-                          </Tooltip>
-                        ) : (
-                          <span className="block w-[10em] truncate">{row.name}</span>
-                        )}
+                      <td className="px-3 py-2 text-left text-sm font-medium text-foreground">
+                        {row.name}
                       </td>
-                      <td className={TD_CLS}>{formatMoneyWan(income.budget)}</td>
-                      <td className={TD_CLS}>{formatMoneyWan(income.amount)}</td>
+                      <td className={TD_CLS}><MagnitudeValue value={income.budget} maximum={maxima.income.budget}>{formatMoneyWan(income.budget)}</MagnitudeValue></td>
+                      <td className={TD_CLS}><MagnitudeValue value={income.amount} maximum={maxima.income.amount}>{formatMoneyWan(income.amount)}</MagnitudeValue></td>
                       <td className={TD_CLS}><RateBar rate={income.rate} /></td>
                       <td className={cn(TD_CLS, 'text-center')}><AlertLight rate={income.alertRate} /></td>
                       <td className={TD_CLS}><DeltaTag value={income.yoy} /></td>
-                      <td className={cn(TD_CLS, 'border-l border-border/60')}>{formatMoneyWan(profit.budget)}</td>
-                      <td className={TD_CLS}>{formatMoneyWan(profit.amount)}</td>
+                      <td className={cn(TD_CLS, 'border-l border-border/60')}><MagnitudeValue value={profit.budget} maximum={maxima.profit.budget}>{formatMoneyWan(profit.budget)}</MagnitudeValue></td>
+                      <td className={TD_CLS}><MagnitudeValue value={profit.amount} maximum={maxima.profit.amount}>{formatMoneyWan(profit.amount)}</MagnitudeValue></td>
                       <td className={TD_CLS}><RateBar rate={profit.rate} /></td>
                       <td className={cn(TD_CLS, 'text-center')}><AlertLight rate={profit.alertRate} /></td>
                       <td className={TD_CLS}><DeltaTag value={profit.yoy} /></td>
-                      <td className={cn(TD_CLS, 'border-l border-border/60')}>{formatMoneyWan(netProfit.budget)}</td>
-                      <td className={TD_CLS}>{formatMoneyWan(netProfit.amount)}</td>
+                      <td className={cn(TD_CLS, 'border-l border-border/60')}><MagnitudeValue value={netProfit.budget} maximum={maxima.netProfit.budget}>{formatMoneyWan(netProfit.budget)}</MagnitudeValue></td>
+                      <td className={TD_CLS}><MagnitudeValue value={netProfit.amount} maximum={maxima.netProfit.amount}>{formatMoneyWan(netProfit.amount)}</MagnitudeValue></td>
                       <td className={TD_CLS}><RateBar rate={netProfit.rate} /></td>
                       <td className={cn(TD_CLS, 'text-center')}><AlertLight rate={netProfit.alertRate} /></td>
                       <td className={TD_CLS}><DeltaTag value={netProfit.yoy} /></td>

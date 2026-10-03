@@ -386,7 +386,6 @@ export default function AuditLogsPage() {
   return (
     <PageContainer
       title="审计日志"
-      description="记录用户登录、数据操作、权限变更、系统事件等行为"
       actions={
         <>
           <Button variant="outline" size="sm" disabled={exporting} onClick={handleExport}>

@@ -10,10 +10,10 @@ import { AccountFilterTab } from './account-filter-tab'
 export default function TransactionsAccountFilterPage() {
   return (
     <PageContainer
+      navigation={<SubPageTabs items={TRANSACTION_TABS} />}
       title="科目过滤"
       description="配置纳入往来分析的会计科目，排除后账龄分析自动剔除其数据"
     >
-      <SubPageTabs items={TRANSACTION_TABS} />
       <AccountFilterTab />
     </PageContainer>
   )

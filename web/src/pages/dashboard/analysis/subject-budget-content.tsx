@@ -1,3 +1,4 @@
+import { StatTile } from '@/components/ui/stat-tile'
 import { useMemo, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -136,30 +137,9 @@ export function SubjectBudgetContent({ period, companyCode }: SubjectBudgetConte
           return (
             <>
               {tiles.map((t) => (
-                <div
-                  key={t.label}
-                  className={cn(
-                    'relative flex flex-col gap-2 overflow-hidden rounded-card border border-border bg-card p-5 shadow-antd-1 transition-all duration-200 hover:shadow-antd-2',
-                    "before:absolute before:bottom-0 before:left-0 before:top-0 before:w-[3px] before:content-['']",
-                    t.accent,
-                  )}
-                >
-                  <span className="text-body text-muted-foreground">{t.label}</span>
-                  <div className="font-num text-2xl font-semibold leading-tight text-foreground">
-                    {t.value}
-                    <span className="ml-1 text-sm font-normal text-muted-foreground">{t.unit}</span>
-                  </div>
-                  <span className="text-xs text-muted-foreground">{t.foot}</span>
-                </div>
+                <StatTile key={t.label} label={t.label} value={t.value} unit={t.unit} foot={t.foot} accent={t.accent} />
               ))}
-              <div className="relative flex flex-col gap-2 overflow-hidden rounded-card border border-border bg-card p-5 shadow-antd-1 before:absolute before:bottom-0 before:left-0 before:top-0 before:w-[3px] before:bg-orange-500 before:content-['']">
-                <span className="text-body text-muted-foreground">整体累计达成率</span>
-                <div className={cn('font-num text-2xl font-semibold leading-tight', rateColorClass(total.income.ytdCumRate))}>
-                  {total.income.ytdCumRate === null ? '–' : total.income.ytdCumRate.toFixed(1)}
-                  {total.income.ytdCumRate !== null && <span className="ml-1 text-sm font-normal text-muted-foreground">%</span>}
-                </div>
-                <span className="text-xs text-muted-foreground">Σ累计实际 ÷ Σ累计预算（月度预算累加）</span>
-              </div>
+              <StatTile label="整体累计达成率" value={total.income.ytdCumRate === null ? "–" : total.income.ytdCumRate.toFixed(1)} unit={total.income.ytdCumRate === null ? undefined : "%"} valueClass={rateColorClass(total.income.ytdCumRate)} tone={3} foot="Σ累计实际 ÷ Σ累计预算（月度预算累加）" />
             </>
           )
         })()}

@@ -1,24 +1,8 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
-
-/**
- * 全局公司简称显示状态：由公司管理面板的「显示简称」开关写入，
- * 数据浏览/往来分析/报告等所有展示公司名称的 UI 组件跟随该开关切换简称。
- */
-interface CompanyDisplayState {
-  showShortName: boolean
-  setShowShortName: (v: boolean) => void
-}
-
-export const useCompanyDisplayStore = create<CompanyDisplayState>()(
-  persist(
-    (set) => ({
-      showShortName: false,
-      setShowShortName: (showShortName) => set({ showShortName }),
-    }),
-    {
-      name: 'company-display-storage',
-      partialize: (state) => ({ showShortName: state.showShortName }),
-    }
-  )
-)
+import { usePreferencesStore } from './preferencesStore'
+/** 原有简称接口保留，设置统一由账号偏好管理。 */
+export const useCompanyDisplayStore = create<{ showShortName: boolean; setShowShortName: (value: boolean) => void }>(() => ({
+  showShortName: usePreferencesStore.getState().preferences.showShortName,
+  setShowShortName: showShortName => usePreferencesStore.getState().patch({ showShortName }),
+}))
+usePreferencesStore.subscribe(state => useCompanyDisplayStore.setState({ showShortName: state.preferences.showShortName }))

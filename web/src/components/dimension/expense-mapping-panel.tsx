@@ -1,3 +1,5 @@
+import { useFormModel, ModelFormFields } from '@/components/forms/form-model'
+import { useFormClose } from '@/components/forms/form-navigation'
 import { useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
@@ -67,7 +69,9 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<ExpenseMapping | null>(null)
-  const [form, setForm] = useState<MappingForm>(EMPTY_FORM)
+  const model = useFormModel<MappingForm>(EMPTY_FORM, {"name":"请输入名称","subjectCodes":"请选择费用科目"})
+  const form = model.values
+  const setForm = model.setValues
   const [saving, setSaving] = useState(false)
   const [codeLoading, setCodeLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -123,6 +127,7 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
   }
 
   const handleSave = async () => {
+    if (!(await model.validate())) return
     if (!form.name.trim()) {
       setError('展示名称必填')
       return
@@ -278,6 +283,8 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
     // eslint-disable-next-line react-hooks/exhaustive-deps -- openEdit/handleDelete 为组件内闭包，重算代价可忽略（对齐 import-panel 惯例）
   }, [canUpdate, canDelete, openEdit, handleDelete])
 
+  const formClose = useFormClose({ dirty: model.form.formState.isDirty, busy: model.pending || saving, enabled: dialogOpen, onClose: () => setDialogOpen(false) })
+
   return (
     <div className="space-y-4">
       {/* 工具栏 */}
@@ -370,7 +377,7 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
       <BatchOpMessage message={batchDelete.message} onDismiss={batchDelete.clearMessage} />
 
       {/* 新增/编辑对话框 */}
-      <Dialog open={dialogOpen} onOpenChange={(o) => { if (!o && !saving) { setDialogOpen(false); setError(null) } }}>
+      <><Dialog open={dialogOpen} presentation="drawer" busy={model.pending || saving} onOpenChange={(next) => { if (!next) formClose.requestClose() }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editing ? '编辑运营费用映射' : '新增运营费用映射'}</DialogTitle>
@@ -378,12 +385,12 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
               展示名称将显示在看板运营费用分析中；选中的科目编码对应费用科目树的叶子科目，多个科目自动汇总求和。
             </DialogDescription>
           </DialogHeader>
-          <DialogBody className="grid gap-4">
+          <DialogBody className="grid gap-4"><ModelFormFields model={model}>
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <TipLabel label={<span className="text-xs text-muted-foreground">映射编码</span>} tip="系统自动生成，创建后不可修改" />
-                  <Input
+                  <Input name="code"
                     value={form.code}
                     readOnly
                     placeholder={codeLoading ? '生成中...' : '系统自动生成'}
@@ -392,8 +399,8 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">展示名称</Label>
-                  <Input
+                  <Label htmlFor="name" className="text-xs text-muted-foreground">展示名称</Label>
+                  <Input name="name"
                     value={form.name}
                     onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                     placeholder="如 人力成本"
@@ -449,8 +456,8 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">排序（升序展示）</Label>
-                  <Input
+                  <Label htmlFor="sortOrder" className="text-xs text-muted-foreground">排序（升序展示）</Label>
+                  <Input name="sortOrder"
                     type="number"
                     value={form.sortOrder}
                     onChange={(e) => setForm((f) => ({ ...f, sortOrder: e.target.value }))}
@@ -475,16 +482,17 @@ export function ExpenseMappingPanel({ canCreate = false, canUpdate = false, canD
                 </div>
               </div>
             </div>
-          </DialogBody>
+          </ModelFormFields></DialogBody>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>取消</Button>
-            <Button onClick={handleSave} disabled={saving}>
+            <Button variant="outline" onClick={formClose.requestClose} disabled={saving}>取消</Button>
+            <Button onClick={model.submit(handleSave)} disabled={saving}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {editing ? '保存' : '创建'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {formClose.element}</>
 
       {/* 批量新增对话框（多行表单，逐条创建；编码由系统自动生成） */}
       <BatchRowsDialog<BatchMappingRow>

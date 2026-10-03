@@ -6,8 +6,10 @@ import { Sidebar } from './sidebar'
 import { ChangePasswordDialog } from './change-password-dialog'
 import { VersionNotice } from './version-notice'
 import { RouteFallback } from './route-fallback'
+import { PageTitleProvider } from './page-heading'
 
-const SIDEBAR_COLLAPSED_KEY = 'sidebar-collapsed'
+import { usePreferencesStore } from '@/stores/preferencesStore'
+import { AccountBoundary } from '@/components/settings/account-boundary'
 
 /** 小尺寸窗口（<1280px，对齐设计规范 §8：1024-1279 侧边栏收起）自动折叠；≥1280 恢复用户偏好 */
 const SMALL_SCREEN_QUERY = '(max-width: 1279px)'
@@ -15,9 +17,7 @@ const SMALL_SCREEN_QUERY = '(max-width: 1279px)'
 export function MainLayout() {
   const { isAuthenticated, user, openPasswordDialog } = useAuthStore()
   const location = useLocation()
-  const [collapsed, setCollapsed] = useState(
-    () => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true'
-  )
+  const collapsed = usePreferencesStore(s => s.preferences.sidebarCollapsed)
   // 小尺寸自动折叠：窗口 <1280px 时侧边栏强制进入折叠态（图标栏）；
   // 小尺寸下折叠条点击仅会话内临时展开/折叠（不写 localStorage），回到大尺寸自动清除临时状态
   const [smallScreen, setSmallScreen] = useState(() => window.matchMedia(SMALL_SCREEN_QUERY).matches)
@@ -33,6 +33,13 @@ export function MainLayout() {
     }
     mq.addEventListener('change', onChange)
     return () => mq.removeEventListener('change', onChange)
+  }, [])
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)')
+    const onDesktop = (event: MediaQueryListEvent) => { if (event.matches) setMobileOpen(false) }
+    mq.addEventListener('change', onDesktop)
+    return () => mq.removeEventListener('change', onDesktop)
   }, [])
 
   // 路由切换时自动关闭移动端抽屉
@@ -54,19 +61,15 @@ export function MainLayout() {
       setForcedExpand((prev) => !prev)
       return
     }
-    setCollapsed((prev) => {
-      const next = !prev
-      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next))
-      return next
-    })
+    usePreferencesStore.getState().patch({ sidebarCollapsed: !collapsed })
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
+    return <Navigate to="/login" state={{ returnTo: location.pathname + location.search + location.hash }} replace />
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-page">
+    <AccountBoundary><PageTitleProvider><div className="app-shell flex h-dvh overflow-hidden bg-page">
       {/* 侧边栏独立列：从页面顶部开始渲染（覆盖 Header 高度区域），全高贴边 */}
       <Sidebar
         collapsed={effectiveCollapsed}
@@ -77,8 +80,8 @@ export function MainLayout() {
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header onMenuClick={() => setMobileOpen(true)} />
         <main className="min-h-0 min-w-0 flex-1 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}>
-          {/* pt-6 恒为 24px：页面主标签（PageContainer 标题区）与 Header 保持固定间距（勿改回 lg:py-8） */}
-          <div className="container mx-auto max-w-screen-2xl px-4 pt-6 pb-6 sm:px-6 lg:px-8 lg:pb-8">
+          {/* 主标题在顶栏，正文从筛选或分类切换开始；列表按实际剩余高度测量。 */}
+          <div className="app-content mx-auto w-full max-w-[1720px] px-4 py-4 md:px-6">
             {/* Suspense 内层：路由切换时仅内容区回退到骨架，侧边栏/Header 常驻 */}
             <Suspense fallback={<RouteFallback />}>
               <Outlet />
@@ -88,8 +91,8 @@ export function MainLayout() {
       </div>
       {/* 修改密码对话框（全局唯一实例：用户菜单主动改密 + 强制改密） */}
       <ChangePasswordDialog />
-      {/* 版本更新公告（发现新版本横幅 + 欢迎公告弹窗） */}
+      {/* 版本更新公告（发现需要刷新的新版本时提醒，历史公告手动查看） */}
       <VersionNotice />
-    </div>
+    </div></PageTitleProvider></AccountBoundary>
   )
 }

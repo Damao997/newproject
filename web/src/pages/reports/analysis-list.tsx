@@ -1,4 +1,6 @@
-﻿import { useMemo, useState } from 'react'
+import { useFormModel, useFormValue, ModelFormFields } from '@/components/forms/form-model'
+import { useFormClose } from '@/components/forms/form-navigation'
+import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -139,7 +141,9 @@ export function AnalysisManager({ stickyTop = 0 }: { stickyTop?: number }) {
 
   // 插入报告：将 AI 预分析归档追加为报告章节（实时引用，随重新生成更新）
   const [insertTarget, setInsertTarget] = useState<AnalysisItem | null>(null)
-  const [insertReportId, setInsertReportId] = useState('')
+  const insertModel = useFormModel({ reportId: '' }, { reportId: '请选择草稿报告' })
+  const [insertReportId, setInsertReportId] = useFormValue(insertModel, 'reportId')
+  useEffect(() => { insertModel.form.reset({ reportId: '' }) }, [insertTarget?.id, insertModel.form])
 
   // 分析列表列（操作列带权限门禁与状态分支）
   const listColumns: DataTableColumn<AnalysisItem>[] = useMemo(() => [
@@ -222,8 +226,6 @@ export function AnalysisManager({ stickyTop = 0 }: { stickyTop?: number }) {
       setInsertTarget(null)
       setInsertReportId('')
       flash('已插入报告章节（实时引用该预分析）')
-    } catch (e) {
-      flash((e as Error).message || '插入失败', 'error')
     } finally {
       setInserting(false)
     }
@@ -232,7 +234,7 @@ export function AnalysisManager({ stickyTop = 0 }: { stickyTop?: number }) {
   return (
     <>
       {/* 控制层：筛选工具条（筛选卡，吸顶；flex-nowrap 强制单行：空间不足时科目/期间/搜索先压缩省略号，公司名与开关恒完整） */}
-      <Card className="sticky z-10 rounded-card p-4" style={{ top: stickyTop }}>
+      <Card variant="filter" className="sticky z-10 rounded-card p-4" style={{ top: stickyTop }}>
       <div className="flex flex-nowrap items-center gap-1.5">
           <Select value={companyCode} onValueChange={(v) => { setCompanyCode(v); resetPage() }}>
             <SelectTrigger className="h-8 w-44 min-w-[96px]"><SelectValue placeholder="公司" /></SelectTrigger>
@@ -334,13 +336,9 @@ export function AnalysisManager({ stickyTop = 0 }: { stickyTop?: number }) {
           item={editing}
           onClose={() => setEditing(null)}
           onSave={async (id, title, content) => {
-            try {
-              await updateAnalysis.mutateAsync({ id, data: { title, content } })
-              setEditing(null)
-              flash('已保存')
-            } catch (e) {
-              flash((e as Error).message || '保存失败', 'error')
-            }
+            await updateAnalysis.mutateAsync({ id, data: { title, content } })
+            setEditing(null)
+            flash('已保存')
           }}
           saving={updateAnalysis.isPending}
         />
@@ -348,6 +346,7 @@ export function AnalysisManager({ stickyTop = 0 }: { stickyTop?: number }) {
         {/* 插入报告（AI 预分析归档 → 追加为引用章节） */}
         <InsertReportDialog
           target={insertTarget}
+          model={insertModel}
           reportId={insertReportId}
           onReportIdChange={setInsertReportId}
           reports={(draftReports?.items ?? []).map((r) => ({ id: r.id, title: r.title }))}
@@ -390,23 +389,27 @@ function RefsBadge({ refs }: { refs: { reportId: string; reportTitle: string; re
 function EditAnalysisDialog({ item, onClose, onSave, saving }: {
   item: AnalysisItem | null
   onClose: () => void
-  onSave: (id: string, title: string, content: string) => void
+  onSave: (id: string, title: string, content: string) => Promise<void>
   saving: boolean
 }) {
-  const [title, setTitle] = useState('')
-  const [content, setContent] = useState('')
-  const [loadedId, setLoadedId] = useState<string | null>(null)
+  const model = useFormModel({title:('') as string,content:('') as string}, {"title":"请输入分析标题"})
+  const [title, setTitle] = useFormValue(model, "title")
+  const [content, setContent] = useFormValue(model, "content")
+  const [saveError, setSaveError] = useState<string | null>(null)
   const { getDisplayName } = useCompanyDisplayName()
 
-  // item 切换时同步表单（渲染期间同步 state，避免 useEffect 闪烁）
-  if (item && item.id !== loadedId) {
-    setLoadedId(item.id)
-    setTitle(item.title)
-    setContent(item.content)
+  useEffect(() => { model.form.reset({ title: item?.title ?? '', content: item?.content ?? '' }); setSaveError(null) }, [item?.id, model.form])
+  const handleSave = async () => {
+    if (!item) return
+    setSaveError(null)
+    try { await onSave(item.id, title.trim(), content) }
+    catch (error) { setSaveError(error instanceof Error ? error.message : '保存失败') }
   }
 
+  const modelClose = useFormClose({ dirty: model.form.formState.isDirty, busy: model.pending || saving, enabled: !!item, onClose: onClose })
+
   return (
-    <Dialog open={!!item} onOpenChange={(o) => { if (!o) onClose() }}>
+    <><Dialog open={!!item} busy={model.pending || saving} onOpenChange={(next) => { if (!next) modelClose.requestClose() }}>
       <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>编辑单项分析</DialogTitle>
@@ -414,24 +417,27 @@ function EditAnalysisDialog({ item, onClose, onSave, saving }: {
             {item ? `${getDisplayName(item.companyCode, item.companyName)} · ${item.subjectName ?? item.subjectCode} · ${item.period}（公司/科目/期间不可变更）` : ''}
           </DialogDescription>
         </DialogHeader>
-        <DialogBody className="grid gap-4">
+        <DialogBody className="grid gap-4"><ModelFormFields model={model}>
           <div className="space-y-3">
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="分析标题" />
+            <label htmlFor="analysis-quick-title" className="block text-sm font-medium">分析标题</label>
+            <Input id="analysis-quick-title" name="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="分析标题" />
+            {saveError && <FlashMessage type="error">{saveError}</FlashMessage>}
             <RichTextEditor value={content} onChange={setContent} editable placeholder="撰写分析结论…" polishEnabled />
           </div>
-        </DialogBody>
+        </ModelFormFields></DialogBody>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>取消</Button>
-          <Button onClick={() => item && onSave(item.id, title, content)} disabled={saving || !title.trim()}>保存</Button>
+          <Button variant="outline" onClick={modelClose.requestClose}>取消</Button>
+          <Button onClick={model.submit(handleSave)} disabled={saving || !title.trim()}>保存</Button>
         </DialogFooter>
       </DialogContent>
-    </Dialog>
+    </Dialog>{modelClose.element}</>
   )
 }
 
 /** 插入报告对话框：将 AI 预分析归档追加为指定草稿报告的引用章节（实时更新） */
 function InsertReportDialog({
   target,
+  model,
   reportId,
   onReportIdChange,
   reports,
@@ -440,15 +446,22 @@ function InsertReportDialog({
   busy,
 }: {
   target: AnalysisItem | null
+  model: ReturnType<typeof useFormModel<{ reportId: string }>>
   reportId: string
   onReportIdChange: (v: string) => void
   reports: { id: string; title: string }[]
-  onConfirm: () => void
+  onConfirm: () => Promise<void>
   onClose: () => void
   busy: boolean
 }) {
+  const pending = busy || model.pending
+  const close = useFormClose({ dirty: model.form.formState.isDirty, busy: pending, enabled: !!target, onClose })
+  const submit = async () => {
+    model.form.clearErrors('root')
+    try { await onConfirm() } catch (error) { model.form.setError('root', { message: error instanceof Error ? error.message : '插入失败' }) }
+  }
   return (
-    <Dialog open={target !== null} onOpenChange={(o) => { if (!o) onClose() }}>
+    <><Dialog open={target !== null} busy={pending} onOpenChange={(o) => { if (!o) close.requestClose() }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>插入报告</DialogTitle>
@@ -456,9 +469,10 @@ function InsertReportDialog({
             将「{target?.title}」作为引用章节追加到报告，章节实时展示该预分析最新内容（重新生成后自动更新）。
           </DialogDescription>
         </DialogHeader>
-        <DialogBody className="grid gap-4">
-          <Select value={reportId} onValueChange={onReportIdChange}>
-            <SelectTrigger className="h-8 w-full"><SelectValue placeholder="选择草稿报告" /></SelectTrigger>
+        <DialogBody className="grid gap-4"><ModelFormFields model={model}>
+          <label htmlFor="insert-report" className="text-sm font-medium">草稿报告</label>
+          <Select name="reportId" value={reportId} onValueChange={onReportIdChange}>
+            <SelectTrigger id="insert-report" className="w-full"><SelectValue placeholder="选择草稿报告" /></SelectTrigger>
             <SelectContent>
               {reports.length === 0 ? (
                 <SelectItem value="__none" disabled>暂无草稿报告</SelectItem>
@@ -467,12 +481,12 @@ function InsertReportDialog({
               )}
             </SelectContent>
           </Select>
-        </DialogBody>
+        </ModelFormFields></DialogBody>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={busy}>取消</Button>
-          <Button onClick={onConfirm} disabled={busy || !reportId}><FilePlus2 className="mr-1 h-4 w-4" /> 插入章节</Button>
+          <Button variant="outline" onClick={close.requestClose} disabled={pending}>取消</Button>
+          <Button onClick={model.submit(submit)} disabled={pending || !reportId}><FilePlus2 className="mr-1 h-4 w-4" /> 插入章节</Button>
         </DialogFooter>
       </DialogContent>
-    </Dialog>
+    </Dialog>{close.element}</>
   )
 }

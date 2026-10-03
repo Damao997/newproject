@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useFormModel, useFormValue } from '@/components/forms/form-model'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useAnalyses, useCreateAnalysis, useUpdateAnalysis, useDeleteAnalysis } from '@/hooks/api-queries'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 
@@ -35,6 +36,7 @@ export function useAnalysisForm(opts: {
   /** 删除确认文案 */
   deleteConfirmText?: string
 }): {
+  model: ReturnType<typeof useFormModel<{ title: string; content: string }>>
   title: string
   setTitle: (v: string) => void
   content: string
@@ -47,8 +49,15 @@ export function useAnalysisForm(opts: {
   /** 删除确认对话框元素，由调用方在 JSX 中渲染 */
   confirmElement: ReactNode
 } {
-  const [title, setTitle] = useState('')
-  const [content, setContent] = useState('')
+  const model = useFormModel({ title: '', content: '' }, { title: '请输入分析标题' })
+  const [title, setTitle] = useFormValue(model, 'title')
+  const [content, setContentValue] = useFormValue(model, 'content')
+  const setContent = useCallback((next: string) => {
+    // 编辑器初始化空段落不算用户修改；已有正文的编辑和清空仍参与离开保护。
+    if (model.form.getValues('content') === '' && next === '<p></p>') return
+    setContentValue(next)
+  }, [model.form, setContentValue])
+  const loadedParams = useRef('')
   const [existingId, setExistingId] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null)
   const optsRef = useRef(opts)
@@ -65,13 +74,12 @@ export function useAnalysisForm(opts: {
   useEffect(() => {
     if (existing) {
       setExistingId(existing.id)
-      setTitle(existing.title)
-      setContent(existing.content)
+      if (loadedParams.current !== paramsKey || !model.form.formState.isDirty) model.form.reset({ title: existing.title, content: existing.content })
     } else {
       setExistingId(null)
-      setTitle(optsRef.current.defaultTitle())
-      setContent('')
+      if (loadedParams.current !== paramsKey || !model.form.formState.isDirty) model.form.reset({ title: optsRef.current.defaultTitle(), content: '' })
     }
+    loadedParams.current = paramsKey
     setFeedback(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existing?.id, paramsKey])
@@ -79,7 +87,7 @@ export function useAnalysisForm(opts: {
   const createMutation = useCreateAnalysis()
   const updateMutation = useUpdateAnalysis()
   const deleteMutation = useDeleteAnalysis()
-  const busy = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending
+  const busy = model.pending || createMutation.isPending || updateMutation.isPending || deleteMutation.isPending
 
   const save = async () => {
     setFeedback(null)
@@ -93,6 +101,7 @@ export function useAnalysisForm(opts: {
         setExistingId(created.id)
         setFeedback({ type: 'ok', msg: '已新增分析' })
       }
+      model.form.reset({ title, content })
     } catch (e) {
       setFeedback({ type: 'err', msg: (e as Error).message || '保存失败' })
     }
@@ -107,13 +116,12 @@ export function useAnalysisForm(opts: {
     try {
       await deleteMutation.mutateAsync(existingId)
       setExistingId(null)
-      setTitle(optsRef.current.defaultTitle())
-      setContent('')
+      model.form.reset({ title: optsRef.current.defaultTitle(), content: '' })
       setFeedback({ type: 'ok', msg: '已删除' })
     } catch (e) {
       setFeedback({ type: 'err', msg: (e as Error).message || '删除失败' })
     }
   }
 
-  return { title, setTitle, content, setContent, existingId, feedback, busy, save, remove, confirmElement }
+  return { model, title, setTitle, content, setContent, existingId, feedback, busy, save: model.submit(save), remove: model.submit(remove, false), confirmElement }
 }

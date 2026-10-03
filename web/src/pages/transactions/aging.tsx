@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { PageContainer } from '@/components/layout/page-container'
 import { SubPageTabs } from '@/components/layout/sub-page-tabs'
 import { TRANSACTION_TABS } from '@/components/layout/module-tabs'
+import { AdvancedFilters } from '@/components/layout/advanced-filters'
 import { FilterBar } from '@/components/layout/filter-bar'
 import { FILTER_WIDTH } from '@/components/layout/filter-width'
 import { Card } from '@/components/ui/card'
@@ -25,9 +26,10 @@ import { usePageStore, type TransactionAgingState } from '@/stores/pageStateStor
 import { usePeriodStore } from '@/stores/periodStore'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { TransactionAnalysisDrawer } from './analysis-drawer'
-import { PartyTypeSelect, PartyTypeTag, AccountMultiSelect, AgingStackBar, AGING_GROUPS, TRANSACTION_TYPES } from './shared'
+import { PartyTypeSelect, PartyTypeTag, PARTY_TYPES, AccountMultiSelect, AGING_GROUPS, TRANSACTION_TYPES } from './shared'
 import { AlertTriangle, Download, FileText, RefreshCw, Search } from 'lucide-react'
 import type { AgingAnalysisRow } from '@/types'
+import { MagnitudeValue, magnitudeMaximum } from '@/components/ui/magnitude-value'
 
 /**
  * 往来账龄分析：公司/期间跟随顶部 Header 全局筛选（periodStore），页面内保留往来类型 +
@@ -86,6 +88,7 @@ export default function TransactionsAgingPage() {
 
   const { data, isLoading, isError, error, refetch, isFetching } = useTransactionAging(agingParams)
   const rows = data ?? []
+  const agingMaximum = Object.fromEntries(AGING_GROUPS.map((g) => [g, magnitudeMaximum(rows.map((r) => r.aging[g]))]))
 
   // ===== Excel 导出（带下载进度；与查询同口径 + subtotalOnly） =====
   const [exporting, setExporting] = useState(false)
@@ -144,29 +147,29 @@ export default function TransactionsAgingPage() {
 
   return (
     <PageContainer
+      navigation={<SubPageTabs items={TRANSACTION_TABS} />}
       title="账龄分析"
-      description="按 8 段账龄拆解往来余额，支持类型 / 客商 / 科目分组与 Excel 导出"
       stickyHeader
-      actions={
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" disabled={isFetching} onClick={() => refetch()}>
-            <RefreshCw className={cn('mr-1.5 h-3.5 w-3.5', isFetching && 'animate-spin')} />
-            刷新
-          </Button>
-          {canExport && (
-            <Button size="sm" disabled={exporting} onClick={handleExport}>
-              <Download className="mr-1.5 h-3.5 w-3.5" />
-              {exporting ? `导出中 ${exportProgress}%` : '导出 Excel'}
-            </Button>
-          )}
-        </div>
-      }
     >
-      <SubPageTabs items={TRANSACTION_TABS} />
 
       {/* 筛选卡（吸顶）：页面特有筛选（公司/期间已上收顶部 Header 全局筛选） */}
-      <Card className="rounded-card border border-border p-4">
-        <FilterBar>
+      <Card variant="filter" className="rounded-card border border-border p-4">
+        <FilterBar
+          actions={
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" disabled={isFetching} onClick={() => refetch()}>
+                <RefreshCw className={cn('mr-1.5 h-3.5 w-3.5', isFetching && 'animate-spin')} />
+                刷新
+              </Button>
+              {canExport && (
+                <Button size="sm" disabled={exporting} onClick={handleExport}>
+                  <Download className="mr-1.5 h-3.5 w-3.5" />
+                  {exporting ? `导出中 ${exportProgress}%` : '导出 Excel'}
+                </Button>
+              )}
+            </div>
+          }
+        >
           <Select value={typeFilter || 'all'} onValueChange={(v) => setAging({ type: v === 'all' ? '' : v, accounts: [] })}>
             <SelectTrigger className="h-9 w-[130px]">
               <SelectValue placeholder="往来类型" />
@@ -178,8 +181,6 @@ export default function TransactionsAgingPage() {
               ))}
             </SelectContent>
           </Select>
-          <AccountMultiSelect value={accounts} onChange={(v) => setAging({ accounts: v })} transactionType={typeFilter || undefined} />
-          <PartyTypeSelect value={party} onChange={(v) => setAging({ party: v })} />
           <Select value={groupBy} onValueChange={(v) => setAging({ groupBy: v })}>
             <SelectTrigger className="h-9 w-[130px]">
               <SelectValue />
@@ -199,11 +200,20 @@ export default function TransactionsAgingPage() {
               onChange={(e) => setAging({ keyword: e.target.value })}
             />
           </div>
+
+        </FilterBar>
+        <AdvancedFilters className="mt-3" active={[
+            ...(accounts.length ? [{ key: 'accounts', label: '科目：' + accounts.join('、'), onClear: () => setAging({ accounts: [] }) }] : []),
+            ...(party.length ? [{ key: 'party', label: '对象：' + party.map((code) => PARTY_TYPES.find((p) => p.value === code)?.label || code).join('、'), onClear: () => setAging({ party: [] }) }] : []),
+            ...(subtotalOnly ? [{ key: 'subtotal', label: '仅显示小计', onClear: () => setAging({ subtotalOnly: false }) }] : []),
+          ]}>
+          <AccountMultiSelect value={accounts} onChange={(v) => setAging({ accounts: v })} transactionType={typeFilter || undefined} />
+          <PartyTypeSelect value={party} onChange={(v) => setAging({ party: v })} />
           <label className="flex cursor-pointer items-center gap-1.5 text-sm text-muted-foreground">
             <Checkbox checked={subtotalOnly} onCheckedChange={(v) => setAging({ subtotalOnly: v === true })} />
             仅显示小计
           </label>
-        </FilterBar>
+        </AdvancedFilters>
         {(exportError || exporting) && (
           <div className="mt-2">
             {exportError ? (
@@ -222,7 +232,7 @@ export default function TransactionsAgingPage() {
 
       {/* 汇总条：总余额 + 三段账龄占比 */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-        <Card className="rounded-card p-4">
+        <Card variant="metric" className="rounded-card p-4">
           <p className="text-sm text-muted-foreground">期末余额合计</p>
           <p className="mt-1 font-num text-2xl font-semibold tabular-nums text-foreground">
             {isLoading ? <Skeleton className="h-8 w-28" /> : <>{formatWan(totalClosing)}<span className="ml-1 text-sm font-normal text-muted-foreground">万</span></>}
@@ -233,7 +243,7 @@ export default function TransactionsAgingPage() {
           { label: '1-3 年', value: y1to3, cls: 'text-warning-strong' },
           { label: '3 年以上', value: over3y, cls: totalClosing > 0 && over3y > 0 ? 'text-destructive' : 'text-foreground' },
         ].map((s) => (
-          <Card key={s.label} className="rounded-card p-4">
+          <Card variant="metric" data-metric-tone={s.label === "1 年内" ? 2 : 3} key={s.label} className="rounded-card p-4">
             <p className="text-sm text-muted-foreground">{s.label}</p>
             <p className={cn('mt-1 font-num text-2xl font-semibold tabular-nums', s.cls)}>
               {isLoading ? <Skeleton className="h-8 w-24" /> : <>{formatWan(s.value)}<span className="ml-1 text-sm font-normal text-muted-foreground">万{totalClosing > 0 ? ` · ${((s.value / totalClosing) * 100).toFixed(1)}%` : ''}</span></>}
@@ -272,7 +282,7 @@ export default function TransactionsAgingPage() {
               当前筛选条件下暂无账龄数据，请调整筛选或先导入并激活批次
             </p>
           ) : (
-            <table className="data-table-report" style={{ minWidth: 1180 }}>
+            <table data-ui-table data-comparison-matrix data-grouped-matrix className="data-table-report" style={{ minWidth: 1180 }}>
               <thead>
                 <tr>
                   <th className="text-left">公司</th>
@@ -291,6 +301,7 @@ export default function TransactionsAgingPage() {
                   <AgingGroupBlock
                     key={`${g.name}-${gi}`}
                     group={g}
+                    maximum={agingMaximum}
                     groupBy={groupBy}
                     subtotalOnly={subtotalOnly}
                     onAnalyze={(row) => setAnalysisTarget({ transactionType: row.transactionType, companyCode: row.companyCode })}
@@ -326,10 +337,11 @@ export default function TransactionsAgingPage() {
   )
 }
 
-/** 组块：组头（小计 + 堆叠条）+ 明细行（subtotalOnly 时隐藏，组头保留）；
+/** 组块：组头小计与金额矩阵；subtotalOnly 时保留各段小计、隐藏明细。
  *  按往来客商模式下组头为公司显示名（getDisplayName 简称联动），其余模式组头为分组维度名 */
-function AgingGroupBlock({ group, groupBy, subtotalOnly, onAnalyze }: {
+function AgingGroupBlock({ group, maximum, groupBy, subtotalOnly, onAnalyze }: {
   group: { name: string; companyCode?: string; rows: AgingAnalysisRow[]; closing: number }
+  maximum: Record<string, number>
   groupBy: string
   subtotalOnly: boolean
   onAnalyze: (row: AgingAnalysisRow) => void
@@ -342,7 +354,7 @@ function AgingGroupBlock({ group, groupBy, subtotalOnly, onAnalyze }: {
   return (
     <>
       {/* 组头（小计） */}
-      <tr className="border-b bg-muted/30">
+      <tr data-matrix-subtotal className="border-b bg-muted/30">
         <td className="whitespace-nowrap px-3 py-2 font-medium" colSpan={4}>
           <div className="flex flex-wrap items-center gap-2">
             <span className="whitespace-nowrap text-foreground">{groupLabel}</span>
@@ -383,7 +395,7 @@ function AgingGroupBlock({ group, groupBy, subtotalOnly, onAnalyze }: {
               const v = r.aging[b] ?? 0
               return (
                 <td key={b} className={cn('whitespace-nowrap px-2 py-2 text-right', v !== 0 && b === '3年以上' && 'font-medium text-destructive')}>
-                  {v !== 0 ? fmtAmount(v) : '-'}
+                  <MagnitudeValue value={v} maximum={maximum[b]}>{v !== 0 ? fmtAmount(v) : '-'}</MagnitudeValue>
                 </td>
               )
             })}
@@ -401,20 +413,7 @@ function AgingGroupBlock({ group, groupBy, subtotalOnly, onAnalyze }: {
           </tr>
         )
       })}
-      {/* 组头附堆叠条（明细隐藏时直观展示账龄结构） */}
-      {subtotalOnly && (
-        <tr className="border-b">
-          <td colSpan={4 + 1 + AGING_GROUPS.length + 1} className="whitespace-nowrap px-3 pb-2">
-            <AgingStackBar
-              aging={group.rows.reduce<Record<string, number>>((acc, r) => {
-                for (const b of AGING_GROUPS) acc[b] = (acc[b] ?? 0) + (r.aging[b] ?? 0)
-                return acc
-              }, {})}
-              closingBalance={group.closing}
-            />
-          </td>
-        </tr>
-      )}
+
     </>
   )
 }

@@ -12,6 +12,7 @@ import {
   RotateCcw,
 } from 'lucide-react'
 import { PageContainer } from '@/components/layout/page-container'
+import { FilterBar } from '@/components/layout/filter-bar'
 import { SubPageTabs } from '@/components/layout/sub-page-tabs'
 import { IMPORT_TABS } from '@/components/layout/module-tabs'
 import { Card } from '@/components/ui/card'
@@ -242,28 +243,9 @@ export default function DataBrowsePage() {
 
   return (
     <PageContainer
+      navigation={<SubPageTabs items={IMPORT_TABS} />}
       title="交叉浏览"
-      description="以科目 × 公司透视经营数据，支持多公司多期间对比与导出"
-      actions={
-        canExport ? (
-          <>
-            <Button variant="outline" size="sm" disabled={exporting !== null} onClick={() => handleExport('excel')}>
-              {exporting === 'excel'
-                ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                : <FileSpreadsheet className="mr-2 h-4 w-4" />}
-              导出 Excel
-            </Button>
-            <Button variant="outline" size="sm" disabled={exporting !== null} onClick={() => handleExport('pdf')}>
-              {exporting === 'pdf'
-                ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                : <FileText className="mr-2 h-4 w-4" />}
-              导出 PDF
-            </Button>
-          </>
-        ) : undefined
-      }
     >
-      <SubPageTabs items={IMPORT_TABS} />
 
       {/* KPI 摘要行：当前查询结果派生 */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
@@ -285,8 +267,27 @@ export default function DataBrowsePage() {
       </div>
 
       {/* 筛选行：数据体系 + 重置（公司/期间已上收顶部 Header 全局筛选，查询随筛选自动触发） */}
-      <Card className="rounded-card p-0">
-        <div className="flex flex-wrap items-center gap-3 px-5 py-4">
+      <Card variant="filter" className="rounded-card p-0">
+        <FilterBar className="px-5 py-4"
+          actions={
+            canExport ? (
+              <>
+                <Button variant="outline" size="sm" disabled={exporting !== null} onClick={() => handleExport('excel')}>
+                  {exporting === 'excel'
+                    ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    : <FileSpreadsheet className="mr-2 h-4 w-4" />}
+                  导出 Excel
+                </Button>
+                <Button variant="outline" size="sm" disabled={exporting !== null} onClick={() => handleExport('pdf')}>
+                  {exporting === 'pdf'
+                    ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    : <FileText className="mr-2 h-4 w-4" />}
+                  导出 PDF
+                </Button>
+              </>
+            ) : undefined
+          }
+        >
           <div className="flex items-center gap-2">
             <span className="text-[13px] text-muted-foreground">数据体系</span>
             <Select value={subjectType} onValueChange={(v) => setDataBrowse({ subjectType: v as SubjectType })}>
@@ -300,12 +301,12 @@ export default function DataBrowsePage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="ml-auto flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <Button variant="outline" size="sm" onClick={handleReset}>
               <RotateCcw className="mr-2 h-4 w-4" />重置
             </Button>
           </div>
-        </div>
+        </FilterBar>
       </Card>
 
       {/* 交叉表卡片：DataTable + Pagination */}

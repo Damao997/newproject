@@ -14,10 +14,9 @@ import { ImportPanel } from './import-panel'
 export default function DataImportPage() {
   return (
     <PageContainer
+      navigation={<SubPageTabs items={IMPORT_TABS} />}
       title="数据导入"
-      description="支持经营/静态/现金流/预算/往来等模板批量导入，上传后预览校验（dry-run），批次在质量概览中激活管理"
     >
-      <SubPageTabs items={IMPORT_TABS} />
       <ImportPanel />
     </PageContainer>
   )

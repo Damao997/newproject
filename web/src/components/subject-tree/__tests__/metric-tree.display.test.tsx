@@ -57,3 +57,26 @@ describe('MetricTree 展示类行', () => {
     expect(screen.getByText('1,200.00')).toBeInTheDocument()
   })
 })
+
+describe('MetricTree 首列冻结（横向滚动吸附）', () => {
+  /**
+   * 回归：首列数据单元格曾只有裸 `sticky` 而无 `left` 偏移（position: sticky 的 inset 为 auto 时不产生吸附位移），
+   * 横向滚动时科目列随内容移出视口被裁切成名称后缀，而表头「科目」因带 left-0 仍吸附 → 头体错位。
+   * 表头与数据单元格必须都显式指定 left-0，保持冻结行为一致。
+   */
+  it('经营指标表头「科目」与数据行首列的 sticky 左偏移保持一致', () => {
+    render(
+      <MetricTree
+        {...baseProps}
+        nodes={[node({ code: 'PL06', name: '厨房产品销售收入（不含净水及服务）', dataType: 'data' })]}
+        valueMap={valueMap()}
+      />,
+    )
+    const header = screen.getByRole('columnheader', { name: '科目' })
+    const cell = screen.getByText('厨房产品销售收入（不含净水及服务）').closest('td')!
+    for (const el of [header, cell]) {
+      expect(el.className).toContain('sticky')
+      expect(el.className).toContain('left-0')
+    }
+  })
+})

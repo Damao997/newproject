@@ -13,12 +13,12 @@ export default function TransactionsCoveragePage() {
 
   return (
     <PageContainer
+      navigation={<SubPageTabs items={TRANSACTION_TABS} />}
       title="导入覆盖"
       description="公司 × 期间 × 六大往来类型导入完整性矩阵，草稿批次可在此直接激活"
       stickyHeader
       headerRef={headerRef}
     >
-      <SubPageTabs items={TRANSACTION_TABS} />
       <CoverageTab stickyTop={headerHeight} />
     </PageContainer>
   )

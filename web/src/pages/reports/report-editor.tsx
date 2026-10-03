@@ -1,10 +1,13 @@
+import { useFormModel, useFormValue, ModelFormFields } from '@/components/forms/form-model'
+import { useFormClose, useFormNavigation } from '@/components/forms/form-navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   Sparkles, Save, Download, FileDown, Search, FileText, Loader2, History, RotateCcw, Eye, GitCommitVertical, AlertTriangle, Link2,
-  Plus, ArrowUp, ArrowDown, Trash2, Copy, LayoutTemplate,
+  Plus, ArrowUp, ArrowDown, Trash2, Copy, LayoutTemplate, MoreHorizontal,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -192,16 +195,8 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
     }
   }, [editable, dirty, localSections, drafts, draftKey])
 
-  // 刷新/关闭页面前守卫（SPA 路由跳转由 sessionStorage 暂存兜底）
-  useEffect(() => {
-    if (!dirty) return
-    const handler = (e: BeforeUnloadEvent) => {
-      e.preventDefault()
-      e.returnValue = ''
-    }
-    window.addEventListener('beforeunload', handler)
-    return () => window.removeEventListener('beforeunload', handler)
-  }, [dirty])
+  // 路由返回和刷新共用全站离开保护；原有会话草稿恢复继续保留。
+
 
   const applyRestorable = () => {
     if (!restorable) return
@@ -387,8 +382,9 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
   const canCreate = can('reports', 'create')
   const createTemplate = useCreateReportTemplate()
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
-  const [templateName, setTemplateName] = useState('')
-  const [templateDesc, setTemplateDesc] = useState('')
+  const templateModel = useFormModel({templateName:('') as string,templateDesc:('') as string}, {"templateName":"请输入模板名称"})
+  const [templateName, setTemplateName] = useFormValue(templateModel, "templateName")
+  const [templateDesc, setTemplateDesc] = useFormValue(templateModel, "templateDesc")
   const handleSaveAsTemplate = async () => {
     const name = templateName.trim()
     if (!name) return
@@ -401,7 +397,7 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
       setTemplateDialogOpen(false)
       flash(`已保存为模板「${name}」`)
     } catch (e) {
-      flash((e as Error).message || '保存模板失败', 'error')
+      templateModel.form.setError('root', { message: e instanceof Error ? e.message : '保存模板失败' })
     }
   }
 
@@ -411,11 +407,12 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
   const saveVersion = useSaveReportVersion()
   const rollbackVersion = useRollbackReportVersion()
   const [versionDialogOpen, setVersionDialogOpen] = useState(false)
-  const [changeSummary, setChangeSummary] = useState('')
+  const versionModel = useFormModel({changeSummary:('') as string}, {})
+  const [changeSummary, setChangeSummary] = useFormValue(versionModel, "changeSummary")
   const [viewingVersion, setViewingVersion] = useState<ReportVersionItem | null>(null)
 
   const handleOpenSaveVersion = () => {
-    setChangeSummary('')
+    versionModel.form.reset({ changeSummary: '' })
     setVersionDialogOpen(true)
   }
 
@@ -433,7 +430,7 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
         setVersionDialogOpen(false)
         openConflict()
       } else {
-        flash((e as Error).message || '保存版本失败', 'error')
+        versionModel.form.setError('root', { message: e instanceof Error ? e.message : '保存版本失败' })
       }
     }
   }
@@ -475,10 +472,17 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
     [versions],
   )
 
+  const [outlineOpen, setOutlineOpen] = useState(() => window.innerWidth >= 1024)
+  const [informationOpen, setInformationOpen] = useState(() => window.innerWidth >= 1280)
   const scopeName = getDisplayName(report.companyScope.code, report.companyScope.name ?? report.companyScope.code)
 
+  useFormNavigation(dirty || titleDraft !== report.title, setSections.isPending || updateReport.isPending || generateSections.isPending || rollbackVersion.isPending)
+  const templateModelClose = useFormClose({ dirty: templateModel.form.formState.isDirty, busy: templateModel.pending || createTemplate.isPending, enabled: templateDialogOpen, onClose: () => setTemplateDialogOpen(false) })
+
+  const versionModelClose = useFormClose({ dirty: versionModel.form.formState.isDirty, busy: versionModel.pending || saveVersion.isPending, enabled: versionDialogOpen, onClose: () => setVersionDialogOpen(false) })
+
   return (
-    <div className="animate-fade-in space-y-0">
+    <div className="report-editor animate-fade-in space-y-0">
       {/* 顶部 PageHead：标题 + 状态 + 操作 */}
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border bg-card px-4 py-4 sm:px-6">
         <div className="min-w-0">
@@ -488,10 +492,10 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
               onChange={(e) => setTitleDraft(e.target.value)}
               onBlur={handleTitleBlur}
               aria-label="报告标题"
-              className="w-full max-w-[480px] rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-2xl font-semibold leading-tight text-foreground transition-colors hover:border-input focus:border-primary focus:bg-card focus:outline-none"
+              className="w-full max-w-[480px] rounded-md border border-transparent bg-transparent px-1.5 py-0.5 page-title text-[26px] font-semibold leading-tight text-foreground transition-colors hover:border-input focus:border-primary focus:bg-card focus:outline-none"
             />
           ) : (
-            <h1 className="px-1.5 text-2xl font-semibold leading-tight text-foreground">{report.title}</h1>
+            <h1 className="px-1.5 page-title text-[26px] font-semibold leading-tight text-foreground">{report.title}</h1>
           )}
           <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 px-1.5 text-body text-muted-foreground">
             <Badge variant={REPORT_STATUS_BADGE_VARIANT[report.status] ?? 'secondary'}>
@@ -512,62 +516,44 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {editable && (
-            <>
-              <Button variant="fused" size="sm" onClick={handleGenerate} disabled={generateSections.isPending}>
-                {generateSections.isPending
-                  ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                  : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
-                AI 生成章节
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleSaveSections} disabled={!dirty || setSections.isPending}>
-                {setSections.isPending
-                  ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                  : <Save className="mr-1.5 h-3.5 w-3.5" />}
-                保存章节{dirty ? ' *' : ''}
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleOpenSaveVersion} disabled={saveVersion.isPending}>
-                <GitCommitVertical className="mr-1.5 h-3.5 w-3.5" /> 保存版本
-              </Button>
-              {canCreate && (
-                <Button variant="outline" size="sm" onClick={() => { setTemplateName(''); setTemplateDesc(''); setTemplateDialogOpen(true) }}>
-                  <LayoutTemplate className="mr-1.5 h-3.5 w-3.5" /> 另存为模板
-                </Button>
-              )}
-            </>
-          )}
-          {canExport && (
-            <>
-              <Button variant="outline" size="sm" onClick={() => handleExport('docx')} disabled={exporting !== null}>
-                {exporting === 'docx' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <FileDown className="mr-1.5 h-3.5 w-3.5" />}
-                导出 Word
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => handleExport('pdf')} disabled={exporting !== null}>
-                {exporting === 'pdf' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1.5 h-3.5 w-3.5" />}
-                导出 PDF
-              </Button>
-            </>
-          )}
+          {editable && <Button size="sm" onClick={handleSaveSections} disabled={!dirty || setSections.isPending} loading={setSections.isPending}><Save className="mr-1.5 h-4 w-4" />保存章节{dirty ? ' *' : ''}</Button>}
+          {editable && <DropdownMenu>
+            <DropdownMenuTrigger asChild><Button variant="outline" size="sm"><MoreHorizontal className="mr-1.5 h-4 w-4" />更多</Button></DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={handleGenerate} disabled={generateSections.isPending}><Sparkles className="mr-2 h-4 w-4" />{generateSections.isPending ? '生成中…' : 'AI 生成章节'}</DropdownMenuItem>
+              <DropdownMenuItem onClick={handleOpenSaveVersion} disabled={saveVersion.isPending}><GitCommitVertical className="mr-2 h-4 w-4" />保存版本</DropdownMenuItem>
+              {canCreate && <DropdownMenuItem onClick={() => { templateModel.form.reset({ templateName: '', templateDesc: '' }); setTemplateDialogOpen(true) }}><LayoutTemplate className="mr-2 h-4 w-4" />另存为模板</DropdownMenuItem>}
+            </DropdownMenuContent>
+          </DropdownMenu>}
+          {canExport && <DropdownMenu>
+            <DropdownMenuTrigger asChild><Button variant="outline" size="sm" disabled={exporting !== null} loading={exporting !== null}><Download className="mr-1.5 h-4 w-4" />{exporting ? '导出中…' : '导出'}</Button></DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-40">
+              <DropdownMenuItem onClick={() => handleExport('docx')}><FileDown className="mr-2 h-4 w-4" />导出 Word</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExport('pdf')}><Download className="mr-2 h-4 w-4" />导出 PDF</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>}
         </div>
       </div>
 
       {/* 三栏布局：左大纲 / 中编辑 / 右信息+版本 */}
-      <div className="grid grid-cols-[120px_minmax(0,1fr)_140px] border-b border-border bg-muted lg:grid-cols-[240px_minmax(0,1fr)_280px]">
+      <div className="report-editor-grid grid min-w-0 items-start gap-4 bg-page py-4">
         {/* 左侧章节大纲 */}
-        <aside className="border-r border-border bg-card">
+        <details className="report-outline min-w-0 rounded-card border border-subtle bg-card" open={outlineOpen} onToggle={(event) => setOutlineOpen(event.currentTarget.open)}>
+          <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-foreground">章节大纲 · {sections.length}</summary>
           <div className="py-4">
-            <div className="px-3 pb-2.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground lg:px-5 lg:text-xs">章节大纲</div>
+
             <div className="relative mx-3 mb-3 lg:mx-4">
               <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground lg:left-2.5 lg:h-3.5 lg:w-3.5" />
               <input
                 value={outlineQuery}
                 onChange={(e) => setOutlineQuery(e.target.value)}
                 placeholder="搜索章节…"
-                className="h-6 w-full rounded-sm border border-border bg-muted pl-6 pr-2 text-[10px] text-foreground transition-colors focus:border-primary focus:outline-none lg:h-7 lg:pl-8 lg:text-caption"
+                aria-label="搜索章节"
+                className="h-8 w-full rounded-sm border border-border bg-muted pl-6 pr-2 text-xs text-foreground transition-colors focus:border-primary focus:outline-none lg:h-7 lg:pl-8 lg:text-caption"
               />
             </div>
             {sections.length === 0 ? (
-              <p className="px-3 text-[10px] leading-relaxed text-muted-foreground lg:px-5 lg:text-caption">
+              <p className="px-3 text-xs leading-relaxed text-muted-foreground lg:px-5 lg:text-caption">
                 暂无章节，可「AI 生成章节」或手动添加空白章节。
               </p>
             ) : (
@@ -576,7 +562,7 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
                   key={s.id}
                   type="button"
                   onClick={() => jumpTo(s.id)}
-                  className="flex w-full items-center gap-1.5 border-l-2 border-transparent px-3 py-1 text-left text-[10px] leading-tight text-foreground transition-all hover:bg-muted hover:text-primary lg:px-5 lg:py-1.5 lg:text-caption"
+                  className="flex w-full items-center gap-1.5 border-l-2 border-transparent px-3 py-1 text-left text-xs leading-tight text-foreground transition-all hover:bg-muted hover:text-primary lg:px-5 lg:py-1.5 lg:text-caption"
                 >
                   <span className="min-w-[18px] tabular-nums text-muted-foreground lg:min-w-[22px]">{sections.indexOf(s) + 1}</span>
                   <span className="truncate" title={s.title || '自定义章节'}>{s.title || '自定义章节'}</span>
@@ -585,20 +571,20 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
               ))
             )}
           </div>
-        </aside>
+        </details>
 
         {/* 中部：章节编辑区 */}
-        <section className="bg-muted px-2 py-3 sm:px-4 sm:py-6 lg:px-8">
+        <section className="min-w-0">
           <div className="mx-auto max-w-[820px] space-y-3 lg:space-y-4">
             {msg && (
-              <Card className="rounded-large p-2.5">
+              <Card className="rounded-card p-2.5">
                 <FlashMessage type={msg.type}>{msg.text}</FlashMessage>
               </Card>
             )}
 
             {/* 本地草稿恢复提示（上次会话未保存的修改） */}
             {editable && restorable && (
-              <Card className="flex flex-wrap items-center justify-between gap-2 rounded-large p-3">
+              <Card className="flex flex-wrap items-center justify-between gap-2 rounded-card p-3">
                 <span className="text-body text-foreground">
                   检测到未保存的本地草稿{restorable.savedAt ? `（${new Date(restorable.savedAt).toLocaleString('zh-CN')}）` : ''}，是否恢复？
                 </span>
@@ -610,7 +596,7 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
             )}
 
             {sections.length === 0 ? (
-              <div className="rounded-large border border-border bg-card">
+              <div className="rounded-card border border-border bg-card">
                 <EmptyState
                   icon={Sparkles}
                   title="报告还没有章节"
@@ -656,7 +642,7 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
                   <button
                     type="button"
                     onClick={addSection}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-large border border-dashed border-border bg-card/50 px-4 py-3 text-body text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                    className="flex w-full items-center justify-center gap-1.5 rounded-card border border-dashed border-border bg-card/50 px-4 py-3 text-body text-muted-foreground transition-colors hover:border-primary hover:text-primary"
                   >
                     <Plus className="h-4 w-4" /> 添加空白章节
                   </button>
@@ -667,32 +653,30 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
         </section>
 
         {/* 右侧：报告信息 + 版本历史 */}
-        <aside className="border-l border-border bg-card">
+        <details className="report-information min-w-0 rounded-card border border-subtle bg-card" open={informationOpen} onToggle={(event) => setInformationOpen(event.currentTarget.open)}>
+          <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-foreground">报告信息与版本</summary>
           <div className="border-b border-border px-2 py-2 lg:px-5 lg:py-4">
-            <div className="mb-1.5 text-[9px] font-medium uppercase tracking-wider text-muted-foreground lg:mb-2.5 lg:text-xs">报告信息</div>
-            <div className="space-y-1 text-[10px] leading-relaxed text-muted-foreground lg:text-caption">
-              <div className="flex justify-between gap-2"><span>主体</span><span className="truncate text-foreground" title={scopeName}>{scopeName}</span></div>
+            <div className="mb-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground lg:mb-2.5 lg:text-xs">报告信息</div>
+            <div className="space-y-1 text-xs leading-relaxed text-muted-foreground lg:text-caption">
               <div className="flex justify-between gap-2"><span>类型</span><span className="text-foreground">{report.companyScope.type === 'summary' ? '汇总主体' : '单体公司'}</span></div>
-              <div className="flex justify-between gap-2"><span>期间</span><span className="text-foreground">{report.period}</span></div>
               <div className="flex justify-between gap-2"><span>章节数</span><span className="text-foreground">{sections.length}</span></div>
-              <div className="flex justify-between gap-2"><span>当前版本</span><span className="text-foreground">v{report.currentVersion}</span></div>
             </div>
           </div>
           <div className="px-2 py-2 lg:px-5 lg:py-4">
-            <div className="mb-1.5 flex items-center justify-between text-[9px] font-medium uppercase tracking-wider text-muted-foreground lg:mb-2.5 lg:text-xs">
+            <div className="mb-1.5 flex items-center justify-between text-xs font-medium uppercase tracking-wider text-muted-foreground lg:mb-2.5 lg:text-xs">
               <span>版本历史</span>
               {versionsLoading && <Loader2 className="h-3 w-3 animate-spin" />}
             </div>
             {versions.length === 0 ? (
-              <p className="text-[10px] leading-relaxed text-muted-foreground lg:text-caption">
+              <p className="text-xs leading-relaxed text-muted-foreground lg:text-caption">
                 暂无版本快照。编辑章节后点击「保存版本」留存快照。
               </p>
             ) : (
               <ul className="space-y-1.5">
-                {versions.slice(0, 8).map((v) => (
+                {versions.map((v) => (
                   <li key={v.id} className="rounded-sm border border-border bg-card px-1.5 py-1 lg:px-2 lg:py-1.5">
                     <div className="flex items-center justify-between gap-1">
-                      <span className="text-[10px] font-medium text-foreground lg:text-caption">v{v.versionNo}</span>
+                      <span className="text-xs font-medium text-foreground lg:text-caption">v{v.versionNo}</span>
                       <span className="flex items-center gap-0.5">
                         <button
                           type="button"
@@ -714,10 +698,10 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
                         )}
                       </span>
                     </div>
-                    <div className="truncate text-[9px] text-muted-foreground lg:text-[11px]" title={v.changeSummary ?? ''}>
+                    <div className="truncate text-xs text-muted-foreground lg:text-xs" title={v.changeSummary ?? ''}>
                       {v.changeSummary || '无变更说明'}
                     </div>
-                    <div className="text-[9px] text-muted-foreground lg:text-[11px]">
+                    <div className="text-xs text-muted-foreground lg:text-xs">
                       {new Date(v.changedAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
                       {v.changedBy ? ` · ${v.changedBy}` : ''}
                     </div>
@@ -726,12 +710,12 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
               </ul>
             )}
           </div>
-        </aside>
+        </details>
       </div>
 
       {/* 底部版本时间线（真实版本快照，最多展示最近 5 个） */}
       {timelineVersions.length > 0 && (
-        <div className="sticky bottom-0 z-10 border-t border-border bg-card px-4 py-4 sm:px-8">
+        <div className="rounded-card border border-subtle bg-card px-4 py-4 sm:px-6">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-caption font-medium text-muted-foreground">
               版本时间线（共 {versions.length} 个版本，当前 v{report.currentVersion}）
@@ -760,7 +744,7 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
       )}
 
       {/* 保存版本对话框 */}
-      <Dialog open={versionDialogOpen} onOpenChange={setVersionDialogOpen}>
+      <><Dialog open={versionDialogOpen} busy={versionModel.pending || saveVersion.isPending} onOpenChange={(next) => { if (!next) versionModelClose.requestClose() }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>保存版本快照</DialogTitle>
@@ -768,11 +752,11 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
               将当前章节内容留存为 v{report.currentVersion + 1} 快照，可随时查看或回滚。
             </DialogDescription>
           </DialogHeader>
-          <DialogBody className="grid gap-4">
+          <DialogBody className="grid gap-4"><ModelFormFields model={versionModel}>
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <Label htmlFor="change-summary">变更说明（可选）</Label>
-                <Textarea
+                <Label htmlFor="change-summary">变更说明</Label>
+                <Textarea name="changeSummary"
                   id="change-summary"
                   value={changeSummary}
                   onChange={(e) => setChangeSummary(e.target.value)}
@@ -781,18 +765,18 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
                 />
               </div>
             </div>
-          </DialogBody>
+          </ModelFormFields></DialogBody>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setVersionDialogOpen(false)} disabled={saveVersion.isPending}>取消</Button>
-            <Button onClick={handleSaveVersion} disabled={saveVersion.isPending}>
+            <Button variant="outline" onClick={versionModelClose.requestClose} disabled={saveVersion.isPending}>取消</Button>
+            <Button onClick={versionModel.submit(handleSaveVersion)} disabled={saveVersion.isPending}>
               {saveVersion.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />} 保存版本
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </Dialog>{versionModelClose.element}</>
 
       {/* 另存为模板对话框 */}
-      <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
+      <><Dialog open={templateDialogOpen} busy={templateModel.pending || createTemplate.isPending} onOpenChange={(next) => { if (!next) templateModelClose.requestClose() }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>另存为模板</DialogTitle>
@@ -800,11 +784,11 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
               将当前 {sections.length} 个章节（含未保存的本地修改）保存为自定义模板，新建报告时可一键套用。
             </DialogDescription>
           </DialogHeader>
-          <DialogBody className="grid gap-4">
+          <DialogBody className="grid gap-4"><ModelFormFields model={templateModel}>
             <div className="space-y-3">
               <div className="space-y-1.5">
                 <Label htmlFor="template-name">模板名称</Label>
-                <Input
+                <Input name="templateName"
                   id="template-name"
                   value={templateName}
                   onChange={(e) => setTemplateName(e.target.value)}
@@ -812,8 +796,8 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="template-desc">说明（可选）</Label>
-                <Input
+                <Label htmlFor="template-desc">说明</Label>
+                <Input name="templateDesc"
                   id="template-desc"
                   value={templateDesc}
                   onChange={(e) => setTemplateDesc(e.target.value)}
@@ -821,15 +805,15 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
                 />
               </div>
             </div>
-          </DialogBody>
+          </ModelFormFields></DialogBody>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setTemplateDialogOpen(false)} disabled={createTemplate.isPending}>取消</Button>
-            <Button onClick={handleSaveAsTemplate} disabled={!templateName.trim() || createTemplate.isPending}>
+            <Button variant="outline" onClick={templateModelClose.requestClose} disabled={createTemplate.isPending}>取消</Button>
+            <Button onClick={templateModel.submit(handleSaveAsTemplate)} disabled={!templateName.trim() || createTemplate.isPending}>
               {createTemplate.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />} 保存模板
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </Dialog>{templateModelClose.element}</>
 
       {/* 版本快照查看 */}
       <VersionSnapshotDialog
@@ -902,7 +886,7 @@ function SectionPaper({
 }) {
   const canEditTitle = canManage && !section.analysisId
   return (
-    <div id={`report-section-${section.id}`} className="relative rounded-large border border-border bg-card p-3 shadow-sm scroll-mt-24 sm:p-6 sm:px-8 lg:p-10">
+    <div id={`report-section-${section.id}`} className="relative rounded-card border border-border bg-card p-3 shadow-sm scroll-mt-24 sm:p-6 sm:px-8 lg:p-10">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         {canEditTitle ? (
           <input
@@ -1020,7 +1004,7 @@ function TimelineStep({
       </div>
       <div className="ml-2.5 flex-1 pt-0.5">
         <div className="truncate text-caption font-medium text-foreground" title={title}>{title}</div>
-        <div className="mt-0.5 text-[11px] text-muted-foreground">{desc}</div>
+        <div className="mt-0.5 text-xs text-muted-foreground">{desc}</div>
       </div>
     </button>
   )

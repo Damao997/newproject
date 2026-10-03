@@ -246,19 +246,19 @@ export function DataTable<T>({
     window.addEventListener('pointerup', onUp)
   }
 
-  // 浅灰圆角容器：与页面/卡片形成视觉分割
+  // 单层表面：视觉配方共享，密度和滚动方式由原有参数负责
   // 表头和冻结列隔离在表格内，避免覆盖外部页面标题及筛选栏。
   return (
     <div
       className={cn(
-        'relative isolate min-w-0 max-w-full overflow-hidden rounded-card bg-muted/40 p-2',
+        'table-surface relative isolate min-w-0 max-w-full overflow-hidden rounded-card',
         fillHeight && 'flex min-h-0 flex-1 flex-col',
       )}
     >
       <div
         className={cn(
-          // antd Table 观感：白底容器带浅边框，与浅灰外层容器形成双层分割
-          'border border-border/60 bg-background',
+          // 唯一滚动区域，避免重复边框与内外滚动竞争
+          'table-scroll bg-background',
           bounded ? 'min-h-0 overflow-auto rounded-card' : 'overflow-x-auto',
           fillHeight && 'flex-1',
           className,
@@ -267,7 +267,7 @@ export function DataTable<T>({
         style={maxHeight ? { maxHeight } : undefined}
       >
         {/* border-separate（仅限高模式）：sticky 表头单元格边框随滚动稳定跟随，collapse 模式下边框渲染异常（对齐 metric-tree） */}
-        <table
+        <table data-ui-table
           className={cn(
             'w-full caption-bottom text-body',
             resizable && 'table-fixed',
@@ -371,6 +371,7 @@ export function DataTable<T>({
                 return (
                   <Fragment key={key}>
                     <tr
+                      aria-selected={rowSelection ? rowSelection.selectedKeys.has(key) : undefined}
                       className={cn('group border-b transition-colors hover:bg-muted/50', onRowClick && 'cursor-pointer', rowClassName?.(row, rowIndex))}
                       onClick={onRowClick ? () => onRowClick(row, rowIndex) : undefined}
                     >

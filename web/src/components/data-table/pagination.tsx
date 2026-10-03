@@ -152,6 +152,7 @@ export function Pagination({
               return (
                 <Button
                   key={slot.page}
+                  aria-current={slot.page === current ? 'page' : undefined}
                   variant={slot.page === current ? 'default' : 'outline'}
                   size="sm"
                   className="min-w-9 font-num"

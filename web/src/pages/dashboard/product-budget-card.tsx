@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { TooltipProvider } from '@/components/ui/tooltip'
+import { MagnitudeValue, magnitudeMaximum } from '@/components/ui/magnitude-value'
 import { TipLabel } from '@/components/ui/tip-label'
 import { useProductBudget } from '@/hooks/api-queries'
 import { totalOf } from './budget-total'
@@ -47,6 +48,19 @@ export function ProductBudgetCard({ period, companyCode }: ProductBudgetCardProp
     yoy: amountMode === 'month' ? m.monthYoy : m.ytdYoy,
   })
 
+  const maxima = {
+    income: {
+      budget: magnitudeMaximum(rows.map((r) => displayOf(r.income).budget)),
+      amount: magnitudeMaximum(rows.map((r) => displayOf(r.income).amount)),
+      same: magnitudeMaximum(rows.map((r) => displayOf(r.income).same)),
+    },
+    profit: {
+      budget: magnitudeMaximum(rows.map((r) => displayOf(r.profit).budget)),
+      amount: magnitudeMaximum(rows.map((r) => displayOf(r.profit).amount)),
+      same: magnitudeMaximum(rows.map((r) => displayOf(r.profit).same)),
+    },
+  }
+
   return (
     <TooltipProvider>
       <div className="mb-2 flex flex-wrap items-center justify-end gap-3">
@@ -65,8 +79,8 @@ export function ProductBudgetCard({ period, companyCode }: ProductBudgetCardProp
             <p className="text-xs text-muted-foreground">导入并激活经营数据后，将按收入/毛利品类展示预算达成情况</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="data-table-report data-table-report--striped">
+          <div className="detail-table-scroll overflow-auto">
+            <table data-ui-table data-detail-table data-comparison-matrix className="data-table-report data-table-report--striped">
               <thead>
                 <tr className="border-b border-border">
                   <th rowSpan={2} className="text-left w-[10em]">品类</th>
@@ -94,28 +108,18 @@ export function ProductBudgetCard({ period, companyCode }: ProductBudgetCardProp
                   const profit = displayOf(row.profit)
                   return (
                     <tr key={row.category}>
-                      {/* 品类名单行截断（空格不计入 10 字符判定）：固定 w-[10em] + truncate，Tooltip 悬停显示完整名称 */}
-                      <td className="px-3 py-2 text-left text-sm font-medium text-foreground w-[10em]">
-                        {row.category.replace(/\s/g, '').length > 10 ? (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="block w-[10em] truncate">{row.category}</span>
-                            </TooltipTrigger>
-                            <TooltipContent side="top">{row.category}</TooltipContent>
-                          </Tooltip>
-                        ) : (
-                          <span className="block w-[10em] truncate">{row.category}</span>
-                        )}
+                      <td className="px-3 py-2 text-left text-sm font-medium text-foreground">
+                        {row.category}
                       </td>
-                      <td className={TD_CLS}>{formatMoneyWan(income.budget)}</td>
-                      <td className={TD_CLS}>{formatMoneyWan(income.amount)}</td>
-                      <td className={cn(TD_CLS, 'text-muted-foreground')}>{formatMoneyWan(income.same)}</td>
+                      <td className={TD_CLS}><MagnitudeValue value={income.budget} maximum={maxima.income.budget}>{formatMoneyWan(income.budget)}</MagnitudeValue></td>
+                      <td className={TD_CLS}><MagnitudeValue value={income.amount} maximum={maxima.income.amount}>{formatMoneyWan(income.amount)}</MagnitudeValue></td>
+                      <td className={cn(TD_CLS, 'text-muted-foreground')}><MagnitudeValue value={income.same} maximum={maxima.income.same}>{formatMoneyWan(income.same)}</MagnitudeValue></td>
                       <td className={TD_CLS}><RateBar rate={income.rate} /></td>
                       <td className={cn(TD_CLS, 'text-center')}><AlertLight rate={income.alertRate} /></td>
                       <td className={TD_CLS}><DeltaTag value={income.yoy} /></td>
-                      <td className={cn(TD_CLS, 'border-l border-border/60')}>{formatMoneyWan(profit.budget)}</td>
-                      <td className={TD_CLS}>{formatMoneyWan(profit.amount)}</td>
-                      <td className={cn(TD_CLS, 'text-muted-foreground')}>{formatMoneyWan(profit.same)}</td>
+                      <td className={cn(TD_CLS, 'border-l border-border/60')}><MagnitudeValue value={profit.budget} maximum={maxima.profit.budget}>{formatMoneyWan(profit.budget)}</MagnitudeValue></td>
+                      <td className={TD_CLS}><MagnitudeValue value={profit.amount} maximum={maxima.profit.amount}>{formatMoneyWan(profit.amount)}</MagnitudeValue></td>
+                      <td className={cn(TD_CLS, 'text-muted-foreground')}><MagnitudeValue value={profit.same} maximum={maxima.profit.same}>{formatMoneyWan(profit.same)}</MagnitudeValue></td>
                       <td className={TD_CLS}><RateBar rate={profit.rate} /></td>
                       <td className={cn(TD_CLS, 'text-center')}><AlertLight rate={profit.alertRate} /></td>
                       <td className={TD_CLS}><DeltaTag value={profit.yoy} /></td>

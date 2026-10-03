@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { DistributionBar } from '@/components/charts/distribution-bar'
 import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -39,7 +40,7 @@ function donutSlicePath(cx: number, cy: number, r: number, start: number, end: n
 export function ExpenseStructureCard({ period, companyCode }: ExpenseStructureCardProps) {
   const navigate = useNavigate()
   // 分类色板跟随当前侧边栏风格（与应收/存货图卡同源）
-  const sidebarStyle = useThemeStore((s) => s.sidebarStyle)
+  const sidebarStyle = useThemeStore((s) => s.printing ? 'light' : s.sidebarStyle)
   const { data, isLoading, isError, refetch } = useExpenseAnalysis({ period, companyCode })
   const rows = data?.rows ?? []
 
@@ -74,7 +75,7 @@ export function ExpenseStructureCard({ period, companyCode }: ExpenseStructureCa
         <div>
           <CardTitle className="text-base font-semibold">费用结构</CardTitle>
           <p className="mt-1 text-xs text-muted-foreground">
-            {period ? `期间 ${period} · ` : ''}
+            {period ? `期间 ${period} · ` : ''}单位：万元
           </p>
         </div>
         <Button
@@ -89,7 +90,7 @@ export function ExpenseStructureCard({ period, companyCode }: ExpenseStructureCa
       </CardHeader>
       <CardContent className="px-6 pb-6">
         {isLoading ? (
-          <div className="flex items-center gap-5">
+          <div className="flex flex-col items-center gap-5 sm:flex-row">
             <div className="skeleton h-[140px] w-[140px] shrink-0 rounded-full" />
             <div className="flex-1 space-y-2.5">
               {Array.from({ length: 4 }).map((_, i) => (
@@ -114,7 +115,7 @@ export function ExpenseStructureCard({ period, companyCode }: ExpenseStructureCa
             description="配置运营费用映射并导入经营数据后，将展示当月费用结构"
           />
         ) : (
-          <div className="flex items-center gap-5">
+          <div className="flex flex-col items-center gap-5 sm:flex-row">
             <svg viewBox="0 0 100 100" className="h-[140px] w-[140px] shrink-0" aria-label="费用结构饼图">
               <circle cx={50} cy={50} r={40} fill="hsl(var(--muted))" />
               {segments.map(({ slice, start, end }) =>
@@ -130,17 +131,11 @@ export function ExpenseStructureCard({ period, companyCode }: ExpenseStructureCa
                 {formatMoneyWan(total)}
               </text>
             </svg>
-            <ul className="flex-1 space-y-1.5 text-sm">
-              {slices.map((s) => (
-                <li key={s.name} className="flex items-center gap-2">
-                  <span className="inline-block h-2 w-2 shrink-0 rounded-[2px]" style={{ background: s.color }} aria-hidden />
-                  <span className="flex-1 truncate text-foreground" title={s.name}>{s.name}</span>
-                  <span className="shrink-0 font-num text-xs text-muted-foreground tabular-nums">
-                    {formatMoneyWan(s.value)} · {((s.value / total) * 100).toFixed(0)}%
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <div className="distribution-list min-w-0 w-full flex-1">
+              {slices.map((s) => <DistributionBar key={s.name} variant="ranking" label={s.name}
+                value={formatMoneyWan(s.value)} meta={`${((s.value / total) * 100).toFixed(0)}%`}
+                width={s.value / Math.max(...slices.map((slice) => slice.value)) * 100} color={s.color} />)}
+            </div>
           </div>
         )}
         {!isLoading && !isError && data?.degraded && (
