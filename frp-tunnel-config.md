@@ -66,8 +66,8 @@ transport.tls.force = true            # 只接受 TLS 控制连接
 auth.method = "token"
 auth.token  = "<REDACTED>"
 
-# frpc 可申请的 remotePort 白名单，仅 6000-6009（当前未使用，仅走 http vhost）
-allowPorts = [ { start = 6000, end = 6009 } ]
+# vhost 端口只监听回环（内核层面不可达，不依赖 UFW）
+proxyBindAddr = "127.0.0.1"
 
 # vhost 端口：80/443 归 nginx 所有，故 frps 用高位端口，由 nginx 反代进来
 vhostHTTPPort  = 8080
@@ -79,6 +79,8 @@ webServer.port     = 7500
 webServer.user     = "admin"
 webServer.password = "<REDACTED>"
 ```
+
+> `allowPorts` 已于 2026-10-05 删除：当前无 `remotePort` 代理使用，白名单属多余开放面。
 
 systemd 单元 `/etc/systemd/system/frps.service`：
 
@@ -105,9 +107,9 @@ ReadWritePaths=
 WantedBy=multi-user.target
 ```
 
-### 注意：仓库副本与线上存在漂移
+### 本机不再保留服务端配置副本
 
-仓库内 `D:\ZJYPHFA\frp\frps.toml` 相对线上版本 **缺少** `transport.tls.force = true`、**多出** `maxPoolCount = 5`。以线上为准。
+本机 `D:\ZJYPHFA\frp\frps.toml` 曾是线上配置的副本，内含明文 token 与 dashboard 口令，属多余泄露面，已于 2026-10-05 删除。**服务端配置以 SSH 登录后的 `/etc/frp/frps.toml` 为唯一权威**，本机需要查看时按本文档或直接 SSH 查看。
 
 ---
 
@@ -213,7 +215,7 @@ server {
 }
 ```
 
-> 备注：文件头注释写的是「子域 → `127.0.0.1:8443`」，但实际 `proxy_pass` 指向 `8080`，与 frps `vhostHTTPPort = 8080` 一致 —— 注释为陈旧内容，配置本身正确。同理，`proxy_ssl_*` 对 http 上游不生效，属冗余指令。
+> 备注：① nginx 文件头注释写的是「子域 → `127.0.0.1:8443`」，但实际 `proxy_pass` 指向 `8080`，与 frps `vhostHTTPPort = 8080` 一致——注释为陈旧内容，配置本身正确；`proxy_ssl_*` 对 http 上游不生效，属冗余指令。② frps 侧 vhost 端口自 2026-10-05 起由 `proxyBindAddr = "127.0.0.1"` 收敛到回环。③ `admin.damaospace.ltd` 当前**无 DNS 记录**（114 / 8.8.8.8 均 NXDOMAIN），该 dashboard 入口公网打不开。
 
 ---
 
@@ -236,16 +238,18 @@ server {
 
 ```
 22/tcp     ALLOW IN  Anywhere
-7000/tcp   ALLOW IN  Anywhere
+7000/tcp   LIMIT IN  Anywhere        # 2026-10-05 起由 ALLOW 改为 LIMIT（单源 IP 30s 约 6 次连接）
 80/tcp     ALLOW IN  Anywhere        # frp dashboard http -> 301 https
 443/tcp    ALLOW IN  Anywhere         # frp dashboard https
 22/tcp (v6)   ALLOW IN  Anywhere (v6)
-7000/tcp (v6) ALLOW IN  Anywhere (v6)
+7000/tcp (v6) LIMIT IN  Anywhere (v6)
 80/tcp (v6)   ALLOW IN  Anywhere (v6)
 443/tcp (v6)  ALLOW IN  Anywhere (v6)
 ```
 
-**故意不对公网放行、仅回环可达**：`8080`（frps vhostHTTP）、`8443`（frps vhostHTTPS）、`7500`（frps 面板）。
+**故意不对公网放行、且已由 frps 绑定到回环**（自 2026-10-05 起，不再仅依赖 UFW）：`8080`（frps vhostHTTP）、`8443`（frps vhostHTTPS）、`7500`（frps 面板）。
+
+> `:7000` 仍对全网放行，仅靠 token 强度与 UFW 限速抵抗爆破。**未做 IP 限源**是刻意取舍：家宽出口 IP 变动会导致隧道中断，需要手动改规则。若日后要收紧，可把 UFW 与云防火墙的来源改为生产机出口 IP。
 
 > `iptables -S` 中存在额外的 `YJ-FIREWALL-INPUT` 链，且 `:INPUT` 首条规则即跳转至它（云镜/主机安全组件残留）。排查端口问题时需一并核查，不要只看 UFW。
 
@@ -269,11 +273,25 @@ frpc 为纯出站连接，无需额外入站规则。
 | 8080 | 本机 Windows | `0.0.0.0` + Windows FW 放行 | 前端静态服务 |
 | 22 | 服务器 | 公网 | SSH |
 | 80 / 443 | 服务器 nginx | 公网 | 入口 |
-| 7000 | 服务器 frps | 公网 | frp 控制通道（TLS + token） |
-| 8080 | 服务器 frps | `127.0.0.1` | vhostHTTP |
-| 8443 | 服务器 frps | `127.0.0.1` | vhostHTTPS（当前未使用） |
+| 7000 | 服务器 frps | 公网（UFW `LIMIT`） | frp 控制通道（TLS + token） |
+| 8080 | 服务器 frps | `127.0.0.1`（`proxyBindAddr`） | vhostHTTP |
+| 8443 | 服务器 frps | `127.0.0.1`（`proxyBindAddr`） | vhostHTTPS（当前未使用） |
 | 7500 | 服务器 frps | `127.0.0.1` | 管理面板 |
-| 6000-6009 | 服务器 frps | 白名单已开，当前无占用 | frpc `remotePort` 可申请区间 |
+| 3900 | 本机 Windows | `127.0.0.1` only | 运维面板（需 `X-Ops-Token`） |
+
+---
+
+## 5. 运维面板访问安全（2026-10-05 起）
+
+面板 `ops-panel/server.mjs` 仍是零依赖、仅监听 `127.0.0.1:3900`，但请求入口新增两层校验：
+
+| 机制 | 作用 |
+|---|---|
+| `Host` 白名单 | 仅接受 `127.0.0.1:3900` / `localhost:3900` / `[::1]:3900`，阻断 DNS rebinding |
+| `X-Ops-Token` 令牌 | 全部 `/api/*` 必须携带；令牌存于本机 `ops-panel/.panel-token`（已 gitignore + ACL 收紧），由页面自动注入，无需手工填写 |
+| 操作审计 | 所有非 GET 的 `/api/*` 写入 `ops-panel/logs/audit.log`（方法、路径、状态码、耗时、来源地址） |
+
+**已知边界**：令牌注入能阻断浏览器跨站（CSRF / DNS rebinding），但本机其他用户或进程仍可 `GET /` 读到注入的令牌；该路径由操作系统用户隔离与文件 ACL 承担。
 
 ---
 
@@ -282,6 +300,7 @@ frpc 为纯出站连接，无需额外入站规则。
 | 项 | 位置 |
 |---|---|
 | frp token | 服务器 `/etc/frp/frps.toml`、本机 `D:\ZJYPHFA\frp\frpc.toml` |
+| 运维面板访问令牌 | 本机 `D:\ZJYPHFA\ops-panel\.panel-token`（icacls 仅当前用户 + SYSTEM/Administrators） |
 | frps 面板账号密码 | 服务器 `/etc/frp/frps.toml` |
 | 面板 basic-auth 口令文件 | 服务器 `/etc/nginx/.htpasswd_frp` |
 | TLS 私钥 | 服务器 `/etc/nginx/ssl/damaospace.ltd.key.pem` |
