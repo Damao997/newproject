@@ -5,6 +5,7 @@ import './styles/globals.css'
 import './styles/redesign.css'
 import './styles/surfaces.css'
 import './styles/settings.css'
+import './styles/analysis.css'
 import { installChunkReloadGuard } from './lib/chunk-reload'
 import App from './App.tsx'
 

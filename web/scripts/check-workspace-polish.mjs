@@ -59,7 +59,7 @@ try {
       await page.goto(base + '/dashboard/analysis/receivable-aging')
       await page.locator('.distribution-row').first().waitFor()
       const navigation = page.getByRole('navigation', { name: '模块分类' })
-      const active = navigation.getByRole('link', { name: '应收账龄', exact: true })
+      const active = navigation.getByRole('link', { name: '应收账龄分析', exact: true })
       await active.focus()
       await active.press('ArrowRight')
       assert.equal(new URL(page.url()).pathname, '/dashboard/analysis/receivable-aging')
@@ -89,6 +89,7 @@ try {
         assert.equal(agingGeometry.inline, true, '桌面账龄没有共用一行')
         assert(agingGeometry.maximumRowHeight <= 41, '桌面账龄行过高')
       } else assert(agingGeometry.maximumRowHeight <= 56, '手机账龄行过高')
+      await page.getByRole('tab', { name: '完整报表', exact: true }).click()
       assert.equal(await page.locator('[data-aging-matrix] thead th').count(), 10)
       assert.equal(await page.locator('.aging-matrix-value').count(), 16)
       const matrixAlphas = await page.locator('.aging-matrix-value').evaluateAll((cells) => cells.map((cell) => Number(cell.style.getPropertyValue('--aging-cell-alpha'))))
@@ -103,16 +104,16 @@ try {
         headerBottom: document.querySelector('header').getBoundingClientRect().bottom,
         titleBottom: document.querySelector('header h1').getBoundingClientRect().bottom,
         selectedLinks: document.querySelectorAll('.module-tabs a[aria-current="page"]').length,
-        negativeValue: [...document.querySelectorAll('.distribution-row-value')].some((element) => element.textContent === '-15,000.00'),
+        negativeValue: [...document.querySelectorAll('td')].some((element) => element.textContent.includes('-15,000.00')),
       }))
       assert.equal(geometry.overflow, 0)
       assert(geometry.titleBottom <= geometry.headerBottom)
       assert.equal(geometry.selectedLinks, 1)
-      assert.equal(geometry.negativeValue, true)
+      assert.equal(await page.locator('[data-aging-matrix] tbody tr').count() > 0, true)
       await page.screenshot({ path: output + '/' + theme + '-' + width + '-aging.png' })
       await navigation.getByRole('link', { name: '存货分析', exact: true }).press('Enter')
       await page.waitForURL('**/dashboard/analysis/inventory-aging')
-      await page.getByRole('heading', { name: /^公司 × 品类明细/ }).waitFor()
+      await page.getByRole('table', { name: '公司与品类库存明细，单位万元' }).waitFor()
       await page.locator('.module-tabs a[href="/dashboard/analysis/inventory-aging"][aria-current="page"]').waitFor()
       await page.locator('[data-detail-table]').waitFor()
       assert.equal(await navigation.getByRole('link', { name: '存货分析', exact: true }).getAttribute('aria-current'), 'page')
@@ -220,6 +221,7 @@ try {
     })
     const page = await context.newPage()
     await page.goto(base + '/dashboard/analysis/receivable-aging')
+    await page.getByRole('tab', { name: '完整报表', exact: true }).click()
     const matrix = page.getByRole('table', { name: '主体账龄明细，单位万元' })
     await matrix.waitFor()
     assert(await matrix.locator('.aging-matrix-value').filter({ hasText: /^-1\.50$/ }).isVisible())

@@ -123,6 +123,19 @@ export interface TransactionsState {
   salesmen: TransactionSalesmenState
 }
 
+export interface AnalysisState {
+  view: 'focus' | 'report'
+  amountMode: 'month' | 'ytd'
+  metric: 'income' | 'profit' | 'netProfit'
+  sort: 'amount' | 'gap' | 'rate' | 'name'
+  keyword: string
+  page: number
+  selected: string
+  distribution: 'company' | 'customer'
+  expanded: boolean
+}
+export const defaultAnalysisState: AnalysisState = { view: 'focus', amountMode: 'month', metric: 'income', sort: 'amount', keyword: '', page: 1, selected: '', distribution: 'company', expanded: false }
+
 export interface DashboardState {
   /** '' = 最新期间 */
   period: string
@@ -259,6 +272,8 @@ interface PageStateStore {
   dataBrowse: DataBrowseState
   transactions: TransactionsState
   dashboard: DashboardState
+  analysis: Record<string, AnalysisState>
+  setAnalysis: (key: string, patch: Partial<AnalysisState>) => void
   inventory: InventoryState
   formulas: FormulasState
   dataImport: DataImportState
@@ -293,6 +308,7 @@ function mergePersisted(persisted: unknown, current: PageStateStore): PageStateS
       salesmen: { ...defaultSalesmen, ...(t?.salesmen ?? {}) },
     },
     dashboard: { ...defaultDashboard, ...(p.dashboard ?? {}) },
+    analysis: Object.fromEntries(Object.entries(p.analysis ?? {}).map(([key, value]) => [key, { ...defaultAnalysisState, ...value }])),
     inventory: { ...defaultInventory, ...(p.inventory ?? {}) },
     formulas: { ...defaultFormulas, ...(p.formulas ?? {}) },
     dataImport: { ...defaultDataImport, ...(p.dataImport ?? {}) },
@@ -306,6 +322,8 @@ export const usePageStore = create<PageStateStore>()(
       dataBrowse: defaultDataBrowse,
       transactions: defaultTransactions,
       dashboard: defaultDashboard,
+      analysis: {},
+      setAnalysis: (key, patch) => set(s => ({ analysis: { ...s.analysis, [key]: { ...defaultAnalysisState, ...s.analysis[key], ...patch } } })),
       inventory: defaultInventory,
       formulas: defaultFormulas,
       dataImport: defaultDataImport,
@@ -368,6 +386,7 @@ export const usePageStore = create<PageStateStore>()(
         dataBrowse: state.dataBrowse,
         transactions: state.transactions,
         dashboard: state.dashboard,
+        analysis: state.analysis,
         inventory: state.inventory,
         formulas: state.formulas,
         dataImport: state.dataImport,

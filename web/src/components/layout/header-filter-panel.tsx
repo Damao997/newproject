@@ -20,10 +20,10 @@ export function HeaderFilterPanel({ open, onOpenChange, title, trigger, children
     return () => document.removeEventListener('keydown', close)
   }, [open, onOpenChange])
   const content = <div className="header-filter-content"><div className="header-filter-heading"><h2>{title}</h2></div><div className="header-filter-body">{children}</div>{footer && <div className="header-filter-footer">{footer}</div>}</div>
-  if (mobile) return <><span ref={anchor}>{cloneElement(trigger as ReactElement<{ onClick: () => void }>, { onClick: () => onOpenChange(!open) })}</span>
+  if (mobile) return <><span ref={anchor} className="header-filter-anchor">{cloneElement(trigger as ReactElement<{ onClick: () => void }>, { onClick: () => onOpenChange(!open) })}</span>
     <Drawer open={open} onClose={() => onOpenChange(false)} placement="bottom" height="min(78dvh, 640px)" title={title}
       rootClassName="header-filter-drawer" styles={{ body: { padding: 0 } }} destroyOnHidden>{content}</Drawer></>
-  return <span ref={anchor}><Popover open={open} onOpenChange={onOpenChange}><PopoverTrigger asChild>{trigger}</PopoverTrigger>
+  return <span ref={anchor} className="header-filter-anchor"><Popover open={open} onOpenChange={onOpenChange}><PopoverTrigger asChild>{trigger}</PopoverTrigger>
     <PopoverContent align="end" className="header-filter-popover"><div role="group" aria-label={title}>{content}</div></PopoverContent>
   </Popover></span>
 }

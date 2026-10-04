@@ -110,14 +110,14 @@ export function useExpenseAnalysis(params: { period?: string; companyCode?: stri
 }
 
 /** 壹品慧关键指标表：单期间 + 可选指定主体（跟随看板顶部筛选），period 未定时不发请求 */
-export function useKeyMetrics(params: { period?: string; companyCode?: string }) {
+export function useKeyMetrics(params: { period?: string; companyCode?: string }, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['dashboard', 'key-metrics', params.period ?? '', params.companyCode ?? ''] as const,
     queryFn: () => api.getKeyMetrics({
       ...(params.period ? { period: params.period } : {}),
       ...(params.companyCode ? { companyCode: params.companyCode } : {}),
     }),
-    enabled: !!params.period,
+    enabled: !!params.period && options?.enabled !== false,
     placeholderData: keepPreviousData,
     staleTime: 5 * 60 * 1000,
   })

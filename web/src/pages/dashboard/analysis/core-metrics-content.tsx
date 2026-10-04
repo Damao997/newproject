@@ -1,3 +1,6 @@
+import { AnalysisSection, AnalysisComparison, AnalysisFailure } from '@/components/analysis/workspace'
+import { useAnalysisWorkspace } from '@/components/analysis/analysis-context'
+import { StatTile } from '@/components/ui/stat-tile'
 import { AlertLight } from '@/components/ui/alert-light'
 import { Button } from '@/components/ui/button'
 import { MagnitudeValue, magnitudeMaximum } from '@/components/ui/magnitude-value'
@@ -77,7 +80,8 @@ function marginRateOf(profit: number, income: number): number | null {
  * - 金额为万元纯数值（单位见副注），比率为百分比。
  */
 export function CoreMetricsContent({ period, companyCode }: CoreMetricsContentProps) {
-  const { data, isError, isLoading, refetch } = useProductMetrics({ period, companyCode })
+  const workspace = useAnalysisWorkspace()
+  const { data, isError, isLoading, isPlaceholderData, refetch } = useProductMetrics({ period, companyCode })
   if (isError && !data) {
     return (
       <section>
@@ -94,7 +98,7 @@ export function CoreMetricsContent({ period, companyCode }: CoreMetricsContentPr
       </section>
     )
   }
-  if (isLoading && !data) return <TableSkeleton rows={8} columns={12} />
+  if ((isLoading && !data) || isPlaceholderData) return <TableSkeleton rows={8} columns={12} />
   const rows = data?.rows ?? []
   const totals = data?.totals
   const maxima = Object.fromEntries((['income', 'profit'] as const).map((group) => [group, {
@@ -147,10 +151,26 @@ export function CoreMetricsContent({ period, companyCode }: CoreMetricsContentPr
   }
 
   return (
-    <section>
+    <section className="space-y-4">
+      {isError && <AnalysisFailure title="产品指标刷新失败，保留当前内容" retry={refetch} />}
+      <AnalysisSection kind="focus">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatTile label="累计收入" value={formatMoneyWan(totals.income.ytdActual)} unit="万" tone={1} foot="整体收入节点，包含产品层级" />
+          <StatTile label="累计毛利" value={formatMoneyWan(totals.profit.ytdActual)} unit="万" tone={2} foot="整体毛利节点" />
+          <StatTile label="实际毛利率" value={marginRateOf(totals.profit.ytdActual, totals.income.ytdActual)?.toFixed(1) ?? '—'} unit={totals.income.ytdActual ? '%' : undefined} tone={3} foot="累计毛利 ÷ 累计收入" />
+          <StatTile label="收入累计预算差距" value={totals.income.ytdBudget ? formatMoneyWan(totals.income.ytdActual - totals.income.ytdBudget) : '—'} unit="万" tone={4} foot="实际 − 累计预算" />
+        </div>
+        <div className="flex justify-end"><Tabs value={workspace?.state.metric === 'profit' ? 'profit' : 'income'} onValueChange={value => workspace?.update({ metric: value as 'income' | 'profit', selected: '' })}><TabsList variant="segmented"><TabsTrigger value="income">收入</TabsTrigger><TabsTrigger value="profit">毛利</TabsTrigger></TabsList></Tabs></div>
+        <AnalysisComparison title="产品贡献与预算差距" note="贡献以整体节点为分母；产品含层级，不能直接相加 · 单位：万元" items={rows.map(row => {
+          const metric = workspace?.state.metric === 'profit' ? 'profit' : 'income', g = row[metric]
+          return { id: row.code, label: row.name.trim(), amount: g.ytdActual, budget: g.ytdBudget, rate: alertRateOf(g), share: shareRateOf(g.ytdActual, totals[metric].ytdActual), detail: <dl><div><dt>本月收入</dt><dd>{formatMoneyWan(row.income.monthActual)}</dd></div><div><dt>本月毛利</dt><dd>{formatMoneyWan(row.profit.monthActual)}</dd></div><div><dt>累计收入</dt><dd>{formatMoneyWan(row.income.ytdActual)}</dd></div><div><dt>累计毛利</dt><dd>{formatMoneyWan(row.profit.ytdActual)}</dd></div><div><dt>毛利率</dt><dd><PercentCell value={marginRateOf(row.profit.ytdActual, row.income.ytdActual)} /></dd></div><div><dt>年度预算完成率</dt><dd><PercentCell value={g.annualRate} /></dd></div><div><dt>累计预算达成率</dt><dd><PercentCell value={alertRateOf(g)} /></dd></div><div><dt>同比</dt><dd><DeltaTag value={g.ytdYoy} /></dd></div></dl> }
+        })} />
+        <GapAnalysisPanel items={analysisItems} onSelect={name => workspace?.update({ selected: rows.find(row => row.name === name)?.code ?? name })} />
+      </AnalysisSection>
+      <AnalysisSection kind="report">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-3">
-          <h3 className="text-base font-semibold text-foreground">品类核心指标分析</h3>
+          {!workspace && <h3 className="text-base font-semibold text-foreground">品类核心指标分析</h3>}
           {/* 维度切换：产品可用；渠道为预留占位（数据能力建设中） */}
           <Tabs value="product">
             <TabsList variant="segmented">
@@ -162,7 +182,7 @@ export function CoreMetricsContent({ period, companyCode }: CoreMetricsContentPr
         <span className="text-xs text-muted-foreground">金额单位：万元；比率为百分比</span>
       </div>
       <div className="detail-table-scroll overflow-auto">
-        <table data-ui-table data-detail-table data-comparison-matrix data-compact-matrix className="data-table-report data-table-report--striped">
+        <table data-ui-table data-detail-table data-comparison-matrix data-compact-matrix aria-label="产品核心指标完整报表，金额万元、比率百分比" className="data-table-report data-table-report--striped">
           <thead>
             <tr className="border-b border-border">
               <th rowSpan={2} className="w-[9.5em] text-left">产品类型</th>
@@ -199,8 +219,9 @@ export function CoreMetricsContent({ period, companyCode }: CoreMetricsContentPr
           </tbody>
         </table>
       </div>
+      </AnalysisSection>
       {/* 差距分析：由产品行数据模板化自动生成，随期间/主体筛选联动（合计行为整体口径不生成） */}
-      {analysisItems.length > 0 && <GapAnalysisPanel items={analysisItems} className="mt-5" />}
+      {!workspace && analysisItems.length > 0 && <GapAnalysisPanel items={analysisItems} className="mt-5" />}
     </section>
   )
 }

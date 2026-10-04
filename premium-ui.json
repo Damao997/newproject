@@ -13,7 +13,8 @@
     "surfaces": "node web/scripts/check-surfaces.mjs",
     "polish": "node web/scripts/check-workspace-polish.mjs",
     "comparisons": "node web/scripts/check-comparison-surfaces.mjs",
-    "personal": "node web/scripts/check-personal-settings.mjs"
+    "personal": "node web/scripts/check-personal-settings.mjs",
+    "analysis": "node web/scripts/check-analysis-workbench.mjs"
   },
   "ownership": {
     "Select/Listbox": "authored",

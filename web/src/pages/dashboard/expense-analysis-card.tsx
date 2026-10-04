@@ -133,7 +133,7 @@ export function ExpenseAnalysisCard({ period, companyCode, hiddenColumns = [] }:
           </div>
         ) : (
           <div className="detail-table-scroll overflow-auto">
-            <table data-ui-table data-detail-table data-comparison-matrix className="data-table-report data-table-report--striped">
+            <table data-ui-table data-detail-table data-comparison-matrix aria-label="运营费用完整报表，单位万元" className="data-table-report data-table-report--striped">
               <thead>
                 <tr className="border-b border-border">
                   <th rowSpan={2} className="text-left w-[10em]">指标名称</th>

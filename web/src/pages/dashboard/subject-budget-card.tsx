@@ -1,3 +1,4 @@
+import { useAnalysisWorkspace } from '@/components/analysis/analysis-context'
 import { useState } from 'react'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -36,7 +37,10 @@ const TD_CLS = 'px-3 py-2 text-right font-num text-sm text-foreground'
  * 外层 Card 由 AnalysisTabsCard 统一提供。
  */
 export function SubjectBudgetCard({ period, companyCode, mode = 'single' }: SubjectBudgetCardProps) {
-  const [amountMode, setAmountMode] = useState<AmountMode>('month')
+  const workspace = useAnalysisWorkspace()
+  const [localMode, setLocalMode] = useState<AmountMode>('month')
+  const amountMode = workspace?.state.amountMode ?? localMode
+  const setAmountMode = (value: AmountMode) => workspace ? workspace.update({ amountMode: value }) : setLocalMode(value)
   const { data, isLoading } = useSubjectBudget({ period, mode, companyCode })
   const rows = data?.rows ?? []
   const isEmpty = !isLoading && rows.length === 0
@@ -68,14 +72,14 @@ export function SubjectBudgetCard({ period, companyCode, mode = 'single' }: Subj
 
   return (
     <TooltipProvider>
-      <div className="mb-2 flex flex-wrap items-center justify-end gap-3">
+      {!workspace && <div className="mb-2 flex flex-wrap items-center justify-end gap-3">
         <Tabs value={amountMode} onValueChange={(v) => setAmountMode(v as AmountMode)}>
           <TabsList variant="segmented" className="justify-start">
             <TabsTrigger value="month">月度</TabsTrigger>
             <TabsTrigger value="ytd">累计</TabsTrigger>
           </TabsList>
         </Tabs>
-      </div>
+      </div>}
       {isEmpty ? (
           <div className="flex flex-col items-center gap-3 py-12 text-center">
             <p className="text-sm font-medium text-foreground">暂无主体数据</p>
@@ -83,7 +87,7 @@ export function SubjectBudgetCard({ period, companyCode, mode = 'single' }: Subj
           </div>
         ) : (
           <div className="detail-table-scroll overflow-auto">
-            <table data-ui-table data-detail-table data-comparison-matrix className="data-table-report data-table-report--striped">
+            <table data-ui-table data-detail-table data-comparison-matrix aria-label="公司预算完整报表，单位万元" className="data-table-report data-table-report--striped">
               <thead>
                 <tr className="border-b border-border">
                   <th rowSpan={2} className="text-left w-[10em]">主体</th>
