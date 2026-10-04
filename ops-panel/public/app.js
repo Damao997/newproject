@@ -16,10 +16,15 @@ let logTimer = null
 // ── 基础工具 ──
 async function api(path, opts = {}) {
   let res
+  const { headers, ...rest } = opts
   try {
     res = await fetch(path, {
-      headers: { 'Content-Type': 'application/json' },
-      ...opts,
+      ...rest,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Ops-Token': window.__OPS_TOKEN__ || '',
+        ...(headers || {}),
+      },
       body: opts.body ? JSON.stringify(opts.body) : undefined,
     })
   } catch {
@@ -713,7 +718,7 @@ async function aiStream({ source, extra, question }) {
   try {
     const res = await fetch('/api/ai/diagnose', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Ops-Token': window.__OPS_TOKEN__ || '' },
       body: JSON.stringify({ source, extra, question }),
       signal: aiAbort.signal,
     })
