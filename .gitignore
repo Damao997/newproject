@@ -120,6 +120,8 @@ frp/
 
 # 运维面板本地启动产物
 /ops-panel/*.pid
+# 运维面板访问令牌（本机生成，严禁入库）
+/ops-panel/.panel-token
 
 # 隔离开发的客户端缓存、测试库备份与验证产物
 /server/.cache/
