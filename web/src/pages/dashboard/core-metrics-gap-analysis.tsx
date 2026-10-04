@@ -51,7 +51,7 @@ export function buildGapAnalysisItems(rows: GapAnalysisRow[], period?: string): 
       const fyParts = [`财年累计${verb}${formatMoneyWan(g.ytdActual)}万元`]
       if (g.annualRate != null) fyParts.push(`预算${isExpense ? '使用' : '完成'}率${g.annualRate.toFixed(1)}%`)
       fyParts.push(yoyPhrase(g.ytdYoy, '财年'))
-      if (isExpense) fyParts.push('细节差距根因详见运营费用分析子页')
+      if (isExpense) fyParts.push('明细详见运营费用分析')
       sentence = `${monthWord}${verb}${formatMoneyWan(g.monthActual)}万元，${yoyPhrase(g.monthYoy, '')}；${fyParts.join('，')}`
     }
     const end = i === rows.length - 1 ? '。' : '；'
@@ -62,6 +62,7 @@ export function buildGapAnalysisItems(rows: GapAnalysisRow[], period?: string): 
 interface GapAnalysisPanelProps {
   items: GapAnalysisItem[]
   /** 追加类名（如外边距） */
+  onSelect?: (key: string) => void
   className?: string
 }
 
@@ -69,18 +70,18 @@ interface GapAnalysisPanelProps {
  * 差距分析面板（整体核心指标总览表格下侧）：纸质感盒子 + 编号句列表，
  * 文案由 buildGapAnalysisItems 从表格数据自动生成，随筛选联动，无人工维护。
  */
-export function GapAnalysisPanel({ items, className }: GapAnalysisPanelProps) {
+export function GapAnalysisPanel({ items, className, onSelect }: GapAnalysisPanelProps) {
   if (items.length === 0) return null
   return (
     <div className={cn('rounded-md border border-border/60 bg-muted/30 px-5 py-4', className)}>
       <h3 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-foreground">
         <FileText className="h-4 w-4 text-primary" />
         差距分析
-        <span className="ml-1 text-xs font-normal text-muted-foreground">基于上表数据自动生成</span>
+        <span className="ml-1 text-xs font-normal text-muted-foreground">基于当前查询数据</span>
       </h3>
       <ol className="list-decimal space-y-1.5 pl-5 text-sm leading-relaxed text-foreground marker:text-muted-foreground">
         {items.map((it) => (
-          <li key={it.key}>{it.text}</li>
+          <li key={it.key}>{onSelect ? <button type="button" className="text-left hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary" onClick={() => onSelect(it.key)}>{it.text}</button> : it.text}</li>
         ))}
       </ol>
     </div>

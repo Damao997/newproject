@@ -36,7 +36,7 @@ const PageContainer = React.forwardRef<HTMLDivElement, PageContainerProps>(
     return (
       <div
         ref={setRef}
-        className={cn("page-container flex min-w-0 flex-col", viewportBound ? "min-h-0 space-y-2" : "space-y-4", className)}
+        className={cn("page-container flex min-w-0 flex-col", viewportBound ? "min-h-0 gap-2" : navigation ? "gap-3" : "space-y-4", className)}
         style={{ ...style, ...(height === undefined ? {} : { height }) }}
         {...props}
       >

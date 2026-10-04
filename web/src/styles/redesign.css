@@ -91,7 +91,6 @@ button:focus-visible, a:focus-visible, [role='link']:focus-visible, [role^='menu
   .header-controls button[aria-label='用户菜单'] { width: 32px; padding: 0; gap: 0; justify-content: center; }
   .header-controls button[aria-label='刷新'] { width: 32px; height: 32px; padding: 0; }
   .header-controls > .animate-pulse { max-width: 90px; }
-  .header-controls > span { max-width: 72px; font-size: 12px; }
 }
 @media (min-width: 768px) { .navigation-drawer { display: none; } }
 @media (prefers-reduced-motion: reduce) { .app-sidebar, .kpi-card { transition: none; animation: none; } }

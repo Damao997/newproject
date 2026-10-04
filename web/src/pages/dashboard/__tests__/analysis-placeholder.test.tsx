@@ -13,6 +13,8 @@ vi.mock('@/hooks/useDashboardFilters', () => ({
 
 vi.mock('@/hooks/api-queries', () => ({
   useCompanies: () => ({ data: [] }),
+  useAvailablePeriods: () => ({ data: { periods: ['2026-09'], fiscalStartMonth: 1 }, isError: false }),
+  useKeyMetrics: () => ({ data: { companyCode: 'ET0001', companyName: '测试汇总', companyType: 'summary' }, isPending: false, isError: false }),
   // receivable-aging 子页真实数据 hooks（期间未定时 enabled=false，返回空数据即可）
   useDashboardReceivables: () => ({ data: undefined, isLoading: false, isError: false }),
   useTransactionAging: () => ({ data: undefined, isLoading: false, isError: false, refetch: vi.fn() }),

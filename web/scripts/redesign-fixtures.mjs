@@ -56,6 +56,8 @@ const aging = ['应收账款', '应付账款'].map((transactionType, i) => ({ tr
 export function resolveFixture(input, method = 'GET', scenario = 'success') {
   const url = new URL(input, 'http://127.0.0.1')
   const path = url.pathname.replace('/api/v1', '')
+  const selectedCompany = companies.find(company => company.code === url.searchParams.get('companyCode')) ?? companies[2]
+  const analysisScope = { ...scope, companyCode: selectedCompany.code, companyName: selectedCompany.name, companyType: selectedCompany.type === 'summary' ? 'summary' : 'single' }
   const paged = (items) => ({ items, total: items.length, page: Number(url.searchParams.get('page') || 1), pageSize: Number(url.searchParams.get('pageSize') || 10), totalPages: 1 })
   const ok = (data) => ({ code: 0, data, message: '模拟数据预览', traceId: 'preview-only' })
   if (scenario === 'error' && !path.startsWith('/auth') && !path.includes('/periods') && path !== '/data/companies') return { code: 1, data: null, message: '模拟请求失败，请重试', traceId: 'preview-only' }
@@ -73,11 +75,11 @@ export function resolveFixture(input, method = 'GET', scenario = 'success') {
   if (path === '/dashboard/trend') return ok(scenario === 'empty' ? [] : trend)
   if (path === '/dashboard/alerts') return ok(scenario === 'empty' ? [] : alerts)
   if (path === '/dashboard/receivables') return ok({ period: '2026-09', rows: companies.slice(0, 2).map((company, i) => ({ ...company, companyCode: company.code, companyName: company.name, balance: [730, 580][i], closingBalance: [730, 580][i], samePeriod: 650, yoy: .12 })) })
-  if (path === '/dashboard/expense-analysis') return ok({ ...scope, rows: ['人工费用', '营销费用', '租赁费用', '物流费用', '其他费用'].map((name, i) => ({ ...metric(70 / (i + 1)), code: `E0${i}`, name })) })
-  if (path === '/dashboard/product-budget') return ok({ ...scope, rows: categories.map((category) => ({ category: category.name, income: metric(category.current), profit: metric(category.current * .23) })) })
+  if (path === '/dashboard/expense-analysis') return ok({ ...analysisScope, rows: ['人工费用', '营销费用', '租赁费用', '物流费用', '其他费用'].map((name, i) => ({ ...metric(70 / (i + 1)), code: `E0${i}`, name })) })
+  if (path === '/dashboard/product-budget') return ok({ ...analysisScope, rows: categories.map((category) => ({ category: category.name, income: metric(category.current), profit: metric(category.current * .23) })) })
   if (path === '/dashboard/subject-budget') return ok({ period: '2026-09', mode: 'single', rows: companies.slice(0, 2).map((company) => ({ ...company, income: metric(900), profit: metric(210), netProfit: metric(75) })) })
-  if (path === '/dashboard/analysis/key-metrics') return ok({ ...scope, rows: operating.map((row, i) => ({ key: ['income', 'profit', 'netProfit', 'operating'][i], label: row.name, category: row.category, valueType: 'amount', products: [], values: group(1220 / (i + 1)) })) })
-  if (path === '/dashboard/analysis/product-metrics') return ok({ ...scope, dimension: 'product', rows: categories.map((row) => ({ code: row.code, name: row.name, income: group(row.current), profit: group(row.current * .23) })), totals: { income: group(1800), profit: group(450) } })
+  if (path === '/dashboard/analysis/key-metrics') return ok({ ...analysisScope, rows: operating.map((row, i) => ({ key: ['income', 'profit', 'netProfit', 'operating'][i], label: row.name, category: row.category, valueType: 'amount', products: [], values: group(1220 / (i + 1)) })) })
+  if (path === '/dashboard/analysis/product-metrics') return ok({ ...analysisScope, dimension: 'product', rows: categories.map((row) => ({ code: row.code, name: row.name, income: group(row.current), profit: group(row.current * .23) })), totals: { income: group(1800), profit: group(450) } })
   if (path === '/inventory/overview') return ok(scenario === 'empty' ? { ...inventory, categories: [], companies: [] } : inventory)
   if (path === '/inventory/details') return ok({ period: '2026-09', rows: categories.map((category) => ({ companyCode: companies[0].code, companyName: companies[0].name, categoryCode: category.code, categoryName: category.name, accountCode: 'BS0103', accountName: category.name, current: category.current, yearStart: category.yearStart, samePeriod: category.samePeriod, lastYearStart: category.lastYearStart, companyShortName: '杭州分公司' })), totals: inventory.total })
   if (path === '/inventory/trend') return ok({ fiscalYear: '2026', months: trend.map((row) => row.period), total: trend.map((row) => row.revenueActual), byCompany: companies.slice(0, 2).map((company) => ({ code: company.code, name: company.name, values: trend.map((row) => row.revenueActual / 2) })) })

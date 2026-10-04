@@ -36,7 +36,19 @@ try {
       await page.locator('header h1').waitFor()
       if (path === '/transactions/overview') { await page.locator('[data-transaction-card]').first().waitFor(); await page.getByRole('radio', { name: '明细', exact: true }).check() }
       else if (path === '/dashboard') await page.locator('.distribution-row').first().waitFor()
-      else await page.locator('[data-comparison-matrix]').first().waitFor()
+      else {
+        if (path.startsWith('/dashboard/analysis/')) {
+          await page.getByRole('tab', { name: '重点', exact: true }).click()
+          await page.locator('[data-analysis-section="focus"]').waitFor()
+          if (path.endsWith('cash-flow')) {
+            assert.equal(await page.locator('.cashflow-comparison .distribution-row[data-signed]').count(), 6)
+            assert.equal(await page.locator('.cashflow-comparison').nth(1).locator('.distribution-row-value').first().textContent(), '-120.00')
+          }
+          await page.screenshot({ path: output + '/' + theme + '-' + width + path.replaceAll('/', '-') + '-focus.png', fullPage: true })
+          await page.getByRole('tab', { name: '完整报表', exact: true }).click()
+        }
+        await page.locator('[data-comparison-matrix]').first().waitFor()
+      }
       assert.equal(await page.evaluate(() => Math.max(0, document.documentElement.scrollWidth - innerWidth)), 0, path + ' 页面横向溢出')
       const geometry = await page.locator('.distribution-row').evaluateAll((rows) => rows.map((row) => {
         const bounds = row.getBoundingClientRect()
@@ -56,8 +68,6 @@ try {
         assert.equal(await page.locator('[data-aging-distribution]').first().locator('.distribution-row-value').first().textContent(), '480.00')
       }
       if (path === '/dashboard/analysis/cash-flow') {
-        assert.equal(await page.locator('.cashflow-comparison .distribution-row').count(), 6)
-        assert.equal(await page.locator('.cashflow-comparison').nth(1).locator('.distribution-row-value').first().textContent(), '-120.00')
         assert.equal(matrix.length, 40)
       }
       if (path === '/inventory') {
@@ -77,7 +87,7 @@ try {
       }
       if (path === '/dashboard/analysis/category-budget') {
         const before = await page.locator('[data-comparison-matrix] tbody tr').first().locator('.magnitude-value').nth(1).textContent()
-        const tabs = page.locator('[data-comparison-matrix]').locator('..').locator('..').getByRole('tab', { name: '累计', exact: true })
+        const tabs = page.getByRole('tab', { name: '累计', exact: true })
         await tabs.click()
         const after = await page.locator('[data-comparison-matrix] tbody tr').first().locator('.magnitude-value').nth(1).textContent()
         assert.notEqual(before, after, '切换累计必须改变金额口径')
@@ -159,6 +169,7 @@ try {
   assert.equal(await dialog.locator('[data-aging-distribution="comparison"]').count(), 0)
   await dialog.getByRole('button', { name: '取消', exact: true }).click()
   await page.goto(base + '/dashboard/analysis/category-budget')
+  await page.getByRole('tab', { name: '完整报表', exact: true }).click()
   const matrix = page.locator('[data-comparison-matrix]')
   await matrix.waitFor()
   assert.equal(await matrix.locator('tbody tr').first().locator('.rate-bar-value').nth(0).textContent(), '150.0%')

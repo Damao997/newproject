@@ -1,183 +1,33 @@
-import { StatTile } from '@/components/ui/stat-tile'
-import { DistributionBar } from '@/components/charts/distribution-bar'
-import { MagnitudeValue, magnitudeMaximum } from '@/components/ui/magnitude-value'
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { Card, CardContent } from '@/components/ui/card'
+import { AnalysisSection, AnalysisComparison, AnalysisFailure } from '@/components/analysis/workspace'
+import { useAnalysisWorkspace } from '@/components/analysis/analysis-context'
+import { StatTile } from '@/components/ui/stat-tile'
+import { MagnitudeValue, magnitudeMaximum } from '@/components/ui/magnitude-value'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
-import { AlertTriangle, ArrowRight, Info, RefreshCw } from 'lucide-react'
-import { useInventoryDetails, useInventoryOverview } from '@/hooks/api-queries'
 import { AnalysisPageSkeleton } from '@/components/ui/skeleton-blocks'
 import { DeltaTag } from '@/components/ui/delta-tag'
+import { useInventoryOverview, useInventoryDetails } from '@/hooks/api-queries'
 import { formatMoneyWan } from '@/lib/utils'
-import { getChartSeries } from '@/lib/chart-theme'
-import { useThemeStore } from '@/stores/themeStore'
 
-interface InventoryAgingContentProps {
-  /** 选定期（跟随看板当前期间） */
-  period?: string
-  /** 主体口径（跟随看板顶部筛选） */
-  companyCode?: string
-}
+export function InventoryAgingContent({ period, companyCode }: { period?: string; companyCode?: string }) {
+  const workspace = useAnalysisWorkspace(), companyCodes = companyCode ? [companyCode] : undefined
+  const overview = useInventoryOverview({ period, companyCodes }), details = useInventoryDetails({ period, companyCodes })
+  const data = overview.isPlaceholderData ? undefined : overview.data
+  const detailRows = useMemo(() => details.isPlaceholderData ? [] : details.data?.rows ?? [], [details.data, details.isPlaceholderData])
+  const visibleRows = workspace?.state.view === 'focus' && workspace.state.selected ? detailRows.filter(row => row.categoryCode === workspace.state.selected) : detailRows
+  const amountMaximum = { current: magnitudeMaximum(detailRows.map(row => row.current)), yearStart: magnitudeMaximum(detailRows.map(row => row.yearStart)), samePeriod: magnitudeMaximum(detailRows.map(row => row.samePeriod)) }
+  const totalYoy = data?.total.samePeriod ? (data.total.current - data.total.samePeriod) / Math.abs(data.total.samePeriod) : 0
+  const report = <>      {/* 公司 × 品类 明细表 */}
 
-/** KPI 磁贴 */
 
-/** 同比（总额）：（本期 − 同期）/ |同期|，小数比率（存货为占用类指标，增长红=占用上升） */
-function yoyRatio(current: number, samePeriod: number): number {
-  const base = Math.abs(samePeriod)
-  return base ? (current - samePeriod) / base : 0
-}
 
-/**
- * 存货库龄分析页（真实数据：useInventoryOverview + useInventoryDetails，跟随看板主体/期间筛选）：
- * - 后端暂无库龄（账龄段）专用端点，本页展示库存结构与周转的真实数据，不虚构库龄分布；
- * - 顶部 4 个 KPI 磁贴：库存总额（含同比）/ 周转天数（本期 vs 同期）/ 覆盖公司数 / 品类数；
- * - 库存品类结构：按本期金额占比横向条 + 同比；
- * - 公司 × 品类明细表（useInventoryDetails）；
- * - 说明条：库龄明细需库存数据源补充账龄字段后上线 + 跳转库存管理页。
- */
-export function InventoryAgingContent({ period, companyCode }: InventoryAgingContentProps) {
-  const sidebarStyle = useThemeStore((s) => s.printing ? 'light' : s.sidebarStyle)
-  const companyCodes = companyCode ? [companyCode] : undefined
-  const { data, isLoading, isError, refetch } = useInventoryOverview({ period, companyCodes })
-  const { data: detailData, isLoading: detailLoading } = useInventoryDetails({ period, companyCodes })
-  const detailRows = useMemo(() => detailData?.rows ?? [], [detailData])
-  const categories = useMemo(() => data?.categories ?? [], [data])
-  const amountMaximum = {
-    current: magnitudeMaximum(detailRows.map((r) => r.current)),
-    yearStart: magnitudeMaximum(detailRows.map((r) => r.yearStart)),
-    samePeriod: magnitudeMaximum(detailRows.map((r) => r.samePeriod)),
-  }
-
-  const palette = getChartSeries(sidebarStyle)
-
-  // 同比（总额）：（本期 − 同期）/ |同期|，小数比率
-  const totalYoy = useMemo(() => {
-    if (!data) return 0
-    return yoyRatio(data.total.current, data.total.samePeriod)
-  }, [data])
-  const maxCategory = useMemo(() => categories.reduce((m, c) => Math.max(m, c.current), 0), [categories])
-
-  if (isLoading || (detailLoading && !detailData)) {
-    return <AnalysisPageSkeleton blocks={[280, 260]} />
-  }
-
-  if (isError && !data) {
-    return (
-      <div className="flex flex-col items-center gap-3 py-16 text-center">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-destructive/10">
-          <AlertTriangle className="h-6 w-6 text-destructive" />
-        </div>
-        <p className="text-sm font-medium text-foreground">库存数据加载失败</p>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>
-          <RefreshCw className="mr-2 h-4 w-4" />
-          重试
-        </Button>
-      </div>
-    )
-  }
-
-  if (!data || (categories.length === 0 && data.total.current === 0)) {
-    return (
-      <EmptyState
-        title="暂无存货数据"
-        description="导入并激活静态（资产负债表）数据后，将按品类展示库存结构与周转情况"
-      />
-    )
-  }
-
-  return (
-    <div className="animate-fade-in space-y-4">
-      {/* 库龄数据源说明（后端无库龄专用端点，不虚构账龄数据） */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-info/30 bg-info/5 px-4 py-2.5 text-sm">
-        <span className="inline-flex items-center gap-2 text-info-700">
-          <Info className="h-4 w-4 shrink-0" />
-          当前展示库存结构与周转情况，暂不提供库龄明细。
-        </span>
-        <Button asChild variant="outline" size="sm" className="h-8 gap-1">
-          <Link to="/inventory">
-            前往库存管理
-            <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
-        </Button>
-      </div>
-
-      {/* 顶部 4 个 KPI 磁贴（真实口径） */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile
-          label="库存总额"
-          value={formatMoneyWan(data.total.current)}
-          unit="万"
-          foot={`${period ? `期间 ${period} · ` : ''}同比 ${totalYoy === 0 ? '持平' : `${totalYoy > 0 ? '+' : ''}${(totalYoy * 100).toFixed(1)}%`}`}
-          accent="before:bg-info-500"
-        />
-        <StatTile
-          label="存货周转天数"
-          value={data.turnoverDays.current > 0 ? String(Math.round(data.turnoverDays.current)) : '–'}
-          unit={data.turnoverDays.current > 0 ? '天' : ''}
-          foot={data.turnoverDays.samePeriod > 0 ? `上年同期 ${Math.round(data.turnoverDays.samePeriod)} 天` : '暂无同期数据'}
-          accent="before:bg-blue-8"
-        />
-        <StatTile
-          label="覆盖公司数"
-          value={String(data.companyCount)}
-          unit="家"
-          foot={companyCode ? '单体/汇总合并口径' : '数据权限内全部公司'}
-          accent="before:bg-chart-5"
-        />
-        <StatTile
-          label="品类数"
-          value={String(categories.length)}
-          unit="类"
-          foot="存货品类（科目映射）"
-          accent="before:bg-success-500"
-        />
-      </div>
-
-      {/* 库存品类结构（真实占比 + 同比） */}
-      <Card className="border border-border shadow-antd-1">
-        <CardContent className="p-6">
-          <h3 className="mb-3 text-base font-semibold text-foreground">
-            库存品类结构
-            <span className="ml-2 text-xs font-normal text-muted-foreground">本期金额占比 · 单位：万元</span>
-          </h3>
-          {categories.length === 0 ? (
-            <EmptyState compact className="py-10" title="暂无品类数据" />
-          ) : (
-            <div className="distribution-list">
-              {categories.map((c, i) => (
-                  <DistributionBar key={c.code} variant="ranking" label={c.name} value={formatMoneyWan(c.current)}
-                    meta={<>{c.share.toFixed(1)}% <DeltaTag value={c.yoy / 100} /></>}
-                    width={maxCategory > 0 ? Math.max(c.current > 0 ? 2 : 0, (c.current / maxCategory) * 100) : 0}
-                    color={palette[i % palette.length]} />
-                ))}
-              {/* 合计行 */}
-              <div className="flex flex-wrap items-baseline justify-between gap-3 border-t border-border pt-3 font-semibold">
-                <span className="text-body">合计</span>
-                <div className="flex items-baseline gap-4 font-num text-body">
-                  <span>{formatMoneyWan(data.total.current)}</span>
-                  <span className="text-xs text-muted-foreground">100.0%</span>
-                  <DeltaTag value={totalYoy} />
-                </div>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* 公司 × 品类 明细表 */}
-      <Card className="border border-border shadow-antd-1">
-        <CardContent className="p-6">
-          <h3 className="mb-3 text-base font-semibold text-foreground">
-            公司 × 品类明细
-            <span className="ml-2 text-xs font-normal text-muted-foreground"> {detailRows.length} 行 · 单位：万元</span>
-          </h3>
-          {detailRows.length === 0 ? (
+          {details.isPending || details.isPlaceholderData ? <AnalysisPageSkeleton blocks={[260]} /> : details.isError && !details.data ? <AnalysisFailure title="公司品类明细加载失败" retry={details.refetch} /> : visibleRows.length === 0 ? (
             <EmptyState compact className="py-10" title="暂无明细数据" />
           ) : (
             <div className="detail-table-scroll max-h-[480px] overflow-auto">
-              <table data-ui-table data-detail-table data-comparison-matrix className="data-table-report data-table-report--striped">
+              <table data-ui-table data-detail-table data-comparison-matrix aria-label="公司与品类库存明细，单位万元" className="data-table-report data-table-report--striped">
                 <thead className="sticky top-0 z-[1] bg-ink-2">
                   <tr>
                     <th className="text-left">公司</th>
@@ -189,7 +39,7 @@ export function InventoryAgingContent({ period, companyCode }: InventoryAgingCon
                   </tr>
                 </thead>
                 <tbody>
-                  {detailRows.map((r) => (
+                  {visibleRows.map((r) => (
                       <tr key={`${r.companyCode}-${r.categoryCode}`}>
                         <td className="max-w-[12em] truncate text-left text-body text-foreground" title={r.companyName}>
                           {r.companyShortName ?? r.companyName}
@@ -206,8 +56,26 @@ export function InventoryAgingContent({ period, companyCode }: InventoryAgingCon
               </table>
             </div>
           )}
-        </CardContent>
-      </Card>
-    </div>
-  )
+
+
+</>
+  return <div className="space-y-4">
+    <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-muted-foreground">来源：静态报表与库存明细 · 库存结构及周转口径</p><Button asChild variant="outline" size="sm"><Link to="/inventory">前往库存管理</Link></Button></div>
+    {details.isError && details.data && <AnalysisFailure title="明细刷新失败，保留当前内容" retry={details.refetch} />}
+    <AnalysisSection kind="focus">
+      {overview.isPending || overview.isPlaceholderData ? <AnalysisPageSkeleton blocks={[160, 320]} /> : overview.isError && !data ? <AnalysisFailure title="库存概览加载失败" retry={overview.refetch} /> : !data || (!data.categories.length && !data.total.current) ? <EmptyState title="暂无存货概览" description="请检查静态报表数据" /> : <>
+        {overview.isError && <AnalysisFailure title="库存概览刷新失败，保留当前内容" retry={overview.refetch} />}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatTile label="库存金额" value={formatMoneyWan(data.total.current)} unit="万" tone={1} foot={<span>同比 <DeltaTag value={totalYoy} /></span>} />
+          <StatTile label="存货周转天数" value={data.turnoverDays.current > 0 ? String(Math.round(data.turnoverDays.current)) : '—'} unit={data.turnoverDays.current > 0 ? '天' : undefined} tone={2} foot={data.turnoverDays.samePeriod > 0 ? '同期 ' + Math.round(data.turnoverDays.samePeriod) + ' 天' : '暂无同期数据'} />
+          <StatTile label="覆盖公司" value={String(data.companyCount)} unit="家" tone={3} foot="当前主体范围" />
+          <StatTile label="库存品类" value={String(data.categories.length)} unit="类" tone={4} foot="点击品类联动公司明细" />
+        </div>
+        <AnalysisComparison title="库存品类比较" note="本期 · 单位：万元 · 选择品类后，下方公司明细同步筛选" items={data.categories.map(category => ({ id: category.code, label: category.name, amount: category.current, share: category.share, detail: <p>占比 {category.share.toFixed(1)}% · 同比 <DeltaTag value={category.yoy / 100} /></p> }))} />
+      </>}
+      {workspace?.state.selected && <p role="status" className="text-sm text-muted-foreground">局部范围：{data?.categories.find(category => category.code === workspace.state.selected)?.name ?? workspace.state.selected} · <Button size="sm" variant="ghost" onClick={() => workspace.update({ selected: '' })}>显示全部品类</Button></p>}
+      {report}
+    </AnalysisSection>
+    <AnalysisSection kind="report">{report}</AnalysisSection>
+  </div>
 }

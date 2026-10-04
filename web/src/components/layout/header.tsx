@@ -29,7 +29,7 @@ export function Header({ onMenuClick }: HeaderProps) {
         </div>
       </div>
       <div className="header-controls flex min-w-0 items-center gap-2">
-        {showCompany && <CompanyPill />}
+        {showCompany && <CompanyPill selectionMode={location.pathname.startsWith('/dashboard/analysis/') ? 'single' : 'multiple'} />}
         {showPeriod && <PeriodPill />}
         <RefreshButton />
         <UserChip />

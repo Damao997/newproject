@@ -1,3 +1,4 @@
+import { AnalysisSection, AnalysisFailure } from '@/components/analysis/workspace'
 import { StatTile } from '@/components/ui/stat-tile'
 import { DistributionBar } from '@/components/charts/distribution-bar'
 import { MagnitudeValue, magnitudeMaximum } from '@/components/ui/magnitude-value'
@@ -73,7 +74,7 @@ function yoyOf(cur: number, base: number): number {
  * - 明细表：三大活动 流入/流出/净额 行（本月/同期/同比/累计/同期累计/累计同比）+ 深链指标分析页。
  */
 export function CashFlowContent({ period, companyCode }: CashFlowContentProps) {
-  const { data, isLoading, isError, refetch } = useCashflowIndicators({ companyCode, period })
+  const { data, isLoading, isError, isPlaceholderData, refetch } = useCashflowIndicators({ companyCode, period })
   const items = useMemo(() => data?.items ?? [], [data])
 
   const inflowSum = useMemo(
@@ -109,7 +110,7 @@ export function CashFlowContent({ period, companyCode }: CashFlowContentProps) {
   ]
   const actMax = Math.max(...activityRows.map((r) => Math.max(Math.abs(r.current), Math.abs(r.ytd))), 0)
 
-  if (isLoading) return <AnalysisPageSkeleton blocks={[220, 240]} />
+  if (isLoading || isPlaceholderData) return <AnalysisPageSkeleton blocks={[220, 240]} />
 
   if (isError && !data) {
     return (
@@ -181,6 +182,8 @@ export function CashFlowContent({ period, companyCode }: CashFlowContentProps) {
         </Button>
       </div>
 
+      {isError && <AnalysisFailure title="现金流刷新失败，保留当前内容" retry={refetch} />}
+      <AnalysisSection kind="focus">
       {/* KPI 磁贴（真实 Σ 口径 + 同比 chip） */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
@@ -239,25 +242,25 @@ export function CashFlowContent({ period, companyCode }: CashFlowContentProps) {
                   value={<span className={entry.value < 0 ? 'text-destructive' : undefined}>{formatMoneyWan(entry.value)}</span>}
                   meta={<DeltaTag value={yoyOf(entry.value, entry.same)} />}
                   width={actMax > 0 ? Math.max(Math.abs(entry.value) > 0 ? 2 : 0, Math.abs(entry.value) / actMax * 100) : 0}
+                  signedValue={entry.value}
                   color={entry.value >= 0 ? 'hsl(var(--success))' : 'hsl(var(--destructive))'} />)}
               </section>
             ))}
           </div>
           <p className="mt-3 text-xs text-muted-foreground">
-            现金流指标为单期间口径，无逐月序列；如需逐月趋势请前往现金流指标分析。
+            左侧为负净额，右侧为正净额，中线为零；本月与累计使用同一金额尺度。
           </p>
         </CardContent>
       </Card>
 
+      </AnalysisSection>
+      <AnalysisSection kind="report">
       {/* 现金流明细表 */}
-      <Card className="border border-border shadow-antd-1">
-        <CardContent className="p-5">
-          <h3 className="mb-3 text-base font-semibold text-foreground">
-            现金流明细
-            <span className="ml-2 text-xs font-normal text-muted-foreground">  单位：万元</span>
-          </h3>
+
+
+
           <div className="detail-table-scroll overflow-auto">
-            <table data-ui-table data-detail-table data-comparison-matrix className="data-table-report data-table-report--striped">
+            <table data-ui-table data-detail-table data-comparison-matrix aria-label="现金流量完整报表，单位万元" className="data-table-report data-table-report--striped">
               <thead>
                 <tr>
                   <th className="text-left">科目</th>
@@ -294,8 +297,9 @@ export function CashFlowContent({ period, companyCode }: CashFlowContentProps) {
             本月流入 {formatMoneyWan(inflowSum.current)}万（同比 {inMonthYoy === 0 ? '持平' : `${(inMonthYoy * 100).toFixed(1)}%`}）·
             本月流出 {formatMoneyWan(outflowSum.current)}万（同比 {outMonthYoy === 0 ? '持平' : `${(outMonthYoy * 100).toFixed(1)}%`}）
           </p>
-        </CardContent>
-      </Card>
+
+
+      </AnalysisSection>
     </div>
   )
 }

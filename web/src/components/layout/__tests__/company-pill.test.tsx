@@ -71,3 +71,26 @@ describe('账号筛选隔离', () => {
     expect(usePeriodStore.getState().companyCodes).toEqual(['C1']); expect(usePeriodStore.getState().period).toBe('2026-08')
   })
 })
+
+
+describe('经营分析单主体确认', () => {
+  it('已有多公司时必须明确选择，取消保留原范围', async () => {
+    usePeriodStore.setState({ companyCodes: ['C1', 'C2'] })
+    render(<CompanyPill selectionMode="single" />); await open()
+    expect(screen.getByRole('button', { name: '应用' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: '全选单体公司' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('radio', { name: /甲公司/ }))
+    fireEvent.click(screen.getByRole('button', { name: '取消' }))
+    expect(usePeriodStore.getState().companyCodes).toEqual(['C1', 'C2'])
+  })
+  it('单体和汇总均只能选一项，应用一次更新', async () => {
+    usePeriodStore.setState({ companyCodes: ['C1'] })
+    render(<CompanyPill selectionMode="single" />); await open()
+    fireEvent.click(screen.getByRole('radio', { name: /乙公司/ }))
+    fireEvent.click(screen.getByRole('radio', { name: /汇总一号/ }))
+    expect(screen.getByRole('radio', { name: /乙公司/ })).not.toBeChecked()
+    expect(usePeriodStore.getState().companyCodes).toEqual(['C1'])
+    fireEvent.click(screen.getByRole('button', { name: '应用' }))
+    expect(usePeriodStore.getState().companyCodes).toEqual(['S1'])
+  })
+})

@@ -1,3 +1,4 @@
+import { useAnalysisWorkspace } from '@/components/analysis/analysis-context'
 import { useState } from 'react'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -32,7 +33,10 @@ const TD_CLS = 'px-3 py-2 text-right font-num text-sm text-foreground'
  * 主体口径跟随看板顶部筛选；外层 Card 由 AnalysisTabsCard 统一提供。
  */
 export function ProductBudgetCard({ period, companyCode }: ProductBudgetCardProps) {
-  const [amountMode, setAmountMode] = useState<AmountMode>('month')
+  const workspace = useAnalysisWorkspace()
+  const [localMode, setLocalMode] = useState<AmountMode>('month')
+  const amountMode = workspace?.state.amountMode ?? localMode
+  const setAmountMode = (value: AmountMode) => workspace ? workspace.update({ amountMode: value }) : setLocalMode(value)
   const { data, isLoading } = useProductBudget({ period, companyCode })
   const rows = data?.rows ?? []
   const isEmpty = !isLoading && rows.length === 0
@@ -63,7 +67,7 @@ export function ProductBudgetCard({ period, companyCode }: ProductBudgetCardProp
 
   return (
     <TooltipProvider>
-      <div className="mb-2 flex flex-wrap items-center justify-end gap-3">
+      {!workspace && <div className="mb-2 flex flex-wrap items-center justify-end gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <Tabs value={amountMode} onValueChange={(v) => setAmountMode(v as AmountMode)}>
             <TabsList variant="segmented" className="justify-start">
@@ -72,7 +76,7 @@ export function ProductBudgetCard({ period, companyCode }: ProductBudgetCardProp
             </TabsList>
           </Tabs>
         </div>
-      </div>
+      </div>}
       {isEmpty ? (
           <div className="flex flex-col items-center gap-3 py-12 text-center">
             <p className="text-sm font-medium text-foreground">暂无品类数据</p>
@@ -80,7 +84,7 @@ export function ProductBudgetCard({ period, companyCode }: ProductBudgetCardProp
           </div>
         ) : (
           <div className="detail-table-scroll overflow-auto">
-            <table data-ui-table data-detail-table data-comparison-matrix className="data-table-report data-table-report--striped">
+            <table data-ui-table data-detail-table data-comparison-matrix aria-label="品类预算完整报表，单位万元" className="data-table-report data-table-report--striped">
               <thead>
                 <tr className="border-b border-border">
                   <th rowSpan={2} className="text-left w-[10em]">品类</th>
