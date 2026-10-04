@@ -1,5 +1,6 @@
+import { accountStorage } from './account-storage'
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, createJSONStorage } from 'zustand/middleware'
 
 /**
  * 全局筛选状态（期间 + 公司）：由顶部 PeriodPill / CompanyPill 写入，
@@ -13,6 +14,7 @@ interface PeriodState {
   fiscalYear: string | null
   period: string | null
   companyCodes: string[] | null
+  setRange: (fiscalYear: string | null, period: string | null) => void
   setFiscalYear: (fy: string | null) => void
   setPeriod: (period: string | null) => void
   setCompanyCodes: (codes: string[] | null) => void
@@ -24,12 +26,14 @@ export const usePeriodStore = create<PeriodState>()(
       fiscalYear: null,
       period: null,
       companyCodes: null,
+      setRange: (fiscalYear, period) => set({ fiscalYear, period }),
       setFiscalYear: (fiscalYear) => set({ fiscalYear }),
       setPeriod: (period) => set({ period }),
       setCompanyCodes: (companyCodes) => set({ companyCodes }),
     }),
     {
       name: 'period-storage',
+      storage: createJSONStorage(() => accountStorage),
       partialize: (state) => ({
         fiscalYear: state.fiscalYear,
         period: state.period,

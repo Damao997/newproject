@@ -71,7 +71,7 @@ function TreeRows({
         const meta = dataTypeMeta[node.dataType]
         return (
           <Fragment key={node.code}>
-            <tr>
+            <tr data-row-level={depth}>
               <td className="px-4 py-1.5 leading-[14px]">
                 <div className="flex items-center" style={{ paddingLeft: depth * 20 }}>
                   {hasChildren ? (
@@ -147,7 +147,7 @@ export function SubjectTree({
 }: SubjectTreeProps) {
   return (
     <div className="overflow-x-auto">
-      <table className="data-table-report w-full caption-bottom text-body">
+      <table data-ui-table className="data-table-report w-full caption-bottom text-body">
         <thead>
           <tr>
             <th className="text-center">科目名称</th>

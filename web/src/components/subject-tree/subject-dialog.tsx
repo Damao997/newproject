@@ -1,3 +1,5 @@
+import { useFormModel, useFormValue, ModelFormFields } from '@/components/forms/form-model'
+import { useFormClose } from '@/components/forms/form-navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -59,18 +61,19 @@ export function SubjectDialog({ open, mode, type, subject, flat, allSubjects, ca
     return m
   }, [metricsData])
 
-  const [code, setCode] = useState('')
-  const [name, setName] = useState('')
-  const [category, setCategory] = useState('')
-  const [parentCode, setParentCode] = useState<string>('none')
-  const [isLeaf, setIsLeaf] = useState<'true' | 'false'>('true')
-  const [valueType, setValueType] = useState<SubjectValueType>('amount')
+  const model = useFormModel({code: ('') as string, name: ('') as string, category: ('') as string, parentCode: ('none') as string, isLeaf: ('true') as 'true' | 'false', valueType: ('amount') as SubjectValueType, dataType: ('data') as SubjectDataType, calcFormula: ('') as string}, {"name":"请输入科目名称"})
+  const [code, setCode] = useFormValue(model, "code")
+  const [name, setName] = useFormValue(model, "name")
+  const [category, setCategory] = useFormValue(model, "category")
+  const [parentCode, setParentCode] = useFormValue(model, "parentCode")
+  const [isLeaf, setIsLeaf] = useFormValue(model, "isLeaf")
+  const [valueType, setValueType] = useFormValue(model, "valueType")
   // 新建模式下用户未手动选择前，随名称自动推断值类型；手动选择后不再覆盖
   const [valueTypeTouched, setValueTypeTouched] = useState(false)
   // 指标类型（编辑模式可切换；dataType 存于 metric 表，变更走类型转换 API）
-  const [dataType, setDataType] = useState<SubjectDataType>('data')
+  const [dataType, setDataType] = useFormValue(model, "dataType")
   // data → calc 时的初始公式（必填）
-  const [calcFormula, setCalcFormula] = useState('')
+  const [calcFormula, setCalcFormula] = useFormValue(model, "calcFormula")
   // 类型切换后果提示（内联展示）
   const [typeHint, setTypeHint] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -135,7 +138,8 @@ export function SubjectDialog({ open, mode, type, subject, flat, allSubjects, ca
       setCalcFormula('')
       setTypeHint(null)
     }
-  }, [open, mode, subject])
+      model.form.reset(model.form.getValues())
+  }, [open, mode, subject, model.form, setCode, setName, setCategory, setParentCode, setIsLeaf, setValueType, setDataType, setCalcFormula])
 
   const pending = createSubject.isPending || updateSubject.isPending || reclassifySubject.isPending || convertMetric.isPending
 
@@ -236,9 +240,11 @@ export function SubjectDialog({ open, mode, type, subject, flat, allSubjects, ca
     }
   }
 
+  const formClose = useFormClose({ dirty: model.form.formState.isDirty, busy: model.pending || pending, enabled: open, onClose: onClose })
+
   return (
     <>
-      <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <><Dialog open={open} presentation="drawer" busy={model.pending || pending} onOpenChange={(next) => { if (!next) formClose.requestClose() }}>
         <DialogContent>
         <DialogHeader>
           <DialogTitle>{mode === 'create' ? '新增科目' : '编辑科目'}</DialogTitle>
@@ -246,7 +252,7 @@ export function SubjectDialog({ open, mode, type, subject, flat, allSubjects, ca
             {mode === 'create' ? `新增${type === 'operating' ? '经营' : '静态'}科目` : `${subject?.name}（${subject?.code}）`}
           </DialogDescription>
         </DialogHeader>
-        <DialogBody className="grid gap-4">
+        <DialogBody className="grid gap-4"><ModelFormFields model={model}>
             <div className="space-y-3">
             <div className="space-y-1">
               <Label htmlFor="subject-code">科目编码</Label>
@@ -269,15 +275,15 @@ export function SubjectDialog({ open, mode, type, subject, flat, allSubjects, ca
             </div>
             <div className="space-y-1">
               <Label htmlFor="subject-name">科目名称</Label>
-              <Input id="subject-name" value={name} onChange={(e) => handleNameChange(e.target.value)} placeholder="科目名称" />
+              <Input name="name" id="subject-name" value={name} onChange={(e) => handleNameChange(e.target.value)} placeholder="科目名称" />
             </div>
             <div className="space-y-1">
               <Label htmlFor="subject-category">类别{parentChanged && <span className="ml-1 text-xs text-muted-foreground">（随上级自动推导）</span>}</Label>
-              <Input id="subject-category" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="如：收入（留空取名称）" readOnly={parentChanged} />
+              <Input name="category" id="subject-category" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="如：收入（留空取名称）" readOnly={parentChanged} />
             </div>
             <div className="space-y-1">
               <Label htmlFor="subject-value-type">值类型{mode === 'create' && !valueTypeTouched && <span className="ml-1 text-xs text-muted-foreground">（随名称自动推断，可手动调整）</span>}</Label>
-              <Select value={valueType} onValueChange={(v) => { setValueType(v as SubjectValueType); setValueTypeTouched(true) }}>
+              <Select name="valueType" value={valueType} onValueChange={(v) => { setValueType(v as SubjectValueType); setValueTypeTouched(true) }}>
                 <SelectTrigger id="subject-value-type"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="amount">金额（万元，千分位两位小数）</SelectItem>
@@ -292,7 +298,7 @@ export function SubjectDialog({ open, mode, type, subject, flat, allSubjects, ca
                   指标类型
                   {!canConvert && <span className="ml-1 text-xs text-muted-foreground">（只读：需 data:metric:convert 权限）</span>}
                 </Label>
-                <Select
+                <Select name="dataType"
                   value={dataType}
                   onValueChange={(v) => handleTypeChange(v as SubjectDataType)}
                   disabled={!canConvert || (subject?.dataType ?? 'data') === 'display'}
@@ -308,14 +314,14 @@ export function SubjectDialog({ open, mode, type, subject, flat, allSubjects, ca
                 {dataType === 'calc' && (subject?.dataType ?? 'data') !== 'calc' && (
                   <div className="space-y-1">
                     <Label htmlFor="subject-calc-formula">初始公式（必填）</Label>
-                    <Input id="subject-calc-formula" value={calcFormula} onChange={(e) => setCalcFormula(e.target.value)} placeholder="如：{OP_057} / {OP_005}" maxLength={500} />
+                    <Input name="calcFormula" id="subject-calc-formula" value={calcFormula} onChange={(e) => setCalcFormula(e.target.value)} placeholder="如：{OP_057} / {OP_005}" maxLength={500} />
                   </div>
                 )}
               </div>
             )}
             <div className="space-y-1">
               <Label htmlFor="subject-is-leaf">是否叶子</Label>
-              <Select value={isLeaf} onValueChange={(v) => setIsLeaf(v as 'true' | 'false')}>
+              <Select name="isLeaf" value={isLeaf} onValueChange={(v) => setIsLeaf(v as 'true' | 'false')}>
                 <SelectTrigger id="subject-is-leaf"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="true">是</SelectItem>
@@ -325,7 +331,7 @@ export function SubjectDialog({ open, mode, type, subject, flat, allSubjects, ca
             </div>
             <div className="space-y-1">
               <Label htmlFor="subject-parent">上级科目</Label>
-              <Select value={parentCode} onValueChange={handleParentChange}>
+              <Select name="parentCode" value={parentCode} onValueChange={handleParentChange}>
                 <SelectTrigger id="subject-parent"><SelectValue placeholder="选择上级科目" /></SelectTrigger>
                 <SelectContent className="max-h-[280px]">
                   <SelectItem value="none">无（根节点）</SelectItem>
@@ -341,15 +347,15 @@ export function SubjectDialog({ open, mode, type, subject, flat, allSubjects, ca
             </div>
             {error && <p className="text-xs text-destructive">{error}</p>}
           </div>
-          </DialogBody>
+          </ModelFormFields></DialogBody>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>取消</Button>
-          <Button onClick={submit} disabled={pending || !name.trim()}>
+          <Button variant="outline" onClick={formClose.requestClose}>取消</Button>
+          <Button onClick={model.submit(submit)} disabled={pending || !name.trim()}>
             {pending ? '保存中...' : '保存'}
           </Button>
         </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </Dialog>{formClose.element}</>
       {confirmElement}
     </>
   )

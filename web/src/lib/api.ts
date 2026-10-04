@@ -2,6 +2,9 @@ import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse 
 import { useAuthStore } from '@/stores/authStore'
 import type { ApiResponse, LoginRequest, LoginResponse, AutoLoginResponse, User, PaginatedResponse, FilterParams, BatchActivateCheckResult, KpiData, TrendData, DashboardAlert, ReceivableRow, ProductBudgetResponse, SubjectBudgetResponse, ExpenseAnalysisResponse, KeyMetricsResponse, ProductMetricsResponse, ProductCategory, ProductCategoryCheckResult, KeyMetricsProduct, KeyMetricsProductCheckResult, ExpenseMapping, ExpenseMappingCheckResult, SubjectBudgetConfig, SubjectBudgetConfigCheckResult, BudgetRatio, ImportBatch, ImportDiff, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, ConsolidationAdjustment, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData, ReportTemplateItem, ReportShareInfo, ReportChartDataRow } from '@/types'
 
+import type { PersonalPreferences, PreferenceSnapshot } from '@/lib/personal-settings'
+import type { ProfileUser } from '@/types'
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
 /**
@@ -317,8 +320,21 @@ class ApiClient {
     })
   }
 
-  async getProfile(): Promise<User> {
-    return this.request<User>({
+  async updateProfile(data: { name: string; email: string; phone: string; department: string; jobTitle: string }): Promise<ProfileUser> {
+    return this.request({ method: 'PATCH', url: '/auth/profile', data })
+  }
+  async getPreferences(): Promise<PreferenceSnapshot> { return this.request({ method: 'GET', url: '/auth/preferences' }) }
+  async updatePreferences(data: { revision: number; changes: Partial<PersonalPreferences> }): Promise<PreferenceSnapshot> {
+    return this.request({ method: 'PATCH', url: '/auth/preferences', data })
+  }
+  async getAvatar(): Promise<Blob> { return (await this.client.get('/auth/avatar', { responseType: 'blob' })).data }
+  async uploadAvatar(file: File): Promise<ProfileUser> {
+    const data = new FormData(); data.append('avatar', file)
+    return this.request({ method: 'POST', url: '/auth/avatar', data, headers: { 'Content-Type': 'multipart/form-data' } })
+  }
+  async removeAvatar(): Promise<ProfileUser> { return this.request({ method: 'DELETE', url: '/auth/avatar' }) }
+  async getProfile(): Promise<ProfileUser> {
+    return this.request<ProfileUser>({
       method: 'GET',
       url: '/auth/profile',
     })

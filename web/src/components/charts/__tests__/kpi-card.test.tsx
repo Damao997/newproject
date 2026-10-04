@@ -83,4 +83,19 @@ describe('KpiCard', () => {
     fireEvent.click(screen.getByText('1,234,567.89'))
     expect(onClick).toHaveBeenCalledTimes(1)
   })
+  it('指标排序改变后仍保留各自的配色身份', () => {
+    const { container, rerender } = render(<KpiCard data={noBudgetKpi} index={0} />)
+    expect(container.querySelector('[data-metric-tone]')).toHaveAttribute('data-metric-tone', '4')
+    rerender(<KpiCard data={revenueKpi} index={3} />)
+    expect(container.querySelector('[data-metric-tone]')).toHaveAttribute('data-metric-tone', '1')
+  })
+
+  it('键盘钻取一次，内部焦点控件不触发卡片快捷键', () => {
+    const onClick = vi.fn()
+    render(<KpiCard data={revenueKpi} onClick={onClick} />)
+    fireEvent.keyDown(screen.getByRole('link'), { key: 'Enter' })
+    expect(onClick).toHaveBeenCalledTimes(1)
+    fireEvent.keyDown(screen.getByText('1,234,567.89'), { key: 'Enter' })
+    expect(onClick).toHaveBeenCalledTimes(1)
+  })
 })

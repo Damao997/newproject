@@ -1,4 +1,6 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react'
+﻿import { ModelFormFields } from '@/components/forms/form-model'
+import { useFormClose } from '@/components/forms/form-navigation'
+import { useMemo, useState } from 'react'
 import { Save, Trash2, FileText, Sparkles, Loader2, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -7,7 +9,6 @@ import { SheetShell } from '@/components/ui/sheet-shell'
 import { FlashMessage } from '@/components/ui/flash-message'
 import { RichTextEditor } from '@/components/editor/rich-text-editor'
 import { ContextChip } from '@/components/analysis/context-chip'
-import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useAiStream } from '@/hooks/use-ai-stream'
 import { useAnalysisForm } from '@/hooks/use-analysis-form'
 import { formatMetricValue, formatPercent, type MetricValueType } from '@/lib/utils'
@@ -108,42 +109,13 @@ function DrawerBody({ target, onClose }: { target: AnalysisTarget; onClose: () =
     setAiDraft('')
   }
 
-  // 已保存内容快照：回填完成（title 首次非空）与保存成功后记录；与当前值对比判断是否有未保存修改
-  const savedRef = useRef<{ title: string; content: string } | null>(null)
-  // 注意：依赖仅 [form.title] 是有意为之——title/content 变化不应刷新快照（否则保存后继续编辑会把未保存值误记为已保存）
-  useEffect(() => {
-    if (!savedRef.current && form.title) {
-      savedRef.current = { title: form.title, content: form.content }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.title])
-  useEffect(() => {
-    if (form.feedback?.type === 'ok') {
-      savedRef.current = { title: form.title, content: form.content }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.feedback])
-  const isDirty = savedRef.current !== null && (form.title !== savedRef.current.title || form.content !== savedRef.current.content)
-
-  // 统一关闭流程：有未保存修改时先确认（X/遮罩/Escape/取消按钮均走此路径）
-  const { confirm, element } = useConfirm()
-  const handleClose = async () => {
-    if (isDirty) {
-      const ok = await confirm({
-        title: '放弃未保存内容？',
-        description: '关闭将丢失尚未保存的标题或正文修改。',
-        confirmText: '放弃修改',
-      })
-      if (!ok) return
-    }
-    onClose()
-  }
+  const formClose = useFormClose({ dirty: form.model.form.formState.isDirty, busy: form.busy, onClose })
 
   const m = target.metric
   return (
     <>
     <SheetShell
-      onClose={() => void handleClose()}
+      onClose={formClose.requestClose} busy={form.busy}
       icon={<FileText className="mt-0.5 h-5 w-5 text-primary" />}
       title="单项分析"
       description={`${target.companyName} · ${target.subjectName} · ${target.period}`}
@@ -157,7 +129,7 @@ function DrawerBody({ target, onClose }: { target: AnalysisTarget; onClose: () =
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => void handleClose()} disabled={form.busy}>取消</Button>
+            <Button variant="outline" size="sm" onClick={formClose.requestClose} disabled={form.busy}>取消</Button>
             <Button size="sm" onClick={form.save} disabled={form.busy || !form.title.trim()}>
               <Save className="mr-1 h-4 w-4" /> 保存
             </Button>
@@ -165,7 +137,7 @@ function DrawerBody({ target, onClose }: { target: AnalysisTarget; onClose: () =
         </>
       )}
     >
-        {/* 指标上下文：按值类型格式化，仅金额类标注“(万)”；同比统一按相对增长率；达成率 = 本年累计 / 全年预算 */}
+<ModelFormFields model={form.model}>        {/* 指标上下文：按值类型格式化，仅金额类标注“(万)”；同比统一按相对增长率；达成率 = 本年累计 / 全年预算 */}
         {m && (() => {
           const vt = target.valueType
           const unit = vt === 'ratio' || vt === 'quantity' ? '' : '(万)'
@@ -198,7 +170,7 @@ function DrawerBody({ target, onClose }: { target: AnalysisTarget; onClose: () =
         <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
           <div className="space-y-1.5">
             <Label htmlFor="analysis-title">分析标题</Label>
-            <Input id="analysis-title" value={form.title} onChange={(e) => form.setTitle(e.target.value)} placeholder="如：灶具收入分析" />
+            <Input name="title" id="analysis-title" value={form.title} onChange={(e) => form.setTitle(e.target.value)} placeholder="如：灶具收入分析" />
           </div>
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
@@ -241,8 +213,8 @@ function DrawerBody({ target, onClose }: { target: AnalysisTarget; onClose: () =
             <FlashMessage type={form.feedback.type === 'ok' ? 'success' : 'error'}>{form.feedback.msg}</FlashMessage>
           )}
         </div>
-      </SheetShell>
-      {element}
+      </ModelFormFields></SheetShell>
+      {formClose.element}
       {form.confirmElement}
     </>
   )

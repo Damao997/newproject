@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Card } from '@/components/ui/card'
+import { MagnitudeValue, magnitudeMaximum } from '@/components/ui/magnitude-value'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
@@ -211,6 +212,12 @@ export function DetailTable({
     return rows
   }, [viewRows, storeKeyword, sort])
 
+  const maxima = useMemo(() => ({
+    current: magnitudeMaximum(visibleRows.map((r) => r.current)),
+    yearStart: magnitudeMaximum(visibleRows.map((r) => r.yearStart)),
+    samePeriod: magnitudeMaximum(visibleRows.map((r) => r.samePeriod)),
+  }), [visibleRows])
+
   const totals = useMemo(() => {
     const sum = (pick: (r: ViewRow) => number) => visibleRows.reduce((s, r) => s + pick(r), 0)
     return { current: sum((r) => r.current), yearStart: sum((r) => r.yearStart), samePeriod: sum((r) => r.samePeriod) }
@@ -293,7 +300,7 @@ export function DetailTable({
   return (
     <>
       {/* 控制层：明细表工具条（维度切换 / 搜索 / 导出 / 选中操作，筛选卡） */}
-      <Card className="rounded-card p-4">
+      <Card variant="filter" className="rounded-card p-4">
       <div className="flex flex-wrap items-center gap-3">
         <Select value={detailDim} onValueChange={(v) => setDetailDim(v as DetailDim)}>
           <SelectTrigger className="h-8 w-[140px]" aria-label="明细表维度切换">
@@ -342,7 +349,7 @@ export function DetailTable({
         <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2.5">
           <h3 className="flex items-center gap-2 text-base font-semibold tracking-tight">
             {DIM_TITLES[detailDim]}
-            <span className="ml-1 text-xs font-normal text-muted-foreground">{period ?? ''}</span>
+            <span className="ml-1 text-xs font-normal text-muted-foreground">{period ?? ''} · 单位：万元</span>
           </h3>
           {categoryCode && (
             <span className="flex items-center gap-1">
@@ -395,7 +402,7 @@ export function DetailTable({
               tabIndex={0}
               className={cn('max-h-[520px] overflow-auto transition-opacity duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', fetching && 'opacity-60')}
             >
-              <table className="data-table-report min-w-[880px]">
+              <table data-ui-table data-comparison-matrix className="data-table-report min-w-[880px]">
                 <thead className="sticky top-0 z-[2] bg-card">
                   <tr>
                     <th className="sticky left-0 z-[3] w-9 bg-card px-2 py-2 text-center">
@@ -422,7 +429,7 @@ export function DetailTable({
                 </thead>
                 <tbody>
                   {visibleRows.map((row) => (
-                    <tr key={row.key} className="group">
+                    <tr key={row.key} className="group" data-selected={selected.has(row.key) || undefined}>
                       <td className="sticky left-0 z-[1] w-9 bg-card px-2 py-2 text-center transition-colors group-hover:bg-muted">
                         <Checkbox
                           size="sm"
@@ -432,14 +439,14 @@ export function DetailTable({
                           onCheckedChange={() => toggleOne(row.key)}
                         />
                       </td>
-                      <td className="sticky left-9 z-[1] max-w-[180px] truncate bg-card px-2 py-2 text-xs transition-colors group-hover:bg-muted" title={row.label}>
+                      <td className="sticky left-9 z-[1] max-w-[240px] whitespace-normal break-words bg-card px-2 py-2 text-xs transition-colors group-hover:bg-muted" title={row.label}>
                         {row.label}
                       </td>
                       {detailDim === 'detail' && <td className="px-2 py-2">{row.detail?.categoryName}</td>}
-                      <td className="px-2 py-2 text-right font-num">{formatMoneyWan(row.current)}</td>
-                      <td className="px-2 py-2 text-right font-num">{formatMoneyWan(row.yearStart)}</td>
+                      <td className="px-2 py-2 text-right font-num"><MagnitudeValue value={row.current} maximum={maxima.current}>{formatMoneyWan(row.current)}</MagnitudeValue></td>
+                      <td className="px-2 py-2 text-right font-num"><MagnitudeValue value={row.yearStart} maximum={maxima.yearStart}>{formatMoneyWan(row.yearStart)}</MagnitudeValue></td>
                       <td className="px-2 py-2 text-right"><ChangeRate current={row.current} base={row.yearStart} /></td>
-                      <td className="px-2 py-2 text-right font-num">{formatMoneyWan(row.samePeriod)}</td>
+                      <td className="px-2 py-2 text-right font-num"><MagnitudeValue value={row.samePeriod} maximum={maxima.samePeriod}>{formatMoneyWan(row.samePeriod)}</MagnitudeValue></td>
                       <td className="px-2 py-2 text-right">
                         {row.samePeriod ? (
                           <span className={cn('font-num', getChangeColor(row.yoy))}>{row.yoy === 0 ? '-' : `${getChangePrefix(row.yoy)}${Math.abs(row.yoy).toFixed(1)}%`}</span>

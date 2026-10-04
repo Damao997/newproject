@@ -5,6 +5,7 @@
  * 前缀须含「/」边界（如 '/data/reclassify' 不得误伤 '/data/reclassify-xxx'）。
  */
 const HIDE_GLOBAL_FILTERS_PREFIXES = [
+  '/settings',
   '/admin', // 系统管理：用户/角色/审计日志（无公司/期间维度）
   '/tools', // 企业工商信息查询
   '/reports', // 分析报告：列表/汇总/编辑器（页内自带期间选择）

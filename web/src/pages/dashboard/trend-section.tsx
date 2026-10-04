@@ -21,8 +21,8 @@ export function TrendSection() {
 
   return (
     <Card className="animate-fade-in rounded-card">
-      <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-base">财年趋势（近 12 个月，万元）</CardTitle>
+      <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0 pb-2">
+        <div><CardTitle>财年趋势</CardTitle><p className="mt-1 text-xs text-muted-foreground">近 12 个月 · 万元</p></div>
         <div className="flex items-center gap-2">
           <Segmented options={Object.entries(TREND_METRIC_LABELS).map(([v, l]) => ({ value: v as TrendMetric, label: l }))} value={metric} onChange={setMetric} />
           <Segmented options={Object.entries(TREND_MODE_LABELS).map(([v, l]) => ({ value: v as TrendMode, label: l }))} value={mode} onChange={setMode} />
@@ -55,15 +55,16 @@ function Segmented({ options, value, onChange, className }: {
   className?: string
 }) {
   return (
-    <div className={cn('inline-flex rounded-md border border-border bg-muted/40 p-0.5', className)} role="group">
+    <div className={cn('app-tabs-list inline-flex max-w-full items-center', className)} role="group" data-tabs-variant="segmented">
       {options.map((o) => (
         <button
           key={o.value}
           type="button"
           aria-pressed={value === o.value}
+          data-state={value === o.value ? 'active' : 'inactive'}
           className={cn(
-            'rounded px-2 py-1 text-xs transition-colors',
-            value === o.value ? 'bg-background shadow-sm font-medium text-foreground' : 'text-muted-foreground hover:text-foreground',
+            'app-tab-trigger text-xs',
+            'font-medium',
           )}
           onClick={() => onChange(o.value as never)}
         >

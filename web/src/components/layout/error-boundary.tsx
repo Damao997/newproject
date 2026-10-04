@@ -42,7 +42,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   render() {
     if (!this.state.hasError) return this.props.children
     return (
-      <div className="flex min-h-screen items-center justify-center p-6">
+      <div data-route-error className="flex min-h-screen items-center justify-center p-6">
         <Card className="animate-fade-in w-full max-w-md border border-border">
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/15">

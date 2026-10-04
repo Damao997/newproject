@@ -1,0 +1,150 @@
+/* 产品工作台：同一行为体系，圆润控件与柔和多彩的指标区域。 */
+.page-title { font-family: var(--font-heading); font-size: 28px; font-weight: 700; letter-spacing: -.035em; }
+.app-content { box-sizing: border-box; }
+.app-sidebar { border-right: 0; box-shadow: none; }
+.app-sidebar .sidebar-brand { margin-bottom: 8px; }
+.app-sidebar .sidebar-brand img { width: 34px; height: 34px; }
+.app-sidebar a[aria-current='page'], .navigation-drawer a[aria-current='page'] { font-weight: 600; }
+.app-sidebar a[aria-current='page']::before, .navigation-drawer a[aria-current='page']::before { display: none; }
+.app-sidebar nav a, .navigation-drawer nav a { border-radius: 14px; }
+.app-sidebar nav a { transition: background-color 160ms ease, color 160ms ease, transform 160ms ease; }
+.app-sidebar nav a:hover { transform: translateX(2px); }
+.app-sidebar nav a[href^='/dashboard'] svg, .app-sidebar nav a[href^='/indicators'] svg { color: hsl(var(--metric-ink-1)); }
+.app-sidebar nav a[href^='/transactions'] svg, .app-sidebar nav a[href^='/inventory'] svg { color: hsl(var(--metric-ink-2)); }
+.app-sidebar nav a[href^='/reports'] svg { color: hsl(var(--metric-ink-4)); }
+.app-sidebar nav a[href^='/data'] svg { color: hsl(var(--metric-ink-3)); }
+.sidebar-brand { text-decoration: none; }
+.app-header { border-bottom-color: transparent; background: hsl(var(--page)); }
+.header-controls > button, .header-controls button[aria-label='选择公司'], .header-controls button[aria-label='选择期间'] { border-radius: 999px; }
+.header-controls button[aria-label='选择公司'], .header-controls button[aria-label='选择期间'] { background: hsl(var(--card)); border-color: hsl(var(--border-subtle)); }
+.page-container > .app-card { min-width: 0; }
+.app-card { box-sizing: border-box; border-color: hsl(var(--border-subtle)); border-radius: var(--radius-card); }
+.dashboard-focus > * { min-width: 0; }
+.dashboard-focus > .app-card:last-child { display: flex; flex-direction: column; }
+.app-content .ant-input, .app-content .ant-input-affix-wrapper, .app-content .ant-select-selector { border-radius: 12px; }
+.app-content .ant-btn { border-radius: 12px; }
+.ant-modal-content { border-radius: var(--radius-card); }
+:root[data-sidebar='dark'] .app-card { box-shadow: none; }
+:root[data-sidebar='dark'] .app-header { background: hsl(var(--page)); }
+@media (min-width: 1280px) { .page-head .page-title { font-size: 32px; } }
+@media (prefers-reduced-motion: reduce) { .dashboard-kpis .kpi-card[role='link']:hover, .app-sidebar nav a:hover { transform: none; } }
+button:focus-visible, a:focus-visible, [role='link']:focus-visible, [role^='menuitem']:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; }
+.font-num, .ant-statistic-content, td { font-variant-numeric: tabular-nums; }
+.ant-table-wrapper { color: hsl(var(--foreground)); }
+.ant-table-wrapper .ant-table-thead > tr > th { font-weight: 500; }
+.ant-modal-wrap, .ant-drawer-body { overscroll-behavior: contain; }
+.report-editor-grid { grid-template-columns: minmax(0, 1fr); }
+.report-outline, .report-information { align-self: start; }
+.report-editor .report-outline > div { padding-top: 4px; }
+.report-editor-grid > section { grid-row: 2; }
+.report-editor .report-outline input { font-size: 12px; }
+@media (min-width: 1024px) {
+  .report-editor-grid { grid-template-columns: 200px minmax(0, 1fr); }
+  .report-editor-grid > section { grid-row: 1 / span 2; grid-column: 2; }
+  .report-information { grid-column: 1; }
+}
+@media (min-width: 1440px) {
+  .report-editor-grid { grid-template-columns: 200px minmax(0, 1fr) 240px; }
+  .report-editor-grid > section { grid-row: 1; }
+  .report-information { grid-column: 3; }
+}
+[data-dialog-content] { background: hsl(var(--popover)); color: hsl(var(--popover-foreground)); }
+
+/* 聚焦登录：单列表单、必要帮助与状态，不再重复展示版本和产品介绍。 */
+.login-shell { min-height: 100dvh; display: grid; place-items: center; padding: 36px 20px; box-sizing: border-box; background: hsl(var(--page)); color: hsl(var(--foreground)); }
+.login-form-wrap { width: min(100%, 420px); padding: 36px 38px; border: 1px solid hsl(var(--border-subtle)); border-radius: var(--radius-card); background: hsl(var(--card)); box-shadow: var(--antd-shadow-1); box-sizing: border-box; }
+.login-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 36px; }
+.login-brand-logo { width: 42px; height: 42px; object-fit: contain; }
+.login-brand-text { font-size: 18px; font-weight: 600; letter-spacing: .04em; }
+.login-brand-text > span { display: block; margin-top: 3px; font-size: 12px; font-weight: 400; letter-spacing: .08em; color: hsl(var(--muted-foreground)); }
+.login-heading { font-family: var(--font-heading); font-size: 26px; font-weight: 600; margin: 0 0 26px; }
+.login-form { display: flex; flex-direction: column; gap: 22px; }
+.login-field { display: flex; flex-direction: column; gap: 8px; }
+.login-field label { font-size: 14px; font-weight: 500; color: hsl(var(--foreground)); }
+.login-input-wrap { position: relative; }
+.login-input.ant-input { width: 100%; height: 44px; font-size: 14px; }
+.login-input-pwd.ant-input { padding-right: 46px; }
+.login-eye { position: absolute; right: 2px; top: 2px; height: 40px; width: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: hsl(var(--muted-foreground)); cursor: pointer; }
+.login-eye:hover { color: hsl(var(--primary)); background: hsl(var(--muted)); }
+.login-field-err { margin: 0; color: hsl(var(--destructive)); font-size: 12px; }
+.login-field-tip { margin: 0; color: hsl(var(--warning-strong)); font-size: 12px; }
+.login-input-error.ant-input { border-color: hsl(var(--destructive)); }
+.login-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
+.login-check-text { font-size: 12px; color: hsl(var(--muted-foreground)); margin-left: 4px; }
+.login-link { border: 0; padding: 0; background: transparent; color: hsl(var(--primary)); cursor: pointer; font: inherit; }
+.login-link:hover { text-decoration: underline; }
+.login-submit.ant-btn { width: 100%; height: 44px; font-size: 14px; }
+.login-alert { display: flex; align-items: flex-start; gap: 8px; border-radius: 6px; padding: 12px; font-size: 13px; line-height: 1.6; }
+.login-alert-icon { width: 16px; height: 16px; margin-top: 2px; flex-shrink: 0; }
+.login-alert-error { color: hsl(var(--destructive)); background: hsl(var(--destructive-50)); }
+.login-alert-warning { color: hsl(var(--warning-strong)); background: hsl(var(--warning-50)); }
+.login-hint { display: flex; gap: 8px; margin: 0; font-size: 12px; line-height: 1.7; color: hsl(var(--muted-foreground)); }
+@media (max-width: 480px) { .login-shell { padding: 24px 16px; } .login-form-wrap { padding: 28px 24px; } .login-brand { margin-bottom: 30px; } }
+@media (max-width: 480px) {
+  .header-inner { padding-inline: 8px; gap: 4px; }
+  .header-mobile-logo { display: none; }
+  .header-controls { gap: 4px; }
+  .header-controls button[aria-label='选择公司'], .header-controls button[aria-label='选择期间'] { padding-inline: 6px; gap: 4px; font-size: 12px; }
+  .header-controls button[aria-label='选择公司'] > span { max-width: 48px; }
+  .header-controls button[aria-label='选择公司'] > svg:first-child, .header-controls button[aria-label='选择期间'] > svg:first-child { display: none; }
+  .header-controls button[aria-label='选择期间'] > span { white-space: nowrap; }
+  .header-controls button[aria-label='用户菜单'] { width: 32px; padding: 0; gap: 0; justify-content: center; }
+  .header-controls button[aria-label='刷新'] { width: 32px; height: 32px; padding: 0; }
+  .header-controls > .animate-pulse { max-width: 90px; }
+}
+@media (min-width: 768px) { .navigation-drawer { display: none; } }
+@media (prefers-reduced-motion: reduce) { .app-sidebar, .kpi-card { transition: none; animation: none; } }
+
+/* 打印始终使用白底正文与深色表格，浏览风格不进入纸面。 */
+@media print {
+  :root, :root[data-sidebar] { color-scheme: light; --page: 0 0% 100%; --background: 0 0% 100%; --card: 0 0% 100%; --foreground: 215 20% 15%; --muted-foreground: 215 10% 35%; --muted: 215 15% 96%; --border: 215 15% 80%; --border-subtle: 215 15% 88%; }
+  .app-sidebar, .app-header { display: none !important; }
+  .app-shell { height: auto; overflow: visible; }
+  .dashboard-kpis .kpi-card { background: #fff !important; box-shadow: none !important; }
+  body, .report-print { color: #202b36 !important; background: #fff !important; }
+}
+
+/* SaaS 表单使用独立密度，不影响筛选栏和表格编辑。 */
+.saas-surface .ant-input:not(textarea), .saas-surface .ant-input-affix-wrapper,
+.saas-surface .ant-select-single { min-height: 44px; }
+.saas-surface .ant-input-affix-wrapper .ant-input { min-height: 0; }
+.saas-surface .ant-select-single .ant-select-selector { min-height: 44px; height: 100%; align-items: center; }
+.saas-surface [data-dialog-body] { padding-right: 4px; scrollbar-gutter: stable; }
+.saas-surface [data-dialog-body] > .space-y-3 > .space-y-1,
+.saas-surface [data-dialog-body] > .space-y-3 > [class~="space-y-1.5"] { margin-top: 18px; }
+.saas-surface [data-dialog-body] label { line-height: 1.5; }
+.saas-surface [data-dialog-body] textarea { min-height: 96px; }
+.saas-surface [data-dialog-body] [aria-invalid="true"] { border-color: hsl(var(--danger)); }
+.saas-surface [data-dialog-content] { border-radius: var(--radius); }
+.saas-form-drawer .ant-drawer-content-wrapper { max-width: 100vw; }
+.saas-form-drawer .ant-drawer-body > [data-dialog-content] { height: 100%; }
+.saas-workflow [data-dialog-content] { max-width: none; max-height: none; }
+.saas-workflow [data-dialog-body] { overflow: visible; padding-right: 0; }
+.saas-workflow [data-dialog-content] > :last-child { position: sticky; bottom: 0; padding: 16px 0 0; background: hsl(var(--card)); z-index: 5; }
+.saas-workflow .saas-surface { max-height: none !important; }
+@media (max-width: 767px) {
+  .saas-form-drawer .ant-drawer-content-wrapper { width: 100% !important; }
+  .saas-surface { padding: 20px 16px; }
+  .saas-form-drawer [data-dialog-content] > :last-child { padding-bottom: env(safe-area-inset-bottom); }
+  .saas-surface [data-dialog-body] input, .saas-surface [data-dialog-body] textarea { font-size: 16px; }
+}
+
+.saas-surface .ant-input, .saas-surface .ant-input-affix-wrapper,
+.saas-surface .ant-select .ant-select-selector { border-radius: 12px !important; }
+
+/* 核对阶段保留摘要与影响；返回修改后立即取消旧预览。 */
+.saas-workflow [data-stage="review"] [data-input-section],
+.saas-workflow [data-stage="result"] [data-input-section] { display: none; }
+
+/* 专业批量表格继续使用紧凑单元格。 */
+.saas-surface .saas-dense-grid .ant-input:not(textarea), .saas-surface .saas-dense-grid .ant-select-single, .saas-surface .saas-dense-grid .ant-select-selector { min-height: 28px; }
+
+/* 操作区预留加载文案宽度，保存期间不改变按钮尺寸。 */
+.saas-surface [data-form-actions] .ant-btn { min-width: 136px; height: 44px; }
+
+/* 手机软键盘缩小可视窗口时，浮层头尾仍位于可视区内。 */
+@media (max-width: 767px) {
+  .saas-form-drawer.ant-drawer, .saas-form-modal .ant-modal-wrap {
+    top: var(--form-viewport-top, 0px); bottom: auto; height: var(--form-viewport-height, 100dvh);
+  }
+}

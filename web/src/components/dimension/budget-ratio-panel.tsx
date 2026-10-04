@@ -1,3 +1,7 @@
+import { z } from 'zod'
+import { useConfirm } from '@/components/ui/confirm-dialog'
+import { useFormModel, useFormValue, ModelFormFields } from '@/components/forms/form-model'
+import { useFormNavigation } from '@/components/forms/form-navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -63,8 +67,12 @@ export function BudgetRatioPanel({ canUpdate = false }: BudgetRatioPanelProps) {
   }, [periodsData?.fiscalStartMonth])
 
   // 本地编辑状态：占比（字符串便于编辑）与年度总额覆盖（'' = 使用服务端生效总额）
-  const [ratios, setRatios] = useState<string[]>(DEFAULT_RATIOS.map(String))
-  const [annualInput, setAnnualInput] = useState('')
+  const ratioSchema = z.object({ ratios: z.array(z.string().refine((value) => Number.isFinite(Number(value)) && Number(value) >= 0 && Number(value) <= 100, '占比须为 0–100')).length(12), annualInput: z.string() }).superRefine((values, context) => {
+    if (Math.abs(values.ratios.reduce((sum, value) => sum + Number(value), 0) - 100) > 0.01) context.addIssue({ code: 'custom', path: ['root'], message: '12 个月占比的总和须为 100%' })
+  })
+  const model = useFormModel({ ratios: DEFAULT_RATIOS.map(String), annualInput: '' }, {}, ratioSchema)
+  const [ratios, setRatios] = useFormValue(model, "ratios")
+  const [annualInput, setAnnualInput] = useFormValue(model, "annualInput")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState<string | null>(null)
@@ -72,8 +80,7 @@ export function BudgetRatioPanel({ canUpdate = false }: BudgetRatioPanelProps) {
   // 切换财年后同步服务端占比（编辑中不被刷新覆盖：仅按 fiscalYear 触发）
   useEffect(() => {
     if (data) {
-      setRatios(data.ratios.map(String))
-      setAnnualInput('')
+      model.form.reset({ ratios: data.ratios.map(String), annualInput: '' })
       setError(null)
       setSavedMsg(null)
     }
@@ -97,7 +104,7 @@ export function BudgetRatioPanel({ canUpdate = false }: BudgetRatioPanelProps) {
   const setRatioAt = useCallback((i: number, v: string) => {
     setRatios((prev) => prev.map((x, idx) => (idx === i ? v : x)))
     setSavedMsg(null)
-  }, [])
+  }, [setRatios])
 
   // 月度占比行数据（label + index 双驱动，render 内读取 ratios/monthlyAmounts/ratioNums）
   const ratioRows = monthLabels.map((label, index) => ({ label, index }))
@@ -106,7 +113,7 @@ export function BudgetRatioPanel({ canUpdate = false }: BudgetRatioPanelProps) {
     {
       key: 'ratio', header: '预算占比（%）', align: 'right',
       render: ({ label, index }) => (
-        <Input
+        <Input name={'ratios.' + index}
           className="ml-auto h-7 w-[90px] text-right font-num"
           type="number"
           min={0}
@@ -156,6 +163,7 @@ export function BudgetRatioPanel({ canUpdate = false }: BudgetRatioPanelProps) {
     setError(null)
     try {
       await mutation.update.mutateAsync({ fiscalYear, ratios: ratioNums })
+      model.form.reset(model.form.getValues())
       setSavedMsg(`FY${fiscalYear.replace(/^FY/, '')} 财年月度占比已保存，看板月度预算将按新占比拆分。`)
     } catch (e: any) {
       setError(e?.response?.data?.message ?? e?.message ?? '保存失败')
@@ -164,8 +172,16 @@ export function BudgetRatioPanel({ canUpdate = false }: BudgetRatioPanelProps) {
     }
   }
 
+  const { confirm, element: confirmElement } = useConfirm()
+  useFormNavigation(canUpdate && model.form.formState.isDirty, model.pending || saving)
+  const changeFiscalYear = async (next: string) => {
+    if (model.pending || saving) return
+    if (model.form.formState.isDirty && !(await confirm({ title: '放弃当前财年的修改？', description: '切换财年后，未保存的占比会丢失。', confirmText: '放弃修改' }))) return
+    model.form.reset({ ratios: DEFAULT_RATIOS.map(String), annualInput: '' })
+    setFiscalYear(next)
+  }
   return (
-    <div className="space-y-4">
+    <ModelFormFields model={model}><div className="space-y-4">
       {/* 说明 + 工具栏 */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex shrink-0 items-center gap-2">
@@ -176,7 +192,7 @@ export function BudgetRatioPanel({ canUpdate = false }: BudgetRatioPanelProps) {
             </Button>
           )}
           {canUpdate && (
-            <Button size="sm" onClick={handleSave} disabled={saving || !ratioOk}>
+            <Button size="sm" onClick={model.submit(handleSave)} disabled={saving || !ratioOk}>
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
               保存占比
             </Button>
@@ -188,7 +204,7 @@ export function BudgetRatioPanel({ canUpdate = false }: BudgetRatioPanelProps) {
       <div className="flex flex-wrap items-end gap-4 rounded-lg border border-border bg-muted/20 p-3">
         <div className="space-y-1">
           <Label className="text-xs text-muted-foreground">财年</Label>
-          <Select value={fiscalYear} onValueChange={(v) => setFiscalYear(v)}>
+          <Select value={fiscalYear} disabled={saving || model.pending} onValueChange={(value) => void changeFiscalYear(value)}>
             <SelectTrigger className="h-8 w-[120px]">
               <SelectValue placeholder="选择财年" />
             </SelectTrigger>
@@ -200,10 +216,10 @@ export function BudgetRatioPanel({ canUpdate = false }: BudgetRatioPanelProps) {
           </Select>
         </div>
         <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">
+          <Label htmlFor="annualInput" className="text-xs text-muted-foreground">
             年度预算总额（万元）{annualInput.trim() !== '' ? '· 手动覆盖（仅预览，不落库）' : ''}
           </Label>
-          <Input
+          <Input name="annualInput"
             className="h-8 w-[180px] font-num"
             type="number"
             min={0}
@@ -264,6 +280,6 @@ export function BudgetRatioPanel({ canUpdate = false }: BudgetRatioPanelProps) {
         </p>
       )}
       {isLoading && <p className="text-xs text-muted-foreground">占比配置加载中…</p>}
-    </div>
+    </div>{confirmElement}</ModelFormFields>
   )
 }

@@ -29,8 +29,8 @@ import { Download, LineChart, RefreshCw } from 'lucide-react'
 const TRANSACTION_TYPES = ['应收账款', '其他应收款', '预收账款', '应付账款', '其他应付款', '预付账款']
 
 export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] }) {
-  // 折线色板跟随当前侧边栏风格：按公司顺序轮转，首位为风格主色；主页面恒白，图表框架色恒定
-  const sidebarStyle = useThemeStore((s) => s.sidebarStyle)
+  // 折线色板跟随当前侧边栏风格：按公司顺序轮转，首位为风格主色；坐标、网格和浮层随全站风格同步
+  const sidebarStyle = useThemeStore((s) => s.printing ? 'light' : s.sidebarStyle)
   // 图表筛选持久化到 pageStateStore（跟随 OverviewTab 生命周期，切 tab/切路由/刷新后恢复）
   const transactionType = usePageStore((s) => s.transactions.overview.trend.type)
   // 期间模式：'fiscal' = 跟随全局 Header 财年（默认）；'custom' = 自定义期间范围；'FYxxxx' = 指定财年
@@ -73,7 +73,7 @@ export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] 
   const hasData = !!data && data.series.length > 0 && data.series.some((s) => s.points.some((p) => p !== null))
 
   const option = useMemo<EChartsOption>(() => {
-    const ink = getChartInk()
+    const ink = getChartInk(sidebarStyle)
     const lineColors = getChartSeries(sidebarStyle)
     const periods = data?.periods ?? []
     const series = data?.series ?? []
@@ -124,7 +124,7 @@ export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] 
         axisTick: { show: false },
         axisLabel: {
           color: ink.axis,
-          fontSize: 11,
+          fontSize: 12,
           formatter: (value: string) => {
             const parts = value.split('-')
             return `${parts[0].slice(2)}/${parts[1]}`
@@ -139,7 +139,7 @@ export function TransactionTrendCard({ companyCodes }: { companyCodes: string[] 
         splitLine: { lineStyle: { color: '#F0F0F0' } },
         axisLabel: {
           color: ink.axis,
-          fontSize: 11,
+          fontSize: 12,
           formatter: (v: number) => (Math.abs(v) >= 10000 ? `${(v / 10000).toFixed(0)}万` : String(v)),
         },
       },

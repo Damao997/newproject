@@ -1,10 +1,20 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import { buildThemeCss, THEME_BOOT_SCRIPT } from './src/lib/theme-css'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), {
+    name: 'app-theme-bootstrap',
+    transformIndexHtml: {
+      order: 'pre',
+      handler: () => [
+        { tag: 'script', children: THEME_BOOT_SCRIPT, injectTo: 'head-prepend' },
+        { tag: 'style', attrs: { id: 'app-theme-tokens' }, children: buildThemeCss(), injectTo: 'head-prepend' },
+      ],
+    },
+  }],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -27,6 +37,8 @@ export default defineConfig({
     },
   },
   server: {
+    // 截图与导出验收产物不是源文件；Windows 下载写入期间可能占用文件。
+    watch: { ignored: ['**/audit/**', '**/screenshots/**'] },
     host: true, // 开启内网访问：监听所有网卡，局域网设备可经 http://<本机IP>:<端口> 访问
     port: 5173,
     // 允许经 frp 隧道用域名访问（Vite 会校验 Host 头，未列入则拒绝）

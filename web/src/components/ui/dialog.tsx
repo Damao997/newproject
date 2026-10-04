@@ -1,5 +1,6 @@
 import * as React from "react"
-import { Modal } from "antd"
+import { PageHeading } from "@/components/layout/page-heading"
+import { Modal, Drawer } from "antd"
 import { cn } from "@/lib/utils"
 
 /**
@@ -16,7 +17,15 @@ import { cn } from "@/lib/utils"
  * - ESC/点击遮罩/右上角关闭 → onOpenChange(false)；遮罩色与圆角走 AntdProvider token
  */
 
+export type DialogPresentation = 'modal' | 'drawer' | 'page'
+const PresentationContext = React.createContext<DialogPresentation>('modal')
+export function DialogPresentationProvider({ presentation, children }: { presentation: DialogPresentation; children: React.ReactNode }) {
+  return <PresentationContext.Provider value={presentation}>{children}</PresentationContext.Provider>
+}
 interface DialogContextValue {
+  presentation: DialogPresentation
+  titleId: string
+  busy: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
 }
@@ -28,20 +37,25 @@ interface DialogProps {
   defaultOpen?: boolean
   onOpenChange?: (open: boolean) => void
   children?: React.ReactNode
+  presentation?: DialogPresentation
+  busy?: boolean
 }
 
-const Dialog = ({ open, defaultOpen, onOpenChange, children }: DialogProps) => {
+const Dialog = ({ open, defaultOpen, onOpenChange, children, presentation, busy = false }: DialogProps) => {
+  const inherited = React.useContext(PresentationContext)
+  const titleId = React.useId()
   // 受控优先；未传 open 时退化为非受控（defaultOpen 兜底，现全站均为受控用法）
   const [internalOpen, setInternalOpen] = React.useState(defaultOpen ?? false)
   const isOpen = open !== undefined ? open : internalOpen
   const setOpen = React.useCallback(
     (next: boolean) => {
+      if (!next && busy) return
       onOpenChange?.(next)
       if (open === undefined) setInternalOpen(next)
     },
-    [onOpenChange, open],
+    [onOpenChange, open, busy],
   )
-  const value = React.useMemo(() => ({ open: isOpen, onOpenChange: setOpen }), [isOpen, setOpen])
+  const value = React.useMemo(() => ({ open: isOpen, onOpenChange: setOpen, presentation: presentation ?? inherited, titleId, busy }), [isOpen, setOpen, presentation, inherited, titleId, busy])
   return <DialogContext.Provider value={value}>{children}</DialogContext.Provider>
 }
 Dialog.displayName = "Dialog"
@@ -104,7 +118,7 @@ DialogClose.displayName = "DialogClose"
 
 /** className 中 max-w-* → Modal width（px）；sm:/lg: 前缀取最大断言档位 */
 const MAX_WIDTH_MAP: Record<string, number> = {
-  md: 448,
+  md: 440,
   lg: 512,
   xl: 576,
   '2xl': 672,
@@ -138,15 +152,27 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
     const width = className ? parseWidth(className) : undefined
     const maxHeight = className ? parseMaxHeight(className) : undefined
 
+    const content = <div ref={ref} data-dialog-content className={cn("saas-surface flex min-h-0 w-full flex-col gap-6 p-6", className, "overflow-hidden")}
+      style={{ ...style, boxSizing: 'border-box', maxWidth: 'none', maxHeight: ctx?.presentation === 'page' ? undefined : '100%' }} {...props}>{children}</div>
+    if (ctx?.presentation === 'page') return ctx.open ? <section aria-labelledby={ctx.titleId} className="saas-workflow rounded-card border border-border bg-card shadow-sm">{content}</section> : null
+    if (ctx?.presentation === 'drawer') return <Drawer aria-labelledby={ctx.titleId} open={ctx.open} onClose={() => ctx.onOpenChange(false)} width={480}
+      closable={!ctx.busy} keyboard={!ctx.busy} maskClosable={!ctx.busy} title={null} destroyOnHidden
+      rootClassName="saas-form-drawer" styles={{ body: { padding: 0, display: 'flex', overflow: 'hidden' } }}>{content}</Drawer>
     return (
       <Modal
+        panelRef={node => { if (node && ctx?.titleId) node.setAttribute('aria-labelledby', ctx.titleId) }}
+        aria-labelledby={ctx?.titleId}
         open={ctx?.open ?? false}
         onCancel={() => ctx?.onOpenChange(false)}
         footer={null}
         title={null}
         centered
         destroyOnHidden
-        width={width}
+        width={width ?? 440}
+        closable={!ctx?.busy}
+        keyboard={!ctx?.busy}
+        maskClosable={!ctx?.busy}
+        rootClassName="saas-form-modal"
         styles={{
           content: { padding: 0, overflow: 'hidden' },
           body: { padding: 0, display: 'flex', minHeight: 0 },
@@ -157,8 +183,8 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
         <div
           ref={ref}
           data-dialog-content
-          className={cn("flex min-h-0 w-full flex-col gap-4 p-6", className, "overflow-hidden")}
-          style={{ ...style, boxSizing: 'border-box', maxHeight: maxHeight ? `min(${maxHeight}, calc(100dvh - 32px))` : 'calc(100dvh - 32px)' }}
+          className={cn("saas-surface flex min-h-0 w-full flex-col gap-6 p-6", className, "overflow-hidden")}
+          style={{ ...style, boxSizing: 'border-box', maxHeight: maxHeight ? `min(${maxHeight}, calc(var(--form-viewport-height, 100dvh) - 32px))` : 'calc(var(--form-viewport-height, 100dvh) - 32px)' }}
           {...props}
         >
           {children}
@@ -198,6 +224,7 @@ const DialogFooter = ({
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
+    data-form-actions
     className={cn("flex shrink-0 flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end", className)}
     {...props}
   />
@@ -207,13 +234,16 @@ DialogFooter.displayName = "DialogFooter"
 const DialogTitle = React.forwardRef<
   HTMLHeadingElement,
   React.HTMLAttributes<HTMLHeadingElement>
->(({ className, ...props }, ref) => (
-  <h2
+>(({ className, ...props }, ref) => {
+  const ctx = React.useContext(DialogContext)
+  const Heading = ctx?.presentation === 'page' ? PageHeading : 'h2'
+  return <Heading
     ref={ref}
+    id={ctx?.titleId}
     className={cn("text-lg font-semibold leading-none tracking-tight", className)}
     {...props}
   />
-))
+})
 DialogTitle.displayName = "DialogTitle"
 
 const DialogDescription = React.forwardRef<

@@ -1,12 +1,17 @@
-import { useStickyHeader } from '@/hooks/useStickyHeader'
-import { Card, CardContent } from '@/components/ui/card'
-import { StaleBar } from '@/components/ui/stale-bar'
 import { PageContainer } from '@/components/layout/page-container'
 import { SubPageTabs } from '@/components/layout/sub-page-tabs'
 import { DASHBOARD_ANALYSIS_TABS } from '@/components/layout/module-tabs'
-import { useDashboardFilters } from '@/hooks/useDashboardFilters'
+import { AnalysisFailure, AnalysisModeSwitch } from '@/components/analysis/workspace'
+import { AnalysisContext } from '@/components/analysis/analysis-context'
+import { CompanyPill } from '@/components/layout/company-pill'
+import { Card } from '@/components/ui/card'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Button } from '@/components/ui/button'
+import { AnalysisPageSkeleton } from '@/components/ui/skeleton-blocks'
+import { useAvailablePeriods, useCompanies, useKeyMetrics } from '@/hooks/api-queries'
+import { usePeriodStore, filterPeriodsByFiscalYear } from '@/stores/periodStore'
+import { defaultAnalysisState, usePageStore } from '@/stores/pageStateStore'
 import { CoreMetricsOverview } from './core-metrics-overview'
-import { AnalysisPlaceholder } from './analysis-placeholder'
 import { CategoryBudgetContent } from './analysis/category-budget-content'
 import { CashFlowContent } from './analysis/cash-flow-content'
 import { ReceivableAgingContent } from './analysis/receivable-aging-content'
@@ -15,142 +20,36 @@ import { SubjectBudgetContent } from './analysis/subject-budget-content'
 import { InventoryAgingContent } from './analysis/inventory-aging-content'
 import { CoreMetricsContent } from './analysis/core-metrics-content'
 
-/** 经营分析子页类型：func=已迁移功能卡，placeholder=入口占位 */
-export type AnalysisVariantKey =
-  | 'key-metrics'
-  | 'cash-flow'
-  | 'receivable-aging'
-  | 'inventory-aging'
-  | 'category-budget'
-  | 'subject-budget'
-  | 'expense'
-  | 'core-metrics'
-
-interface AnalysisPageProps {
-  /** 路由入口决定的子页类型（/dashboard/analysis/:variant） */
-  variant: AnalysisVariantKey
-}
-
-/**
- * 首页看板 · 经营分析共享页：二级导航 SubPageTabs + 顶部筛选 + 子页内容。
- * - Tab 条路由驱动（切换即导航到 /dashboard/analysis/*）；
- * - 顶部主体维度筛选复用首页看板筛选（useDashboardFilters），期间读全局 periodStore，口径连续；
- * - 已迁移功能卡（品类/公司预算达成、运营费用）直接包裹 Card 展示；其余为占位。
- */
-export function AnalysisPage({ variant }: AnalysisPageProps) {
-  const { headerRef } = useStickyHeader()
-  const { selectedPeriod, periodOptions, companyCode } =
-    useDashboardFilters()
-  // 真实生效期间：选定期或后端最新期（与首页看板一致）
-  const currentPeriod = selectedPeriod || periodOptions[periodOptions.length - 1] || ''
-
-  return (
-    <PageContainer
-      title="经营分析"
-      stickyHeader
-      headerRef={headerRef}
-      actionsFullWidth
-      // 仅 key-metrics 子页启用视口撑满布局（关键指标表展开明细后表格区内滚动、页面不滚动）：
-      // main 可视高 = 100dvh - Header(h-14=56px) - main pt-6(24px) - pb-6(24px)；lg 断点 pb-8=32px → 112px。
-      // 104/112 必须与 main-layout.tsx 的 Header 高与 pt/pb 同步（改布局时需同步更新）
-      className={
-        variant === 'key-metrics'
-          ? 'flex h-[calc(100dvh-104px)] flex-col lg:h-[calc(100dvh-112px)]'
-          : undefined
-      }
-    >
-      {/* 二级导航：经营分析子页 Tab（路由驱动） */}
-      <SubPageTabs items={DASHBOARD_ANALYSIS_TABS} />
-
-      {/* 数据时效条：与首页看板口径连续；数据随数据管理批次激活同步，不虚构采集进度 */}
-      <StaleBar meta={`当前期间：${currentPeriod || '最新期间'}`}>
-        数据随数据管理批次激活同步更新
-      </StaleBar>
-
-      {(() => {
-        switch (variant) {
-          case 'key-metrics':
-            return (
-              // 视口撑满布局：CardContent 为内部滚动容器（表格 + 差距分析超出视口时卡片内滚动、页面不滚动不出框）；
-              // 数据少时 flex-1 撑满、内容贴顶部展示
-              <Card className="flex min-h-0 flex-1 flex-col animate-fade-in border border-border shadow-sm">
-                <CardContent className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pt-6 pb-0">
-                  <CoreMetricsOverview
-                    period={currentPeriod || undefined}
-                    companyCode={companyCode}
-                  />
-                </CardContent>
-              </Card>
-            )
-          case 'cash-flow':
-            return (
-              <Card className="animate-fade-in border border-border shadow-sm">
-                <CardContent className="px-6 py-6">
-                  <CashFlowContent
-                    period={currentPeriod || undefined}
-                    companyCode={companyCode}
-                  />
-                </CardContent>
-              </Card>
-            )
-          case 'category-budget':
-            return (
-              <CategoryBudgetContent
-                period={currentPeriod || undefined}
-                companyCode={companyCode}
-              />
-            )
-          case 'subject-budget':
-            return (
-              <SubjectBudgetContent
-                period={currentPeriod || undefined}
-                companyCode={companyCode}
-              />
-            )
-          case 'expense':
-            return (
-              <ExpenseContent
-                period={currentPeriod || undefined}
-                companyCode={companyCode}
-              />
-            )
-          case 'receivable-aging':
-            return (
-              <Card className="animate-fade-in border border-border shadow-sm">
-                <CardContent className="px-6 py-6">
-                  <ReceivableAgingContent
-                    period={currentPeriod || undefined}
-                    companyCode={companyCode}
-                  />
-                </CardContent>
-              </Card>
-            )
-          case 'core-metrics':
-            return (
-              <Card className="animate-fade-in border border-border shadow-sm">
-                <CardContent className="px-6 py-6">
-                  <CoreMetricsContent
-                    period={currentPeriod || undefined}
-                    companyCode={companyCode}
-                  />
-                </CardContent>
-              </Card>
-            )
-          case 'inventory-aging':
-            return (
-              <Card className="animate-fade-in border border-border shadow-sm">
-                <CardContent className="px-6 py-6">
-                  <InventoryAgingContent
-                    period={currentPeriod || undefined}
-                    companyCode={companyCode}
-                  />
-                </CardContent>
-              </Card>
-            )
-          default:
-            return <AnalysisPlaceholder title="经营分析" />
-        }
-      })()}
-    </PageContainer>
-  )
+export type AnalysisVariantKey = 'key-metrics' | 'cash-flow' | 'receivable-aging' | 'inventory-aging' | 'category-budget' | 'subject-budget' | 'expense' | 'core-metrics'
+const ANALYSIS_CONTENT = { 'key-metrics': CoreMetricsOverview, 'cash-flow': CashFlowContent, 'receivable-aging': ReceivableAgingContent, 'inventory-aging': InventoryAgingContent, 'category-budget': CategoryBudgetContent, 'subject-budget': SubjectBudgetContent, expense: ExpenseContent, 'core-metrics': CoreMetricsContent }
+/** 默认主体先由服务端解析；所有子页再使用同一个实际生效主体，避免接口默认范围不一致。 */
+export function AnalysisPage({ variant }: { variant: AnalysisVariantKey }) {
+  const period = usePeriodStore(s => s.period), fiscalYear = usePeriodStore(s => s.fiscalYear), codes = usePeriodStore(s => s.companyCodes)
+  const periods = useAvailablePeriods()
+  const candidates = filterPeriodsByFiscalYear(periods.data?.periods ?? [], fiscalYear, periods.data?.fiscalStartMonth ?? 1)
+  const currentPeriod = period || candidates.at(-1) || ''
+  const multiple = (codes?.length ?? 0) > 1
+  const requestedCode = codes?.length === 1 ? codes[0] : undefined
+  const scope = useKeyMetrics({ period: currentPeriod || undefined, companyCode: requestedCode }, { enabled: !multiple })
+  const companies = useCompanies()
+  const knownCompany = companies.data?.find(company => company.code === requestedCode)
+  const resolved = scope.isPlaceholderData ? undefined : scope.data
+  const actualCompanyName = resolved?.companyName ?? knownCompany?.name
+  const state = usePageStore(s => s.analysis[variant]) ?? defaultAnalysisState
+  const setAnalysis = usePageStore(s => s.setAnalysis)
+  const companyCode = resolved?.companyCode ?? knownCompany?.code
+  const companyType = resolved?.companyType ?? (knownCompany ? knownCompany.type === 'summary' ? 'summary' : 'single' : undefined)
+  const Content = ANALYSIS_CONTENT[variant]
+  return <PageContainer className="analysis-page" title="经营分析" navigation={<SubPageTabs items={DASHBOARD_ANALYSIS_TABS} />}>
+    {multiple ? <Card className="p-6"><h3 className="mb-2 text-base font-semibold">选择本次分析主体</h3><p className="mb-4 text-sm text-muted-foreground">当前范围包含多家公司。经营分析需要一个单体公司或汇总主体，取消选择会保留原范围。</p><CompanyPill selectionMode="single" /></Card> : periods.isError && !currentPeriod ? <AnalysisFailure title="期间加载失败" retry={periods.refetch} /> : !currentPeriod ? <p role="status" className="p-6 text-sm text-muted-foreground">{periods.isPending ? '正在加载可用期间…' : '暂无可用期间'}</p> : scope.isError && !companyCode ? <AnalysisFailure title="分析主体加载失败" retry={scope.refetch} /> : (scope.isPending || scope.isPlaceholderData) && !knownCompany ? <AnalysisPageSkeleton blocks={[180, 320]} /> : !companyCode ? <p className="p-6 text-sm text-muted-foreground">当前授权范围内没有可分析的主体。</p> : <AnalysisContext.Provider value={{ state, companyType, update: patch => setAnalysis(variant, patch) }}>
+      <Card variant="filter" className="analysis-toolbar">
+        <div className="analysis-toolbar-context"><span>主体：<strong className="text-foreground">{actualCompanyName ?? companyCode}</strong>{scope.data?.degraded ? '（权限回退后生效）' : !requestedCode ? '（默认）' : ''}</span><span>{currentPeriod} · 单位：万元</span></div>
+        <div className="flex flex-wrap items-center gap-2">{['category-budget', 'subject-budget', 'expense'].includes(variant) && <AnalysisModeSwitch />}{state.selected && <Button variant="ghost" size="sm" onClick={() => setAnalysis(variant, { selected: '', keyword: '', page: 1 })}>清除局部筛选</Button>}
+          <Tabs value={state.view} onValueChange={value => setAnalysis(variant, { view: value as 'focus' | 'report' })}><TabsList variant="segmented"><TabsTrigger value="focus">重点</TabsTrigger><TabsTrigger value="report">完整报表</TabsTrigger></TabsList></Tabs>
+        </div>
+      </Card>
+      {scope.isError && <AnalysisFailure title="主体信息刷新失败，保留当前内容" retry={scope.refetch} />}
+      <div className="analysis-workspace" data-analysis-view={state.view} key={variant + ':' + companyCode + ':' + currentPeriod}><Content period={currentPeriod} companyCode={companyCode} /></div>
+    </AnalysisContext.Provider>}
+  </PageContainer>
 }

@@ -19,10 +19,10 @@ interface TrendChartProps {
  * X 轴为所选财年 12 个月，未导入数据的月份留空（null 断点）。
  */
 export function TrendChart({ data, metric, mode = 'month' }: TrendChartProps) {
-  const sidebarStyle = useThemeStore((s) => s.sidebarStyle)
+  const sidebarStyle = useThemeStore((s) => s.printing ? 'light' : s.sidebarStyle)
   // option 随 data/metric/mode/sidebarStyle 变化才重建，避免父组件无关状态更新触发图表全量重渲染
   const option: EChartsOption = useMemo(() => {
-    const ink = getChartInk()
+    const ink = getChartInk(sidebarStyle)
     const seriesColors = getChartSeries(sidebarStyle)
     const SERIES_COLORS = { actual: seriesColors[0], same: seriesColors[1], budget: seriesColors[4] }
     const periods = data.map(d => d.period)
@@ -93,7 +93,7 @@ export function TrendChart({ data, metric, mode = 'month' }: TrendChartProps) {
       },
       axisLabel: {
         color: ink.axis,
-        fontSize: 11,
+        fontSize: 12,
         formatter: (value: string) => {
           const parts = value.split('-')
           return `${parts[0].slice(2)}/${parts[1]}`
@@ -105,7 +105,7 @@ export function TrendChart({ data, metric, mode = 'month' }: TrendChartProps) {
       name: '万元',
       nameTextStyle: {
         color: ink.axis,
-        fontSize: 11,
+        fontSize: 12,
         padding: [0, 0, 0, -24],
       },
       axisLine: {
@@ -122,7 +122,7 @@ export function TrendChart({ data, metric, mode = 'month' }: TrendChartProps) {
       },
       axisLabel: {
         color: ink.axis,
-        fontSize: 11,
+        fontSize: 12,
         formatter: '{value}',
       },
     },

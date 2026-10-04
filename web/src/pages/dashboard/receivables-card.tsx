@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { ArrowRight } from 'lucide-react'
 import { useDashboardReceivables } from '@/hooks/api-queries'
 import { formatMoneyWan } from '@/lib/utils'
-import { CHART_FONT, getChartInk, getChartSeries, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
+import { CHART_FONT, getChartInk, getChartSeries, getHorizontalBarStyle, labelSpan, numSpan, titleSpan, tooltipShell } from '@/lib/chart-theme'
 import { useThemeStore } from '@/stores/themeStore'
 import { usePageStore } from '@/stores/pageStateStore'
 
@@ -43,11 +43,11 @@ export function ReceivablesCard({ period, companyCode }: ReceivablesCardProps) {
     sessionStorage.setItem('dashboard.fromDashboard', '1')
     navigate(qs ? `/transactions/overview?${qs}` : '/transactions/overview')
   }
-  // 分类色板跟随当前侧边栏风格：按序轮转，首位为风格主色；主页面恒白，图表框架色恒定
-  const sidebarStyle = useThemeStore((s) => s.sidebarStyle)
+  // 分类色板跟随当前侧边栏风格：按序轮转，首位为风格主色；坐标、网格和浮层随全站风格同步
+  const sidebarStyle = useThemeStore((s) => s.printing ? 'light' : s.sidebarStyle)
 
   const option = useMemo<EChartsOption>(() => {
-    const ink = getChartInk()
+    const ink = getChartInk(sidebarStyle)
     const seriesColors = getChartSeries(sidebarStyle)
     const byName = new Map(rows.map((r) => [r.name, r]))
     const total = rows.reduce((s, r) => s + r.balance, 0)
@@ -76,29 +76,30 @@ export function ReceivablesCard({ period, companyCode }: ReceivablesCardProps) {
             + line('占比', `${pct}%`)
         },
       },
-      grid: { top: 8, right: 48, bottom: 8, left: 8, containLabel: true },
+      grid: { top: 8, right: 96, bottom: 8, left: 0, containLabel: true },
       xAxis: {
         type: 'value',
         axisLine: { show: false },
         axisTick: { show: false },
         splitLine: { lineStyle: { color: ink.grid, type: 'dashed' } },
-        axisLabel: { color: ink.axis, fontSize: 11 },
+        axisLabel: { color: ink.axis, fontSize: 12 },
       },
       yAxis: {
         type: 'category',
         inverse: true,
         data: rows.map((r) => r.name),
-        axisLine: { lineStyle: { color: ink.grid } },
+        axisLine: { show: false },
         axisTick: { show: false },
-        axisLabel: { color: ink.sub, fontSize: 11 },
+        axisLabel: { color: ink.sub, fontSize: 12, width: 104, overflow: 'break', lineHeight: 16 },
       },
       series: [
         {
           type: 'bar',
-          barWidth: 18,
+          ...getHorizontalBarStyle(sidebarStyle),
+
           data: rows.map((r, i) => ({
             value: r.balance,
-            itemStyle: { color: seriesColors[i % seriesColors.length], borderRadius: [0, 4, 4, 0] },
+            itemStyle: { color: seriesColors[i % seriesColors.length], borderRadius: [6, 6, 6, 6] },
           })),
           // hover 缩放 + 投影：提升交互辨识度（SVG 渲染器下同样生效）
           emphasis: {
@@ -112,7 +113,7 @@ export function ReceivablesCard({ period, companyCode }: ReceivablesCardProps) {
           label: {
             show: true,
             position: 'right',
-            fontSize: 10,
+            fontSize: 12,
             color: ink.axis,
             fontFamily: CHART_FONT,
             formatter: (p: { value?: number | unknown }) => formatMoneyWan(Number(p.value ?? 0)),
@@ -130,7 +131,7 @@ export function ReceivablesCard({ period, companyCode }: ReceivablesCardProps) {
             应收账款分析
           </CardTitle>
           <p className="mt-1 text-xs text-muted-foreground">
-            {period ? `期间 ${period} · ` : ''}单位：万元 
+            {period ? `期间 ${period} · ` : ''}单位：万元
           </p>
         </div>
         <Button variant="ghost" size="sm" className="gap-1 text-primary" onClick={gotoTransactions}>

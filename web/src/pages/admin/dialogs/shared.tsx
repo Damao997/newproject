@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { forwardRef, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -12,13 +12,17 @@ import type { Company } from '@/types'
 
 // ==================== 数据范围多选 ====================
 interface DataScopeSelectProps {
+  id?: string
+  onBlur?: () => void
+  'aria-invalid'?: boolean
+  'aria-describedby'?: string
   value: string[]
   onChange: (codes: string[]) => void
 }
 
 /** 数据范围多选下拉：仅列单体公司（汇总主体不可选，其成员全量授权时由后端「全有或全无」自动推导），支持关键字过滤 */
-export function DataScopeSelect({ value, onChange }: DataScopeSelectProps) {
-  const { data: companiesData } = useCompanies()
+export const DataScopeSelect = forwardRef<HTMLButtonElement, DataScopeSelectProps>(({ value, onChange, ...props }, ref) => {
+  const { data: companiesData, isLoading, isError, refetch } = useCompanies()
   const [keyword, setKeyword] = useState('')
 
   const isSummary = (c: Company) => (c.entityType ?? (c.type === 'summary' ? 'summary' : 'single')) === 'summary'
@@ -39,12 +43,12 @@ export function DataScopeSelect({ value, onChange }: DataScopeSelectProps) {
 
   const summary = value.length === 0
     ? '按角色默认范围（留空）'
-    : value.length <= 2 ? value.join('、') : `${value.slice(0, 2).join('、')} 等 ${value.length} 项`
+    : value.slice(0, 2).map((code) => companies.find((company) => company.code === code)?.name ?? code).join('、') + (value.length > 2 ? ` 等 ${value.length} 项` : '')
 
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="outline" className="w-full justify-between font-normal">
+        <Button ref={ref} {...props} variant="outline" className="h-11 w-full justify-between font-normal">
           <span className={value.length === 0 ? 'text-muted-foreground' : ''}>{summary}</span>
           <ChevronDown className="h-4 w-4 opacity-50" />
         </Button>
@@ -59,7 +63,7 @@ export function DataScopeSelect({ value, onChange }: DataScopeSelectProps) {
               <span className="truncate">{c.name}</span>
             </label>
           ))}
-          {filtered.length === 0 && <p className="px-1 py-2 text-sm text-muted-foreground">无匹配公司</p>}
+          {isLoading ? <p role="status" className="p-2 text-sm text-muted-foreground">正在加载公司…</p> : isError ? <div role="alert" className="p-2 text-sm text-danger">公司加载失败<Button size="sm" variant="ghost" onClick={() => refetch()}>重试</Button></div> : filtered.length === 0 && <p className="px-1 py-2 text-sm text-muted-foreground">无匹配公司</p>}
         </div>
         {value.length > 0 && (
           <div className="mt-2 flex justify-end border-t pt-2">
@@ -69,7 +73,8 @@ export function DataScopeSelect({ value, onChange }: DataScopeSelectProps) {
       </PopoverContent>
     </Popover>
   )
-}
+})
+DataScopeSelect.displayName = 'DataScopeSelect'
 
 // ==================== 权限选择矩阵（单角色/批量共用） ====================
 interface PermissionMatrixProps {

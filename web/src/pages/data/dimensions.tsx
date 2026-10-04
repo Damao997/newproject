@@ -43,12 +43,11 @@ export default function DataDimensionsPage() {
 
   return (
     <PageContainer
+      navigation={<SubPageTabs items={DIMENSION_TABS} />}
       title="维度/科目体系"
-      description="维护经营/静态/现金流量科目、主体、汇总主体映射与指标公式"
       stickyHeader
       headerRef={headerRef}
     >
-      <SubPageTabs items={DIMENSION_TABS} />
 
       {isSubjectTab && (
         <SubjectTreePanel

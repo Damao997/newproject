@@ -1,5 +1,9 @@
+import { AnalysisSection, AnalysisComparison, AnalysisFailure } from '@/components/analysis/workspace'
+import { useAnalysisWorkspace } from '@/components/analysis/analysis-context'
+import { StatTile } from '@/components/ui/stat-tile'
 import { AlertLight, ExpenseAlertLight } from '@/components/ui/alert-light'
 import { Button } from '@/components/ui/button'
+import { MagnitudeValue, magnitudeMaximum } from '@/components/ui/magnitude-value'
 import { DeltaTag } from '@/components/ui/delta-tag'
 import { EmptyState } from '@/components/ui/empty-state'
 import { TableSkeleton } from '@/components/ui/skeleton-blocks'
@@ -65,14 +69,15 @@ function DeviationCell({ g, isRatio }: { g: KeyMetricsGroup; isRatio: boolean })
  * 整体核心指标总览（关键指标子页顶部的两级表头总览）：
  * - 数据取 GET /dashboard/analysis/key-metrics；
  * - 行：营业收入/营业毛利/运营费用/净利润/经营性现金流净值 + 劳效比/费效比（经营指标板块）；
- * - 列：月度完成情况（预算/达成/完成率/同比/环比）+ 财年预计完成情况（预算/累计/偏差额/完成率/预警/同比）；
+ * - 列：月度完成情况（预算/达成/完成率/同比/环比）+ 财年累计（预算/累计/偏差额/完成率/预警/同比）；
  * 偏差额 = 财年累计达成 − 本年累计预算（金额行：年度预算 × 占比前缀和；比率行：直接对年度目标值，后端不拆分）；
  * 预警统一按时序口径 = 财年累计达成 ÷ Σ月度预算目标（年初至当期累计预算，完成率列的 annualRate 分母是全年预算，
  * 财年早期天然偏低、不用于预警）：收入/利润类 AlertLight 三档，运营费用为费用类反向规则 ExpenseAlertLight（超支才警示）；
  * - 金额为万元纯数值（单位见副注，不带「万」后缀）。
  */
 export function CoreMetricsOverview({ period, companyCode }: CoreMetricsOverviewProps) {
-  const { data, isError, isLoading, refetch } = useKeyMetrics({ period, companyCode })
+  const workspace = useAnalysisWorkspace()
+  const { data, isError, isLoading, isPlaceholderData, refetch } = useKeyMetrics({ period, companyCode })
   if (isError && !data) {
     return (
       <section className="shrink-0">
@@ -89,13 +94,21 @@ export function CoreMetricsOverview({ period, companyCode }: CoreMetricsOverview
       </section>
     )
   }
-  if (isLoading && !data) return <TableSkeleton rows={7} columns={12} />
+  if ((isLoading && !data) || isPlaceholderData) return <TableSkeleton rows={7} columns={12} />
   const rows = OVERVIEW_ROWS
     .map(({ key, label }) => {
       const row = data?.rows.find((r) => r.key === key)
       return row ? { key, label, valueType: row.valueType, g: row.values } : null
     })
     .filter((r): r is { key: string; label: string; valueType: 'amount' | 'quantity' | 'ratio'; g: KeyMetricsGroup } => r !== null)
+  const amountRows = rows.filter((r) => r.valueType === 'amount')
+  const maxima = {
+    monthBudget: magnitudeMaximum(amountRows.map((r) => r.g.monthBudget)),
+    monthActual: magnitudeMaximum(amountRows.map((r) => r.g.monthActual)),
+    annualBudget: magnitudeMaximum(amountRows.map((r) => r.g.annualBudget)),
+    ytdActual: magnitudeMaximum(amountRows.map((r) => r.g.ytdActual)),
+    deviation: magnitudeMaximum(amountRows.map((r) => r.g.ytdBudget ? r.g.ytdActual - r.g.ytdBudget : null)),
+  }
   const analysisItems = buildGapAnalysisItems(rows, period)
   if (rows.length === 0) {
     return (
@@ -106,18 +119,29 @@ export function CoreMetricsOverview({ period, companyCode }: CoreMetricsOverview
   }
 
   return (
-    <section className="shrink-0">
-      <div className="mb-3 flex items-center justify-between">
+    <section className="space-y-4">
+      {isError && <AnalysisFailure title="指标刷新失败，保留当前内容" retry={refetch} />}
+      <AnalysisSection kind="focus">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">{(['income', 'profit', 'netProfit', 'operating']).map((key, index) => {
+          const row = rows.find(row => row.key === key)
+          return row ? <StatTile key={key} label={row.label} value={formatMoneyWan(row.g.ytdActual)} unit="万" tone={(index + 1) as 1 | 2 | 3 | 4} foot={<span>本月 {formatMoneyWan(row.g.monthActual)} 万 · 同比 <DeltaTag value={row.g.ytdYoy} /></span>} /> : null
+        })}</div>
+        <AnalysisComparison title="金额指标与预算差距" note="财年累计 · 与累计预算比较 · 单位：万元" items={amountRows.map(row => ({ id: row.key, label: row.label, expense: row.key === 'expense', amount: row.g.ytdActual, budget: row.g.ytdBudget, rate: alertRateOf(row.g), detail: <dl><div><dt>本月实际</dt><dd>{formatMoneyWan(row.g.monthActual)}</dd></div><div><dt>当月预算</dt><dd>{row.g.monthBudget == null ? '—' : formatMoneyWan(row.g.monthBudget)}</dd></div><div><dt>财年累计实际</dt><dd>{formatMoneyWan(row.g.ytdActual)}</dd></div><div><dt>年度预算完成率</dt><dd><RateCell value={row.g.annualRate} /></dd></div><div><dt>累计预算达成率</dt><dd><RateCell value={alertRateOf(row.g)} /></dd></div><div><dt>本月环比</dt><dd><DeltaTag value={row.g.monthMom} /></dd></div></dl> }))} />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">{rows.filter(row => ['expense', 'laborEff', 'expenseEff'].includes(row.key)).map(row => <StatTile key={row.key} label={row.label} value={row.valueType === 'ratio' ? formatMetricValue(row.g.ytdActual, 'ratio') : formatMoneyWan(row.g.ytdActual)} unit={row.valueType === 'amount' ? '万' : undefined} tone={row.key === 'expense' ? 3 : 2} foot={<span>财年累计 · 同比 <DeltaTag value={row.g.ytdYoy} /></span>} />)}</div>
+        <GapAnalysisPanel items={analysisItems} onSelect={key => workspace?.update(amountRows.some(row => row.key === key) ? { selected: key } : { view: "report", selected: "" })} />
+      </AnalysisSection>
+      <AnalysisSection kind="report">
+      {!workspace && <div className="mb-3 flex items-center justify-between">
         <h3 className="text-base font-semibold text-foreground">整体核心指标总览</h3>
         <span className="text-xs text-muted-foreground">金额单位：万元；比率为百分比</span>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="data-table-report data-table-report--striped">
+      </div>}
+      <div className="detail-table-scroll overflow-auto">
+        <table data-ui-table data-detail-table data-comparison-matrix data-compact-matrix aria-label="关键指标完整报表，金额万元、比率百分比" className="data-table-report data-table-report--striped">
           <thead>
             <tr className="border-b border-border">
               <th rowSpan={2} className="text-left w-[10em]">指标名称</th>
               <th colSpan={5} className="text-center font-semibold">月度完成情况</th>
-              <th colSpan={6} className="border-l border-border text-center font-semibold">财年预计完成情况</th>
+              <th colSpan={6} className="border-l border-border text-center font-semibold">财年累计</th>
             </tr>
             <tr>
               <th className={TH_CLS}>月度预算目标</th>
@@ -142,14 +166,14 @@ export function CoreMetricsOverview({ period, companyCode }: CoreMetricsOverview
               return (
                 <tr key={key}>
                   <td className="whitespace-nowrap px-3 py-2 text-left text-sm font-medium text-foreground">{label}</td>
-                  <td className={TD_CLS}><BudgetCell value={g.monthBudget} isRatio={isRatio} /></td>
-                  <td className={TD_CLS}><ActualCell value={g.monthActual} isRatio={isRatio} /></td>
+                  <td className={TD_CLS}><MagnitudeValue value={valueType === 'amount' ? g.monthBudget : null} maximum={maxima.monthBudget}><BudgetCell value={g.monthBudget} isRatio={isRatio} /></MagnitudeValue></td>
+                  <td className={TD_CLS}><MagnitudeValue value={valueType === 'amount' ? g.monthActual : null} maximum={maxima.monthActual}><ActualCell value={g.monthActual} isRatio={isRatio} /></MagnitudeValue></td>
                   <td className={TD_CLS}><RateCell value={g.monthRate} /></td>
                   <td className={TD_CLS}><DeltaTag value={g.monthYoy} /></td>
                   <td className={TD_CLS}><DeltaTag value={g.monthMom} /></td>
-                  <td className={`${TD_CLS} border-l border-border`}><BudgetCell value={g.annualBudget} isRatio={isRatio} /></td>
-                  <td className={TD_CLS}><ActualCell value={g.ytdActual} isRatio={isRatio} /></td>
-                  <td className={TD_CLS}><DeviationCell g={g} isRatio={isRatio} /></td>
+                  <td className={`${TD_CLS} border-l border-border`}><MagnitudeValue value={valueType === 'amount' ? g.annualBudget : null} maximum={maxima.annualBudget}><BudgetCell value={g.annualBudget} isRatio={isRatio} /></MagnitudeValue></td>
+                  <td className={TD_CLS}><MagnitudeValue value={valueType === 'amount' ? g.ytdActual : null} maximum={maxima.ytdActual}><ActualCell value={g.ytdActual} isRatio={isRatio} /></MagnitudeValue></td>
+                  <td className={TD_CLS}><MagnitudeValue value={valueType === 'amount' && g.ytdBudget ? g.ytdActual - g.ytdBudget : null} maximum={maxima.deviation}><DeviationCell g={g} isRatio={isRatio} /></MagnitudeValue></td>
                   <td className={TD_CLS}><RateCell value={g.annualRate} /></td>
                   <td className={`${TD_CLS} text-center`}>
                     {isExpense ? <ExpenseAlertLight rate={alertRate} /> : <AlertLight rate={alertRate} />}
@@ -161,8 +185,9 @@ export function CoreMetricsOverview({ period, companyCode }: CoreMetricsOverview
           </tbody>
         </table>
       </div>
+      </AnalysisSection>
       {/* 差距分析：由上表数据模板化自动生成，随期间/主体筛选联动 */}
-      {analysisItems.length > 0 && (
+      {!workspace && analysisItems.length > 0 && (
         <div className="mt-4 pb-6">
           <GapAnalysisPanel items={analysisItems} />
         </div>

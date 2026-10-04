@@ -5,6 +5,8 @@ import { cn } from '@/lib/utils'
 interface SheetShellProps {
   /** 关闭回调：遮罩点击 / 关闭按钮 / Escape 均触发（父组件负责未保存修改确认） */
   onClose: () => void
+  busy?: boolean
+  width?: number
   /** 标题区图标（可选） */
   icon?: ReactNode
   /** 抽屉标题 */
@@ -24,14 +26,18 @@ interface SheetShellProps {
  * 调用方条件挂载（open 时渲染）→ Drawer 恒为 open；宽度缺省 576px（max-w-xl），
  * className 的 max-w-* 可继续收窄；body 置零 padding 且纵向 flex，交由调用方内容自治布局。
  */
-export function SheetShell({ onClose, icon, title, description, children, footer, className }: SheetShellProps) {
+export function SheetShell({ onClose, icon, title, description, children, footer, className, busy = false, width = 576 }: SheetShellProps) {
   return (
     <Drawer
       open
-      onClose={onClose}
+      onClose={() => { if (!busy) onClose() }}
       placement="right"
-      width={576}
-      destroyOnClose
+      width={width}
+      closable={!busy}
+      keyboard={!busy}
+      maskClosable={!busy}
+      rootClassName="saas-form-drawer"
+      destroyOnHidden
       className={cn(className)}
       title={
         <div className="flex min-w-0 items-start gap-2">

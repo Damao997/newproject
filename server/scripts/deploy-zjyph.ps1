@@ -89,7 +89,8 @@ foreach ($runtimePort in @($backendPort, $frontendPort)) {
   if ($runtimePort -lt 1 -or $runtimePort -gt 65535) { throw "运行时端口非法：$runtimePort" }
 }
 $pm2Command = Resolve-Pm2Command
-$prodDirToken = [regex]::Escape((Split-Path -Leaf $ProdDir))
+# 使用完整目录及分隔符，避免同名开发工作树与 -dev 目录被误判为生产进程。
+$prodDirToken = [regex]::Escape([IO.Path]::GetFullPath($ProdDir).TrimEnd([char[]]'\/')) + '[\\/]'
 
 function Wait-ProductionProcessesExit {
   param([int]$TimeoutSeconds = 30)

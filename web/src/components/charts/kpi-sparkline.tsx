@@ -11,7 +11,7 @@ interface KpiSparklineProps {
 }
 
 export function KpiSparkline({ data, color, height = 48 }: KpiSparklineProps) {
-  const sidebarStyle = useThemeStore((s) => s.sidebarStyle)
+  const sidebarStyle = useThemeStore((s) => s.printing ? 'light' : s.sidebarStyle)
   const lineColor = color ?? getChartSeries(sidebarStyle)[0]
   const option: EChartsOption = {
     grid: {

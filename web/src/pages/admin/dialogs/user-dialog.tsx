@@ -1,140 +1,86 @@
 import { useEffect, useState } from 'react'
+import { z } from 'zod'
+import { Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { FormInput, FormField, FormSection, FormError, AppForm, useAppForm } from '@/components/forms/form'
+import { useFormClose } from '@/components/forms/form-navigation'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { FlashMessage } from '@/components/ui/flash-message'
-import {
-  Dialog,
-  DialogContent, DialogBody,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogBody, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useCreateUser, useUpdateUser } from '@/hooks/api-queries'
 import type { User } from '@/types'
 import { DataScopeSelect } from './shared'
 import { validatePassword } from './password-validation'
 
-// ==================== 用户新增/编辑 ====================
 interface UserDialogProps {
-  open: boolean
-  mode: 'create' | 'edit'
-  user?: User | null
-  roles: { code: string; name: string }[]
-  onClose: () => void
-  /** 保存成功回调（name 为保存后的展示名），页面用于展示成功反馈 */
-  onSaved?: (name: string) => void
+  open: boolean; mode: 'create' | 'edit'; user?: User | null; roles: { code: string; name: string }[]
+  onClose: () => void; onSaved?: (name: string) => void
 }
+const defaults = { username: '', name: '', password: '', role: 'viewer', dataScopeCodes: [] as string[] }
 
 export function UserDialog({ open, mode, user, roles, onClose, onSaved }: UserDialogProps) {
   const createUser = useCreateUser()
   const updateUser = useUpdateUser()
-  const [username, setUsername] = useState('')
-  const [name, setName] = useState('')
-  const [password, setPassword] = useState('')
-  const [role, setRole] = useState('viewer')
-  const [dataScopeCodes, setDataScopeCodes] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
-
+  const [visible, setVisible] = useState(false)
+  const schema = z.object({
+    username: z.string().trim().min(1, '请输入用户名'),
+    name: z.string(), password: z.string(), role: z.string().min(1, '请选择角色'), dataScopeCodes: z.array(z.string()),
+  }).superRefine((values, context) => {
+    if (mode === 'edit' && !values.name.trim()) context.addIssue({ code: 'custom', path: ['name'], message: '请输入姓名' })
+    if (mode === 'create') {
+      const message = validatePassword(values.password)
+      if (message) context.addIssue({ code: 'custom', path: ['password'], message })
+    }
+  })
+  const form = useAppForm(schema, { defaultValues: defaults })
+  const { reset } = form
   useEffect(() => {
     if (!open) return
-    setError(null)
+    setError(null); setVisible(false)
     if (mode === 'edit' && user) {
-      setUsername(user.username)
-      setName(user.name)
-      setRole(user.role)
-      // 优先用后端下发的编码数组；旧数据回退：从 dataScope 展示串解析（'全部'/'无' 视为空）
-      if (user.dataScopeCodes && user.dataScopeCodes.length > 0) {
-        setDataScopeCodes(user.dataScopeCodes)
-      } else if (user.dataScope && !['全部', '无', '*'].includes(user.dataScope)) {
-        setDataScopeCodes(user.dataScope.split(',').filter(Boolean))
-      } else {
-        setDataScopeCodes([])
-      }
-      setPassword('')
-    } else {
-      setUsername('')
-      setName('')
-      setPassword('')
-      setRole('viewer')
-      setDataScopeCodes([])
-    }
-  }, [open, mode, user])
-
-  const pending = createUser.isPending || updateUser.isPending
-
-  const submit = async () => {
-    // 前置校验：必填项与密码规则，避免空表单提交靠后端报错
-    if (mode === 'create') {
-      if (!username.trim()) return setError('请输入用户名')
-      const pwdError = validatePassword(password)
-      if (pwdError) return setError(pwdError)
-    } else if (!name.trim()) {
-      return setError('请输入姓名')
-    }
+      const codes = user.dataScopeCodes?.length ? user.dataScopeCodes
+        : user.dataScope && !['全部', '无', '*'].includes(user.dataScope) ? user.dataScope.split(',').filter(Boolean) : []
+      reset({ username: user.username, name: user.name, password: '', role: user.role, dataScopeCodes: codes })
+    } else reset(defaults)
+  }, [open, mode, user, reset])
+  const pending = form.formState.isSubmitting || createUser.isPending || updateUser.isPending
+  const close = useFormClose({ dirty: form.formState.isDirty, busy: pending, onClose, enabled: open })
+  const submit = async (values: z.infer<typeof schema>) => {
     setError(null)
     try {
-      if (mode === 'create') {
-        // 姓名留空时后端默认使用用户名
-        await createUser.mutateAsync({ username: username.trim(), name: name.trim() || undefined, password, role, dataScopeCodes })
-      } else if (user) {
-        await updateUser.mutateAsync({ id: user.id, data: { name: name.trim(), role, dataScopeCodes } })
-      }
-      onClose()
-      onSaved?.(name.trim() || username.trim())
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '保存失败')
-    }
+      if (mode === 'create') await createUser.mutateAsync({ ...values, username: values.username.trim(), name: values.name.trim() || undefined })
+      else if (user) await updateUser.mutateAsync({ id: user.id, data: { name: values.name.trim(), role: values.role, dataScopeCodes: values.dataScopeCodes } })
+      reset(values); onClose(); onSaved?.(values.name.trim() || values.username.trim())
+    } catch (cause) { setError(cause instanceof Error ? cause.message : '保存失败，请重试') }
   }
-
-  return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{mode === 'create' ? '新增用户' : '编辑用户'}</DialogTitle>
-          <DialogDescription>{mode === 'create' ? '创建一个新用户并分配角色' : `编辑 ${user?.username}`}</DialogDescription>
-        </DialogHeader>
-        <DialogBody className="grid gap-4">
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label htmlFor="user-username">用户名</Label>
-              <Input id="user-username" value={username} onChange={(e) => setUsername(e.target.value)} disabled={mode === 'edit'} placeholder="登录用户名" />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="user-name">姓名</Label>
-              <Input id="user-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="显示名称" />
-            </div>
-            {mode === 'create' && (
-              <div className="space-y-1">
-                <Label htmlFor="user-password">初始密码（首次登录后须修改）</Label>
-                <Input id="user-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="至少 8 位，含字母与数字" />
-              </div>
-            )}
-            <div className="space-y-1">
-              <Label htmlFor="user-role">角色</Label>
-              <Select value={role} onValueChange={setRole}>
-                <SelectTrigger id="user-role"><SelectValue placeholder="选择角色" /></SelectTrigger>
-                <SelectContent>
-                  {roles.map((r) => (
-                    <SelectItem key={r.code} value={r.code}>{r.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>数据范围（可多选单体公司，留空为按角色默认；汇总主体按成员全有或全无自动推导）</Label>
-              <DataScopeSelect value={dataScopeCodes} onChange={setDataScopeCodes} />
-            </div>
-            {error && <FlashMessage type="error">{error}</FlashMessage>}
-          </div>
-        </DialogBody>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>取消</Button>
-          <Button onClick={submit} disabled={pending}>{pending ? '保存中...' : '保存'}</Button>
-        </DialogFooter>
+  return <>
+    <Dialog open={open} presentation="drawer" busy={pending} onOpenChange={(next) => { if (!next) close.requestClose() }}>
+      <DialogContent><DialogHeader><DialogTitle>{mode === 'create' ? '新增用户' : '编辑用户'}</DialogTitle></DialogHeader>
+        <DialogBody><AppForm form={form} onSubmit={submit} id="user-form">
+          <FormError message={error} />
+          <FormSection title="基本信息">
+            <FormInput control={form.control} name="username" label="用户名" required readOnly={mode === 'edit'} autoComplete="username" placeholder="用于登录" />
+            <FormInput control={form.control} name="name" label="姓名" required={mode === 'edit'} placeholder="用户显示名称" hint={mode === 'create' ? '选填，留空时使用用户名' : undefined} />
+            {mode === 'create' && <FormField control={form.control} name="password" label="初始密码" required hint="至少 8 位，含字母与数字；首次登录后须修改">
+              {(field) => <Input {...field} value={String(field.value)} type={visible ? 'text' : 'password'} autoComplete="new-password" className="h-11"
+                suffix={<button type="button" className="flex h-6 w-6 items-center justify-center rounded hover:bg-muted" aria-label={visible ? '隐藏密码' : '显示密码'} onClick={() => setVisible(!visible)}>
+                  {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>} />}
+            </FormField>}
+          </FormSection>
+          <FormSection title="角色与数据范围">
+            <FormField control={form.control} name="role" label="角色" required>{(field) =>
+              <Select {...field} value={String(field.value)} onValueChange={field.onChange}><SelectTrigger className="h-11"><SelectValue placeholder="选择角色" /></SelectTrigger>
+                <SelectContent>{roles.map((role) => <SelectItem key={role.code} value={role.code}>{role.name}</SelectItem>)}</SelectContent></Select>}
+            </FormField>
+            <FormField control={form.control} name="dataScopeCodes" label="数据范围" hint="留空时按角色默认范围" help="可多选单体公司。汇总主体按成员全有或全无自动推导，无需单独选择。">{(field) =>
+              <DataScopeSelect {...field} value={field.value as string[]} onChange={field.onChange} />}
+            </FormField>
+          </FormSection>
+        </AppForm></DialogBody>
+        <DialogFooter><Button variant="outline" disabled={pending} onClick={close.requestClose}>取消</Button>
+          <Button type="submit" form="user-form" loading={pending} disabled={pending}>保存用户</Button></DialogFooter>
       </DialogContent>
-    </Dialog>
-  )
+    </Dialog>{close.element}
+  </>
 }

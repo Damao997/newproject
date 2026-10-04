@@ -1,269 +1,95 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { Controller } from 'react-hook-form'
+import { z } from 'zod'
+import { Eye, EyeOff } from 'lucide-react'
+import { AppForm, FormError, useAppForm } from '@/components/forms/form'
+import { useFormClose } from '@/components/forms/form-navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react'
-import {
-  Dialog,
-  DialogContent, DialogBody,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { cn } from '@/lib/utils'
-import { api } from '@/lib/api'
+import { Dialog, DialogContent, DialogBody, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { FlashMessage } from '@/components/ui/flash-message'
+import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
+import { validatePassword } from '@/pages/admin/dialogs/password-validation'
 
-/** 密码规则校验（与后端 assertPasswordRule 一致）：至少 8 位且含字母与数字 */
-function validatePassword(password: string): string | null {
-  if (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
-    return '密码至少 8 位，且需同时包含字母与数字'
-  }
-  return null
-}
+const schema = z.object({
+  oldPassword: z.string().min(1, '请输入原密码'),
+  newPassword: z.string().refine((value) => !validatePassword(value), '密码至少 8 位，且需同时包含字母与数字'),
+  confirmPassword: z.string().min(1, '请再次输入新密码'),
+}).superRefine((values, context) => {
+  if (values.confirmPassword && values.confirmPassword !== values.newPassword)
+    context.addIssue({ code: 'custom', path: ['confirmPassword'], message: '两次输入的新密码不一致' })
+})
+type Values = z.infer<typeof schema>
+const defaults: Values = { oldPassword: '', newPassword: '', confirmPassword: '' }
 
-interface FieldErrors {
-  oldPassword?: string
-  newPassword?: string
-  confirmPassword?: string
-}
-
-interface PasswordFieldProps {
-  id: string
-  label: string
-  value: string
-  onChange: (v: string) => void
-  error?: string
-  placeholder: string
-  autoComplete: string
-  disabled?: boolean
-}
-
-/** 密码输入字段：独立可见性切换 + 错误提示 */
-function PasswordField({ id, label, value, onChange, error, placeholder, autoComplete, disabled }: PasswordFieldProps) {
-  const [show, setShow] = useState(false)
-  return (
-    <div className="space-y-1">
-      <Label htmlFor={id}>{label}</Label>
-      <div className="relative">
-        <Input
-          id={id}
-          type={show ? 'text' : 'password'}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          autoComplete={autoComplete}
-          disabled={disabled}
-          aria-invalid={!!error}
-          aria-describedby={error ? `${id}-error` : undefined}
-          className={cn('pr-10', error && 'border-destructive focus-visible:ring-destructive')}
-        />
-        <button
-          type="button"
-          tabIndex={-1}
-          disabled={disabled}
-          onClick={() => setShow((v) => !v)}
-          className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-50"
-          aria-label={show ? '隐藏密码' : '显示密码'}
-        >
-          {show ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-        </button>
-      </div>
-      {error && (
-        <p id={`${id}-error`} className="animate-fade-in text-xs text-destructive">
-          {error}
-        </p>
-      )}
-    </div>
-  )
-}
-
-/**
- * 修改密码对话框：右上角用户菜单主动改密 + 首次登录强制改密。
- * force 模式不可通过 Esc/遮罩/X 绕过，但提供"退出登录"出口（暂不修改则离开会话，
- * 重新登录后强制改密流程会再次弹出）；成功后后端签发新令牌对，前端静默续期
- * （不登出、不跳转），其他会话不受影响。
- */
+/** 主动改密可放弃；首次登录只能完成改密或退出会话。 */
 export function ChangePasswordDialog() {
-  const { user, passwordDialog, closePasswordDialog, updateUser, setTokens, logout } = useAuthStore()
+  const { passwordDialog, closePasswordDialog, updateUser, setTokens, logout } = useAuthStore()
   const { open, force } = passwordDialog
-
-  const [oldPassword, setOldPassword] = useState('')
-  const [newPassword, setNewPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  // force 模式退出登录进行中：防重复点击（登出后组件随 MainLayout 卸载，无需重置）
-  const [isLoggingOut, setIsLoggingOut] = useState(false)
-
-  // 成功轻提示（替代原生 alert）：对话框关闭后于页面展示，3s 自动消失
+  const form = useAppForm(schema, { defaultValues: defaults })
   const [successFlash, setSuccessFlash] = useState(false)
-
-  // 每次打开时重置表单
-  useEffect(() => {
-    if (open) {
-      setOldPassword('')
-      setNewPassword('')
-      setConfirmPassword('')
-      setError(null)
-      setFieldErrors({})
-      // flash 是"关闭后一次性反馈"：重新打开对话框时清空，避免旧提示与新对话框并存
-      setSuccessFlash(false)
-    }
-  }, [open])
-
-  const submit = async () => {
-    // 前置校验：必填 + 强度规则 + 两次一致，避免空表单靠后端报错
-    const errors: FieldErrors = {}
-    if (!oldPassword) errors.oldPassword = '请输入原密码'
-    if (!newPassword) errors.newPassword = '请输入新密码'
-    else {
-      const pwdError = validatePassword(newPassword)
-      if (pwdError) errors.newPassword = pwdError
-    }
-    if (!confirmPassword) errors.confirmPassword = '请再次输入新密码'
-    else if (confirmPassword !== newPassword) errors.confirmPassword = '两次输入的新密码不一致'
-    setFieldErrors(errors)
-    if (Object.keys(errors).length > 0) return
-
-    setError(null)
-    setIsSubmitting(true)
+  const [loggingOut, setLoggingOut] = useState(false)
+  const logoutLock = useRef(false)
+  const busy = form.formState.isSubmitting || loggingOut
+  const close = useFormClose({ dirty: form.formState.isDirty, busy, enabled: open && !force, onClose: closePasswordDialog })
+  useEffect(() => { if (open) { form.reset(defaults); setSuccessFlash(false) } }, [open, form])
+  const submit = async (values: Values) => {
+    form.clearErrors('root')
     try {
-      // 后端 AuthService.changePassword：校验原密码 → bcrypt 更新 → 当前会话轮转并签发新令牌对
-      const result = await api.updatePassword({ oldPassword, newPassword })
+      const result = await api.updatePassword({ oldPassword: values.oldPassword, newPassword: values.newPassword })
       updateUser({ mustChangePassword: false })
-      // 静默续期：用新令牌对替换本地令牌，保持当前登录态（其他标签页/会话不受影响）
       setTokens(result.accessToken, result.refreshToken)
+      form.reset(defaults)
       closePasswordDialog()
       setSuccessFlash(true)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '修改失败，请稍后重试')
-    } finally {
-      setIsSubmitting(false)
-    }
+    } catch (error) { form.setError('root', { message: error instanceof Error ? error.message : '修改失败，请稍后重试' }) }
   }
-
-  /**
-   * force 模式退出登录：暂不修改密码的唯一合法出口（不提供"跳过改密继续使用"路径）。
-   * 与 user-chip 退出逻辑一致：先通知后端吊销会话（强制改密豁免白名单已放行 logout），
-   * 失败不阻塞，本地登出兜底；authStore.logout 会重置 passwordDialog 并回到登录页。
-   */
   const handleLogout = async () => {
-    if (isLoggingOut) return
-    setIsLoggingOut(true)
-    try {
-      await api.logout()
-    } catch {
-      // 忽略：令牌可能已失效/网络异常，本地登出兜底
-    } finally {
-      logout()
-    }
+    if (logoutLock.current || busy) return
+    logoutLock.current = true; setLoggingOut(true)
+    try { await api.logout() } catch { /* 会话失效时仍允许本地退出。 */ }
+    finally { logout() }
   }
-
-  return (
-    <>
-      <Dialog
-        open={open}
-        // force 模式不可关闭（防 Esc/遮罩/X 绕过强制改密），仅提交成功或登出时关闭
-        onOpenChange={(o) => {
-          if (!o && !force) closePasswordDialog()
-        }}
-      >
-        {/* force 模式隐藏右上角 X 关闭按钮（Radix Close 为 DialogContent 直接子 button） */}
-        <DialogContent className={cn(force && '[&>button]:hidden')}>
-          <DialogHeader>
-            <DialogTitle>{force ? '首次登录须修改密码' : '修改密码'}</DialogTitle>
-            <DialogDescription>
-              {force
-                ? '为保障账号安全，首次登录请先修改初始密码后再继续使用'
-                : `用户 ${user?.name ?? ''}，修改后需使用新密码重新登录`}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogBody className="grid gap-4">
-            <div className="space-y-3">
-              <PasswordField
-                id="cp-old-password"
-                label="原密码"
-                value={oldPassword}
-                onChange={setOldPassword}
-                error={fieldErrors.oldPassword}
-                placeholder="请输入当前使用的密码"
-                autoComplete="current-password"
-                disabled={isSubmitting}
-              />
-              <PasswordField
-                id="cp-new-password"
-                label="新密码"
-                value={newPassword}
-                onChange={setNewPassword}
-                error={fieldErrors.newPassword}
-                placeholder="至少 8 位，含字母与数字"
-                autoComplete="new-password"
-                disabled={isSubmitting}
-              />
-              <PasswordField
-                id="cp-confirm-password"
-                label="确认新密码"
-                value={confirmPassword}
-                onChange={setConfirmPassword}
-                error={fieldErrors.confirmPassword}
-                placeholder="再次输入新密码"
-                autoComplete="new-password"
-                disabled={isSubmitting}
-              />
-              {error && (
-                <div
-                  role="alert"
-                  aria-live="polite"
-                  className="flex animate-fade-in items-start gap-2 rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
-                >
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>{error}</span>
-                </div>
-              )}
+  return <>
+    <Dialog open={open} busy={busy || force} onOpenChange={(next) => { if (!next && !force) close.requestClose() }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{force ? '首次登录须修改密码' : '修改密码'}</DialogTitle>
+          <DialogDescription>{force ? '修改初始密码后继续使用。' : '修改后请使用新密码登录。'}</DialogDescription>
+        </DialogHeader>
+        <DialogBody>
+          <AppForm form={form} id="change-password" onSubmit={submit}>
+            <div className="space-y-5">
+              <PasswordField form={form} name="oldPassword" label="原密码" autoComplete="current-password" />
+              <PasswordField form={form} name="newPassword" label="新密码" autoComplete="new-password" hint="至少 8 位，含字母与数字" />
+              <PasswordField form={form} name="confirmPassword" label="确认新密码" autoComplete="new-password" />
+              <FormError message={form.formState.errors.root?.message} />
             </div>
-          </DialogBody>
-          <DialogFooter>
-            {force ? (
-              // force 模式：不提供"取消"（避免误以为可跳过改密继续使用），改为"退出登录"
-              <Button
-                variant="outline"
-                onClick={handleLogout}
-                disabled={isSubmitting || isLoggingOut}
-              >
-                {isLoggingOut ? '退出中...' : '退出登录'}
-              </Button>
-            ) : (
-              <Button variant="outline" onClick={closePasswordDialog} disabled={isSubmitting}>
-                取消
-              </Button>
-            )}
-            <Button onClick={submit} disabled={isSubmitting}>
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  提交中...
-                </>
-              ) : (
-                '确认修改'
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      {successFlash && (
-        <FlashMessage
-          type="success"
-          autoHideMs={3000}
-          onAutoHide={() => setSuccessFlash(false)}
-          className="fixed left-1/2 top-16 z-50 -translate-x-1/2 rounded-md border border-border bg-background/95 px-4 py-2 shadow-md"
-        >
-          密码修改成功
-        </FlashMessage>
-      )}
-    </>
-  )
+          </AppForm>
+        </DialogBody>
+        <DialogFooter>
+          {force ? <Button variant="outline" onClick={handleLogout} disabled={busy} loading={loggingOut}>退出登录</Button>
+            : <Button variant="outline" onClick={close.requestClose} disabled={busy}>取消</Button>}
+          <Button type="submit" form="change-password" loading={form.formState.isSubmitting} disabled={busy}>确认修改</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    {close.element}
+    {successFlash && <FlashMessage type="success" autoHideMs={3000} onAutoHide={() => setSuccessFlash(false)} className="fixed left-1/2 top-16 z-50 -translate-x-1/2 rounded-md border border-border bg-background px-4 py-2 shadow-md">密码修改成功</FlashMessage>}
+  </>
+}
+function PasswordField({ form, name, label, autoComplete, hint }: {
+  form: ReturnType<typeof useAppForm<Values>>; name: keyof Values; label: string; autoComplete: string; hint?: string
+}) {
+  const [show, setShow] = useState(false)
+  const id = 'cp-' + name.replace(/[A-Z]/g, (letter) => '-' + letter.toLowerCase())
+  return <Controller control={form.control} name={name} render={({ field, fieldState }) => <div className="space-y-1.5">
+    <Label htmlFor={id}>{label}</Label>
+    <Input {...field} id={id} className="h-11" type={show ? 'text' : 'password'} autoComplete={autoComplete}
+      aria-invalid={!!fieldState.error} aria-describedby={fieldState.error ? id + '-error' : hint ? id + '-hint' : undefined}
+      suffix={<button type="button" disabled={form.formState.isSubmitting} onClick={() => setShow(!show)} aria-label={show ? '隐藏密码' : '显示密码'} className="flex h-8 w-8 items-center justify-center rounded-md">{show ? <Eye size={16} /> : <EyeOff size={16} />}</button>} />
+    {fieldState.error ? <p id={id + '-error'} className="text-xs text-danger">{fieldState.error.message}</p> : hint && <p id={id + '-hint'} className="text-xs text-muted-foreground">{hint}</p>}
+  </div>} />
 }

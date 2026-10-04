@@ -1,3 +1,5 @@
+import { useFormModel, useFormValue, ModelFormFields } from '@/components/forms/form-model'
+import { useFormClose } from '@/components/forms/form-navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -93,16 +95,18 @@ function amountTone(v: number | null): string {
 
 // ===== 状态更新对话框（仅计划行可用） =====
 function UpdateStatusDialog({ row, onClose }: { row: CustomerLedgerItem | null; onClose: () => void }) {
-  const [status, setStatus] = useState('')
-  const [actualAmount, setActualAmount] = useState('')
-  const [statusNote, setStatusNote] = useState(row?.statusNote ?? '')
+  const model = useFormModel({status: ('') as string, actualAmount: ('') as string, statusNote: row?.statusNote ?? ''}, {})
+  const [status, setStatus] = useFormValue(model, "status")
+  const [actualAmount, setActualAmount] = useFormValue(model, "actualAmount")
+  const [statusNote, setStatusNote] = useFormValue(model, "statusNote")
   const [errorMsg, setErrorMsg] = useState('')
   const updateMutation = useUpdateCollection()
 
   // 打开时预填既有催收状态说明（可修改/覆盖）；关闭时由 handleClose 清空
   useEffect(() => {
-    if (row) setStatusNote(row.statusNote ?? '')
-  }, [row])
+    model.form.reset({ status: '', actualAmount: '', statusNote: row?.statusNote ?? '' })
+    setErrorMsg('')
+  }, [row?.planId, row?.statusNote, model.form])
 
   const currentStatus = (row?.planStatus ?? 'pending') as CollectionStatus
   const allowed = row?.planId ? (STATUS_TRANSITIONS[currentStatus] ?? []) : []
@@ -141,8 +145,10 @@ function UpdateStatusDialog({ row, onClose }: { row: CustomerLedgerItem | null; 
     onClose()
   }
 
+  const formClose = useFormClose({ dirty: model.form.formState.isDirty, busy: model.pending || updateMutation.isPending, enabled: !!row, onClose: handleClose })
+
   return (
-    <Dialog open={!!row} onOpenChange={(v) => !v && handleClose()}>
+    <><Dialog open={!!row} busy={model.pending || updateMutation.isPending} onOpenChange={(next) => { if (!next) formClose.requestClose() }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>更新催收状态</DialogTitle>
@@ -150,14 +156,14 @@ function UpdateStatusDialog({ row, onClose }: { row: CustomerLedgerItem | null; 
             {row?.counterpartyName || row?.counterpartyCode} · 应收金额 {fmtAmount(row?.closingBalance ?? null)}
           </DialogDescription>
         </DialogHeader>
-        <DialogBody className="grid gap-4">
+        <DialogBody className="grid gap-4"><ModelFormFields model={model}>
           <div className="space-y-3">
             <div className="space-y-1.5">
               <Label htmlFor="update-status-select">新状态（当前：{row ? STATUS_LABELS[currentStatus] : '-'}）</Label>
               {allowed.length === 0 ? (
                 <p className="text-sm text-muted-foreground">当前为终态，不可再流转（仍可补录实际回收金额）</p>
               ) : (
-                <Select value={status} onValueChange={setStatus}>
+                <Select name="status" value={status} onValueChange={setStatus}>
                   <SelectTrigger id="update-status-select">
                     <SelectValue placeholder="保持不变" />
                   </SelectTrigger>
@@ -170,35 +176,37 @@ function UpdateStatusDialog({ row, onClose }: { row: CustomerLedgerItem | null; 
               )}
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="update-actual-amount">实际回收金额</Label>
-              <Input id="update-actual-amount" type="number" placeholder="选填" value={actualAmount} onChange={(e) => setActualAmount(e.target.value)} />
+              <Label htmlFor="update-actual-amount">实际回收金额（元）</Label>
+              <Input name="actualAmount" id="update-actual-amount" type="number" placeholder="选填" value={actualAmount} onChange={(e) => setActualAmount(e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="update-status-note">催收状态说明（≤500 字）</Label>
-              <Textarea id="update-status-note" rows={3} maxLength={500} placeholder="如：客户承诺月底回款，逾期部分已开票待付款…" value={statusNote} onChange={(e) => setStatusNote(e.target.value)} />
+              <Textarea name="statusNote" id="update-status-note" rows={3} maxLength={500} placeholder="如：客户承诺月底回款，逾期部分已开票待付款…" value={statusNote} onChange={(e) => setStatusNote(e.target.value)} />
             </div>
             {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
           </div>
-        </DialogBody>
+        </ModelFormFields></DialogBody>
         <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>取消</Button>
-          <Button disabled={updateMutation.isPending} onClick={handleSubmit}>
+          <Button variant="outline" onClick={formClose.requestClose}>取消</Button>
+          <Button disabled={updateMutation.isPending} onClick={model.submit(handleSubmit)}>
             {updateMutation.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
             保存
           </Button>
         </DialogFooter>
       </DialogContent>
-    </Dialog>
+    </Dialog>{formClose.element}</>
   )
 }
 
 // ===== 催收记录对话框（按最新计划） =====
 function LogsDialog({ row, canUpdate, onClose }: { row: CustomerLedgerItem | null; canUpdate: boolean; onClose: () => void }) {
-  const [content, setContent] = useState('')
+  const model = useFormModel({content: ('') as string}, {"content":"请输入跟进内容"})
+  const [content, setContent] = useFormValue(model, "content")
   const [errorMsg, setErrorMsg] = useState('')
   const planId = row?.planId ?? null
   const { data: logs, isLoading } = useCollectionLogs(planId)
   const addMutation = useAddCollectionLog()
+  useEffect(() => { model.form.reset({ content: '' }); setErrorMsg('') }, [planId, model.form])
 
   const handleAdd = async () => {
     if (!planId) return
@@ -215,14 +223,16 @@ function LogsDialog({ row, canUpdate, onClose }: { row: CustomerLedgerItem | nul
     }
   }
 
+  const formClose = useFormClose({ dirty: model.form.formState.isDirty, busy: model.pending || addMutation.isPending, enabled: !!row, onClose: onClose })
+
   return (
-    <Dialog open={!!row} onOpenChange={(v) => !v && onClose()}>
+    <><Dialog open={!!row} busy={model.pending || addMutation.isPending} onOpenChange={(next) => { if (!next) formClose.requestClose() }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>催收记录</DialogTitle>
           <DialogDescription>{row?.counterpartyName || row?.counterpartyCode}</DialogDescription>
         </DialogHeader>
-        <DialogBody className="grid gap-4">
+        <DialogBody className="grid gap-4"><ModelFormFields model={model}>
           <div className="space-y-3">
             {isLoading ? (
               <p className="py-4 text-center text-sm text-muted-foreground">加载中…</p>
@@ -241,67 +251,58 @@ function LogsDialog({ row, canUpdate, onClose }: { row: CustomerLedgerItem | nul
             {canUpdate && (
               <div className="space-y-2">
                 <Label htmlFor="collection-log-content">催收记录内容</Label>
-                <Textarea id="collection-log-content" placeholder="记录本次催收情况..." value={content} onChange={(e) => setContent(e.target.value)} rows={3} />
+                <Textarea name="content" id="collection-log-content" placeholder="记录本次催收情况..." value={content} onChange={(e) => setContent(e.target.value)} rows={3} />
                 {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
               </div>
             )}
           </div>
-        </DialogBody>
+        </ModelFormFields></DialogBody>
         {canUpdate && (
           <DialogFooter>
-            <Button size="sm" disabled={addMutation.isPending} onClick={handleAdd}>
+            <Button size="sm" disabled={addMutation.isPending} onClick={model.submit(handleAdd)}>
               {addMutation.isPending ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
               添加记录
             </Button>
           </DialogFooter>
         )}
       </DialogContent>
-    </Dialog>
+    </Dialog>{formClose.element}</>
   )
 }
 
 // ===== 已开票未收款金额编辑抽屉（客商扩展表） =====
 function BilledAmountDrawer({ target, onClose }: { target: LedgerTarget; onClose: () => void }) {
-  const [value, setValue] = useState(target.billedUncollectedAmount === null ? '' : String(target.billedUncollectedAmount))
-  const [errorMsg, setErrorMsg] = useState('')
+  const model = useFormModel({ value: target.billedUncollectedAmount === null ? '' : String(target.billedUncollectedAmount) }, {})
+  const [value, setValue] = useFormValue(model, 'value')
   const updateMutation = useUpdateCustomerExt()
-
+  const busy = model.pending || updateMutation.isPending
+  const close = useFormClose({ dirty: model.form.formState.isDirty, busy, onClose })
   const handleSave = async () => {
-    setErrorMsg('')
-    const v = value.trim() === '' ? null : Number(value)
-    if (v !== null && (!Number.isFinite(v) || v < 0)) { setErrorMsg('金额不合法'); return }
+    model.form.clearErrors('root')
+    const amount = value.trim() === '' ? null : Number(value)
+    if (amount !== null && (!Number.isFinite(amount) || amount < 0)) {
+      model.form.setError('value', { message: '请输入大于或等于零的金额' }, { shouldFocus: true })
+      return
+    }
     try {
-      await updateMutation.mutateAsync({ companyCode: target.companyCode, counterpartyCode: target.counterpartyCode, data: { billedUncollectedAmount: v } })
+      await updateMutation.mutateAsync({ companyCode: target.companyCode, counterpartyCode: target.counterpartyCode, data: { billedUncollectedAmount: amount } })
       onClose()
-    } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : '保存失败')
+    } catch (error) {
+      model.form.setError('root', { message: error instanceof Error ? error.message : '保存失败' })
     }
   }
-
-  return (
-    <SheetShell
-      onClose={onClose}
-      className="max-w-md"
-      title="编辑已开票未收款金额"
-      description={`${target.companyCode} · ${target.counterpartyName || target.counterpartyCode}`}
-      footer={(
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={onClose} disabled={updateMutation.isPending}>取消</Button>
-          <Button size="sm" disabled={updateMutation.isPending} onClick={handleSave}>
-            保存
-          </Button>
-        </div>
-      )}
-    >
-      <div className="space-y-3 p-5">
-        <div className="space-y-1.5">
-          <Label htmlFor="billed-amount-input">已开票未收款金额（元）</Label>
-          <Input id="billed-amount-input" type="number" min={0} step="0.01" placeholder="选填，留空保存为未填写" value={value} onChange={(e) => setValue(e.target.value)} />
-        </div>
-        {errorMsg && <FlashMessage type="error">{errorMsg}</FlashMessage>}
+  return <><Dialog open busy={busy} onOpenChange={(open) => { if (!open) close.requestClose() }}>
+    <DialogContent><DialogHeader><DialogTitle>已开票未收款金额</DialogTitle>
+      <DialogDescription>{target.counterpartyName || target.counterpartyCode}</DialogDescription>
+    </DialogHeader><DialogBody><ModelFormFields model={model}>
+      <div className="space-y-2"><Label htmlFor="billed-amount-input">金额（元）</Label>
+        <Input name="value" id="billed-amount-input" type="number" min={0} step="0.01" placeholder="选填，留空表示未填写" value={value} onChange={(event) => setValue(event.target.value)} />
       </div>
-    </SheetShell>
-  )
+    </ModelFormFields></DialogBody><DialogFooter>
+      <Button variant="outline" disabled={busy} onClick={close.requestClose}>取消</Button>
+      <Button disabled={busy} onClick={model.submit(handleSave)}>保存</Button>
+    </DialogFooter></DialogContent>
+  </Dialog>{close.element}</>
 }
 
 // ===== 业务员编辑抽屉（客商扩展表；选择现有 / 新建） =====
@@ -310,14 +311,15 @@ function SalesmanDrawer({ target, onClose }: { target: LedgerTarget; onClose: ()
   const { data: salesmen } = useSalesmen(companyCode)
   const createMutation = useCreateSalesman()
   const updateMutation = useUpdateCustomerExt()
-  const [selectedId, setSelectedId] = useState(target.salesmanId ?? '')
-  const [newName, setNewName] = useState('')
-  const [newPhone, setNewPhone] = useState('')
+  const model = useFormModel({selectedId:target.salesmanId ?? '',newName:('') as string,newPhone:('') as string}, {})
+  const [selectedId, setSelectedId] = useFormValue(model, "selectedId")
+  const [newName, setNewName] = useFormValue(model, "newName")
+  const [newPhone, setNewPhone] = useFormValue(model, "newPhone")
   const [errorMsg, setErrorMsg] = useState('')
 
   const handleAdd = async () => {
     setErrorMsg('')
-    if (!newName.trim()) { setErrorMsg('请输入业务员姓名'); return }
+    if (!newName.trim()) { model.form.setError('newName', { message: '请输入业务员姓名' }, { shouldFocus: true }); return }
     try {
       const created = await createMutation.mutateAsync({ companyCodes: [companyCode], name: newName.trim(), phone: newPhone.trim() || undefined })
       setSelectedId(created.id)
@@ -338,23 +340,25 @@ function SalesmanDrawer({ target, onClose }: { target: LedgerTarget; onClose: ()
     }
   }
 
+  const modelClose = useFormClose({ dirty: model.form.formState.isDirty, busy: model.pending || updateMutation.isPending || createMutation.isPending, enabled: true, onClose: onClose })
+
   return (
-    <SheetShell
-      onClose={onClose}
+    <><SheetShell
+      onClose={modelClose.requestClose} busy={model.pending || updateMutation.isPending || createMutation.isPending} width={480}
       className="max-w-md"
       title="业务员"
       description={`${companyCode} · ${target.counterpartyName || target.counterpartyCode}`}
       footer={(
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={onClose} disabled={updateMutation.isPending || createMutation.isPending}>取消</Button>
-          <Button size="sm" disabled={updateMutation.isPending || createMutation.isPending} onClick={handleSave}>保存</Button>
+          <Button variant="outline" size="sm" onClick={modelClose.requestClose} disabled={updateMutation.isPending || createMutation.isPending}>取消</Button>
+          <Button size="sm" disabled={updateMutation.isPending || createMutation.isPending} onClick={model.submit(handleSave)}>保存</Button>
         </div>
       )}
     >
-      <div className="space-y-4 p-5">
+<ModelFormFields model={model}>      <div className="space-y-4 p-5">
         <div className="space-y-1.5">
           <Label htmlFor="salesman-select">选择现有业务员</Label>
-          <Select value={selectedId} onValueChange={setSelectedId}>
+          <Select name="selectedId" value={selectedId} onValueChange={setSelectedId}>
             <SelectTrigger id="salesman-select" className="w-full">
               <SelectValue placeholder="未指定业务员（选填）" />
             </SelectTrigger>
@@ -371,14 +375,14 @@ function SalesmanDrawer({ target, onClose }: { target: LedgerTarget; onClose: ()
           <p className="text-xs font-medium text-foreground">新建业务员</p>
           <div className="space-y-1.5">
             <Label htmlFor="salesman-name">姓名（必填）</Label>
-            <Input id="salesman-name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="业务员姓名" />
+            <Input name="newName" id="salesman-name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="业务员姓名" />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="salesman-phone">联系方式（选填）</Label>
-            <Input id="salesman-phone" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="手机号/电话" />
+            <Input name="newPhone" id="salesman-phone" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="手机号/电话" />
           </div>
           <div className="flex justify-end">
-            <Button size="sm" variant="outline" disabled={createMutation.isPending} onClick={handleAdd}>
+            <Button size="sm" variant="outline" disabled={createMutation.isPending} onClick={model.submit(handleAdd)}>
               {createMutation.isPending ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
               添加
             </Button>
@@ -386,7 +390,7 @@ function SalesmanDrawer({ target, onClose }: { target: LedgerTarget; onClose: ()
         </div>
         {errorMsg && <FlashMessage type="error">{errorMsg}</FlashMessage>}
       </div>
-    </SheetShell>
+    </ModelFormFields></SheetShell>{modelClose.element}</>
   )
 }
 
@@ -601,7 +605,7 @@ export function CollectionsTab({ stickyTop = 0 }: { stickyTop?: number }) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col space-y-2">
       {/* 筛选卡：客商状态 / 客商关键词（吸顶；公司/期间全局口径在 Header 筛选） */}
-      <Card className="sticky z-10 shrink-0 rounded-card p-3" style={{ top: stickyTop }}>
+      <Card variant="filter" className="sticky z-10 shrink-0 rounded-card p-3" style={{ top: stickyTop }}>
       <FilterBar>
         <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v === 'all' ? '' : v); setPage(1) }}>
           <SelectTrigger className={`h-9 ${FILTER_WIDTH.period}`}>

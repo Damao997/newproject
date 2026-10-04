@@ -1,9 +1,15 @@
-﻿import { useMemo, useState } from 'react'
+﻿import { forwardRef, useMemo, useState } from 'react'
 import { Calendar, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { useModelAdapter } from '@/components/forms/form-model'
 import { cn } from '@/lib/utils'
 
 interface MonthPickerProps {
+  name?: string
+  disabled?: boolean
+  onBlur?: () => void
+  'aria-invalid'?: boolean
+  'aria-describedby'?: string
   /** 当前值，'YYYY-MM' 或 ''（表示未选/全部） */
   value: string
   onChange: (value: string) => void
@@ -29,7 +35,7 @@ function toPeriod(year: number, monthIndex: number): string {
  *
  * 受控组件，空值语义为「全部月份」；选中月份后自动关闭弹层。
  */
-export function MonthPicker({
+export const MonthPicker = forwardRef<HTMLButtonElement, MonthPickerProps>(({
   value,
   onChange,
   availablePeriods = [],
@@ -37,7 +43,9 @@ export function MonthPicker({
   placeholder = '全部月份',
   id,
   className,
-}: MonthPickerProps) {
+  disabled, onBlur, ...rest
+}, ref) => {
+  const adapter = useModelAdapter()
   const [open, setOpen] = useState(false)
   const now = new Date()
   const currentPeriod = toPeriod(now.getFullYear(), now.getMonth())
@@ -65,29 +73,27 @@ export function MonthPicker({
     if (next) setViewYear(Number((value || latestPeriod || currentPeriod).slice(0, 4)))
   }
 
-  return (
-    <Popover open={open} onOpenChange={handleOpenChange}>
+  const renderPicker = (binding?: { ref: (instance: HTMLButtonElement | null) => void; onBlur: () => void; invalid: boolean; disabled: boolean; message?: string }) => (
+    <div className={cn('relative inline-flex max-w-full', className)}><Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <button
           type="button"
-          id={id}
+          ref={(instance) => { binding?.ref(instance); if (typeof ref === 'function') ref(instance); else if (ref) ref.current = instance }}
+          disabled={disabled || binding?.disabled}
+          onBlur={() => { binding?.onBlur(); onBlur?.() }}
+          aria-invalid={binding?.invalid ?? rest['aria-invalid']}
+          aria-describedby={binding?.message ? (id ?? rest.name) + '-error' : rest['aria-describedby']}
+          id={id ?? rest.name}
           className={cn(
             'flex h-8 w-[150px] items-center gap-2 rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-sm transition-colors hover:border-primary hover:bg-muted/50 focus:border-input focus:outline-none focus:ring-1 focus:ring-ring',
             !value && 'text-muted-foreground',
+            rest['aria-invalid'] && 'border-danger',
             className,
           )}
         >
           <Calendar className="h-4 w-4 shrink-0 opacity-50" />
           <span className="flex-1 text-left">{value || placeholder}</span>
-          {value && (
-            <X
-              className="h-3.5 w-3.5 shrink-0 opacity-50 transition-opacity hover:opacity-100"
-              onClick={(e) => {
-                e.stopPropagation()
-                onChange('')
-              }}
-            />
-          )}
+          {value && <span className="h-4 w-5 shrink-0" aria-hidden />}
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-[248px] p-3">
@@ -175,6 +181,11 @@ export function MonthPicker({
           </button>
         </div>
       </PopoverContent>
-    </Popover>
+    </Popover>{value && <button type="button" disabled={disabled || binding?.disabled} aria-label="清除期间"
+      className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      onClick={() => onChange('')}><X className="h-3.5 w-3.5" /></button>}</div>
   )
-}
+  if (adapter && rest.name) return adapter.render(rest.name, (field) => <>{renderPicker(field)}{field.message && <p id={(id ?? rest.name) + '-error'} className="mt-1 text-xs text-danger">{field.message}</p>}</>)
+  return renderPicker()
+})
+MonthPicker.displayName = 'MonthPicker'

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { useExpenseAnalysis } from '@/hooks/api-queries'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { TooltipProvider } from '@/components/ui/tooltip'
+import { MagnitudeValue, magnitudeMaximum } from '@/components/ui/magnitude-value'
 import { TipLabel } from '@/components/ui/tip-label'
 import { totalExpenseMetrics } from './budget-total'
 import { RateBar } from '@/components/ui/rate-bar'
@@ -101,10 +102,25 @@ export function ExpenseAnalysisCard({ period, companyCode, hiddenColumns = [] }:
   const ytdColSpan = visibleCols.filter((c) => c.group === 'ytd').length
   const firstYtdIdx = visibleCols.findIndex((c) => c.group === 'ytd')
 
-  const renderCells = (m: MetricOf) =>
+  const amountOf: Partial<Record<ExpenseColumnKey, (m: MetricOf) => number>> = {
+    'month-budget': (m) => m.monthBudget ?? m.budget / 12,
+    'month-actual': (m) => m.monthActual,
+    'month-same': (m) => m.monthSame,
+    'ytd-budget': (m) => m.budget,
+    'ytd-actual': (m) => m.ytdActual,
+    'ytd-same': (m) => m.ytdSame,
+  }
+
+  const maxima = Object.fromEntries(Object.entries(amountOf).map(([key, pick]) => [key, magnitudeMaximum(rows.map(pick))]))
+
+  const renderCells = (m: MetricOf, total = false) =>
     visibleCols.map((col, i) => (
       <td key={col.key} className={cn(TD_CLS, col.center && 'text-center', i === firstYtdIdx && 'border-l border-border/60')}>
-        {CELL_RENDERERS[col.key](m)}
+        {!total && amountOf[col.key] ? (
+          <MagnitudeValue value={amountOf[col.key]!(m)} maximum={maxima[col.key]}>
+            {CELL_RENDERERS[col.key](m)}
+          </MagnitudeValue>
+        ) : CELL_RENDERERS[col.key](m)}
       </td>
     ))
 
@@ -116,8 +132,8 @@ export function ExpenseAnalysisCard({ period, companyCode, hiddenColumns = [] }:
             <p className="text-xs text-muted-foreground">配置运营费用映射并导入经营数据后，将按映射展示费用使用情况</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="data-table-report data-table-report--striped">
+          <div className="detail-table-scroll overflow-auto">
+            <table data-ui-table data-detail-table data-comparison-matrix aria-label="运营费用完整报表，单位万元" className="data-table-report data-table-report--striped">
               <thead>
                 <tr className="border-b border-border">
                   <th rowSpan={2} className="text-left w-[10em]">指标名称</th>
@@ -137,19 +153,7 @@ export function ExpenseAnalysisCard({ period, companyCode, hiddenColumns = [] }:
                   const { code, name, ...metric } = row
                   return (
                     <tr key={code}>
-                      {/* 指标名单行截断（空格不计入 10 字符判定）：固定 w-[10em] + truncate，Tooltip 悬停显示完整名称 */}
-                      <td className="px-3 py-2 text-left text-sm font-medium text-foreground w-[10em]">
-                        {name.replace(/\s/g, '').length > 10 ? (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="block w-[10em] truncate">{name}</span>
-                            </TooltipTrigger>
-                            <TooltipContent side="top">{name}</TooltipContent>
-                          </Tooltip>
-                        ) : (
-                          <span className="block w-[10em] truncate">{name}</span>
-                        )}
-                      </td>
+                      <td className="px-3 py-2 text-left text-sm font-medium text-foreground">{name}</td>
                       {renderCells(metric)}
                     </tr>
                   )
@@ -162,7 +166,7 @@ export function ExpenseAnalysisCard({ period, companyCode, hiddenColumns = [] }:
                     return (
                       <tr className="border-t-2 border-border bg-muted/40 font-semibold">
                         <td className="px-3 py-2 text-left text-sm font-semibold text-foreground">合计</td>
-                        {renderCells(total)}
+                        {renderCells(total, true)}
                       </tr>
                     )
                   })()}

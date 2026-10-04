@@ -14,7 +14,6 @@ import {
   compareVersions,
   fetchReleaseNotes,
   getCurrentVersion,
-  getLastReadVersion,
   getLastSeenUpdateVersion,
   markUpdateSeen,
   markVersionRead,
@@ -86,7 +85,7 @@ export function VersionNotice() {
   const hasNewVersion =
     !!latest && !isDev && compareVersions(latest.version, currentVersion) > 0
 
-  // 自动弹窗：发现新版本仅弹一次；当前已最新但公告未读则弹出欢迎
+  // 自动弹窗只提醒需要刷新的新版本，当前版本公告保留手动入口。
   useEffect(() => {
     if (!latest || isDev) return
     if (compareVersions(latest.version, currentVersion) > 0) {
@@ -94,11 +93,6 @@ export function VersionNotice() {
         markUpdateSeen(latest.version)
         setAutoDialog(latest)
       }
-    } else if (
-      compareVersions(latest.version, currentVersion) === 0 &&
-      getLastReadVersion() !== latest.version
-    ) {
-      setAutoDialog(latest)
     }
   }, [latest, currentVersion, isDev])
 

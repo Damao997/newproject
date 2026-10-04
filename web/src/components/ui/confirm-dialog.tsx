@@ -57,7 +57,7 @@ export function useConfirm() {
   const inputConfirmed = !state.requireInput || inputValue.trim() === state.requireInput
 
   const element = (
-    <Dialog open={state.open} onOpenChange={(o) => { if (!o) settle(false) }}>
+    <Dialog presentation="modal" open={state.open} onOpenChange={(o) => { if (!o) settle(false) }}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{state.title ?? '确认操作'}</DialogTitle>

@@ -1,4 +1,7 @@
+import { useFormModel, ModelFormFields } from '@/components/forms/form-model'
+import { useFormClose } from '@/components/forms/form-navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Controller } from 'react-hook-form'
 import { Select as AntdSelect } from 'antd'
 import { PageContainer } from '@/components/layout/page-container'
 import { SubPageTabs } from '@/components/layout/sub-page-tabs'
@@ -28,8 +31,7 @@ import { useSalesmenManage, useCreateSalesman, useUpdateSalesman, useSetSalesman
 import { usePageStore, type TransactionSalesmenState } from '@/stores/pageStateStore'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
 import { useGlobalCompanyScope } from '@/hooks/use-global-company-scope'
-import { antdSizeFromClassName } from '@/components/ui/antd-size'
-import { Loader2, Plus, RefreshCw, Search, Users, ChevronDown } from 'lucide-react'
+import { Loader2, Plus, RefreshCw, Search, ChevronDown } from 'lucide-react'
 import type { SalesmanManageItem } from '@/types'
 
 /**
@@ -163,29 +165,30 @@ export default function SalesmenManagePage() {
 
   return (
     <PageContainer
+      navigation={<SubPageTabs items={TRANSACTION_TABS} />}
       viewportBound
       title="业务员管理"
       description="维护催收业务员档案（姓名 / 公司归属 / 联系方式），停用后不再可指派"
-      actions={
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" disabled={isFetching} onClick={() => refetch()}>
-            <RefreshCw className={cn('mr-1.5 h-3.5 w-3.5', isFetching && 'animate-spin')} />
-            刷新
-          </Button>
-          {canCreate && (
-            <Button size="sm" onClick={() => setCreating(true)}>
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              新建业务员
-            </Button>
-          )}
-        </div>
-      }
     >
-      <SubPageTabs items={TRANSACTION_TABS} />
 
       {/* 筛选卡（公司口径在 Header CompanyPill 全局筛选） */}
-      <Card className="shrink-0 rounded-card border border-border p-4">
-        <FilterBar>
+      <Card variant="filter" className="shrink-0 rounded-card border border-border p-4">
+        <FilterBar
+          actions={
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" disabled={isFetching} onClick={() => refetch()}>
+                <RefreshCw className={cn('mr-1.5 h-3.5 w-3.5', isFetching && 'animate-spin')} />
+                刷新
+              </Button>
+              {canCreate && (
+                <Button size="sm" onClick={() => setCreating(true)}>
+                  <Plus className="mr-1.5 h-3.5 w-3.5" />
+                  新建业务员
+                </Button>
+              )}
+            </div>
+          }
+        >
           <Select value={statusFilter || 'all'} onValueChange={(v) => setSalesmen({ status: v === 'all' ? '' : v, page: 1 })}>
             <SelectTrigger className="h-9 w-[120px]">
               <SelectValue placeholder="状态" />
@@ -211,13 +214,6 @@ export default function SalesmenManagePage() {
 
       {/* 列表卡 */}
       <Card className="flex min-h-0 flex-1 flex-col rounded-card border border-border overflow-hidden">
-        <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2.5">
-          <h3 className="flex items-center gap-2 text-base font-semibold tracking-tight">
-            <Users className="h-4 w-4" />
-            业务员列表
-          </h3>
-          <span className="ml-auto text-xs text-muted-foreground">共 {total} 人</span>
-        </div>
         {isError ? (
           <div className="flex flex-col items-center gap-3 py-10">
             <p className="text-sm text-destructive">{error instanceof Error ? error.message : '数据加载失败'}</p>
@@ -285,7 +281,9 @@ function SalesmanFormDialog({ open, initial, onClose }: { open: boolean; initial
   const updateMutation = useUpdateSalesman()
   const { displayNameMap } = useCompanyDisplayName()
 
-  const [values, setValues] = useState<SalesmanFormValues>(EMPTY_FORM)
+  const model = useFormModel<SalesmanFormValues>(EMPTY_FORM, {"name":"请输入姓名","companyCodes":"请至少选择一家公司归属"})
+  const values = model.values
+  const setValues = model.setValues
   const [errorMsg, setErrorMsg] = useState('')
 
   // 打开时以 initial 回填（新建则清空）；key 由父组件控制重挂载，此处 effect 兜底同步
@@ -297,11 +295,12 @@ function SalesmanFormDialog({ open, initial, onClose }: { open: boolean; initial
         ? { name: initial.name, companyCodes: [...initial.companyCodes], phone: initial.phone ?? '', remark: initial.remark ?? '' }
         : EMPTY_FORM,
     )
-  }, [open, initial])
+  }, [open, initial, setValues])
 
   const pending = createMutation.isPending || updateMutation.isPending
 
   const handleSubmit = async () => {
+    if (!(await model.validate())) return
     setErrorMsg('')
     const name = values.name.trim()
     if (!name) { setErrorMsg('请输入姓名'); return }
@@ -328,8 +327,10 @@ function SalesmanFormDialog({ open, initial, onClose }: { open: boolean; initial
     ...summaryOptions.map((c) => ({ value: c.code, label: `汇总主体-${displayNameMap.get(c.code) ?? c.name}` })),
   ]
 
+  const formClose = useFormClose({ dirty: model.form.formState.isDirty, busy: model.pending || pending, enabled: open, onClose: onClose })
+
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+    <><Dialog open={open} presentation="drawer" busy={model.pending || pending} onOpenChange={(next) => { if (!next) formClose.requestClose() }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>{isEdit ? '编辑业务员' : '新建业务员'}</DialogTitle>
@@ -337,11 +338,11 @@ function SalesmanFormDialog({ open, initial, onClose }: { open: boolean; initial
             {isEdit ? `编辑 ${initial?.name} 的档案信息` : '创建后可在客商台账中指派为负责业务员'}
           </DialogDescription>
         </DialogHeader>
-        <DialogBody className="grid gap-4">
+        <DialogBody className="grid gap-4"><ModelFormFields model={model}>
           <div className="space-y-3">
             <div className="space-y-1.5">
               <Label htmlFor="salesman-form-name">姓名（必填）</Label>
-              <Input
+              <Input name="name"
                 id="salesman-form-name"
                 value={values.name}
                 onChange={(e) => setValues((v) => ({ ...v, name: e.target.value }))}
@@ -350,24 +351,23 @@ function SalesmanFormDialog({ open, initial, onClose }: { open: boolean; initial
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="salesman-form-companies">公司归属（可多选）</Label>
-              <AntdSelect
+              <Controller control={model.form.control} name="companyCodes" render={({ field, fieldState }) => <>
+              <AntdSelect {...field} id="salesman-form-companies" disabled={model.pending || pending} aria-invalid={!!fieldState.error} status={fieldState.error ? 'error' : undefined} aria-describedby={fieldState.error ? 'salesman-companies-error' : undefined}
                 mode="multiple"
-                value={values.companyCodes}
-                onChange={(next) => setValues((v) => ({ ...v, companyCodes: next }))}
                 options={options}
                 placeholder="选择公司（可多选）"
                 aria-label="公司归属多选"
-                size={antdSizeFromClassName('h-9', 'middle')}
+                size="large"
                 className="w-full"
                 maxTagCount={3}
                 maxTagPlaceholder={(omitted) => `等 ${omitted.length + 3} 家`}
                 popupMatchSelectWidth={false}
                 suffixIcon={<ChevronDown className="h-4 w-4 opacity-50" />}
-              />
+              />{fieldState.error && <p id="salesman-companies-error" className="mt-1 text-xs text-danger">{fieldState.error.message}</p>}</>} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="salesman-form-phone">联系方式（选填）</Label>
-              <Input
+              <Input name="phone"
                 id="salesman-form-phone"
                 value={values.phone}
                 onChange={(e) => setValues((v) => ({ ...v, phone: e.target.value }))}
@@ -376,7 +376,7 @@ function SalesmanFormDialog({ open, initial, onClose }: { open: boolean; initial
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="salesman-form-remark">备注（选填）</Label>
-              <Textarea
+              <Textarea name="remark"
                 id="salesman-form-remark"
                 rows={2}
                 value={values.remark}
@@ -386,15 +386,16 @@ function SalesmanFormDialog({ open, initial, onClose }: { open: boolean; initial
             </div>
             {errorMsg && <FlashMessage type="error">{errorMsg}</FlashMessage>}
           </div>
-        </DialogBody>
+        </ModelFormFields></DialogBody>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={pending}>取消</Button>
-          <Button onClick={handleSubmit} disabled={pending}>
+          <Button variant="outline" onClick={formClose.requestClose} disabled={pending}>取消</Button>
+          <Button onClick={model.submit(handleSubmit)} disabled={pending}>
             {pending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
             {isEdit ? '保存' : '创建'}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+      {formClose.element}</>
   )
 }

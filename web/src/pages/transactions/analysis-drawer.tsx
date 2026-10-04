@@ -1,4 +1,7 @@
+import { ModelFormFields } from '@/components/forms/form-model'
+import { useFormClose } from '@/components/forms/form-navigation'
 import { useState } from 'react'
+import { useConfirm } from '@/components/ui/confirm-dialog'
 import { ChevronDown, ChevronUp, Save, Trash2, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,9 +19,9 @@ import { RichTextEditor } from '@/components/editor/rich-text-editor'
 import { useCompanies, useTransactionAging } from '@/hooks/api-queries'
 import { useAnalysisForm } from '@/hooks/use-analysis-form'
 import { useCompanyDisplayName } from '@/hooks/useCompanyDisplay'
-import { cn, formatWan } from '@/lib/utils'
+import { formatWan } from '@/lib/utils'
 import type { AgingAnalysisRow } from '@/types'
-import { AgingStackBar, agingRisk, AGING_GROUPS } from './shared'
+import { AgingDistribution, agingRisk, AGING_GROUPS } from './shared'
 
 /**
  * 往来单项分析抽屉：针对 公司 × 往来类型 × 期间 撰写/编辑/删除分析结论（subjectType='transaction'）。
@@ -65,7 +68,7 @@ export function TransactionAnalysisDrawer({ open, target, onClose }: Props) {
 function TransactionDrawerBody({ target, onClose }: { target: TransactionAnalysisTarget; onClose: () => void }) {
   const [companyCode, setCompanyCode] = useState(target.defaultCompanyCode ?? '')
   const [txnType, setTxnType] = useState(target.transactionType ?? '')
-  // 账龄明细网格默认折叠：默认仅展示余额大数字 + 堆叠条 + 三段占比，展开后显示 4×2 明细网格
+  // 账龄明细默认折叠：先看余额和三段占比，展开后显示八段完整比较行。
   const [agingExpanded, setAgingExpanded] = useState(false)
 
   const { data: companies } = useCompanies()
@@ -112,10 +115,17 @@ function TransactionDrawerBody({ target, onClose }: { target: TransactionAnalysi
     },
   })
 
+  const contextConfirm = useConfirm()
+  const changeContext = async (update: () => void) => {
+    if (form.busy) return
+    if (form.model.form.formState.isDirty && !await contextConfirm.confirm({ title: '放弃未保存的修改？', description: '切换分析对象后，本次未保存的内容会丢失。', confirmText: '放弃修改', cancelText: '继续编辑', danger: true })) return
+    update()
+  }
+  const formClose = useFormClose({ dirty: form.model.form.formState.isDirty, busy: form.busy, onClose })
   return (
     <>
       <SheetShell
-        onClose={onClose}
+        onClose={formClose.requestClose} busy={form.busy}
         icon={<FileText className="mt-0.5 h-5 w-5 text-primary" />}
         title="往来单项分析"
         description={`${txnType || '请选择往来类型'} · ${target.period}`}
@@ -129,7 +139,7 @@ function TransactionDrawerBody({ target, onClose }: { target: TransactionAnalysi
               )}
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={onClose} disabled={form.busy}>取消</Button>
+              <Button variant="outline" size="sm" onClick={formClose.requestClose} disabled={form.busy}>取消</Button>
               <Button size="sm" onClick={form.save} disabled={form.busy || !companyCode || !txnType || !form.title.trim()}>
                 <Save className="mr-1 h-4 w-4" /> 保存
               </Button>
@@ -137,11 +147,11 @@ function TransactionDrawerBody({ target, onClose }: { target: TransactionAnalysi
           </>
         )}
       >
-          {/* 公司 + 往来类型选择 + 快照上下文 */}
+<ModelFormFields model={form.model}>          {/* 公司 + 往来类型选择 + 快照上下文 */}
           <div className="space-y-3 border-b px-5 py-3">
             <div className="flex flex-wrap items-center gap-3">
               <Label className="shrink-0">分析公司</Label>
-              <Select value={companyCode} onValueChange={setCompanyCode}>
+              <Select value={companyCode} disabled={form.busy} onValueChange={(value) => { void changeContext(() => setCompanyCode(value)) }}>
                 <SelectTrigger className="h-8 w-[220px]">
                   <SelectValue placeholder="选择公司（必选）" />
                 </SelectTrigger>
@@ -152,7 +162,7 @@ function TransactionDrawerBody({ target, onClose }: { target: TransactionAnalysi
                 </SelectContent>
               </Select>
               <Label className="shrink-0">往来类型</Label>
-              <Select value={txnType} onValueChange={setTxnType}>
+              <Select value={txnType} disabled={form.busy} onValueChange={(value) => { void changeContext(() => setTxnType(value)) }}>
                 <SelectTrigger className="h-8 w-[140px]">
                   <SelectValue placeholder="选择类型（必选）" />
                 </SelectTrigger>
@@ -165,15 +175,12 @@ function TransactionDrawerBody({ target, onClose }: { target: TransactionAnalysi
             </div>
             {companyCode && txnType && (
               snapshot ? (
-                <div className="rounded-md border bg-muted/30 p-3">
+                <div className="rounded-xl border border-border bg-card p-3">
                   <div className="flex items-baseline justify-between">
                     <span className="text-caption text-muted-foreground">期末余额</span>
                     <span className="font-num text-lg font-bold text-foreground">
                       {formatWan(snapshot.closingBalance)}<span className="ml-0.5 text-xs font-normal text-muted-foreground">万</span>
                     </span>
-                  </div>
-                  <div className="mt-2">
-                    <AgingStackBar aging={snapshot.aging} closingBalance={snapshot.closingBalance} />
                   </div>
                   {(() => {
                     const risk = agingRisk(snapshot.aging, snapshot.closingBalance)
@@ -192,6 +199,7 @@ function TransactionDrawerBody({ target, onClose }: { target: TransactionAnalysi
                         </p>
                         <button
                           type="button"
+                          aria-expanded={agingExpanded}
                           onClick={() => setAgingExpanded((v) => !v)}
                           className="mt-2 flex w-full items-center justify-center gap-1 rounded py-0.5 text-xs text-primary transition-colors hover:bg-muted"
                         >
@@ -202,19 +210,9 @@ function TransactionDrawerBody({ target, onClose }: { target: TransactionAnalysi
                     )
                   })()}
                   {agingExpanded && (
-                    <div className="mt-2 grid grid-cols-4 gap-1.5 border-t border-border pt-2">
-                      {AGING_GROUPS.map((g) => {
-                        const v = snapshot.aging[g] ?? 0
-                        const isDanger = g === '3年以上' && v > 0
-                        return (
-                          <div key={g} className={cn('rounded-md border px-1.5 py-1 text-center', isDanger ? 'border-destructive/30 bg-destructive/[0.06]' : 'border-border bg-background')}>
-                            <p className="text-micro text-muted-foreground">{g}</p>
-                            <p className={cn('font-num text-xs', isDanger ? 'font-medium text-destructive' : 'text-foreground')}>
-                              {v !== 0 ? formatWan(v) : '-'}
-                            </p>
-                          </div>
-                        )
-                      })}
+                    <div className="mt-2 border-t border-border pt-2">
+                      <p className="mb-1 text-xs text-muted-foreground">账龄明细 · 单位：万元</p>
+                      <AgingDistribution aging={snapshot.aging} closingBalance={snapshot.closingBalance} variant="comparison" />
                     </div>
                   )}
                 </div>
@@ -228,7 +226,7 @@ function TransactionDrawerBody({ target, onClose }: { target: TransactionAnalysi
           <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
             <div className="space-y-1.5">
               <Label htmlFor="txn-analysis-title">分析标题</Label>
-              <Input id="txn-analysis-title" value={form.title} onChange={(e) => form.setTitle(e.target.value)} placeholder="如：华东公司应收账款分析" />
+              <Input name="title" id="txn-analysis-title" value={form.title} onChange={(e) => form.setTitle(e.target.value)} placeholder="如：华东公司应收账款分析" />
             </div>
             <div className="space-y-1.5">
               <Label>分析内容</Label>
@@ -238,8 +236,10 @@ function TransactionDrawerBody({ target, onClose }: { target: TransactionAnalysi
               <FlashMessage type={form.feedback.type === 'ok' ? 'success' : 'error'}>{form.feedback.msg}</FlashMessage>
             )}
           </div>
-        </SheetShell>
+        </ModelFormFields></SheetShell>
+        {formClose.element}
         {form.confirmElement}
+        {contextConfirm.element}
     </>
   )
 }

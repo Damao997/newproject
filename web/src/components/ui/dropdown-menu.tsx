@@ -100,7 +100,52 @@ const DropdownMenu = ({ open, defaultOpen, onOpenChange, children }: DropdownMen
       ? align === 'start' ? 'topLeft' : align === 'end' ? 'topRight' : 'top'
       : align === 'start' ? 'bottomLeft' : align === 'end' ? 'bottomRight' : 'bottom'
 
-  const ctx = React.useMemo(() => ({ close: () => setOpen(false) }), [setOpen])
+  const panelRef = React.useRef<HTMLDivElement>(null)
+  const triggerRef = React.useRef<HTMLElement>(null)
+  const ctx = React.useMemo(() => ({ close: () => { setOpen(false); triggerRef.current?.focus() } }), [setOpen])
+  React.useEffect(() => {
+    if (!isOpen) return
+    const frame = requestAnimationFrame(() => panelRef.current?.querySelector<HTMLElement>('[role^="menuitem"]:not([aria-disabled="true"]),button:not(:disabled)')?.focus())
+    return () => cancelAnimationFrame(frame)
+  }, [isOpen])
+  const onMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape' || event.key === 'Tab') {
+      if (event.key === 'Escape') event.preventDefault()
+      ctx.close()
+      return
+    }
+    const target = event.target as HTMLElement
+    if ((event.key === 'Enter' || event.key === ' ') && target.getAttribute('role')?.startsWith('menuitem')) {
+      event.preventDefault()
+      target.click()
+      return
+    }
+    if (!['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+    const items = [...(panelRef.current?.querySelectorAll<HTMLElement>('[role^="menuitem"]:not([aria-disabled="true"]),button:not(:disabled)') ?? [])]
+      .filter((item) => getComputedStyle(item).display !== 'none')
+    if (!items.length) return
+    event.preventDefault()
+    const index = items.indexOf(target)
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (['ArrowUp', 'ArrowLeft'].includes(event.key) ? -1 : 1) + items.length) % items.length
+    items[next]?.focus()
+  }
+  const trigger = collected.trigger as React.ReactElement<{
+    ref?: React.Ref<HTMLElement>; onKeyDown?: React.KeyboardEventHandler<HTMLElement>;
+    'aria-haspopup'?: 'menu'; 'aria-expanded'?: boolean;
+  }>
+  const enhancedTrigger = React.isValidElement(trigger) ? React.cloneElement(trigger, {
+    ref: (node: HTMLElement | null) => {
+      triggerRef.current = node
+      if (typeof trigger.props.ref === 'function') trigger.props.ref(node)
+      else if (trigger.props.ref) trigger.props.ref.current = node
+    },
+    'aria-haspopup': 'menu',
+    'aria-expanded': isOpen,
+    onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
+      trigger.props.onKeyDown?.(event)
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setOpen(true) }
+    },
+  }) : collected.trigger
 
   return (
     <DropdownMenuContext.Provider value={ctx}>
@@ -112,15 +157,17 @@ const DropdownMenu = ({ open, defaultOpen, onOpenChange, children }: DropdownMen
         // popupRender：dropdownRender 已弃用（antd 5.29+）
         popupRender={() => (
           <div
+            ref={panelRef}
             role="menu"
+            onKeyDown={onMenuKeyDown}
             // 自定义面板自带白底/边框/浮层阴影：antd 仅给 Menu 组件加背景，自定义内容需自持（修复透明面板）
-            className={cn('min-w-[8rem] rounded-md border border-border/60 bg-popover p-1 text-popover-foreground shadow-lg', collected.panelClassName)}
+            className={cn('min-w-[8rem] max-h-[calc(100dvh-88px)] overflow-y-auto rounded-md border border-border/60 bg-popover p-1 text-popover-foreground shadow-lg', collected.panelClassName)}
           >
             {collected.panelChildren}
           </div>
         )}
       >
-        {collected.trigger as React.ReactNode}
+        {enhancedTrigger as React.ReactNode}
       </Dropdown>
     </DropdownMenuContext.Provider>
   )
@@ -196,6 +243,7 @@ const DropdownMenuCheckboxItem = ({
   return (
     <div
       role="menuitemcheckbox"
+      tabIndex={disabled ? -1 : 0}
       aria-checked={checked}
       aria-disabled={disabled}
       className={cn(
@@ -245,6 +293,7 @@ const DropdownMenuRadioItem = ({ className, children, value, disabled, onSelect 
   return (
     <div
       role="menuitemradio"
+      tabIndex={disabled ? -1 : 0}
       aria-checked={checked}
       aria-disabled={disabled}
       className={cn(

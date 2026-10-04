@@ -33,10 +33,9 @@ export default function DataBoardPage() {
 
   return (
     <PageContainer
+      navigation={<SubPageTabs items={BOARD_TABS} />}
       title="映射管理"
-      description="配置经营看板的品类、费用映射、主体、月度预算与产品维度"
     >
-      <SubPageTabs items={BOARD_TABS} />
 
       {activeTab === 'category' && (
         <ProductCategoryPanel canCreate={canCreate} canUpdate={canUpdate} canDelete={canDelete} />

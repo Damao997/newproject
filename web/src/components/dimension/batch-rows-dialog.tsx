@@ -1,4 +1,6 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useFormTask } from '@/components/forms/form-task'
+import { useFormClose } from '@/components/forms/form-navigation'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog, DialogContent, DialogBody, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -74,6 +76,9 @@ const DEFAULT_MAX_ROWS = 50
 export function BatchRowsDialog<T>({
   open, onOpenChange, title, description, createEmptyRow, renderRowFields, validateRow, submitRows, maxRows = DEFAULT_MAX_ROWS,
 }: BatchRowsDialogProps<T>) {
+  const task = useFormTask()
+  const baseline = useRef('')
+  const bodyRef = useRef<HTMLDivElement>(null)
   const [rows, setRows] = useState<T[]>([])
   const [statuses, setStatuses] = useState<BatchRowStatus[]>([])
   const [submitting, setSubmitting] = useState(false)
@@ -81,7 +86,9 @@ export function BatchRowsDialog<T>({
   // 打开时重置为一行空行（createEmptyRow 由面板内联定义，重置仅依赖 open）
   useEffect(() => {
     if (open) {
-      setRows([createEmptyRow()])
+      const initial = [createEmptyRow()]
+      baseline.current = JSON.stringify(initial)
+      setRows(initial)
       setStatuses([{ state: 'pending' }])
       setSubmitting(false)
     }
@@ -121,7 +128,13 @@ export function BatchRowsDialog<T>({
       errors.push(msg)
     })
     setStatuses(rows.map((_, i) => (errors[i] ? { state: 'error', message: errors[i]! } : statuses[i])))
-    if (hasInvalid) return
+    if (hasInvalid) {
+      const first = errors.findIndex(Boolean)
+      const row = bodyRef.current?.querySelector<HTMLElement>('[data-batch-row="' + first + '"]')
+      row?.scrollIntoView?.({ block: 'nearest' })
+      row?.querySelector<HTMLElement>('[aria-invalid="true"],input,button,textarea')?.focus()
+      return
+    }
 
     // 顺序提交未成功行
     const submitIdx: number[] = []
@@ -145,27 +158,33 @@ export function BatchRowsDialog<T>({
       if (next.every((s) => s.state === 'success')) {
         onOpenChange(false)
       }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '创建失败，请重试'
+      setStatuses(statuses.map((status) => status.state === 'success' ? status : { state: 'error', message }))
     } finally {
       setSubmitting(false)
     }
   }
 
+  const close = useFormClose({ dirty: JSON.stringify(rows) !== baseline.current, busy: submitting || task.pending, enabled: open, onClose: () => onOpenChange(false) })
+
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o && !submitting) onOpenChange(false) }}>
+    <><Dialog open={open} busy={submitting || task.pending} onOpenChange={(next) => { if (!next) close.requestClose() }}>
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
 
-        <DialogBody className="grid gap-4">
-          <div className="space-y-3 pr-1">
+        <DialogBody ref={bodyRef} className="saas-dense-grid grid gap-4">
+          <fieldset disabled={submitting || task.pending} className="m-0 min-w-0 space-y-3 border-0 p-0 pr-1">
             {rows.map((row, index) => {
               const status = statuses[index] ?? { state: 'pending' as const }
               const invalid = status.state === 'error'
               return (
                 <div
                   key={index}
+                  data-batch-row={index}
                   className={cn(
                     'rounded-lg border p-3',
                     invalid ? 'border-destructive/40' : status.state === 'success' ? 'border-success/30 bg-success/5' : 'border-border',
@@ -198,7 +217,7 @@ export function BatchRowsDialog<T>({
                 </div>
               )
             })}
-          </div>
+          </fieldset>
         </DialogBody>
 
         <DialogFooter className="sm:justify-between">
@@ -207,14 +226,14 @@ export function BatchRowsDialog<T>({
             添加一行{rows.length >= maxRows ? `（已达上限 ${maxRows}）` : ''}
           </Button>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>取消</Button>
-            <Button onClick={handleSubmit} disabled={submitting || pendingCount === 0}>
+            <Button variant="outline" onClick={close.requestClose} disabled={submitting}>取消</Button>
+            <Button onClick={() => task.run(handleSubmit)} disabled={submitting || pendingCount === 0}>
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {submitting ? '创建中…' : pendingCount > 0 && successCount > 0 ? `创建剩余 ${pendingCount} 条` : `创建 ${pendingCount} 条`}
             </Button>
           </div>
         </DialogFooter>
       </DialogContent>
-    </Dialog>
+    </Dialog>{close.element}</>
   )
 }

@@ -1,6 +1,6 @@
+import { useModelAdapter } from '@/components/forms/form-model'
 import { forwardRef, useMemo, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -36,7 +36,7 @@ export const TYPE_LABEL: Record<string, string> = {
 export function FeedbackAlert({ kind, children }: { kind: 'success' | 'error'; children: ReactNode }) {
   const Icon = kind === 'success' ? CheckCircle2 : AlertCircle
   return (
-    <div
+    <div role={kind === 'error' ? 'alert' : 'status'}
       className={cn(
         'flex items-start gap-2 rounded-lg border p-3 text-sm',
         kind === 'success' ? 'border-success/25 bg-success/10 text-success-strong' : 'border-destructive/25 bg-destructive/[0.06] text-destructive',
@@ -54,12 +54,9 @@ export function FeedbackAlert({ kind, children }: { kind: 'success' | 'error'; c
  */
 export function TitleHint({ text, className }: { text: string; className?: string }) {
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Info className={cn('h-3.5 w-3.5 shrink-0 cursor-help text-muted-foreground', className)} aria-label="说明" />
-      </TooltipTrigger>
-      <TooltipContent className="max-w-xs whitespace-normal">{text}</TooltipContent>
-    </Tooltip>
+    <Popover><PopoverTrigger asChild><button type="button" aria-label="操作说明" className={cn('inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring', className)}><Info className="h-4 w-4" /></button></PopoverTrigger>
+      <PopoverContent className="max-w-xs whitespace-normal text-sm">{text}</PopoverContent>
+    </Popover>
   )
 }
 
@@ -120,7 +117,7 @@ interface PickerTriggerProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const PickerTrigger = forwardRef<HTMLButtonElement, PickerTriggerProps>(
   ({ icon, display, placeholder, onClear, className, ...props }, ref) => (
-    <button
+    <div className="relative w-full"><button
       ref={ref}
       type="button"
       className={cn(
@@ -132,16 +129,8 @@ const PickerTrigger = forwardRef<HTMLButtonElement, PickerTriggerProps>(
     >
       <span className="shrink-0 opacity-50">{icon}</span>
       <span className="min-w-0 flex-1 truncate text-left">{display ?? placeholder}</span>
-      {display && onClear && (
-        <X
-          className="h-3.5 w-3.5 shrink-0 opacity-50 transition-opacity hover:opacity-100"
-          onClick={(e) => {
-            e.stopPropagation()
-            onClear()
-          }}
-        />
-      )}
-    </button>
+      {display && onClear && <span className="h-4 w-5 shrink-0" aria-hidden />}
+    </button>{display && onClear && <button type="button" disabled={props.disabled} aria-label={'清除' + placeholder} className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring" onClick={(event) => { event.stopPropagation(); onClear() }}><X className="h-3.5 w-3.5" /></button>}</div>
   ),
 )
 PickerTrigger.displayName = 'PickerTrigger'
@@ -174,7 +163,8 @@ function filterSubjects(options: SubjectOption[], keyword: string, excludeCode?:
 }
 
 /** 科目单选弹层选择器 */
-export function SubjectPicker({ options, value, onChange, excludeCode, placeholder = '选择科目', className }: {
+export function SubjectPicker({ options, value, onChange, name, excludeCode, placeholder = '选择科目', className }: {
+  name?: string
   options: SubjectOption[]
   value: string
   onChange: (code: string) => void
@@ -182,15 +172,16 @@ export function SubjectPicker({ options, value, onChange, excludeCode, placehold
   placeholder?: string
   className?: string
 }) {
+  const adapter = useModelAdapter()
   const [open, setOpen] = useState(false)
   const [keyword, setKeyword] = useState('')
   const filtered = useMemo(() => filterSubjects(options, keyword, excludeCode), [options, keyword, excludeCode])
   const selected = options.find((s) => s.code === value)
 
-  return (
+  const renderPicker = (binding?: { ref: (instance: HTMLButtonElement | null) => void; onBlur: () => void; invalid: boolean; disabled: boolean; message?: string }) => (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) setKeyword('') }}>
       <PopoverTrigger asChild>
-        <PickerTrigger
+        <PickerTrigger disabled={binding?.disabled} ref={binding?.ref} onBlur={binding?.onBlur} id={name} aria-label={placeholder} aria-invalid={binding?.invalid} aria-describedby={binding?.message ? name + '-error' : undefined}
           icon={<BookOpen className="h-4 w-4" />}
           display={selected ? <><span className="font-mono text-xs text-muted-foreground">{selected.code}</span> {selected.name}</> : null}
           placeholder={placeholder}
@@ -218,6 +209,8 @@ export function SubjectPicker({ options, value, onChange, excludeCode, placehold
       </PopoverContent>
     </Popover>
   )
+  if (adapter && name) return adapter.render(name, (field) => <>{renderPicker(field)}{field.message && <p id={name + '-error'} className="mt-1 text-xs text-danger">{field.message}</p>}</>)
+  return renderPicker()
 }
 
 /** 科目多选弹层选择器：触发按钮显示已选科目名称 chips（溢出 +N，title 完整列表）；弹层已选项置顶 */

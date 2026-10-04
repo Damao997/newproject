@@ -167,7 +167,7 @@ export function SummaryBreakdownContent({
         <p className="py-3 text-center text-xs text-muted-foreground">成员公司暂无数据</p>
       ) : (
         <div className="max-h-[280px] overflow-y-auto">
-          <table className="w-full text-xs" aria-label={`${title}成员公司明细`}>
+          <table data-ui-table className="w-full text-xs" aria-label={`${title}成员公司明细`}>
             {multi && (
               <thead>
                 <tr className="text-micro text-muted-foreground">

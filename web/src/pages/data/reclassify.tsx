@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { PageContainer } from '@/components/layout/page-container'
 import { SubPageTabs } from '@/components/layout/sub-page-tabs'
@@ -76,7 +77,7 @@ const resultOf = (log: ReclassifyLog): PreviewStatItem[] => {
 }
 
 /** 从日志还原跨公司重分类原始参数（重新应用与只读详情共用） */
-const companyPresetOf = (log: ReclassifyLog): ReclassifyCompanyPreset => {
+export const companyPresetOf = (log: ReclassifyLog): ReclassifyCompanyPreset => {
   const d = log.detail
   return {
     templateType: (log.templateType as ReclassifyCompanyPreset['templateType']) ?? 'operating',
@@ -91,7 +92,7 @@ const companyPresetOf = (log: ReclassifyLog): ReclassifyCompanyPreset => {
 }
 
 /** 从日志还原科目/预算调整原始参数（重新应用与只读详情共用；subject 对话框另行补充 templateType） */
-const adjustPresetOf = (log: ReclassifyLog) => {
+export const adjustPresetOf = (log: ReclassifyLog) => {
   const d = log.detail
   return {
     companyCode: log.sourceCompany ?? '',
@@ -106,12 +107,13 @@ const adjustPresetOf = (log: ReclassifyLog) => {
 }
 
 /** subject 对话框 preset：调整参数 + 模板类型 */
-const subjectPresetOf = (log: ReclassifyLog): ReclassifySubjectPreset => ({
+export const subjectPresetOf = (log: ReclassifyLog): ReclassifySubjectPreset => ({
   templateType: (log.templateType as ReclassifySubjectPreset['templateType']) ?? 'operating',
   ...adjustPresetOf(log),
 })
 
 export default function DataReclassifyPage() {
+  const navigate = useNavigate()
   const { headerRef, headerHeight } = useStickyHeader()
   const { can } = usePermission()
   // 与后端一致：科目/预算调整 → data:reclassify:subject；跨公司与撤销/汇总抵消 → data:reclassify:company
@@ -121,6 +123,7 @@ export default function DataReclassifyPage() {
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [nonce, setNonce] = useState(0)
   const openDialog = (next: DialogState) => {
+    if (!next.readonly) { navigate('/data/reclassify/new?kind=' + next.kind + (next.reapplyLogId ? '&log=' + encodeURIComponent(next.reapplyLogId) : '')); return }
     setDialog(next)
     setNonce((n) => n + 1)
   }
@@ -160,13 +163,13 @@ export default function DataReclassifyPage() {
 
   return (
     <PageContainer
+      navigation={<SubPageTabs items={RECLASSIFY_TABS} />}
       viewportBound
       title="单体重分类"
       description="对单一主体的科目、跨公司、预算进行调整与重分类，保留完整调整记录"
       stickyHeader
       headerRef={headerRef}
     >
-      <SubPageTabs items={RECLASSIFY_TABS} />
 
       <ReclassifyLogsPanel
         canRevert={canCompany}

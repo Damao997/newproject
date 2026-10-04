@@ -1,5 +1,6 @@
+import { accountStorage } from './account-storage'
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import { PAGINATION } from '@/lib/constants'
 
 /**
@@ -50,6 +51,8 @@ export interface DataBrowseState {
 }
 
 export interface TransactionOverviewState {
+  /** 六类卡片共用展示方式；仅展示习惯，不影响查询口径 */
+  cardView: 'amount' | 'details'
   /** 公司多选（图表与卡片共享），空数组 = 全部公司；单体与汇总主体互斥，不可同时选中 */
   companies: string[]
   /** '' = 跟随最新期间（仅作用于卡片） */
@@ -119,6 +122,19 @@ export interface TransactionsState {
   collections: TransactionCollectionsState
   salesmen: TransactionSalesmenState
 }
+
+export interface AnalysisState {
+  view: 'focus' | 'report'
+  amountMode: 'month' | 'ytd'
+  metric: 'income' | 'profit' | 'netProfit'
+  sort: 'amount' | 'gap' | 'rate' | 'name'
+  keyword: string
+  page: number
+  selected: string
+  distribution: 'company' | 'customer'
+  expanded: boolean
+}
+export const defaultAnalysisState: AnalysisState = { view: 'focus', amountMode: 'month', metric: 'income', sort: 'amount', keyword: '', page: 1, selected: '', distribution: 'company', expanded: false }
 
 export interface DashboardState {
   /** '' = 最新期间 */
@@ -190,6 +206,7 @@ const defaultDataBrowse: DataBrowseState = {
 }
 
 const defaultOverview: TransactionOverviewState = {
+  cardView: 'amount',
   companies: [DEFAULT_SUMMARY_CODE],
   period: '',
   // 默认口径：外部+关联方（排除内部公司，内部往来通常已抵消；与账龄页默认一致）
@@ -255,6 +272,8 @@ interface PageStateStore {
   dataBrowse: DataBrowseState
   transactions: TransactionsState
   dashboard: DashboardState
+  analysis: Record<string, AnalysisState>
+  setAnalysis: (key: string, patch: Partial<AnalysisState>) => void
   inventory: InventoryState
   formulas: FormulasState
   dataImport: DataImportState
@@ -289,6 +308,7 @@ function mergePersisted(persisted: unknown, current: PageStateStore): PageStateS
       salesmen: { ...defaultSalesmen, ...(t?.salesmen ?? {}) },
     },
     dashboard: { ...defaultDashboard, ...(p.dashboard ?? {}) },
+    analysis: Object.fromEntries(Object.entries(p.analysis ?? {}).map(([key, value]) => [key, { ...defaultAnalysisState, ...value }])),
     inventory: { ...defaultInventory, ...(p.inventory ?? {}) },
     formulas: { ...defaultFormulas, ...(p.formulas ?? {}) },
     dataImport: { ...defaultDataImport, ...(p.dataImport ?? {}) },
@@ -302,6 +322,8 @@ export const usePageStore = create<PageStateStore>()(
       dataBrowse: defaultDataBrowse,
       transactions: defaultTransactions,
       dashboard: defaultDashboard,
+      analysis: {},
+      setAnalysis: (key, patch) => set(s => ({ analysis: { ...s.analysis, [key]: { ...defaultAnalysisState, ...s.analysis[key], ...patch } } })),
       inventory: defaultInventory,
       formulas: defaultFormulas,
       dataImport: defaultDataImport,
@@ -317,6 +339,7 @@ export const usePageStore = create<PageStateStore>()(
     }),
     {
       name: 'page-state-storage',
+      storage: createJSONStorage(() => accountStorage),
       version: 5,
       // v1→v2：旧默认「全部公司」[]（非用户显式多选）迁移为 ET0001，与新默认主体口径一致；
       // 注意：空数组同时是显式「全部公司」的语义，此迁移仅覆盖从未改过默认值的存量会话
@@ -363,6 +386,7 @@ export const usePageStore = create<PageStateStore>()(
         dataBrowse: state.dataBrowse,
         transactions: state.transactions,
         dashboard: state.dashboard,
+        analysis: state.analysis,
         inventory: state.inventory,
         formulas: state.formulas,
         dataImport: state.dataImport,

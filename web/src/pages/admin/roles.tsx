@@ -1,3 +1,4 @@
+import { StatTile } from '@/components/ui/stat-tile'
 import { useMemo, useState } from 'react'
 import { Copy, Edit, Lock, Plus, Search, ShieldCheck, Trash2, UserCog } from 'lucide-react'
 import { PageContainer } from '@/components/layout/page-container'
@@ -71,17 +72,8 @@ function RoleAvatar({ role, index, size = 'md' }: { role: RoleItem; index: numbe
 }
 
 function KpiCard({ label, value, dotClass }: { label: string; value: number; dotClass: string }) {
-  return (
-    <div className="rounded-card border border-border bg-card px-5 py-4">
-      <div className="text-[13px] text-muted-foreground">
-        <span className={cn('mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle', dotClass)} />
-        {label}
-      </div>
-      <div className="mt-1 text-[24px] font-semibold tabular-nums">{value}</div>
-    </div>
-  )
+  return <StatTile label={label} value={value} accent={dotClass} />
 }
-
 /** 角色行操作菜单（表格/卡片共用） */
 function RoleActions({
   role,
@@ -280,7 +272,6 @@ export default function RolesPage() {
   return (
     <PageContainer
       title="角色管理"
-      description="配置角色 × 模块权限矩阵，按角色分配细粒度权限"
       actions={
         canCreate ? (
           <Button size="sm" onClick={() => setRoleDialog({ open: true, mode: 'create', role: null })}>
@@ -291,7 +282,7 @@ export default function RolesPage() {
       }
     >
       {/* KPI：角色清单派生 */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {kpis.map((c) => (
           <KpiCard key={c.label} label={c.label} value={c.value} dotClass={c.dotClass} />
         ))}
@@ -346,7 +337,7 @@ export default function RolesPage() {
             </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="data-table-report data-table-report--striped">
+            <table data-ui-table className="data-table-report data-table-report--striped">
               <thead>
                 <tr>
                   <th scope="col" className="w-9 text-center">
@@ -425,7 +416,7 @@ export default function RolesPage() {
 
             {modules.length > 0 && roles.length > 0 ? (
               <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-[13px]" style={{ minWidth: 640 }}>
+                <table data-ui-table className="w-full border-collapse text-[13px]" style={{ minWidth: 640 }}>
                   <thead>
                     <tr>
                       <th className="sticky left-0 z-[1] min-w-[160px] max-w-[200px] border-b border-r border-border-light bg-ink-3 px-3.5 py-3 text-left text-xs font-semibold text-foreground">
@@ -445,7 +436,7 @@ export default function RolesPage() {
                     {roles.map((role, index) => {
                       const isEven = index % 2 === 1
                       return (
-                        <tr key={role.id} className={cn(isEven ? 'bg-ink-2' : 'bg-white')}>
+                        <tr key={role.id} className={cn(isEven ? 'bg-ink-2' : 'bg-background')}>
                           <th
                             className={cn(
                               'sticky left-0 z-[1] min-w-[160px] max-w-[200px] border-b border-r border-border-light px-3.5 py-3 text-left',

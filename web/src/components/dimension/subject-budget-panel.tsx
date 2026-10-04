@@ -1,3 +1,5 @@
+import { useFormModel, ModelFormFields } from '@/components/forms/form-model'
+import { useFormClose } from '@/components/forms/form-navigation'
 import { useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
@@ -60,7 +62,9 @@ export function SubjectBudgetPanel({ canCreate = false, canUpdate = false, canDe
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<SubjectBudgetConfig | null>(null)
-  const [form, setForm] = useState({ companyCode: '', sortOrder: '', status: 'active' as 'active' | 'inactive' })
+  const model = useFormModel({ companyCode: '', sortOrder: '', status: 'active' as 'active' | 'inactive' }, {"companyCode":"请选择公司"})
+  const form = model.values
+  const setForm = model.setValues
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [batchOpen, setBatchOpen] = useState(false)
@@ -98,6 +102,7 @@ export function SubjectBudgetPanel({ canCreate = false, canUpdate = false, canDe
   }
 
   const handleSave = async () => {
+    if (!(await model.validate())) return
     if (!editing && !form.companyCode) {
       setError('请选择主体')
       return
@@ -210,6 +215,8 @@ export function SubjectBudgetPanel({ canCreate = false, canUpdate = false, canDe
     // eslint-disable-next-line react-hooks/exhaustive-deps -- openEdit/handleDelete 为组件内闭包，重算代价可忽略
   }, [canUpdate, canDelete, openEdit, handleDelete])
 
+  const formClose = useFormClose({ dirty: model.form.formState.isDirty, busy: model.pending || saving, enabled: dialogOpen, onClose: () => setDialogOpen(false) })
+
   return (
     <div className="space-y-4">
       {/* 工具栏 */}
@@ -289,7 +296,7 @@ export function SubjectBudgetPanel({ canCreate = false, canUpdate = false, canDe
       <BatchOpMessage message={batchDelete.message} onDismiss={batchDelete.clearMessage} />
 
       {/* 新增/编辑对话框 */}
-      <Dialog open={dialogOpen} onOpenChange={(o) => { if (!o && !saving) { setDialogOpen(false); setError(null) } }}>
+      <><Dialog open={dialogOpen} presentation="drawer" busy={model.pending || saving} onOpenChange={(next) => { if (!next) formClose.requestClose() }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editing ? '编辑主体配置' : '新增主体配置'}</DialogTitle>
@@ -297,7 +304,7 @@ export function SubjectBudgetPanel({ canCreate = false, canUpdate = false, canDe
               配置的主体将展示在看板主体预算达成分析中；排序值越小越靠前，停用后不再展示。
             </DialogDescription>
           </DialogHeader>
-          <DialogBody className="grid gap-4">
+          <DialogBody className="grid gap-4"><ModelFormFields model={model}>
             <div className="space-y-3">
               {editing ? (
                 <div className="space-y-1">
@@ -306,8 +313,8 @@ export function SubjectBudgetPanel({ canCreate = false, canUpdate = false, canDe
                 </div>
               ) : (
                 <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">主体（选择未配置的公司/汇总主体）</Label>
-                  <Select value={form.companyCode} onValueChange={(v) => setForm((f) => ({ ...f, companyCode: v }))}>
+                  <Label htmlFor="companyCode" className="text-xs text-muted-foreground">主体（选择未配置的公司/汇总主体）</Label>
+                  <Select name="companyCode" value={form.companyCode} onValueChange={(v) => setForm((f) => ({ ...f, companyCode: v }))}>
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="选择主体" />
                     </SelectTrigger>
@@ -335,8 +342,8 @@ export function SubjectBudgetPanel({ canCreate = false, canUpdate = false, canDe
               )}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">排序（升序展示）</Label>
-                  <Input
+                  <Label htmlFor="sortOrder" className="text-xs text-muted-foreground">排序（升序展示）</Label>
+                  <Input name="sortOrder"
                     type="number"
                     value={form.sortOrder}
                     onChange={(e) => setForm((f) => ({ ...f, sortOrder: e.target.value }))}
@@ -361,16 +368,17 @@ export function SubjectBudgetPanel({ canCreate = false, canUpdate = false, canDe
                 </div>
               </div>
             </div>
-          </DialogBody>
+          </ModelFormFields></DialogBody>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>取消</Button>
-            <Button onClick={handleSave} disabled={saving}>
+            <Button variant="outline" onClick={formClose.requestClose} disabled={saving}>取消</Button>
+            <Button onClick={model.submit(handleSave)} disabled={saving}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {editing ? '保存' : '创建'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {formClose.element}</>
 
       {/* 批量新增对话框（多行表单，逐条创建） */}
       <BatchRowsDialog<BatchSubjectRow>

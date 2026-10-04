@@ -1,4 +1,9 @@
+export interface ProfileUser extends User {
+  email?: string | null; phone?: string | null; department?: string | null; jobTitle?: string | null
+}
+
 export interface User {
+  avatarVersion?: string | null
   id: string
   username: string
   name: string

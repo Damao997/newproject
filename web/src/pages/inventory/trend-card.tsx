@@ -18,8 +18,8 @@ import { EmptyState } from '@/components/ui/empty-state'
  */
 
 export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes: string[]; fiscalYear: string | null }) {
-  // 分类色板跟随当前侧边栏风格：按公司顺序轮转，首位为风格主色；主页面恒白，图表框架色恒定
-  const sidebarStyle = useThemeStore((s) => s.sidebarStyle)
+  // 分类色板跟随当前侧边栏风格：按公司顺序轮转，首位为风格主色；坐标、网格和浮层随全站风格同步
+  const sidebarStyle = useThemeStore((s) => s.printing ? 'light' : s.sidebarStyle)
   const { data, isLoading, isError, error, refetch, isFetching } = useInventoryTrend({ fiscalYear, companyCodes })
   // 图例/系列名称跟随全局「显示简称」开关（与明细表一致）
   const { getDisplayName } = useCompanyDisplayName()
@@ -27,7 +27,7 @@ export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes:
   const hasData = !!data && data.months.length > 0
 
   const option = useMemo<EChartsOption>(() => {
-    const ink = getChartInk()
+    const ink = getChartInk(sidebarStyle)
     const seriesColors = getChartSeries(sidebarStyle)
     const months = data?.months ?? []
     const byCompany = data?.byCompany ?? []
@@ -75,7 +75,7 @@ export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes:
         axisTick: { show: false },
         axisLabel: {
           color: ink.axis,
-          fontSize: 11,
+          fontSize: 12,
           formatter: (value: string) => {
             const parts = value.split('-')
             return `${parts[0].slice(2)}/${parts[1]}`
@@ -87,7 +87,7 @@ export function InventoryTrendCard({ companyCodes, fiscalYear }: { companyCodes:
         axisLine: { show: false },
         axisTick: { show: false },
         splitLine: { lineStyle: { color: ink.grid, type: 'dashed' } },
-        axisLabel: { color: ink.axis, fontSize: 11 },
+        axisLabel: { color: ink.axis, fontSize: 12 },
       },
       series: [
         ...byCompany.map((c, i) => ({

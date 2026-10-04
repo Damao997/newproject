@@ -1,3 +1,4 @@
+import { usePreferencesStore } from '@/stores/preferencesStore'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -72,8 +73,8 @@ export function IndicatorPage({ subjectType, description }: { subjectType: 'oper
   const setSubjectKeyword = useCallback((v: string) => setIndicators({ subjectKeyword: v }), [setIndicators])
   const setSort = useCallback((key: string, direction: 'asc' | 'desc' | null) => setIndicators({ sortKey: key, sortDirection: direction }), [setIndicators])
   // 表格密度与隐藏列（持久化到 pageStateStore，刷新保持）
-  const density = usePageStore((s) => s.indicators.density)
-  const setDensity = useCallback((v: 'default' | 'dense' | 'compact') => setIndicators({ density: v }), [setIndicators])
+  const density = usePreferencesStore(s => s.preferences.indicatorDensity)
+  const setDensity = useCallback((v: 'default' | 'dense' | 'compact') => usePreferencesStore.getState().patch({ indicatorDensity: v }), [])
   // 展开集合由持久化数组派生（Set 不可序列化，store 以数组存储）
   const expandedSet = useMemo(() => new Set(expandedCodes), [expandedCodes])
   const setExpandedCodes = useCallback((updater: (prev: Set<string>) => Set<string>) => {
@@ -330,6 +331,7 @@ export function IndicatorPage({ subjectType, description }: { subjectType: 'oper
 
   return (
     <PageContainer
+      navigation={<SubPageTabs items={INDICATOR_TABS} />}
       title={(
         <span className="flex items-center gap-1">
           {fromDashboardKpi && (
@@ -340,11 +342,11 @@ export function IndicatorPage({ subjectType, description }: { subjectType: 'oper
           财务指标
         </span>
       )}
-      className="flex h-[calc(100dvh-104px)] flex-col space-y-3 lg:h-[calc(100dvh-112px)]"
-      // 视口撑满布局：main 可视高 = 100dvh - Header(h-14=56px)；减去 main 的 pt-6(24px) 与 pb-6(24px) 即页面可用高
-      // （lg 断点 pb-8=32px → 112px）。页面内容恒一屏、main 不出现全局滚动条，表格高度由 flex 链撑满。
-      // 104/112 必须与 main-layout.tsx 的 Header 高与 pt/pb 同步（改布局时需同步更新）
+      viewportBound
+      className="flex flex-col space-y-3"
+      // 按顶栏与正文的实际剩余空间测量，手机两行顶栏和缩放不依赖固定减数。
       description={description}
+      headingMeta="金额：万元"
       stickyHeader
       headerRef={headerRef}
       actionsFullWidth
@@ -364,8 +366,6 @@ export function IndicatorPage({ subjectType, description }: { subjectType: 'oper
       }
     >
 
-      {/* 页内 Tab：经营指标 / 静态指标（路由驱动，切换即导航到子页） */}
-      <SubPageTabs items={INDICATOR_TABS} />
 
       {/* AI 全局预分析弹窗（权限控制显示；key 重建保证筛选变化时旧流中止、数据随新筛选；关闭不中断后台生成） */}
       {can('reports', 'create') ? (
@@ -413,7 +413,7 @@ export function IndicatorPage({ subjectType, description }: { subjectType: 'oper
       {/* 科目树表格卡片：flex-1 min-h-0 撑满剩余高度，MetricTree 滚动容器内部滚动、页面不滚动
          勿加 overflow-hidden：会截断 MetricTree 内部容器的 sticky 吸顶链 */}
       <Card className="flex min-h-0 flex-1 flex-col animate-fade-in rounded-card">
-        <div className="flex min-h-0 flex-1 flex-col px-4 py-3">
+        <div className="flex min-h-0 flex-1 flex-col p-0">
           {isLoading ? (
             /* 加载骨架：保持表格占位高度，避免内容区塌陷再撑回导致跳动 */
             <div className="py-3">

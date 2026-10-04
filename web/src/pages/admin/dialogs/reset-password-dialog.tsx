@@ -1,4 +1,7 @@
+import { useFormModel, useFormValue, ModelFormFields } from '@/components/forms/form-model'
+import { useFormClose } from '@/components/forms/form-navigation'
 import { useEffect, useState } from 'react'
+import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -26,19 +29,18 @@ interface ResetPasswordDialogProps {
 
 export function ResetPasswordDialog({ open, user, onClose, onSuccess }: ResetPasswordDialogProps) {
   const resetPassword = useResetPassword()
-  const [password, setPassword] = useState('')
+  const model = useFormModel({ password: '' }, {}, z.object({ password: z.string().refine((value) => !validatePassword(value), '密码至少 8 位，且需同时包含字母与数字') }))
+  const [password, setPassword] = useFormValue(model, "password")
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) return
-    setPassword('')
+    model.form.reset({ password: '' })
     setError(null)
-  }, [open])
+  }, [open, user?.id, model.form])
 
   const submit = async () => {
     if (!user) return
-    const pwdError = validatePassword(password)
-    if (pwdError) return setError(pwdError)
     setError(null)
     try {
       await resetPassword.mutateAsync({ id: user.id, newPassword: password })
@@ -49,18 +51,20 @@ export function ResetPasswordDialog({ open, user, onClose, onSuccess }: ResetPas
     }
   }
 
+  const formClose = useFormClose({ dirty: model.form.formState.isDirty, busy: model.pending || resetPassword.isPending, enabled: open, onClose: onClose })
+
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+    <><Dialog open={open} busy={model.pending || resetPassword.isPending} onOpenChange={(next) => { if (!next) formClose.requestClose() }}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>重置密码 · {user?.name}</DialogTitle>
           <DialogDescription>为用户 {user?.username} 设置新密码，重置后其首次登录须修改密码</DialogDescription>
         </DialogHeader>
-        <DialogBody className="grid gap-4">
+        <DialogBody className="grid gap-4"><ModelFormFields model={model}>
           <div className="space-y-3">
             <div className="space-y-1">
               <Label htmlFor="reset-password">新密码</Label>
-              <Input
+              <Input name="password"
                 id="reset-password"
                 type="password"
                 value={password}
@@ -71,14 +75,14 @@ export function ResetPasswordDialog({ open, user, onClose, onSuccess }: ResetPas
             </div>
             {error && <FlashMessage type="error">{error}</FlashMessage>}
           </div>
-        </DialogBody>
+        </ModelFormFields></DialogBody>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>取消</Button>
-          <Button onClick={submit} disabled={resetPassword.isPending}>
+          <Button variant="outline" onClick={formClose.requestClose}>取消</Button>
+          <Button onClick={model.submit(submit)} disabled={resetPassword.isPending}>
             {resetPassword.isPending ? '重置中...' : '重置密码'}
           </Button>
         </DialogFooter>
       </DialogContent>
-    </Dialog>
+    </Dialog>{formClose.element}</>
   )
 }

@@ -783,6 +783,10 @@ model User {
   username            String       @unique
   displayName         String       @map("display_name")
   email               String?
+  phone               String?
+  department          String?
+  jobTitle            String?      @map("job_title")
+  avatarKey           String?      @map("avatar_key")
   passwordHash        String       @map("password_hash")
   roleId              String       @map("role_id")
   companyCode         String?      @map("company_code")
@@ -803,6 +807,7 @@ model User {
 
   role           Role             @relation(fields: [roleId], references: [id])
   company        Company?         @relation(fields: [companyCode], references: [code])
+  preference     UserPreference?
   tokenBlacklist TokenBlacklist[]
   auditLogs      AuditLog[]
 
@@ -1032,4 +1037,14 @@ model EnterpriseQueryLog {
 
   @@index([userId, createdAt])
   @@map("enterprise_query_log")
+}
+
+// 账号个人偏好，版本号用于跨设备并发保护。
+model UserPreference {
+  userId String @id @map("user_id")
+  preferences Json @db.JsonB
+  revision Int @default(1)
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("user_preference")
 }

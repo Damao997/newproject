@@ -1,9 +1,23 @@
 {
   "profile": "product-admin",
-  "sourceRoots": ["web/src"],
+  "sourceRoots": [
+    "web/src"
+  ],
   "canonicalMap": "DESIGN.md",
   "commands": {
     "verify": "npm run verify",
-    "layout": "node web/scripts/check-responsive-layout.mjs"
+    "layout": "node web/scripts/check-responsive-layout.mjs",
+    "redesign": "node web/scripts/check-redesign.mjs",
+    "interactions": "node web/scripts/check-redesign-interactions.mjs",
+    "forms": "node web/scripts/check-saas-forms.mjs",
+    "surfaces": "node web/scripts/check-surfaces.mjs",
+    "polish": "node web/scripts/check-workspace-polish.mjs",
+    "comparisons": "node web/scripts/check-comparison-surfaces.mjs",
+    "personal": "node web/scripts/check-personal-settings.mjs",
+    "analysis": "node web/scripts/check-analysis-workbench.mjs"
+  },
+  "ownership": {
+    "Select/Listbox": "authored",
+    "Date": "authored"
   }
 }

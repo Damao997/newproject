@@ -1,3 +1,5 @@
+import { useFormModel, useFormValue, ModelFormFields } from '@/components/forms/form-model'
+import { useFormClose } from '@/components/forms/form-navigation'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Drawer } from 'antd'
@@ -43,7 +45,7 @@ export function ReportReader() {
   const { data: report, isLoading, isError, error, refetch } = useReport(reportId ?? null)
 
   return (
-    <div className="-mx-4 -mt-6 flex flex-col bg-page sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 print:-mx-0 print:bg-white">
+    <div className="report-reader -mt-6 flex min-w-0 flex-col bg-page print:bg-white">
       {isLoading ? (
         <div className="flex min-h-[60vh] items-center justify-center text-sm text-muted-foreground">报告加载中…</div>
       ) : isError || !report ? (
@@ -180,15 +182,17 @@ function ReaderShell({ report }: { report: ReportDetail }) {
   const { data: shareInfo } = useReportShare(shareOpen ? report.id : null)
   const createShare = useCreateReportShare()
   const revokeShare = useRevokeReportShare()
-  const [expiresDays, setExpiresDays] = useState<string>('30')
+  const shareModel = useFormModel({expiresDays:('30') as string}, {})
+  const [expiresDays, setExpiresDays] = useFormValue(shareModel, "expiresDays")
   const shareUrl = shareInfo ? `${window.location.origin}/shared/${shareInfo.shareToken}` : ''
 
   const handleCreateShare = async (regenerate = false) => {
     try {
       await createShare.mutateAsync({ id: report.id, data: { expiresDays: expiresDays === 'permanent' ? null : Number(expiresDays), regenerate } })
+      shareModel.form.reset(shareModel.form.getValues())
       flash(regenerate ? '分享链接已重置' : '分享已开启')
     } catch (e) {
-      flash((e as Error).message || '分享设置失败', 'error')
+      shareModel.form.setError('root', { message: e instanceof Error ? e.message : '分享设置失败' })
     }
   }
 
@@ -218,6 +222,8 @@ function ReaderShell({ report }: { report: ReportDetail }) {
     }
   }
 
+  const shareModelClose = useFormClose({ dirty: shareModel.form.formState.isDirty, busy: shareModel.pending || createShare.isPending || revokeShare.isPending, enabled: shareOpen, onClose: () => setShareOpen(false) })
+
   return (
     <div className="animate-fade-in">
       {/* 阅读进度条 */}
@@ -231,7 +237,7 @@ function ReaderShell({ report }: { report: ReportDetail }) {
           <Button variant="ghost" size="sm" className="h-8 px-2 print:hidden" onClick={() => navigate('/reports')} aria-label="返回列表">
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-foreground" title={report.title}>{report.title}</h1>
+          <h1 className="min-w-0 flex-1 page-title truncate text-[26px] font-semibold text-foreground" title={report.title}>{report.title}</h1>
           <div className="flex items-center gap-2 print:hidden">
             {/* 移动端目录抽屉触发 */}
             <Button variant="outline" size="sm" className="h-8 px-2 lg:hidden" onClick={() => setTocOpen(true)} aria-label="打开目录">
@@ -274,7 +280,7 @@ function ReaderShell({ report }: { report: ReportDetail }) {
       <div className="mx-auto flex max-w-[1080px] gap-6 px-4 py-6 sm:px-6">
         {/* 桌面目录（lg+ 常驻） */}
         <aside className="sticky top-24 hidden h-fit max-h-[calc(100vh-120px)] w-56 shrink-0 overflow-y-auto rounded-lg border border-border bg-card p-3 lg:block print:hidden">
-          <div className="mb-2 px-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">章节目录</div>
+          <div className="mb-2 px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">章节目录</div>
           <OutlineList onJump={jumpTo} />
         </aside>
 
@@ -345,8 +351,6 @@ function ReaderShell({ report }: { report: ReportDetail }) {
               </section>
             ))
           )}
-
-          <p className="pb-4 text-center text-caption text-muted-foreground">— 报告完 —</p>
         </main>
       </div>
 
@@ -374,13 +378,13 @@ function ReaderShell({ report }: { report: ReportDetail }) {
       </Drawer>
 
       {/* 分享对话框 */}
-      <Dialog open={shareOpen} onOpenChange={setShareOpen}>
+      <><Dialog open={shareOpen} busy={shareModel.pending || createShare.isPending || revokeShare.isPending} onOpenChange={(next) => { if (!next) shareModelClose.requestClose() }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>分享报告</DialogTitle>
             <DialogDescription>生成只读链接，未登录同事可直接打开（内容随原文实时更新，仅已发布报告可分享）。</DialogDescription>
           </DialogHeader>
-          <DialogBody className="grid gap-4">
+          <DialogBody className="grid gap-4"><ModelFormFields model={shareModel}>
             {shareInfo ? (
               <div className="space-y-3">
                 <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2">
@@ -394,7 +398,7 @@ function ReaderShell({ report }: { report: ReportDetail }) {
                   <span>有效期至：{shareInfo.expiresAt ? new Date(shareInfo.expiresAt).toLocaleDateString('zh-CN') : '永久'}</span>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Select value={expiresDays} onValueChange={setExpiresDays}>
+                  <Select name="expiresDays" value={expiresDays} onValueChange={setExpiresDays}>
                     <SelectTrigger className="h-8 w-32 text-caption"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="7">7 天</SelectItem>
@@ -407,7 +411,7 @@ function ReaderShell({ report }: { report: ReportDetail }) {
             ) : (
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <Select value={expiresDays} onValueChange={setExpiresDays}>
+                  <Select name="expiresDays" value={expiresDays} onValueChange={setExpiresDays}>
                     <SelectTrigger className="h-9 w-36"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="7">7 天有效</SelectItem>
@@ -419,22 +423,22 @@ function ReaderShell({ report }: { report: ReportDetail }) {
                 <p className="text-caption text-muted-foreground">链接可随时吊销或重置；每次访问均记入审计。</p>
               </div>
             )}
-          </DialogBody>
+          </ModelFormFields></DialogBody>
           <DialogFooter>
             {shareInfo ? (
               <>
-                <Button size="sm" variant="outline" disabled={createShare.isPending} onClick={() => handleCreateShare(false)}>更新有效期</Button>
-                <Button size="sm" variant="outline" disabled={createShare.isPending} onClick={() => handleCreateShare(true)}>重置链接</Button>
-                <Button size="sm" variant="ghost" className="text-destructive" disabled={revokeShare.isPending} onClick={handleRevokeShare}>关闭分享</Button>
+                <Button size="sm" variant="outline" disabled={createShare.isPending} onClick={shareModel.submit(() => handleCreateShare(false))}>更新有效期</Button>
+                <Button size="sm" variant="outline" disabled={createShare.isPending} onClick={shareModel.submit(() => handleCreateShare(true))}>重置链接</Button>
+                <Button size="sm" variant="ghost" className="text-destructive" disabled={revokeShare.isPending} onClick={shareModel.submit(handleRevokeShare)}>关闭分享</Button>
               </>
             ) : (
-              <Button disabled={createShare.isPending} onClick={() => handleCreateShare(false)}>
+              <Button disabled={createShare.isPending} onClick={shareModel.submit(() => handleCreateShare(false))}>
                 {createShare.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />} 生成分享链接
               </Button>
             )}
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </Dialog>{shareModelClose.element}</>
 
       {confirmElement}
     </div>

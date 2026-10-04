@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
+import { AnalysisContext } from '@/components/analysis/analysis-context'
+import { defaultAnalysisState } from '@/stores/pageStateStore'
 import { ReceivableAgingContent } from '../receivable-aging-content'
 
 /**
@@ -25,7 +27,8 @@ vi.mock('@/hooks/api-queries', () => ({
   useTransactionAccounts: () => ({ data: [] }),
 }))
 
-vi.mock('@/stores/pageStateStore', () => ({
+vi.mock('@/stores/pageStateStore', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/stores/pageStateStore')>(),
   usePageStore: (selector: (s: { dashboard: { dim: string } }) => unknown) => selector({ dashboard: { dim: mocks.dim } }),
 }))
 
@@ -48,12 +51,12 @@ afterEach(() => {
 
 describe('ReceivableAgingContent（应收余额按主体分布·单体行展示）', () => {
   it('选中汇总主体时以 mode=single 发起主体分布查询（后端展开为成员公司各行）', () => {
-    render(<ReceivableAgingContent period="2026-08" companyCode="ET0001" />)
+    render(<AnalysisContext.Provider value={{ state: defaultAnalysisState, update: vi.fn(), companyType: "summary" }}><ReceivableAgingContent period="2026-08" companyCode="ET0001" /></AnalysisContext.Provider>)
     expect(mocks.receivablesHook).toHaveBeenCalledWith({ period: '2026-08', mode: 'single', companyCode: 'ET0001' })
   })
 
   it('主体分布卡按成员单体逐行渲染', () => {
-    render(<ReceivableAgingContent period="2026-08" companyCode="ET0001" />)
+    render(<AnalysisContext.Provider value={{ state: defaultAnalysisState, update: vi.fn(), companyType: "summary" }}><ReceivableAgingContent period="2026-08" companyCode="ET0001" /></AnalysisContext.Provider>)
     expect(screen.getByText('应收余额按主体分布')).toBeInTheDocument()
     expect(screen.getByText('杭州分公司')).toBeInTheDocument()
     expect(screen.getByText('宁波分公司')).toBeInTheDocument()
