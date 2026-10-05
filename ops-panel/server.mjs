@@ -21,6 +21,7 @@ import path from 'node:path'
 import { Readable } from 'node:stream'
 import tls from 'node:tls'
 import { fileURLToPath } from 'node:url'
+import { TOKEN_HEADER, isAllowedHost, loadOrCreateToken, tokenMatches, auditLine } from './lib/panel-guard.mjs'
 
 // ── 1. 常量与路径 ────────────────────────────────────────────
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -42,6 +43,12 @@ const FRP_RUNKEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'
 const FRP_VBS = path.join(FRP_DIR, 'frpc-start.vbs')
 const TASKKILL = 'C:\\Windows\\System32\\taskkill.exe'
 const REG_EXE = 'C:\\Windows\\System32\\reg.exe'
+
+// 面板访问令牌与操作审计
+const PANEL_TOKEN_FILE = path.join(__dirname, '.panel-token')
+const PANEL_AUDIT_DIR = path.join(__dirname, 'logs')
+const PANEL_AUDIT_LOG = path.join(PANEL_AUDIT_DIR, 'audit.log')
+const PANEL_TOKEN = loadOrCreateToken(PANEL_TOKEN_FILE)
 
 const DEFAULT_RUNTIME_CONFIG = {
   panel: { port: 3900 },
@@ -80,6 +87,14 @@ function send(res, status, obj) {
     'Cache-Control': 'no-store',
   })
   res.end(body)
+}
+
+/** 操作审计：非 GET 的 /api 动作写 JSON Lines 到 ops-panel/logs/audit.log，失败不阻断请求。 */
+function audit(action, detail, ip) {
+  try {
+    fs.mkdirSync(PANEL_AUDIT_DIR, { recursive: true })
+    fs.appendFile(PANEL_AUDIT_LOG, auditLine({ action, detail, ip }), () => {})
+  } catch { /* 审计写入失败不影响请求 */ }
 }
 
 function readBody(req, limit = 1024 * 1024) {
@@ -839,8 +854,15 @@ function serveStatic(res, urlPath) {
   if (!file.startsWith(PUBLIC_DIR)) return send(res, 403, { error: 'forbidden' })
   fs.readFile(file, (err, data) => {
     if (err) return send(res, 404, { error: 'not found' })
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' })
-    res.end(data)
+    const ext = path.extname(file)
+    const body = ext === '.html'
+      ? Buffer.from(
+          data.toString('utf8').replace('</head>', `<script>window.__OPS_TOKEN__=${JSON.stringify(PANEL_TOKEN)}</script>\n</head>`),
+          'utf8',
+        )
+      : data
+    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': 'no-cache' })
+    res.end(body)
   })
 }
 
@@ -848,6 +870,23 @@ function serveStatic(res, urlPath) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${HOST}:${PORT}`)
   const p = url.pathname
+
+  // —— 本地安全护栏：Host 白名单 + /api 令牌鉴权 + 非 GET 审计 ——
+  if (!isAllowedHost(req.headers.host, PORT)) {
+    return send(res, 403, { error: 'Host 不在允许列表内' })
+  }
+  if (p.startsWith('/api/')) {
+    if (!tokenMatches(req.headers[TOKEN_HEADER], PANEL_TOKEN)) {
+      return send(res, 401, { error: '缺少或错误的访问令牌' })
+    }
+    if (req.method !== 'GET') {
+      const started = Date.now()
+      res.once('finish', () => {
+        audit(`${req.method} ${p}`, `status=${res.statusCode} 耗时=${Date.now() - started}ms`, req.socket.remoteAddress || '')
+      })
+    }
+  }
+
   try {
     // —— 状态总览 ——
     if (p === '/api/status' && req.method === 'GET') {

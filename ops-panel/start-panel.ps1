@@ -57,6 +57,14 @@ if (-not (Test-Port)) {
   Write-Host '面板服务已在运行'
 }
 
+# ── 1.5 收紧面板令牌文件权限（仅当前用户可读）──────────────
+$tokenFile = Join-Path $root '.panel-token'
+if (Test-Path $tokenFile) {
+  $me = "$env:USERDOMAIN\$env:USERNAME"
+  icacls $tokenFile /inheritance:r /grant:r "${me}:(R)" /grant:r "SYSTEM:(F)" /grant:r "Administrators:(F)" | Out-Null
+  Write-Host '面板令牌权限已收紧'
+}
+
 # ── 2. -Install：创建桌面快捷方式 ────────────────────────────
 if ($Install) {
   # 快捷方式目标必须用完整路径：ShellExecute 对短名 powershell.exe 的 PATH 解析不可靠
