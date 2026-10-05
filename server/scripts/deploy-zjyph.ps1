@@ -68,6 +68,33 @@ Step '0/6 发布前检查'
 if (-not (Test-Path $envFile)) { throw "未找到 $envFile，请从 .env.production.example 创建生产配置" }
 if (-not (Test-Path (Join-Path $ProdDir '.git'))) { throw "$ProdDir 不是独立生产 Git 工作区" }
 
+# 运维面板入口完整性：面板由生产目录常驻托管（frpc / 巡检 / 备份 / 日志）。
+# 若生产工作区启用了 sparse-checkout，检出集合必须包含 ops-panel；集合缺失时每次
+# git switch --detach 都会把面板源码清出工作区，而 index 上的 skip-worktree 标记会让
+# git status 仍显示干净，故障静默（2026-10-02 实际发生，面板 3900 拉不起来）。
+$sparseEnabled = $false
+$sparseDirs = @()
+try {
+  # 未启用 sparse 的工作区里该命令会以 fatal 退出（stderr），而本脚本为 Stop 模式，
+  # 故此处把“读不到”正常化为“未启用”，避免对全量检出的生产目录误报。
+  $sparseListOutput = @(git -C $ProdDir sparse-checkout list 2>$null)
+  if ($LASTEXITCODE -eq 0) {
+    $sparseEnabled = $true
+    $sparseDirs = @($sparseListOutput | ForEach-Object { $_.Trim().TrimEnd('/') } | Where-Object { $_ })
+  }
+}
+catch {
+  Write-Host '提示：无法读取 sparse-checkout 配置，按「未启用」处理，仅校验面板入口是否存在' -ForegroundColor DarkGray
+  $sparseEnabled = $false
+}
+if ($sparseEnabled -and ($sparseDirs -notcontains 'ops-panel')) {
+  throw "生产 sparse-checkout 检出集合缺少 ops-panel（当前：$($sparseDirs -join ' ')；应为 server web ops-panel），拒绝发布；请先执行 git -C $ProdDir sparse-checkout add ops-panel"
+}
+$panelEntry = Join-Path $ProdDir 'ops-panel\server.mjs'
+if (-not (Test-Path $panelEntry)) {
+  throw "运维面板入口缺失：$panelEntry，发布后 127.0.0.1:3900 面板将无法拉起；请执行 git -C $ProdDir sparse-checkout add ops-panel（或 git -C $ProdDir checkout -- ops-panel）恢复后重试"
+}
+
 # 发布前显式确认当前生产数据目录，防止因配置丢失误启空库。
 $dataDir = Get-DotEnvValue $envFile 'ZJYPH_DATA_DIR'
 if (-not $dataDir) { throw '.env 缺少 ZJYPH_DATA_DIR，拒绝发布以避免误启空库' }

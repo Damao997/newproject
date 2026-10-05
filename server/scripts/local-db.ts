@@ -14,7 +14,7 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') })
  * 用法：
  *   npm run db:local        # 前台启动，Ctrl+C 停止
  *   DB_PORT=5434 npm run db:local   # 指定独立端口（多 worktree 隔离开发库时使用）
- * 连接串（与 .env 对齐，端口受 DB_PORT 控制，默认 5432）：
+ * 连接串（与 .env 对齐，端口默认取自 DATABASE_URL，DB_PORT 仅作覆盖）：
  *   postgresql://postgres:postgres@localhost:5432/yipinhui_finance
  *
  * 警告：仅限本地开发使用。严禁在生产目录（如 D:\ZJYPHFA\server）执行本命令。
@@ -32,8 +32,23 @@ if (process.env.NODE_ENV === 'production') {
 
 const dataDir = path.resolve(__dirname, '../.pgdata')
 const DB_NAME = 'yipinhui_finance'
-// 端口可由环境变量覆盖：多 worktree 共用同一台机器时，用 DB_PORT 指定独立端口（如 5434）避免与主工作树开发库冲突
-const dbPort = Number(process.env.DB_PORT ?? 5432)
+
+/** 从 PostgreSQL 连接串解析端口（解析失败返回 undefined） */
+function portFromDatabaseUrl(url: string | undefined): number | undefined {
+  if (!url) return undefined
+  try {
+    // URL 不认 postgresql:// 自定义协议，换成 http:// 仅为取端口（不发起请求）
+    const parsed = new URL(url.replace(/^postgres(ql)?:\/\//, 'http://'))
+    const port = Number(parsed.port)
+    return Number.isInteger(port) && port > 0 ? port : undefined
+  } catch {
+    return undefined
+  }
+}
+
+// 端口单一来源：DB_PORT（多 worktree 覆盖，优先级最高）> DATABASE_URL 中的端口 > 5432。
+// 不再把默认值写死为 5432，避免与 DATABASE_URL 形成两个来源、改一处忘另一处导致连接失败。
+const dbPort = Number(process.env.DB_PORT ?? portFromDatabaseUrl(process.env.DATABASE_URL) ?? 5432)
 
 const pg = new EmbeddedPostgres({
   databaseDir: dataDir,

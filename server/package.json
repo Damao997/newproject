@@ -16,6 +16,7 @@
     "prisma:seed": "tsx prisma/seed.ts",
     "prisma:studio": "prisma studio",
     "db:local": "tsx scripts/local-db.ts",
+    "dev:db-check": "tsx scripts/dev-db-check.ts",
     "mapping:export": "tsx scripts/export-expense-mappings.ts",
     "mapping:import": "tsx scripts/import-expense-mappings.ts",
     "db:prod": "tsx scripts/prod-db.ts",

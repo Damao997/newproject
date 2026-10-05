@@ -19,10 +19,11 @@ import {
   AUDIT_ENTITY_LABELS,
   AUDIT_TEMPLATE_LABELS,
   AUDIT_DETAIL_KEY_LABELS,
+  AUDIT_TARGET_LABELS,
 } from '@/lib/constants'
 import { exportToExcel } from '@/lib/export'
 import { api } from '@/lib/api'
-import { Search, Download, Settings2, RefreshCw, Filter, FileText, Info, Loader2 } from 'lucide-react'
+import { Search, Download, Settings2, RefreshCw, Filter, FileText, Info, Loader2, AlertTriangle } from 'lucide-react'
 import type { AuditLog } from '@/types'
 
 const AUDIT_PAGE_SIZE = 20
@@ -35,16 +36,16 @@ type AuditCategory = 'login' | 'data' | 'perm' | 'sys' | 'other'
 /** module → 四大类映射：auth→登录、data→数据、admin+permission→权限、ai→系统，未收录归入「其他」 */
 function moduleToCategory(module: string): AuditCategory {
   if (module === 'auth') return 'login'
-  if (module === 'data') return 'data'
   if (module === 'admin' || module === 'permission') return 'perm'
-  if (module === 'ai') return 'sys'
+  if (module === 'data' || module === 'reports' || module === 'indicators' || module === 'transactions' || module === 'inventory') return 'data'
+  if (module === 'ai' || module === 'tools') return 'sys'
   return 'other'
 }
 
 const CATEGORY_LABELS: Record<AuditCategory, string> = {
   login: '登录',
-  data: '数据',
-  perm: '权限',
+  data: '数据变更',
+  perm: '权限与安全',
   sys: '系统',
   other: '其他',
 }
@@ -67,6 +68,41 @@ const CATEGORY_DOT: Record<AuditCategory, string> = {
 
 /** 状态类值中文（detail 内 active/inactive 翻译） */
 const STATUS_LABELS: Record<string, string> = { active: '启用', inactive: '停用' }
+
+/** 需关注的敏感操作：登录失败、越权拦截、彻底删除、批次回滚——时间线上以警示标签标出 */
+const RISK_ACTIONS = new Set(['login_failed', 'denied', 'user_purge', 'import_rollback'])
+
+/** 是否属于需关注操作（含指标公式的彻底删除/驳回等 detail 子动作） */
+function isRisk(log: Pick<AuditLog, 'action' | 'detail'>): boolean {
+  if (RISK_ACTIONS.has(log.action)) return true
+  if (log.action !== 'metric_change') return false
+  try {
+    const act = (JSON.parse(log.detail || '{}') as { action?: string }).action
+    return act === 'purge' || act === 'reject'
+  } catch {
+    return false
+  }
+}
+
+/** 人话时间：今天只给时分，今年省略年份，跨年才带年份 */
+function friendlyTime(iso: string): string {
+  const d = new Date(iso)
+  const now = new Date()
+  const hm = d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+  const sameDay = d.toDateString() === now.toDateString()
+  if (sameDay) return `今天 ${hm}`
+  const y = new Date(now); y.setDate(y.getDate() - 1)
+  const md = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  if (d.toDateString() === y.toDateString()) return `昨天 ${hm}`
+  if (d.getFullYear() === now.getFullYear()) return `${md} ${hm}`
+  return `${d.getFullYear()}-${md} ${hm}`
+}
+
+/** 操作对象的可读名称：后端富化名 > 固定语义串 > 原始标识 */
+function targetRef(log: Pick<AuditLog, 'targetId' | 'targetLabel'>): string {
+  const raw = log.targetId ?? ''
+  return log.targetLabel || AUDIT_TARGET_LABELS[raw] || raw
+}
 
 /** 用户头像按用户名取模分配底色（确定性，同一用户颜色稳定）：token 色阶类（禁硬编码 hex） */
 const AVATAR_PALETTE = [
@@ -109,34 +145,31 @@ function parseUserAgent(ua: string | null | undefined): string {
   return [browserLabel, systemLabel].filter(Boolean).join(' · ') || '—'
 }
 
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('zh-CN', { hour12: false })
-}
-
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString('zh-CN', { hour12: false })
 }
 
-/** detail 值转中文摘要：对象按键中文展开，状态/单位类值翻译，超长截断 */
-function fmtValue(v: unknown): string {
+/** detail 值转中文摘要：对象按键中文展开，状态/单位类值翻译，编码按 codeLabels 还原名称，超长截断 */
+function fmtValue(v: unknown, codeLabels: Record<string, string> = {}): string {
   if (v == null || v === '') return '—'
   if (typeof v === 'object') {
     const entries = Object.entries(v as Record<string, unknown>).map(
-      ([k, val]) => `${AUDIT_DETAIL_KEY_LABELS[k] ?? k}: ${fmtValue(val)}`,
+      ([k, val]) => `${AUDIT_DETAIL_KEY_LABELS[k] ?? k}: ${fmtValue(val, codeLabels)}`,
     )
     return entries.join('，')
   }
   const s = String(v)
   if (STATUS_LABELS[s]) return STATUS_LABELS[s]
   if (s === 'wan') return '万元'
+  if (codeLabels[s]) return codeLabels[s]
   return s.length > 80 ? `${s.slice(0, 80)}…` : s
 }
 
-/** 资源/编码数组 → 中文顿号串 */
-function joinLabels(codes: unknown, map?: Record<string, string>): string {
+/** 资源/编码数组 → 中文顿号串（map 未命中时回退 codeLabels，再回退原码） */
+function joinLabels(codes: unknown, map?: Record<string, string>, codeLabels: Record<string, string> = {}): string {
   const arr = Array.isArray(codes) ? codes : []
   if (arr.length === 0) return '—'
-  return arr.map((c) => map?.[String(c)] ?? String(c)).join('、')
+  return arr.map((c) => map?.[String(c)] ?? codeLabels[String(c)] ?? String(c)).join('、')
 }
 
 /** 角色 code → 中文名（角色已删除时回退显示 code） */
@@ -152,7 +185,11 @@ const TIMELINE_DETAIL_MAX = 60
  * detail 中文化：JSON 安全解析后按 module+action 分支生成中文可读句子；
  * 未识别结构回退为「中文键: 值」拼接，解析失败回退原文。
  */
-function formatAuditDetail(log: Pick<AuditLog, 'module' | 'action' | 'detail'>, roleMap: Map<string, string>): string {
+function formatAuditDetail(
+  log: Pick<AuditLog, 'module' | 'action' | 'detail'>,
+  roleMap: Map<string, string>,
+  codeLabels: Record<string, string> = {},
+): string {
   if (!log.detail) return '—'
   let d: Record<string, unknown>
   try {
@@ -165,12 +202,12 @@ function formatAuditDetail(log: Pick<AuditLog, 'module' | 'action' | 'detail'>, 
   // 权限变更（单角色 / 批量）
   if (log.module === 'admin' && log.action === 'permission_change') {
     if (act === 'batch') {
-      const names = joinLabels(d.roles, undefined)
+      const names = joinLabels(d.roles, undefined, codeLabels)
       return `批量设置 ${String(d.roleCount ?? '—')} 个角色（${names}）的权限，各角色权限项 ${String(d.after ?? '—')} 项`
     }
     const parts: string[] = [`角色「${roleName(d.role, roleMap)}」：权限 ${String(d.before ?? '—')} 项 → ${String(d.after ?? '—')} 项`]
-    if (Array.isArray(d.added) && d.added.length > 0) parts.push(`新增 ${joinLabels(d.added, AUDIT_RESOURCE_LABELS)}`)
-    if (Array.isArray(d.removed) && d.removed.length > 0) parts.push(`移除 ${joinLabels(d.removed, AUDIT_RESOURCE_LABELS)}`)
+    if (Array.isArray(d.added) && d.added.length > 0) parts.push(`新增 ${joinLabels(d.added, AUDIT_RESOURCE_LABELS, codeLabels)}`)
+    if (Array.isArray(d.removed) && d.removed.length > 0) parts.push(`移除 ${joinLabels(d.removed, AUDIT_RESOURCE_LABELS, codeLabels)}`)
     return parts.join('；')
   }
 
@@ -232,7 +269,7 @@ function formatAuditDetail(log: Pick<AuditLog, 'module' | 'action' | 'detail'>, 
       reject: '驳回公式变更',
     }
     const base = actMap[act] ?? `公式操作 · ${act || '—'}`
-    if (d.before != null || d.after != null) return `${base}：${fmtValue(d.before)} → ${fmtValue(d.after)}`
+    if (d.before != null || d.after != null) return `${base}：${fmtValue(d.before, codeLabels)} → ${fmtValue(d.after, codeLabels)}`
     return base
   }
 
@@ -240,7 +277,7 @@ function formatAuditDetail(log: Pick<AuditLog, 'module' | 'action' | 'detail'>, 
   if (log.module === 'data' && typeof d.entity === 'string') {
     const entity = AUDIT_ENTITY_LABELS[d.entity] ?? d.entity
     if (d.before != null || d.after != null) {
-      return `更新「${entity}」：${fmtValue(d.before)} → ${fmtValue(d.after)}`
+      return `更新「${entity}」：${fmtValue(d.before, codeLabels)} → ${fmtValue(d.after, codeLabels)}`
     }
     if (act === 'add') return `汇总主体映射：加入单体公司 ${String(d.single ?? '—')}`
     if (act === 'remove') return `汇总主体映射：移除单体公司 ${String(d.single ?? '—')}`
@@ -262,8 +299,118 @@ function formatAuditDetail(log: Pick<AuditLog, 'module' | 'action' | 'detail'>, 
   }
 
   // 回退：键值对中文展示
-  const entries = Object.entries(d).map(([k, v]) => `${AUDIT_DETAIL_KEY_LABELS[k] ?? k}: ${Array.isArray(v) ? joinLabels(v) : fmtValue(v)}`)
+  const entries = Object.entries(d).map(([k, v]) => `${AUDIT_DETAIL_KEY_LABELS[k] ?? k}: ${Array.isArray(v) ? joinLabels(v, undefined, codeLabels) : fmtValue(v, codeLabels)}`)
   return entries.join('；') || log.detail
+}
+
+/**
+ * 一句话人话摘要（不含操作人）：供时间线主文案使用，让非技术用户无需阅读原始 detail。
+ * 未覆盖的组合回退 formatAuditDetail 的中文摘要。
+ */
+function auditSentence(log: AuditLog, roleMap: Map<string, string>): string {
+  let d: Record<string, unknown> = {}
+  try { d = log.detail ? (JSON.parse(log.detail) as Record<string, unknown>) : {} } catch { d = {} }
+  const act = typeof d.action === 'string' ? d.action : ''
+  const codeLabels = log.codeLabels ?? {}
+  const ref = targetRef(log)
+  const quoted = ref ? `「${ref}」` : ''
+
+  if (log.module === 'auth') {
+    if (log.action === 'login') return '登录了系统'
+    if (log.action === 'login_failed') return `尝试用账号「${log.targetId ?? '未知'}」登录，但账号或密码不正确`
+    if (log.action === 'logout') return '退出了系统'
+    if (log.action === 'auto_login') return '通过「7 天内免登录」自动登录'
+    if (log.action === 'refresh') return '刷新了登录状态'
+    if (log.action === 'update' && d.field === 'password') return '修改了登录密码'
+    return '更新了个人资料'
+  }
+  if (log.module === 'permission') return '的这次访问因权限不足被拒绝'
+  if (log.module === 'admin') {
+    if (log.action === 'user_create') return `新建了用户${quoted}`
+    if (log.action === 'user_disable') return `停用了用户${quoted}`
+    if (log.action === 'user_purge') return `彻底删除了用户${quoted}`
+    if (log.action === 'update') return act === 'reset_password' ? `重置了用户${quoted}的登录密码` : `修改了用户${quoted}的资料`
+    if (log.action === 'role_change') {
+      const map: Record<string, string> = {
+        create: `新建了角色${quoted}`,
+        update: `修改了角色${quoted}`,
+        delete: `删除了角色${quoted}`,
+        clone: `克隆了角色${quoted}`,
+      }
+      return map[act] ?? `维护了角色${quoted}`
+    }
+    if (log.action === 'permission_change') {
+      return act === 'batch'
+        ? `批量调整了 ${String(d.roleCount ?? '若干')} 个角色的权限`
+        : `调整了角色${quoted}的权限`
+    }
+    if (log.action === 'export') return `导出了${ref || '用户列表'}`
+    return formatAuditDetail(log, roleMap, codeLabels)
+  }
+  if (log.module === 'data' || log.module === 'transactions') {
+    if (log.action === 'import') return `导入了数据${ref ? `（${ref}）` : ''}`
+    if (log.action === 'import_rollback') return `回滚了导入批次${quoted}`
+    if (log.action === 'metric_change') {
+      const map: Record<string, string> = {
+        create: '新增了指标', update: '修改了指标', delete: '删除了指标', restore: '恢复了指标',
+        convert: '转换了指标类型', purge: '彻底删除了指标', rollback: '回滚了指标公式',
+        approve: '通过了指标变更', reject: '驳回了指标变更',
+      }
+      return `${map[act] ?? '维护了指标'}${quoted}`
+    }
+    if (log.module === 'data' && typeof d.entity === 'string') {
+      if (d.entity === 'aggregation_map') {
+        const single = d.single != null ? (codeLabels[String(d.single)] ?? String(d.single)) : ''
+        return act === 'remove' ? `从汇总主体中移除了单体公司「${single}」` : `为汇总主体加入了单体公司「${single}」`
+      }
+      const entity = AUDIT_ENTITY_LABELS[d.entity] ?? d.entity
+      const verb = log.action === 'create' ? '新增' : log.action === 'delete' ? '删除' : '修改'
+      return `${verb}了${entity}${quoted}`
+    }
+    if (log.action === 'reclassify') return `执行了科目重分类${quoted}`
+    if (log.action === 'export') return `导出了${ref || '数据'}`
+    if (log.module === 'transactions') {
+      const map: Record<string, string> = {
+        'create-salesman': `新建了业务员${quoted}`,
+        'update-salesman': `修改了业务员${quoted}`,
+        'set-salesman-status': `修改了业务员${quoted}的状态`,
+        'create-collection': `生成了催收计划${quoted}`,
+        'update-collection': `更新了催收计划${quoted}`,
+        'add-collection-log': `添加了催收记录${quoted}`,
+        account_status: '更新了往来账户状态',
+      }
+      if (map[act]) return map[act]
+    }
+    return formatAuditDetail(log, roleMap, codeLabels)
+  }
+  if (log.module === 'reports') {
+    const map: Record<string, string> = {
+      report_create: `新建了报告${quoted}`,
+      report_update: `修改了报告${quoted}`,
+      report_archive: `归档了报告${quoted}`,
+      report_export: `导出了报告${quoted}`,
+      report_generate_sections: `生成了报告章节${quoted}`,
+      report_set_sections: `保存了报告章节${quoted}`,
+      report_save_version: `保存了报告版本${quoted}`,
+      report_rollback_version: `回滚了报告版本${quoted}`,
+      analysis_create: `新增了汇总分析${quoted}`,
+      analysis_update: `修改了汇总分析${quoted}`,
+      analysis_delete: `删除了汇总分析${quoted}`,
+      analysis_restore: `恢复了汇总分析${quoted}`,
+      template_create: `新建了报告模板${quoted}`,
+      template_update: `修改了报告模板${quoted}`,
+      template_delete: `删除了报告模板${quoted}`,
+      share_create: '创建了报告的公开分享链接',
+      share_revoke: '取消了报告的公开分享',
+    }
+    return map[log.action] ?? formatAuditDetail(log, roleMap, codeLabels)
+  }
+  if (log.module === 'indicators' && log.action === 'export') return '导出了财务指标数据'
+  if (log.module === 'tools' && log.action === 'enterprise_search') {
+    const kw = typeof d.keyword === 'string' ? d.keyword : ''
+    return `查询了企业工商信息${kw ? `（${kw}）` : ''}`
+  }
+  return formatAuditDetail(log, roleMap, codeLabels)
 }
 
 /** 筛选条件表单值（draft 编辑 / applied 生效） */
@@ -278,6 +425,8 @@ export default function AuditLogsPage() {
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  /** 视图：简明（默认，面向非技术用户）/ 完整（保留原始标识，供技术排障） */
+  const [view, setView] = useState<'plain' | 'full'>('plain')
 
   const { data: rolesData } = useRoles()
   const { data: auditData, isLoading: auditLoading } = useAuditLogs({
@@ -310,6 +459,8 @@ export default function AuditLogsPage() {
   }, [todayStats])
 
   const selected = auditLogs.find((l) => l.id === selectedId) ?? null
+  /** 选中记录的简明中文摘要（detail 为空时为「—」，简明视图下不单独成块） */
+  const selectedSummary = selected ? formatAuditDetail(selected, roleMap, selected.codeLabels) : ''
 
   const patchDraft = (patch: Partial<AuditFilters>) => setDraft((d) => ({ ...d, ...patch }))
 
@@ -358,6 +509,7 @@ export default function AuditLogsPage() {
         columns: [
           { header: '时间', key: 'time', width: 20 },
           { header: '用户', key: 'username', width: 14 },
+          { header: '操作摘要', key: 'summary', width: 46 },
           { header: '模块', key: 'module', width: 12 },
           { header: '操作', key: 'action', width: 14 },
           { header: '详情', key: 'detail', width: 60 },
@@ -367,11 +519,12 @@ export default function AuditLogsPage() {
         rows: rows.map((log) => ({
           time: formatDateTime(log.createdAt),
           username: log.username,
+          summary: auditSentence(log, roleMap),
           module: AUDIT_MODULE_LABELS[log.module] ?? log.module,
           action: AUDIT_ACTION_LABELS[log.action] ?? log.action,
-          detail: formatAuditDetail(log, roleMap),
+          detail: formatAuditDetail(log, roleMap, log.codeLabels),
           ip: log.ip ?? '',
-          targetId: log.targetId ?? '',
+          targetId: log.targetLabel || log.targetId || '',
         })),
       })
       message.success(`已导出 ${rows.length} 条审计记录`)
@@ -481,7 +634,25 @@ export default function AuditLogsPage() {
             <div>
               <h3 className="text-[15px] font-semibold tracking-tight">时间线流 · 今日 {todayStats?.total ?? 0} 条 / 共 {auditTotal} 条</h3>
             </div>
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1">
+                <Button
+                  size="sm"
+                  variant={view === 'plain' ? 'default' : 'outline'}
+                  className="h-7 px-2.5 text-xs"
+                  onClick={() => setView('plain')}
+                >
+                  简明视图
+                </Button>
+                <Button
+                  size="sm"
+                  variant={view === 'full' ? 'default' : 'outline'}
+                  className="h-7 px-2.5 text-xs"
+                  onClick={() => setView('full')}
+                >
+                  完整视图
+                </Button>
+              </div>
               {(['login', 'data', 'perm', 'sys', 'other'] as const).map((cat) => (
                 <Pill key={cat} tone={CATEGORY_TONES[cat]}>{CATEGORY_LABELS[cat]} {todayCounts[cat]}</Pill>
               ))}
@@ -499,6 +670,10 @@ export default function AuditLogsPage() {
                 {auditLogs.map((log) => {
                   const category = moduleToCategory(log.module)
                   const isActive = log.id === selectedId
+                  const refLabel = log.targetLabel || AUDIT_TARGET_LABELS[log.targetId ?? ''] || ''
+                  const detailText = log.detail ? formatAuditDetail(log, roleMap, log.codeLabels) : ''
+                  const shortDetail = detailText.length > TIMELINE_DETAIL_MAX ? `${detailText.slice(0, TIMELINE_DETAIL_MAX)}…` : detailText
+                  const risk = isRisk(log)
                   return (
                     <div
                       key={log.id}
@@ -517,26 +692,36 @@ export default function AuditLogsPage() {
                         aria-hidden
                       />
                       <div className="mb-1.5 flex flex-wrap items-center gap-2.5">
-                        <span className="text-[14px] font-semibold text-foreground">{AUDIT_ACTION_LABELS[log.action] ?? log.action}</span>
+                        {view === 'plain' ? (
+                          <span className="text-[14px] font-semibold text-foreground">{log.username} {auditSentence(log, roleMap)}</span>
+                        ) : (
+                          <>
+                            <span className="text-[14px] font-semibold text-foreground">{AUDIT_ACTION_LABELS[log.action] ?? log.action}</span>
+                            <span
+                              className={[
+                                'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-medium',
+                                avatarClass(log.username),
+                              ].join(' ')}
+                            >
+                              {log.username.charAt(0).toUpperCase()}
+                            </span>
+                            <span className="font-medium text-foreground">{log.username}</span>
+                          </>
+                        )}
                         <Pill tone={CATEGORY_TONES[category]}>{CATEGORY_LABELS[category]}</Pill>
-                        <span className="ml-auto font-num text-xs tabular-nums text-muted-foreground">{formatTime(log.createdAt)}</span>
+                        {risk && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-700">
+                            <AlertTriangle className="h-3 w-3" />
+                            需关注
+                          </span>
+                        )}
+                        <span className="ml-auto font-num text-xs tabular-nums text-muted-foreground">{friendlyTime(log.createdAt)}</span>
                       </div>
-                      <div className="flex flex-wrap items-center gap-3 text-[13px] text-muted-foreground">
-                        <span className="min-w-0">
-                          {(() => {
-                            const text = formatAuditDetail(log, roleMap)
-                            return text.length > TIMELINE_DETAIL_MAX ? `${text.slice(0, TIMELINE_DETAIL_MAX)}…` : text
-                          })()}
-                        </span>
-                        <span
-                          className={[
-                            'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-medium',
-                            avatarClass(log.username),
-                          ].join(' ')}
-                        >
-                          {log.username.charAt(0).toUpperCase()}
-                        </span>
-                        <span className="font-medium text-foreground">{log.username}</span>
+                      <div className="flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground">
+                        {view === 'plain'
+                          ? (refLabel ? <span>对象：{refLabel}</span> : null)
+                          : <span className="font-mono text-[11px]">对象 ID：{log.targetId ?? '—'}</span>}
+                        {shortDetail && <span className="min-w-0">{shortDetail}</span>}
                         <span className="ml-auto">
                           <Button
                             variant="ghost"
@@ -574,12 +759,26 @@ export default function AuditLogsPage() {
             ) : (
               <>
                 <div className="mb-4">
-                  <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <span className="text-[15px] font-semibold text-foreground">{AUDIT_ACTION_LABELS[selected.action] ?? selected.action}</span>
-                    <Pill tone={CATEGORY_TONES[moduleToCategory(selected.module)]}>{CATEGORY_LABELS[moduleToCategory(selected.module)]}</Pill>
-                  </div>
-                  <div className="font-num text-xs tabular-nums text-muted-foreground">
-                    {formatDateTime(selected.createdAt)}
+                  {view === 'plain' ? (
+                    <div className="mb-2 text-[15px] font-semibold leading-relaxed text-foreground">
+                      {selected.username} {auditSentence(selected, roleMap)}
+                    </div>
+                  ) : (
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <span className="text-[15px] font-semibold text-foreground">{AUDIT_ACTION_LABELS[selected.action] ?? selected.action}</span>
+                      <Pill tone={CATEGORY_TONES[moduleToCategory(selected.module)]}>{CATEGORY_LABELS[moduleToCategory(selected.module)]}</Pill>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {isRisk(selected) && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-700">
+                        <AlertTriangle className="h-3 w-3" />
+                        需关注
+                      </span>
+                    )}
+                    <span className="font-num text-xs tabular-nums text-muted-foreground">
+                      {formatDateTime(selected.createdAt)}
+                    </span>
                   </div>
                 </div>
 
@@ -588,39 +787,75 @@ export default function AuditLogsPage() {
                   <div className="space-y-1 text-[13px]">
                     <div className="flex gap-2">
                       <span className="w-20 shrink-0 text-muted-foreground">操作人</span>
-                      <span className="font-mono text-foreground">{selected.username}</span>
+                      <span className="text-foreground">{selected.username}</span>
                     </div>
                     <div className="flex gap-2">
-                      <span className="w-20 shrink-0 text-muted-foreground">IP 地址</span>
+                      <span className="w-20 shrink-0 text-muted-foreground">{view === 'plain' ? '发生时间' : '时间'}</span>
+                      <span className="font-num tabular-nums text-foreground">{formatDateTime(selected.createdAt)}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <span className="w-20 shrink-0 text-muted-foreground">{view === 'plain' ? '来源地址' : 'IP 地址'}</span>
                       <span className="font-mono text-foreground">{selected.ip || '—'}</span>
                     </div>
                     <div className="flex gap-2">
                       <span className="w-20 shrink-0 text-muted-foreground">设备</span>
-                      <span className="font-mono text-foreground">{parseUserAgent(selected.userAgent)}</span>
+                      <span className={view === 'plain' ? 'text-foreground' : 'font-mono text-foreground'}>
+                        {parseUserAgent(selected.userAgent)}
+                      </span>
                     </div>
-                    <div className="flex gap-2">
-                      <span className="w-20 shrink-0 text-muted-foreground">所属模块</span>
-                      <span className="font-mono text-foreground">{AUDIT_MODULE_LABELS[selected.module] ?? selected.module}</span>
-                    </div>
-                    <div className="flex gap-2">
-                      <span className="w-20 shrink-0 text-muted-foreground">动作类型</span>
-                      <span className="font-mono text-foreground">{AUDIT_ACTION_LABELS[selected.action] ?? selected.action}</span>
-                    </div>
-                    {selected.targetId && (
-                      <div className="flex gap-2">
-                        <span className="w-20 shrink-0 text-muted-foreground">操作对象</span>
-                        <span className="break-all font-mono text-foreground">{selected.targetId}</span>
-                      </div>
+                    {view === 'full' && (
+                      <>
+                        <div className="flex gap-2">
+                          <span className="w-20 shrink-0 text-muted-foreground">所属模块</span>
+                          <span className="font-mono text-foreground">{AUDIT_MODULE_LABELS[selected.module] ?? selected.module}</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <span className="w-20 shrink-0 text-muted-foreground">动作类型</span>
+                          <span className="font-mono text-foreground">{AUDIT_ACTION_LABELS[selected.action] ?? selected.action}</span>
+                        </div>
+                      </>
+                    )}
+                    {view === 'plain' ? (
+                      (selected.targetLabel || AUDIT_TARGET_LABELS[selected.targetId ?? '']) && (
+                        <div className="flex gap-2">
+                          <span className="w-20 shrink-0 text-muted-foreground">操作对象</span>
+                          <span className="break-all text-foreground">{selected.targetLabel || AUDIT_TARGET_LABELS[selected.targetId ?? '']}</span>
+                        </div>
+                      )
+                    ) : (
+                      <>
+                        {selected.targetId && (
+                          <div className="flex gap-2">
+                            <span className="w-20 shrink-0 text-muted-foreground">操作对象</span>
+                            <span className="break-all font-mono text-foreground">{selected.targetId}</span>
+                          </div>
+                        )}
+                        {selected.traceId && (
+                          <div className="flex gap-2">
+                            <span className="w-20 shrink-0 text-muted-foreground">链路 ID</span>
+                            <span className="break-all font-mono text-foreground">{selected.traceId}</span>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
 
-                <div>
-                  <h4 className="mb-2 text-[12px] font-medium uppercase tracking-wider text-muted-foreground">变更内容</h4>
-                  <div className="break-all rounded-md border border-border-light bg-muted/40 px-3 py-2 font-mono text-[12px] leading-relaxed text-foreground">
-                    {formatAuditDetail(selected, roleMap)}
+                {(view === 'full' || selectedSummary !== '—') && (
+                  <div>
+                    <h4 className="mb-2 text-[12px] font-medium uppercase tracking-wider text-muted-foreground">
+                      {view === 'plain' ? '这次做了什么' : '变更内容（原始）'}
+                    </h4>
+                    <div
+                      className={[
+                        'break-all rounded-md border border-border-light bg-muted/40 px-3 py-2 leading-relaxed text-foreground',
+                        view === 'plain' ? 'text-[13px]' : 'font-mono text-[12px]',
+                      ].join(' ')}
+                    >
+                      {view === 'plain' ? selectedSummary : (selected.detail || '—')}
+                    </div>
                   </div>
-                </div>
+                )}
               </>
             )}
           </Card>
@@ -634,9 +869,9 @@ export default function AuditLogsPage() {
               从时间线中选择一条审计记录以查看详细操作：
             </p>
             <ul className="ml-4 mt-3 space-y-1.5 text-[13px] leading-[1.9] text-muted-foreground">
-              <li>用户身份 / IP / 设备信息</li>
-              <li>操作模块 / 动作类型</li>
-              <li>操作对象与变更内容（中文摘要）</li>
+              <li>简明视图：一句话说明谁在何时做了什么</li>
+              <li>完整视图：保留操作对象原始 ID 与链路 ID，便于排障</li>
+              <li>标有「需关注」的是登录失败、越权拦截等敏感操作</li>
             </ul>
           </Card>
         </div>

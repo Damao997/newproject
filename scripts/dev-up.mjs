@@ -19,11 +19,11 @@
  *   或  node scripts/dev-up.mjs
  */
 import { spawn } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
-import net from 'node:net'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
+import { parseEnvFile, resolveDevPorts, tcpProbe } from './dev-config.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const SERVER_DIR = path.join(ROOT, 'server')
@@ -31,15 +31,9 @@ const WEB_DIR = path.join(ROOT, 'web')
 const ENV_FILE = path.join(SERVER_DIR, '.env')
 const PGDATA_DIR = path.join(SERVER_DIR, '.pgdata')
 
-// 输入端口：进程环境变量 > server/.env 的 DB_PORT > 默认 5432。
-// 多 worktree 隔离开发库时会在各自 server/.env 中通过 DB_PORT 指定独立端口，
-// 因此必须从 .env 读取，避免错误等待默认端口。
-const envDbPort = (existsSync(ENV_FILE) && parseEnv(ENV_FILE).DB_PORT) || undefined
-const PORTS = {
-  db: Number(process.env.DB_PORT ?? envDbPort ?? 5432),
-  api: 3001,
-  web: 5173,
-}
+// 开发三端口统一由 dev-config.mjs 解析（DB/API 来自 server/.env，WEB 来自 VITE_DEV_PORT），
+// 避免此处硬编码与后端实际端口不一致。详见 docs/本地开发环境启动指南.md。
+const PORTS = resolveDevPorts(ROOT)
 
 // ── 日志：带颜色前缀 ──────────────────────────────────────
 const COLORS = {
@@ -59,26 +53,6 @@ function log(tag, msg) {
 
 // ── 通用工具 ──────────────────────────────────────────────
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-
-/** TCP 探测：目标端口是否可连接 */
-function tcpProbe(port, host = '127.0.0.1') {
-  return new Promise((resolve) => {
-    const sock = net.connect(port, host)
-    sock.setTimeout(1500)
-    sock.once('connect', () => {
-      sock.destroy()
-      resolve(true)
-    })
-    sock.once('error', () => {
-      sock.destroy()
-      resolve(false)
-    })
-    sock.once('timeout', () => {
-      sock.destroy()
-      resolve(false)
-    })
-  })
-}
 
 /** HTTP 探测：目标 URL 是否返回 2xx */
 async function httpOk(url) {
@@ -111,24 +85,6 @@ async function waitFor(fn, { timeoutMs, intervalMs = 500, label, abortCheck }) {
     }
     await sleep(intervalMs)
   }
-}
-
-/** 解析 .env 文件（简单 key=value，支持引号包裹与 # 注释） */
-function parseEnv(file) {
-  const env = {}
-  for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
-    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/)
-    if (!m || line.trimStart().startsWith('#')) continue
-    let value = m[2].trim()
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1)
-    }
-    env[m[1]] = value
-  }
-  return env
 }
 
 // ── 子进程管理 ────────────────────────────────────────────
@@ -257,7 +213,7 @@ function checkEnv() {
     throw new Error('web/node_modules 不存在，请先执行：cd web && npm install')
   }
 
-  const env = parseEnv(ENV_FILE)
+  const env = parseEnvFile(ENV_FILE)
   const missing = []
   if (!env.DATABASE_URL) missing.push('DATABASE_URL')
   if (!env.JWT_SECRET || env.JWT_SECRET.length < 32) missing.push('JWT_SECRET（>=32 字符）')
@@ -285,7 +241,10 @@ async function main() {
   // 2. 端口预检
   for (const [name, port] of Object.entries(PORTS)) {
     if (await tcpProbe(port)) {
-      throw new Error(`端口 ${port}（${name}）已被占用，可能已有实例在运行，请先停止占用进程`)
+      throw new Error(
+        `端口 ${port}（${name}）已被占用，可能已有实例在运行，请先停止占用进程；` +
+          `若该端口属于生产服务（生产为 PG 5433 / 后端 3100 / 前端 8080），则与开发端口无关，无需处理`,
+      )
     }
   }
   log('dev', `端口预检通过（${PORTS.db} / ${PORTS.api} / ${PORTS.web} 均空闲）`)

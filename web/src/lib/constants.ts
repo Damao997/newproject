@@ -241,6 +241,15 @@ export const AUDIT_ENTITY_LABELS: Record<string, string> = {
   budget_ratio_config: '月度预算比例',
 }
 
+/** 审计 targetId 语义串→中文（无法映射到具体业务记录时的固定含义） */
+export const AUDIT_TARGET_LABELS: Record<string, string> = {
+  users: '用户列表',
+  aging: '账龄分析',
+  cross_table: '交叉表',
+  subjects: '科目数据',
+  permanent: '长期有效',
+}
+
 /** 审计导入模板类型→中文 */
 export const AUDIT_TEMPLATE_LABELS: Record<string, string> = {
   operating: '经营数据',
