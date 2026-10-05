@@ -14,10 +14,39 @@ test('局域网直连时忽略客户端伪造的 XFF', () => {
   assert.equal(clientIpForProxy(req), '192.168.1.50')
 })
 
-test('回环 FRP 链路只接受 nginx 追加在最右侧的真实地址', () => {
+test('回环 FRP 链路取最右侧非回环地址为真实客户端', () => {
   const req = request('127.0.0.1', { 'x-forwarded-for': '198.51.100.8, 203.0.113.9' })
   assert.equal(clientIpForProxy(req), '203.0.113.9')
   assert.equal(proxyHeaders(req, 3100)['x-forwarded-for'], '203.0.113.9')
+})
+
+// frps vhost 反向代理（util/vhost ReverseProxy + SetXForwarded）会把 nginx 的回环地址
+// 追加到 XFF 最右侧，真实客户端由 nginx 追加在其左侧（2026-09-22 起公网登录 IP 退化为
+// 127.0.0.1 的根因）。必须跳过回环跳数再取值。
+test('frps 在 XFF 右侧追加回环地址时仍能取到真实客户端', () => {
+  const req = request('127.0.0.1', { 'x-forwarded-for': '203.0.113.9, 127.0.0.1' })
+  assert.equal(clientIpForProxy(req), '203.0.113.9')
+  assert.equal(proxyHeaders(req, 3100)['x-forwarded-for'], '203.0.113.9')
+})
+
+test('跳过回环后不采纳更左侧的客户端伪造段', () => {
+  const req = request('127.0.0.1', { 'x-forwarded-for': '9.9.9.9, 203.0.113.9, 127.0.0.1' })
+  assert.equal(clientIpForProxy(req), '203.0.113.9')
+})
+
+test('连续回环跳数（IPv4/IPv6/映射形式）全部跳过', () => {
+  const req = request('127.0.0.1', { 'x-forwarded-for': '203.0.113.9, ::1, ::ffff:127.0.0.1' })
+  assert.equal(clientIpForProxy(req), '203.0.113.9')
+})
+
+test('无真实客户端段时回退 socket 回环地址', () => {
+  assert.equal(clientIpForProxy(request('127.0.0.1', { 'x-forwarded-for': '127.0.0.1' })), '127.0.0.1')
+  assert.equal(clientIpForProxy(request('::ffff:127.0.0.1', {})), '127.0.0.1')
+})
+
+test('首个非回环段非法时不继续左探，回退 socket（防伪造）', () => {
+  const req = request('127.0.0.1', { 'x-forwarded-for': '203.0.113.9, unknown, 127.0.0.1' })
+  assert.equal(clientIpForProxy(req), '127.0.0.1')
 })
 
 test('非可信直连不能伪造 https 协议', () => {

@@ -32,8 +32,10 @@ function isLoopback(value) {
 }
 
 /**
- * 公网请求由本机 frpc（回环地址）转入，云端 nginx 会用
- * `$proxy_add_x_forwarded_for` 把真实对端追加在 XFF 最右侧，因此只接受最后一个合法 IP。
+ * 公网请求由本机 frpc（回环地址）转入：云端 nginx 用 `$proxy_add_x_forwarded_for`
+ * 追加真实对端，frps 的 vhost 反向代理（util/vhost ReverseProxy + SetXForwarded）
+ * 又把 nginx 的回环地址追加到 XFF 最右侧。故从右往左跳过回环跳数，取第一个
+ * 非回环合法 IP 才是真实客户端；更左侧的客户端自带段不可信。
  * 局域网直连 8080 时完全忽略客户端自带 XFF，使用 socket 对端地址。
  */
 function clientIpForProxy(req) {
@@ -42,8 +44,13 @@ function clientIpForProxy(req) {
 
   const raw = req.headers && req.headers['x-forwarded-for']
   const values = Array.isArray(raw) ? raw : String(raw || '').split(',')
-  const candidate = normalizeIp(values.map((item) => item.trim()).filter(Boolean).at(-1))
-  return net.isIP(candidate) ? candidate : socketIp
+  const hops = values.map((item) => normalizeIp(item)).filter(Boolean)
+  // 命中第一个非回环段即认定其为真实客户端；非法则回退 socket，不继续左探
+  for (let i = hops.length - 1; i >= 0; i--) {
+    if (isLoopback(hops[i])) continue
+    return net.isIP(hops[i]) ? hops[i] : socketIp
+  }
+  return socketIp
 }
 
 function withoutHopByHopHeaders(input) {

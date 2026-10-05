@@ -4,6 +4,7 @@ import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
 import { hashPassword } from '../lib/password'
 import { buildExcel } from '../lib/excel'
+import { resolveAuditLabels } from './audit-labels'
 
 /**
  * 权限管理服务：用户 / 角色 / 权限 / 审计日志。
@@ -397,7 +398,11 @@ export const AdminService = {
     const userIds = [...new Set(rows.map((r) => r.userId).filter(Boolean))] as string[]
     const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, username: true } })
     const nameMap = new Map(users.map((u) => [u.id, u.username]))
-    const items = rows.map((r) => ({
+    // 人话化富化：targetId/detail 内部标识 → 业务名称（仅本页，失败降级为空标签）
+    const { targetLabels, codeLabels } = await resolveAuditLabels(
+      rows.map((r) => ({ module: r.module, action: r.action, targetId: r.targetId, detail: r.detail })),
+    )
+    const items = rows.map((r, i) => ({
       id: r.id,
       createdAt: r.createdAt.toISOString(),
       username: r.userId ? (nameMap.get(r.userId) ?? r.userId) : '-',
@@ -407,6 +412,9 @@ export const AdminService = {
       ip: r.ip,
       userAgent: r.userAgent,
       targetId: r.targetId,
+      targetLabel: targetLabels[i],
+      codeLabels,
+      traceId: r.traceId,
     }))
     return { items, total, page: params.page, pageSize: params.pageSize, totalPages: Math.ceil(total / params.pageSize) }
   },
