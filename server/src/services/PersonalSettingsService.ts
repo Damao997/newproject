@@ -31,9 +31,21 @@ export const PersonalSettingsService = {
   async updateProfile(userId: string, input: unknown, meta: Meta) {
     const parsed = profilePatchSchema.parse(input)
     const { name, ...contacts } = parsed
-    const normalized = Object.fromEntries(Object.entries(contacts).map(([key, value]) => [key, value || null]))
+    const normalized: Record<string, unknown> = Object.fromEntries(Object.entries(contacts).map(([key, value]) => [key, value || null]))
+    // 邮箱归一化：去空格 + 转小写，与 AdminService.normalizeEmail 及 PasswordResetService 查找口径保持一致
+    if (typeof normalized.email === 'string') normalized.email = normalized.email.trim().toLowerCase() || null
+    // 邮箱唯一性预检（并发窗口由 user_email_key 唯一索引兜底 → P2002 映射 409）
+    if (normalized.email) {
+      const taken = await prisma.user.findUnique({ where: { email: normalized.email as string } })
+      if (taken && taken.id !== userId) throw errors.conflict('该邮箱已被其他账号使用')
+    }
     try { await prisma.user.update({ where: { id: userId }, data: { ...(name === undefined ? {} : { displayName: name }), ...normalized } }) }
-    catch (cause) { console.error('个人资料写入失败', { traceId: meta.traceId, code: (cause as { code?: string }).code }); throw errors.internal('资料保存失败，请重试') }
+    catch (cause) {
+      const code = (cause as { code?: string }).code
+      console.error('个人资料写入失败', { traceId: meta.traceId, code })
+      if (code === 'P2002') throw errors.conflict('该邮箱已被其他账号使用')
+      throw errors.internal('资料保存失败，请重试')
+    }
     await audit(userId, 'profile_update', meta)
     return AuthService.getProfile(userId)
   },

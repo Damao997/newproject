@@ -1,6 +1,6 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios'
 import { useAuthStore } from '@/stores/authStore'
-import type { ApiResponse, LoginRequest, LoginResponse, AutoLoginResponse, User, PaginatedResponse, FilterParams, BatchActivateCheckResult, KpiData, TrendData, DashboardAlert, ReceivableRow, ProductBudgetResponse, SubjectBudgetResponse, ExpenseAnalysisResponse, KeyMetricsResponse, ProductMetricsResponse, ProductCategory, ProductCategoryCheckResult, KeyMetricsProduct, KeyMetricsProductCheckResult, ExpenseMapping, ExpenseMappingCheckResult, SubjectBudgetConfig, SubjectBudgetConfigCheckResult, BudgetRatio, ImportBatch, ImportDiff, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, ConsolidationAdjustment, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData, ReportTemplateItem, ReportShareInfo, ReportChartDataRow } from '@/types'
+import type { ApiResponse, LoginRequest, LoginResponse, AutoLoginResponse, User, CaptchaResponse, LoginOptions, ForgotPasswordRequest, ResetPasswordRequest, PaginatedResponse, FilterParams, BatchActivateCheckResult, KpiData, TrendData, DashboardAlert, ReceivableRow, ProductBudgetResponse, SubjectBudgetResponse, ExpenseAnalysisResponse, KeyMetricsResponse, ProductMetricsResponse, ProductCategory, ProductCategoryCheckResult, KeyMetricsProduct, KeyMetricsProductCheckResult, ExpenseMapping, ExpenseMappingCheckResult, SubjectBudgetConfig, SubjectBudgetConfigCheckResult, BudgetRatio, ImportBatch, ImportDiff, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, ConsolidationAdjustment, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData, ReportTemplateItem, ReportShareInfo, ReportChartDataRow } from '@/types'
 
 import type { PersonalPreferences, PreferenceSnapshot } from '@/lib/personal-settings'
 import type { ProfileUser } from '@/types'
@@ -345,6 +345,40 @@ class ApiClient {
     return this.request<{ accessToken: string; refreshToken: string }>({
       method: 'PUT',
       url: '/auth/password',
+      data,
+    })
+  }
+
+  /** 登录页能力探测：邮件未配置时「忘记密码」不应引导用户进入必然失败的流程 */
+  async getLoginOptions(): Promise<LoginOptions> {
+    return this.request<LoginOptions>({
+      method: 'GET',
+      url: '/auth/login-options',
+    })
+  }
+
+  /** 登录图形验证码：svg 可直接内嵌渲染；答案仅存服务端，一次性消费 */
+  async getCaptcha(): Promise<CaptchaResponse> {
+    return this.request<CaptchaResponse>({
+      method: 'GET',
+      url: '/auth/captcha',
+    })
+  }
+
+  /** 忘记密码第一步：申请重置验证码（凭据含 @ 按邮箱、否则按用户名）。防枚举：响应与账号是否存在无关 */
+  async forgotPassword(data: ForgotPasswordRequest): Promise<void> {
+    return this.request<void>({
+      method: 'POST',
+      url: '/auth/forgot-password',
+      data,
+    })
+  }
+
+  /** 忘记密码第二步：验证码 + 新密码重置（公开端点，区别于管理员 resetPassword）。成功后所有会话被吊销，需用新密码重新登录 */
+  async resetPasswordByEmail(data: ResetPasswordRequest): Promise<void> {
+    return this.request<void>({
+      method: 'POST',
+      url: '/auth/reset-password',
       data,
     })
   }

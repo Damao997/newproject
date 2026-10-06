@@ -225,7 +225,7 @@ authenticate(JWT+黑名单) → requirePermission(默认拒绝,403 补记审计)
     → audit(核心操作 INSERT 到 audit_log) → Service → Prisma → PostgreSQL
 ```
 
-公开端点（不挂 authenticate）：`/health`、`POST /auth/login`、`POST /auth/refresh`、`GET /reports/shared/:token`。
+公开端点（不挂 authenticate）：`/health`、`GET /auth/captcha`、`POST /auth/login`（含图形验证码）、`POST /auth/refresh`、`POST /auth/auto-login`、`POST /auth/forgot-password`、`POST /auth/reset-password`、`GET /reports/shared/:token`。
 鉴权刻意不做全局链——避免误拦公开端点，且让"端点 ↔ 所需权限"同行可读。
 
 

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { basePrisma } from '../lib/prisma'
 import { AuthService } from '../services/AuthService'
+import { newCaptcha } from '../services/CaptchaService'
 
 /**
  * refresh 一次性消费并发回归（真实 DB，M5）：
@@ -46,7 +47,8 @@ afterAll(async () => {
 describe('refresh 一次性消费并发回归（真实 DB，M5）', () => {
   it('同一 refresh token 并发刷新恰一次成功', async () => {
     if (!dbReady) return
-    const login = await AuthService.login(username, 'RefreshOnce@2026')
+    const c = newCaptcha()
+    const login = await AuthService.login(username, 'RefreshOnce@2026', {}, { captcha: { id: c.captchaId, code: c.answer } })
     const results = await Promise.allSettled([
       AuthService.refresh(login.refreshToken),
       AuthService.refresh(login.refreshToken),

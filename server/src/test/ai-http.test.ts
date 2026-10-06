@@ -8,6 +8,7 @@ import request from 'supertest'
 import { createApp } from '../app'
 import { basePrisma, prisma } from '../lib/prisma'
 import { resetAIRateLimit } from '../middleware/ai-rate-limit'
+import { validCaptchaFields } from './captcha-helper'
 
 /**
  * AI 双管道 SSE 路由 HTTP 冒烟（mock chatStream + 真实 DB）。
@@ -29,7 +30,7 @@ beforeAll(async () => {
     if (!admin || !company || !subject) return
     companyCode = company.code
     subjectCode = subject.code
-    const login = await request(app).post('/api/v1/auth/login').send({ username: 'admin', password: 'Yipinhui@2026' })
+    const login = await request(app).post('/api/v1/auth/login').send({ username: 'admin', password: 'Yipinhui@2026', ...validCaptchaFields() })
     if (login.status === 200 && login.body?.data?.accessToken) {
       token = login.body.data.accessToken
       dbReady = true

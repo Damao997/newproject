@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import request from 'supertest'
 import { createApp } from '../app'
 import { basePrisma, prisma } from '../lib/prisma'
+import { validCaptchaFields } from './captcha-helper'
 
 /**
  * 分析报告路由 HTTP 冒烟测试（真实 DB + 完整中间件链）。
@@ -28,7 +29,7 @@ beforeAll(async () => {
     if (!company || !subject) return
     companyCode = company.code
     subjectCode = subject.code
-    const login = await request(app).post('/api/v1/auth/login').send({ username: 'admin', password: 'Yipinhui@2026' })
+    const login = await request(app).post('/api/v1/auth/login').send({ username: 'admin', password: 'Yipinhui@2026', ...validCaptchaFields() })
     if (login.status === 200 && login.body?.data?.accessToken) {
       token = login.body.data.accessToken
       dbReady = true

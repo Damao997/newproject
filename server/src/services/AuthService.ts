@@ -12,6 +12,7 @@ import {
 } from '../lib/jwt'
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
+import { verifyCaptcha } from './CaptchaService'
 import { loadConfig } from '../config/env'
 
 /**
@@ -25,6 +26,8 @@ export interface FrontendUser {
   id: string
   username: string
   name: string
+  /** 绑定邮箱（可空；管理员维护，当前仅用于忘记密码找回） */
+  email: string | null
   role: string
   /** 角色权限码列表（`resource:action`），前端 usePermission 优先使用 */
   permissions: string[]
@@ -116,6 +119,7 @@ function toFrontendUser(user: UserWithRole): FrontendUser {
     id: user.id,
     username: user.username,
     name: user.displayName,
+    email: user.email,
     avatarVersion: user.avatarKey,
     role: user.role.code,
     permissions,
@@ -128,13 +132,19 @@ function toFrontendUser(user: UserWithRole): FrontendUser {
 }
 
 export const AuthService = {
-  /** 登录：校验凭证 → 签发令牌 → 记录 refresh jti → 审计；rememberMe=true 时额外签发持久令牌 */
+  /** 登录：图形验证码 → 校验凭证 → 签发令牌 → 记录 refresh jti → 审计；rememberMe=true 时额外签发持久令牌 */
   async login(
     username: string,
     password: string,
     meta: AuditMeta = {},
-    options: { rememberMe?: boolean } = {},
+    options: { rememberMe?: boolean; captcha: { id: string; code: string } },
   ): Promise<LoginResult> {
+    // 验证码前置校验（一次性消费，先于密码校验）：防密码暴力破解。
+    // 失败不记 login_failed 审计（避免噪音），暴力尝试由 loginRateLimiter + 拉图限流兜底
+    if (!verifyCaptcha(options.captcha.id, options.captcha.code)) {
+      throw errors.badRequest('验证码错误或已过期')
+    }
+
     const user = await prisma.user.findUnique({
       where: { username },
       include: { role: { include: { permissions: true } } },

@@ -83,7 +83,7 @@ export function ProfileSettings() {
       <AppForm form={form} id="personal-profile-form" onSubmit={submit}><FormError message={error} />
         <FormSection title="基本信息"><div className="settings-field-grid">
           <FormInput control={form.control} name="name" label="姓名" required autoComplete="name" />
-          <FormInput control={form.control} name="email" label="工作邮箱" type="email" autoComplete="email" hint="用于联系，登录仍使用用户名" />
+          <FormInput control={form.control} name="email" label="工作邮箱" type="email" autoComplete="email" hint="用于联系与密码找回，登录仍使用用户名" />
           <FormInput control={form.control} name="phone" label="联系电话" type="tel" autoComplete="tel" />
         </div></FormSection>
         <FormSection title="工作资料" description="用于个人展示，权限与数据范围由管理员管理"><div className="settings-field-grid"><FormInput control={form.control} name="department" label="部门" autoComplete="organization" /><FormInput control={form.control} name="jobTitle" label="岗位" autoComplete="organization-title" /></div></FormSection>

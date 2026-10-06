@@ -16,7 +16,7 @@ interface UserDialogProps {
   open: boolean; mode: 'create' | 'edit'; user?: User | null; roles: { code: string; name: string }[]
   onClose: () => void; onSaved?: (name: string) => void
 }
-const defaults = { username: '', name: '', password: '', role: 'viewer', dataScopeCodes: [] as string[] }
+const defaults = { username: '', name: '', email: '', password: '', role: 'viewer', dataScopeCodes: [] as string[] }
 
 export function UserDialog({ open, mode, user, roles, onClose, onSaved }: UserDialogProps) {
   const createUser = useCreateUser()
@@ -25,7 +25,9 @@ export function UserDialog({ open, mode, user, roles, onClose, onSaved }: UserDi
   const [visible, setVisible] = useState(false)
   const schema = z.object({
     username: z.string().trim().min(1, '请输入用户名'),
-    name: z.string(), password: z.string(), role: z.string().min(1, '请选择角色'), dataScopeCodes: z.array(z.string()),
+    name: z.string(),
+    email: z.union([z.string().trim().email('请输入有效邮箱'), z.literal('')]),
+    password: z.string(), role: z.string().min(1, '请选择角色'), dataScopeCodes: z.array(z.string()),
   }).superRefine((values, context) => {
     if (mode === 'edit' && !values.name.trim()) context.addIssue({ code: 'custom', path: ['name'], message: '请输入姓名' })
     if (mode === 'create') {
@@ -41,7 +43,7 @@ export function UserDialog({ open, mode, user, roles, onClose, onSaved }: UserDi
     if (mode === 'edit' && user) {
       const codes = user.dataScopeCodes?.length ? user.dataScopeCodes
         : user.dataScope && !['全部', '无', '*'].includes(user.dataScope) ? user.dataScope.split(',').filter(Boolean) : []
-      reset({ username: user.username, name: user.name, password: '', role: user.role, dataScopeCodes: codes })
+      reset({ username: user.username, name: user.name, email: user.email ?? '', password: '', role: user.role, dataScopeCodes: codes })
     } else reset(defaults)
   }, [open, mode, user, reset])
   const pending = form.formState.isSubmitting || createUser.isPending || updateUser.isPending
@@ -49,8 +51,8 @@ export function UserDialog({ open, mode, user, roles, onClose, onSaved }: UserDi
   const submit = async (values: z.infer<typeof schema>) => {
     setError(null)
     try {
-      if (mode === 'create') await createUser.mutateAsync({ ...values, username: values.username.trim(), name: values.name.trim() || undefined })
-      else if (user) await updateUser.mutateAsync({ id: user.id, data: { name: values.name.trim(), role: values.role, dataScopeCodes: values.dataScopeCodes } })
+      if (mode === 'create') await createUser.mutateAsync({ ...values, username: values.username.trim(), name: values.name.trim() || undefined, email: values.email.trim().toLowerCase() || null })
+      else if (user) await updateUser.mutateAsync({ id: user.id, data: { name: values.name.trim(), email: values.email.trim().toLowerCase() || null, role: values.role, dataScopeCodes: values.dataScopeCodes } })
       reset(values); onClose(); onSaved?.(values.name.trim() || values.username.trim())
     } catch (cause) { setError(cause instanceof Error ? cause.message : '保存失败，请重试') }
   }
@@ -62,6 +64,7 @@ export function UserDialog({ open, mode, user, roles, onClose, onSaved }: UserDi
           <FormSection title="基本信息">
             <FormInput control={form.control} name="username" label="用户名" required readOnly={mode === 'edit'} autoComplete="username" placeholder="用于登录" />
             <FormInput control={form.control} name="name" label="姓名" required={mode === 'edit'} placeholder="用户显示名称" hint={mode === 'create' ? '选填，留空时使用用户名' : undefined} />
+            <FormInput control={form.control} name="email" label="邮箱（可选，忘记密码收件邮箱）" type="email" autoComplete="off" placeholder="name@example.com" />
             {mode === 'create' && <FormField control={form.control} name="password" label="初始密码" required hint="至少 8 位，含字母与数字；首次登录后须修改">
               {(field) => <Input {...field} value={String(field.value)} type={visible ? 'text' : 'password'} autoComplete="new-password" className="h-11"
                 suffix={<button type="button" className="flex h-6 w-6 items-center justify-center rounded hover:bg-muted" aria-label={visible ? '隐藏密码' : '显示密码'} onClick={() => setVisible(!visible)}>

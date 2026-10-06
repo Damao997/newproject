@@ -782,7 +782,8 @@ model User {
   id                  String       @id @default(uuid())
   username            String       @unique
   displayName         String       @map("display_name")
-  email               String?
+  // 登录名唯一；邮箱可空但唯一（未绑定为 NULL，不参与唯一约束），作为忘记密码的收件目标
+  email               String?      @unique
   phone               String?
   department          String?
   jobTitle            String?      @map("job_title")
@@ -810,6 +811,7 @@ model User {
   preference     UserPreference?
   tokenBlacklist TokenBlacklist[]
   auditLogs      AuditLog[]
+  passwordResetCodes PasswordResetCode[]
 
   @@index([roleId])
   @@index([companyCode])
@@ -995,6 +997,27 @@ model Alert {
   acknowledged     Boolean  @default(false)
 
   @@map("alert")
+}
+
+// 7.12 密码重置验证码表：一次性消费；过期/已消费数据在下次签发时惰性清理
+model PasswordResetCode {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  // 收件邮箱（签发时账号绑定邮箱的快照）
+  email      String
+  // 仅存 SHA-256 哈希，明文验证码只出现在邮件中，不入库不打日志
+  codeHash   String    @map("code_hash")
+  // 错误尝试次数：达到上限立即作废，需重新申请
+  attempts   Int       @default(0)
+  expiresAt  DateTime  @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_code")
 }
 
 // ============================================================
