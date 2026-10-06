@@ -26,12 +26,21 @@
 
 ## 备份、验收与回滚
 
-部署脚本会先执行生产全量加密备份并校验，再停进程、检出 tag、前后端 `npm ci` 与构建、启动 PostgreSQL、`prisma migrate deploy`、原子切换产物、重载 backend/frontend、健康检查与冒烟。正式合并 SHA、部署时间、最终备份文件、迁移结果、巡检与冒烟明细保存在生产 `logs/release-v2026.10.9.json` 及部署日志；未执行步骤不预先标记成功。
+发布前全量加密备份 `zjyph_prod_20261006_120912.dump.enc`（4.13 MB）已生成并通过自动校验。部署于 2026-10-06 12:09:12 开始、12:16 结束，退出码 0：停进程 → 检出 tag `v2026.10.9` → 前后端 `npm ci` 与分阶段构建 → 启动 PostgreSQL → `prisma migrate deploy` → 原子切换产物 → 重载 backend/frontend。
+
+**迁移结果**：`20261005000538_add_password_reset_code` 于 12:15:43 应用成功。结构核对：`user_email_key` 唯一索引存在、`password_reset_code` 表存在、外键 `password_reset_code_user_id_fkey` 的删除规则为 **CASCADE**。迁移前置门禁在部署前复核：生产库精确重复 0、大小写不敏感重复 0、空串 0，11 个用户邮箱全为 NULL。
+
+**部署后验收**：生产 `HEAD` 精确匹配 `v2026.10.9`，工作区无已跟踪漂移；`ops-check-zjyph.ps1` 全绿（三进程 online、`/health` 双 up、前端 8080、同源 `/api/v1` 401、磁盘、备份时效、连接数）；`production-smoke-zjyph.ps1`（本版本已适配强制验证码）五项全 PASS：`/health`、前端首页、未授权 401、登录接口强制图形验证码、审计通道可用；PM2 三进程均 online（postgres pid 22012 重启 1 次、backend pid 38524、frontend pid 39812）。
+
+**接口与页面实测**：`GET /auth/login-options` 返回 `{"mailConfigured":false,"captchaRequired":true}`；`GET /auth/captcha` 200；`POST /auth/forgot-password` 对未绑定邮箱的账号返回 200（防枚举语义，不发信）。生产登录页用真实浏览器实测 **7/7 通过**：验证码渲染与点击刷新、未配邮件时「忘记密码」降级为「请联系平台管理员重置密码」且不打开自助弹窗、无页面级 JS 异常。
+
+正式合并 SHA（`137b2f4a`）、PR（#26 `feat/account-security` → develop、#27 develop → main）、备份文件、迁移与验收明细同时保存在生产 `logs/release-v2026.10.9.json`。
 
 回滚目标为 v2026.10.8，仍调用统一 `deploy-zjyph.ps1 -Tag`。迁移为增量结构，回滚代码不涉及数据恢复；回滚期间若用旧版界面维护邮箱，唯一索引冲突会以 409 呈现，不丢数据。
 
 ## 已知限制
 
 - 生产未配置 SMTP，「忘记密码」在邮件服务配置前不可用（入口降级为联系管理员指引）；启用只需在生产 `.env` 增加 `SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS/MAIL_FROM` 并重启后端。
+- **残余信息差异（低风险，建议配置邮件时一并收敛）**：未配置邮件服务时，若账号**已绑定邮箱**，`forgot-password` 会因发信失败返回 503，而「账号不存在 / 未绑定邮箱」返回 200——两者响应不同，理论上可用于探测哪些账号绑定了邮箱。当前生产所有账号均未绑定邮箱，且前端在未配邮件时不展示该入口，实际风险低；配置 SMTP 后该差异自然消失。若要彻底消除，可在账号查询之前先做邮件配置检查并统一返回 503。
 - `CaptchaService` 与限流均为**进程内存态**，仅适用于 PM2 fork 单实例（现状成立）；将来改 cluster 需迁移到共享存储。
 - 冒烟第 4/5 项为适配强制验证码后的等价校验，覆盖强度弱于原「错误密码 401 + 登录审计落库」，已在脚本内注明原因。
