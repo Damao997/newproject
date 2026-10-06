@@ -94,4 +94,42 @@ describe('VersionNotice 历史版本入口', () => {
     expect(screen.queryByText(/当前查看的是历史版本/)).not.toBeInTheDocument()
     expect(screen.getByText('十月新功能内容')).toBeInTheDocument()
   })
+
+  // 回归：v2026.10.9 事故——release-notes.json 出现映射表外的 type 时，
+  // `NOTE_TYPE_META[n.type].variant` 抛 TypeError，登录后所有页面被错误边界接管。
+  it('未知公告类型不崩溃，回落为「更新」标签', async () => {
+    vi.mocked(fetchReleaseNotes).mockResolvedValue({
+      releases: [
+        {
+          version: 'v2026.10.3',
+          publishedAt: '2026-10-02',
+          title: '含未知类型',
+          notes: [{ type: 'brand-new-type' as never, text: '未知类型的公告内容' }],
+        },
+      ],
+    })
+    useNoticeStore.getState().openNotice('main')
+    render(<VersionNotice />)
+
+    expect(await screen.findByText('未知类型的公告内容')).toBeInTheDocument()
+    expect(screen.getByText('更新')).toBeInTheDocument()
+  })
+
+  it('note 类型渲染为「提示」标签', async () => {
+    vi.mocked(fetchReleaseNotes).mockResolvedValue({
+      releases: [
+        {
+          version: 'v2026.10.3',
+          publishedAt: '2026-10-02',
+          title: '含提示类型',
+          notes: [{ type: 'note', text: '提示类型的公告内容' }],
+        },
+      ],
+    })
+    useNoticeStore.getState().openNotice('main')
+    render(<VersionNotice />)
+
+    expect(await screen.findByText('提示类型的公告内容')).toBeInTheDocument()
+    expect(screen.getByText('提示')).toBeInTheDocument()
+  })
 })
