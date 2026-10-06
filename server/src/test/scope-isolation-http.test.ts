@@ -4,6 +4,7 @@ import ExcelJS from 'exceljs'
 import { createApp } from '../app'
 import { basePrisma, prisma } from '../lib/prisma'
 import { hashPassword } from '../lib/password'
+import { validCaptchaFields } from './captcha-helper'
 
 /**
  * 数据范围隔离 HTTP 端到端测试（真实 DB + 完整中间件链）。
@@ -102,7 +103,7 @@ beforeAll(async () => {
     })
     userId = user.id
 
-    const login = await request(app).post('/api/v1/auth/login').send({ username: USERNAME, password: PASSWORD })
+    const login = await request(app).post('/api/v1/auth/login').send({ username: USERNAME, password: PASSWORD, ...validCaptchaFields() })
     if (login.status !== 200 || !login.body?.data?.accessToken) throw new Error('范围测试用户登录失败')
     token = login.body.data.accessToken
 
@@ -123,7 +124,7 @@ beforeAll(async () => {
         select: { id: true },
       })
       viewerUserId = viewerUser.id
-      const viewerLogin = await request(app).post('/api/v1/auth/login').send({ username: `__viewer_full_${suffix}`, password: PASSWORD })
+      const viewerLogin = await request(app).post('/api/v1/auth/login').send({ username: `__viewer_full_${suffix}`, password: PASSWORD, ...validCaptchaFields() })
       if (viewerLogin.status !== 200 || !viewerLogin.body?.data?.accessToken) throw new Error('viewer 测试用户登录失败')
       viewerToken = viewerLogin.body.data.accessToken
 
@@ -149,7 +150,7 @@ beforeAll(async () => {
         select: { id: true },
       })
       noViewUserId = noViewUser.id
-      const noViewLogin = await request(app).post('/api/v1/auth/login').send({ username: `__noview_u_${suffix}`, password: PASSWORD })
+      const noViewLogin = await request(app).post('/api/v1/auth/login').send({ username: `__noview_u_${suffix}`, password: PASSWORD, ...validCaptchaFields() })
       if (noViewLogin.status !== 200 || !noViewLogin.body?.data?.accessToken) throw new Error('无查看权限测试用户登录失败')
       noViewToken = noViewLogin.body.data.accessToken
 
@@ -175,7 +176,7 @@ beforeAll(async () => {
         select: { id: true },
       })
       invOnlyUserId = invUser.id
-      const invLogin = await request(app).post('/api/v1/auth/login').send({ username: `__invonly_u_${suffix}`, password: PASSWORD })
+      const invLogin = await request(app).post('/api/v1/auth/login').send({ username: `__invonly_u_${suffix}`, password: PASSWORD, ...validCaptchaFields() })
       if (invLogin.status !== 200 || !invLogin.body?.data?.accessToken) throw new Error('仅存货权限测试用户登录失败')
       invOnlyToken = invLogin.body.data.accessToken
 
@@ -201,7 +202,7 @@ beforeAll(async () => {
         select: { id: true },
       })
       expNoUserId = expNoUser.id
-      const expNoLogin = await request(app).post('/api/v1/auth/login').send({ username: `__expno_u_${suffix}`, password: PASSWORD })
+      const expNoLogin = await request(app).post('/api/v1/auth/login').send({ username: `__expno_u_${suffix}`, password: PASSWORD, ...validCaptchaFields() })
       if (expNoLogin.status !== 200 || !expNoLogin.body?.data?.accessToken) throw new Error('无导出权限测试用户登录失败')
       expNoToken = expNoLogin.body.data.accessToken
 

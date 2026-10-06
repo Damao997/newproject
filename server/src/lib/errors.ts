@@ -1,7 +1,7 @@
 /**
  * 统一错误码与应用异常。
  * code 与 HTTP 状态码映射见 docs/references/errorcode.md：
- *   0=成功 / 400=参数 / 401=未认证 / 403=无权限 / 409=冲突 / 429=限流 / 500=系统
+ *   0=成功 / 400=参数 / 401=未认证 / 403=无权限 / 409=冲突 / 429=限流 / 503=服务暂不可用 / 500=系统
  */
 
 export class AppError extends Error {
@@ -29,6 +29,8 @@ export const errors = {
   conflict: (message = '资源冲突') => new AppError(409, 409, message),
   /** 429 请求频率超限 */
   tooManyRequests: (message = '请求频率超限，请稍后再试') => new AppError(429, 429, message),
+  /** 503 服务暂不可用（依赖的外部服务未配置/不可达，如 SMTP 邮件服务） */
+  serviceUnavailable: (message = '服务暂不可用，请稍后重试') => new AppError(503, 503, message),
   /** 500 系统内部错误 */
   internal: (message = '服务器内部错误') => new AppError(500, 500, message),
 }

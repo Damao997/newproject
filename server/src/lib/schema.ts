@@ -8,6 +8,9 @@ import { z } from 'zod'
 export const loginSchema = z.object({
   username: z.string().trim().min(1, '用户名不能为空').max(64, '用户名过长'),
   password: z.string().min(1, '密码不能为空').max(128, '密码过长'),
+  // 图形验证码：captchaId 与答案成对校验，一次性消费（防密码暴力破解）
+  captchaId: z.string().min(1, '验证码不能为空').max(64, '验证码标识非法'),
+  captcha: z.string().trim().min(1, '请输入验证码').max(8, '验证码过长'),
   // 勾选后服务端签发「7 天内免登录」持久令牌；仅在登录成功且勾选时下发，缺省 false
   rememberMe: z.boolean().optional(),
 })
@@ -17,6 +20,25 @@ export const refreshSchema = z.object({
   refreshToken: z.string().min(1, 'refreshToken 不能为空'),
 })
 export type RefreshInput = z.infer<typeof refreshSchema>
+
+/** 忘记密码第一步：凭据（含 @ 按邮箱查，否则按用户名查） */
+export const forgotPasswordSchema = z.object({
+  identifier: z.string().trim().min(1, '请输入用户名或邮箱').max(128, '输入过长'),
+})
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>
+
+/** 忘记密码第二步：凭据 + 邮件验证码 + 新密码（密码规则与改密一致） */
+export const resetPasswordSchema = z.object({
+  identifier: z.string().trim().min(1, '请输入用户名或邮箱').max(128, '输入过长'),
+  code: z.string().trim().regex(/^\d{6}$/, '验证码为 6 位数字'),
+  newPassword: z
+    .string()
+    .min(8, '新密码至少 8 位')
+    .max(128, '新密码过长')
+    .regex(/[A-Za-z]/, '新密码需包含字母')
+    .regex(/[0-9]/, '新密码需包含数字'),
+})
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>
 
 export const autoLoginSchema = z.object({
   // 客户端持有的明文持久令牌；服务端 SHA-256 哈希后比对，不存明文

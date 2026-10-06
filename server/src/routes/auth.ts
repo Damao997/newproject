@@ -2,16 +2,26 @@ import multer from 'multer'
 import { PersonalSettingsService } from '../services/PersonalSettingsService'
 import { Router, type Request, type Response, type NextFunction, type RequestHandler } from 'express'
 import { AuthService } from '../services/AuthService'
+import { PasswordResetService } from '../services/PasswordResetService'
+import { generateCaptcha } from '../services/CaptchaService'
 import { authenticate } from '../middleware/auth'
-import { loginRateLimiter } from '../middleware/rate-limit'
+import { loginRateLimiter, captchaRateLimiter, passwordResetRateLimiter } from '../middleware/rate-limit'
 import { auditMeta } from '../middleware/audit'
 import { sendOk } from '../lib/response'
 import { errors } from '../lib/errors'
-import { loginSchema, refreshSchema, updatePasswordSchema, autoLoginSchema } from '../lib/schema'
+import { loadConfig } from '../config/env'
+import {
+  loginSchema,
+  refreshSchema,
+  updatePasswordSchema,
+  autoLoginSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+} from '../lib/schema'
 
 /**
  * 认证路由（前缀 /api/v1/auth），契约对齐 web/src/lib/api.ts。
- * 公开：POST /login、POST /refresh、POST /auto-login
+ * 公开：GET /login-options、GET /captcha、POST /login、POST /refresh、POST /auto-login、POST /forgot-password、POST /reset-password
  * 需登录：POST /logout、GET /profile、PUT /password
  */
 
@@ -24,7 +34,25 @@ function asyncHandler(fn: (req: Request, res: Response) => Promise<void>): Reque
 
 const router = Router()
 
-// POST /auth/login —— 登录（5 次/分钟限流）
+// GET /auth/login-options —— 登录页能力探测（公开、无副作用）：邮件是否已配置决定「忘记密码」入口形态
+router.get(
+  '/login-options',
+  asyncHandler(async (_req, res) => {
+    const config = loadConfig()
+    sendOk(res, { mailConfigured: Boolean(config.smtpHost && config.mailFrom), captchaRequired: true })
+  }),
+)
+
+// GET /auth/captcha —— 登录图形验证码（公开；30 次/分钟）。答案仅存服务端内存，一次性消费
+router.get(
+  '/captcha',
+  captchaRateLimiter,
+  asyncHandler(async (_req, res) => {
+    sendOk(res, generateCaptcha())
+  }),
+)
+
+// POST /auth/login —— 登录（5 次/分钟限流；请求体需携带图形验证码）
 router.post(
   '/login',
   loginRateLimiter,
@@ -34,9 +62,31 @@ router.post(
       parsed.username,
       parsed.password,
       auditMeta(req),
-      { rememberMe: parsed.rememberMe === true },
+      { rememberMe: parsed.rememberMe === true, captcha: { id: parsed.captchaId, code: parsed.captcha } },
     )
     sendOk(res, result)
+  }),
+)
+
+// POST /auth/forgot-password —— 忘记密码第一步：申请重置验证码（公开；防枚举统一响应）
+router.post(
+  '/forgot-password',
+  passwordResetRateLimiter,
+  asyncHandler(async (req, res) => {
+    const parsed = forgotPasswordSchema.parse(req.body)
+    await PasswordResetService.requestCode(parsed.identifier, auditMeta(req))
+    sendOk(res, null)
+  }),
+)
+
+// POST /auth/reset-password —— 忘记密码第二步：验码 + 重置密码（公开；成功后吊销全部会话）
+router.post(
+  '/reset-password',
+  passwordResetRateLimiter,
+  asyncHandler(async (req, res) => {
+    const parsed = resetPasswordSchema.parse(req.body)
+    await PasswordResetService.reset(parsed.identifier, parsed.code, parsed.newPassword, auditMeta(req))
+    sendOk(res, null)
   }),
 )
 

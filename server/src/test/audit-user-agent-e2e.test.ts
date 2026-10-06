@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import request from 'supertest'
 import { createApp } from '../app'
 import { basePrisma } from '../lib/prisma'
+import { validCaptchaFields } from './captcha-helper'
 
 /**
  * 端到端：登录审计是否真实落库 user_agent（B3）。
@@ -41,7 +42,7 @@ describe('审计日志 user_agent 端到端', () => {
     const res = await request(app)
       .post('/api/v1/auth/login')
       .set('User-Agent', UA)
-      .send({ username: '__e2e_not_exist__', password: 'WrongPassword123' })
+      .send({ username: '__e2e_not_exist__', password: 'WrongPassword123', ...validCaptchaFields() })
 
     expect(res.status).toBe(401)
 
@@ -65,7 +66,7 @@ describe('审计日志 user_agent 端到端', () => {
     const res = await request(app)
       .post('/api/v1/auth/login')
       .set('User-Agent', longUa)
-      .send({ username: '__e2e_long_ua__', password: 'WrongPassword123' })
+      .send({ username: '__e2e_long_ua__', password: 'WrongPassword123', ...validCaptchaFields() })
 
     expect(res.status).toBe(401)
 
@@ -88,7 +89,7 @@ describe('审计日志 user_agent 端到端', () => {
       .post('/api/v1/auth/login')
       // supertest 默认不带 UA；显式置空进一步确保
       .set('User-Agent', '')
-      .send({ username: '__e2e_no_ua__', password: 'WrongPassword123' })
+      .send({ username: '__e2e_no_ua__', password: 'WrongPassword123', ...validCaptchaFields() })
 
     expect(res.status).toBe(401)
 

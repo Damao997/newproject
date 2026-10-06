@@ -329,6 +329,7 @@ export default function UsersPage() {
                   <th scope="col" className="text-left">用户</th>
                   <th scope="col" className="text-left">角色</th>
                   <th scope="col" className="text-left">数据范围</th>
+                  <th scope="col" className="text-left">邮箱</th>
                   <th scope="col" className="text-left">最近登录</th>
                   <th scope="col" className="text-left">状态</th>
                   <th scope="col" className="w-[70px] text-left">操作</th>
@@ -337,7 +338,7 @@ export default function UsersPage() {
               <tbody>
                 {usersQuery.isLoading && (
                   <tr>
-                    <td colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
+                    <td colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
                       <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
                       正在加载用户...
                     </td>
@@ -345,7 +346,7 @@ export default function UsersPage() {
                 )}
                 {!usersQuery.isLoading && paged.length === 0 && (
                   <tr>
-                    <td colSpan={6}>
+                    <td colSpan={7}>
                       <EmptyState compact title="暂无用户" description={total > 0 ? '当前筛选条件下无匹配用户，请调整筛选' : undefined} />
                     </td>
                   </tr>
@@ -368,6 +369,9 @@ export default function UsersPage() {
                       </td>
                       <td className="max-w-[200px] truncate text-[13px] text-foreground" title={user.dataScope}>
                         {user.dataScope || '—'}
+                      </td>
+                      <td className="max-w-[180px] truncate text-[13px] text-foreground" title={user.email ?? ''}>
+                        {user.email || '—'}
                       </td>
                       <td className="whitespace-nowrap font-num tabular-nums text-[13px] text-foreground">
                         {formatTime(user.lastLoginAt)}
