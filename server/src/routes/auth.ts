@@ -56,7 +56,7 @@ router.post(
   '/refresh',
   asyncHandler(async (req, res) => {
     const parsed = refreshSchema.parse(req.body)
-    const result = await AuthService.refresh(parsed.refreshToken)
+    const result = await AuthService.refresh(parsed.refreshToken, auditMeta(req))
     sendOk(res, result)
   }),
 )

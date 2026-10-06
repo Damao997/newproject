@@ -579,6 +579,12 @@ export interface AuditLog {
   ip?: string | null
   userAgent?: string | null
   targetId?: string | null
+  /** targetId 的业务名称（后端富化；无法解析时为 null，需回退原始标识） */
+  targetLabel?: string | null
+  /** 本页 detail 中出现的编码 → 业务名称（后端富化） */
+  codeLabels?: Record<string, string>
+  /** 请求链路 ID，仅「完整视图」展示，供技术排障 */
+  traceId?: string | null
 }
 
 /** 科目树节点（经营分析 level0-level4 / 静态指标 level0-level1 通用） */

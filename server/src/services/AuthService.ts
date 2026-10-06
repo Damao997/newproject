@@ -198,7 +198,7 @@ export const AuthService = {
   },
 
   /** 刷新：验签 + 比对 jti + 黑名单 → 轮转（旧 jti 入黑名单，签发新对） */
-  async refresh(refreshToken: string): Promise<TokenPair> {
+  async refresh(refreshToken: string, meta: AuditMeta = {}): Promise<TokenPair> {
     let payload
     try {
       payload = verifyRefreshToken(refreshToken)
@@ -257,8 +257,8 @@ export const AuthService = {
       })
 
       await recordAudit(
-        { userId: user.id, module: 'auth', action: 'refresh', targetId: user.id },
-        undefined,
+        { userId: user.id, module: 'auth', action: 'refresh', targetId: user.id, ip: meta.ip ?? null, userAgent: meta.userAgent ?? null },
+        meta.traceId,
       )
 
       return { accessToken: newAccess, refreshToken: newRefresh }
