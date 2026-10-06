@@ -7,6 +7,8 @@ export interface User {
   id: string
   username: string
   name: string
+  /** 绑定邮箱（可空；管理员维护，当前仅用于忘记密码找回） */
+  email?: string | null
   role: UserRole
   /** 后端下发的角色权限码列表（`resource:action`），旧会话可能缺失 */
   permissions?: string[]
@@ -626,8 +628,36 @@ export interface PaginatedResponse<T> {
 export interface LoginRequest {
   username: string
   password: string
+  /** 图形验证码标识（GET /auth/captcha 下发，与 captcha 成对校验，一次性消费） */
+  captchaId: string
+  /** 用户输入的图形验证码（忽略大小写） */
+  captcha: string
   /** 7 天内免登录：勾选后服务端签发持久令牌，前端缓存在 localStorage 用于下次自动续登 */
   rememberMe?: boolean
+}
+
+/** 登录图形验证码（GET /auth/captcha 响应；svg 为可直接内嵌渲染的 SVG 字符串） */
+export interface CaptchaResponse {
+  captchaId: string
+  svg: string
+}
+
+/** 登录页能力探测（GET /auth/login-options）：邮件未配置时「忘记密码」降级为指引文案 */
+export interface LoginOptions {
+  mailConfigured: boolean
+  captchaRequired: boolean
+}
+
+/** 忘记密码：申请重置验证码（凭据含 @ 按邮箱、否则按用户名定位账号） */
+export interface ForgotPasswordRequest {
+  identifier: string
+}
+
+/** 忘记密码：验证码 + 新密码重置 */
+export interface ResetPasswordRequest {
+  identifier: string
+  code: string
+  newPassword: string
 }
 
 export interface LoginResponse {

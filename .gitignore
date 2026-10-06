@@ -6,6 +6,9 @@ node_modules
 /.zcode/
 /.zcodeignore
 
+# 开发期邮件捕获产物（MAIL_DEV_CAPTURE=1 时落盘的 .eml/.json，含验证码明文）
+/server/.mail-out/
+
 # Build output
 dist
 **/dist

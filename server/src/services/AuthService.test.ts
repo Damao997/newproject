@@ -25,12 +25,20 @@ vi.mock('../middleware/audit', () => ({
 }))
 
 import { AuthService } from './AuthService'
+import { newCaptcha } from './CaptchaService'
+
+/** 登录用例的验证码入参：直接用真实 CaptchaService 签发（同进程内存 store） */
+function captchaOpts() {
+  const c = newCaptcha()
+  return { captcha: { id: c.captchaId, code: c.answer } }
+}
 
 function makeUser(overrides: Record<string, unknown> = {}) {
   return {
     id: 'u1',
     username: 'alice',
     displayName: '爱丽丝',
+    email: null,
     passwordHash: 'placeholder',
     roleId: 'r-admin',
     companyCode: null,
@@ -62,7 +70,7 @@ describe('AuthService.login', () => {
     const passwordHash = await hashPassword('Yipinhui@2026')
     mocks.prisma.user.findUnique.mockResolvedValue(makeUser({ passwordHash }))
 
-    const result = await AuthService.login('alice', 'Yipinhui@2026', { ip: '127.0.0.1' })
+    const result = await AuthService.login('alice', 'Yipinhui@2026', { ip: '127.0.0.1' }, captchaOpts())
 
     expect(result.accessToken).toBeTruthy()
     expect(result.refreshToken).toBeTruthy()
@@ -92,16 +100,24 @@ describe('AuthService.login', () => {
     mocks.prisma.user.findUnique.mockResolvedValue(
       makeUser({ passwordHash, companyCode: 'EN330059', role: { code: 'finance_manager', scopeValue: '', status: 'active', permissions: [] } }),
     )
-    const result = await AuthService.login('alice', 'Yipinhui@2026')
+    const result = await AuthService.login('alice', 'Yipinhui@2026', {}, captchaOpts())
     expect(result.user.dataScope).toBe('EN330059')
     expect(result.user.role).toBe('finance_manager')
+  })
+
+  it('图形验证码错误 → 400，且不查用户、不记登录审计', async () => {
+    const c = newCaptcha()
+    await expect(
+      AuthService.login('alice', 'Yipinhui@2026', {}, { captcha: { id: c.captchaId, code: 'xxxx' } }),
+    ).rejects.toMatchObject({ code: 400 })
+    expect(mocks.prisma.user.findUnique).not.toHaveBeenCalled()
   })
 
   it('密码错误抛 401 并记录 login_failed', async () => {
     const passwordHash = await hashPassword('correct-pw-123')
     mocks.prisma.user.findUnique.mockResolvedValue(makeUser({ passwordHash }))
 
-    await expect(AuthService.login('alice', 'wrong-pw')).rejects.toMatchObject({ code: 401 })
+    await expect(AuthService.login('alice', 'wrong-pw', {}, captchaOpts())).rejects.toMatchObject({ code: 401 })
     expect(mocks.recordAudit).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'login_failed', userId: 'u1' }),
       undefined,
@@ -110,7 +126,7 @@ describe('AuthService.login', () => {
 
   it('用户不存在抛 401，审计 userId 为 null', async () => {
     mocks.prisma.user.findUnique.mockResolvedValue(null)
-    await expect(AuthService.login('ghost', 'x')).rejects.toMatchObject({ code: 401 })
+    await expect(AuthService.login('ghost', 'x', {}, captchaOpts())).rejects.toMatchObject({ code: 401 })
     expect(mocks.recordAudit).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'login_failed', userId: null }),
       undefined,
@@ -120,27 +136,27 @@ describe('AuthService.login', () => {
   it('已停用用户拒绝登录', async () => {
     const passwordHash = await hashPassword('Yipinhui@2026')
     mocks.prisma.user.findUnique.mockResolvedValue(makeUser({ passwordHash, status: 'inactive' }))
-    await expect(AuthService.login('alice', 'Yipinhui@2026')).rejects.toMatchObject({ code: 401 })
+    await expect(AuthService.login('alice', 'Yipinhui@2026', {}, captchaOpts())).rejects.toMatchObject({ code: 401 })
   })
 
   it('mustChangePassword=true 时登录返回标志，供前端强制改密', async () => {
     const passwordHash = await hashPassword('Yipinhui@2026')
     mocks.prisma.user.findUnique.mockResolvedValue(makeUser({ passwordHash, mustChangePassword: true }))
-    const result = await AuthService.login('alice', 'Yipinhui@2026')
+    const result = await AuthService.login('alice', 'Yipinhui@2026', {}, captchaOpts())
     expect(result.user.mustChangePassword).toBe(true)
   })
 
   it('mustChangePassword=false 时登录返回 false 标志', async () => {
     const passwordHash = await hashPassword('Yipinhui@2026')
     mocks.prisma.user.findUnique.mockResolvedValue(makeUser({ passwordHash, mustChangePassword: false }))
-    const result = await AuthService.login('alice', 'Yipinhui@2026')
+    const result = await AuthService.login('alice', 'Yipinhui@2026', {}, captchaOpts())
     expect(result.user.mustChangePassword).toBe(false)
   })
 
   it('多会话：既有 jti 列表保留，新 jti 追加（不踢下线）', async () => {
     const passwordHash = await hashPassword('Yipinhui@2026')
     mocks.prisma.user.findUnique.mockResolvedValue(makeUser({ passwordHash, refreshTokenJtiList: ['jti-old-1', 'jti-old-2'] }))
-    const result = await AuthService.login('alice', 'Yipinhui@2026')
+    const result = await AuthService.login('alice', 'Yipinhui@2026', {}, captchaOpts())
     const decoded = verifyRefreshToken(result.refreshToken)
     expect(mocks.prisma.user.update).toHaveBeenCalledWith(
       expect.objectContaining({

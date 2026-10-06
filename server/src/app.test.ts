@@ -28,6 +28,7 @@ vi.mock('./middleware/audit', () => ({
 
 import request from 'supertest'
 import { createApp, isTrustedProxy } from './app'
+import { validCaptchaFields } from './test/captcha-helper'
 
 const app = createApp()
 
@@ -101,7 +102,7 @@ describe('POST /api/v1/auth/login', () => {
     mocks.prisma.user.findUnique.mockResolvedValue(activeUser())
     const res = await request(app)
       .post('/api/v1/auth/login')
-      .send({ username: 'alice', password: 'Yipinhui@2026' })
+      .send({ username: 'alice', password: 'Yipinhui@2026', ...validCaptchaFields() })
 
     expect(res.status).toBe(200)
     expect(res.body.code).toBe(0)
@@ -121,7 +122,7 @@ describe('POST /api/v1/auth/login', () => {
     mocks.prisma.user.findUnique.mockResolvedValue(activeUser())
     const res = await request(app)
       .post('/api/v1/auth/login')
-      .send({ username: 'alice', password: 'wrong-password' })
+      .send({ username: 'alice', password: 'wrong-password', ...validCaptchaFields() })
     expect(res.status).toBe(401)
     expect(res.body.code).toBe(401)
   })
@@ -152,7 +153,7 @@ describe('全链路：登录 → profile → refresh → logout', () => {
     mocks.prisma.user.findUnique.mockResolvedValue(activeUser())
     const loginRes = await request(app)
       .post('/api/v1/auth/login')
-      .send({ username: 'alice', password: 'Yipinhui@2026' })
+      .send({ username: 'alice', password: 'Yipinhui@2026', ...validCaptchaFields() })
     expect(loginRes.status).toBe(200)
     const { accessToken, refreshToken } = loginRes.body.data
 

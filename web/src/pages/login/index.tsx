@@ -10,6 +10,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { cn } from '@/lib/utils'
 import { AlertCircle, Eye, EyeOff } from 'lucide-react'
 import { api } from '@/lib/api'
+import { ForgotPasswordDialog } from './forgot-password-dialog'
 
 /** 记住用户名：仅本地保存用户名（凭证不落盘） */
 const REMEMBER_KEY = 'login-remembered-username'
@@ -22,14 +23,21 @@ const DEMO_ERROR_TEXT = '账号或密码错误，还可重试 4 次（演示态�
 const DEMO_HINT_TEXT = '首次登录或密码过期将被引导到修改密码流程'
 
 export default function LoginPage() {
-  const model = useFormModel({ username: '', password: '', rememberMe: false }, { username: '请输入用户名', password: '请输入密码' })
+  const model = useFormModel({ username: '', password: '', rememberMe: false, captcha: '' }, { username: '请输入用户名', password: '请输入密码', captcha: '请输入验证码' })
   const [username, setUsername] = useFormValue(model, 'username')
   const [password, setPassword] = useFormValue(model, 'password')
   const [rememberMe, setRememberMe] = useFormValue(model, 'rememberMe')
+  const [captcha, setCaptcha] = useFormValue(model, 'captcha')
   const [showPassword, setShowPassword] = useState(false)
+  // 图形验证码：答案仅存服务端内存、一次性消费；登录失败后必须换新图
+  const [captchaId, setCaptchaId] = useState('')
+  const [captchaSvg, setCaptchaSvg] = useState('')
+  // 忘记密码入口形态：邮件未配置时降级为「联系管理员」指引，避免把用户引到必然失败的流程
+  const [mailConfigured, setMailConfigured] = useState(false)
+  const [forgotOpen, setForgotOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
-  const fieldErrors = { username: model.form.formState.errors.username?.message, password: model.form.formState.errors.password?.message }
+  const fieldErrors = { username: model.form.formState.errors.username?.message, password: model.form.formState.errors.password?.message, captcha: model.form.formState.errors.captcha?.message }
   const [capsLockOn, setCapsLockOn] = useState(false)
   // 防抖：提交进行中时拦截重复提交（Enter 连按 / 双击按钮 / 自动续登期间避免手动表单覆盖）
   const submittingRef = useRef(false)
@@ -89,6 +97,18 @@ export default function LoginPage() {
     }
   }
 
+  /** 拉取/刷新图形验证码（挂载与每次登录失败后调用）；失败则清空，避免提交空 captchaId */
+  const refreshCaptcha = async () => {
+    try {
+      const result = await api.getCaptcha()
+      setCaptchaId(result.captchaId)
+      setCaptchaSvg(result.svg)
+    } catch {
+      setCaptchaId('')
+      setCaptchaSvg('')
+    }
+  }
+
   // 初始化：
   // 1) 回填记住的用户名
   // 2) 若 localStorage 中存在持久令牌（7 天免登录），挂载时静默续登
@@ -100,6 +120,9 @@ export default function LoginPage() {
     if (persistentLoginToken && !isAuthenticated) {
       void runAutoLogin(persistentLoginToken)
     }
+    // 图形验证码与登录页能力探测并行拉取；失败不阻塞登录页渲染
+    void refreshCaptcha()
+    api.getLoginOptions().then((options) => setMailConfigured(options.mailConfigured)).catch(() => setMailConfigured(false))
     // 仅挂载时执行一次；后续状态变化不重复触发
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -123,6 +146,8 @@ export default function LoginPage() {
       const response = await api.login({
         username: username.trim(),
         password,
+        captchaId,
+        captcha,
         rememberMe,
       })
       // 记住用户名：仅持久化用户名，不保存任何凭证
@@ -139,6 +164,9 @@ export default function LoginPage() {
       navigate(loginTarget)
     } catch (err) {
       setError(err instanceof Error ? err.message : '登录失败，请稍后重试')
+      // 验证码一次性消费：失败后换新图，否则重试必然再次失败
+      setCaptcha('')
+      void refreshCaptcha()
     } finally {
       submittingRef.current = false
       setIsLoading(false)
@@ -230,6 +258,41 @@ export default function LoginPage() {
             )}
           </div>
 
+          {/* 图形验证码（点击图片刷新；答案一次性消费，登录失败后自动换图） */}
+          <div className="login-field">
+            <Label htmlFor="captcha">验证码</Label>
+            <div className="login-input-wrap">
+              <Input
+                id="captcha"
+                placeholder="请输入验证码"
+                value={captcha}
+                name="captcha"
+                onChange={(e) => setCaptcha(e.target.value)}
+                maxLength={8}
+                autoComplete="off"
+                disabled={isLoading}
+                aria-invalid={!!fieldErrors.captcha}
+                aria-describedby={fieldErrors.captcha ? 'captcha-error' : undefined}
+                className={cn(
+                  'login-input h-10',
+                  fieldErrors.captcha && 'login-input-error'
+                )}
+              />
+              <button
+                type="button"
+                onClick={() => { setCaptcha(''); void refreshCaptcha() }}
+                className="login-captcha"
+                aria-label="刷新验证码"
+                title="点击刷新验证码"
+                /* 内容来自本服务端 svg-captcha 生成的 SVG，不含用户输入，无需额外转义 */
+                dangerouslySetInnerHTML={{ __html: captchaSvg }}
+              />
+            </div>
+            {fieldErrors.captcha && (
+              <p id="captcha-error" className="login-field-tip">{fieldErrors.captcha}</p>
+            )}
+          </div>
+
           {/* 7 天免登录 + 忘记密码 */}
           <div className="login-row">
             <Checkbox
@@ -240,10 +303,14 @@ export default function LoginPage() {
             >
               <span className="login-check-text">7 天内免登录</span>
             </Checkbox>
-            <Popover>
-              <PopoverTrigger asChild><button type="button" className="login-link">忘记密码？</button></PopoverTrigger>
-              <PopoverContent className="w-64 p-4"><p className="text-sm leading-relaxed">请联系平台管理员重置密码。首次登录或密码重置后，系统会引导你设置新密码。</p></PopoverContent>
-            </Popover>
+            {mailConfigured ? (
+              <button type="button" className="login-link" onClick={() => setForgotOpen(true)}>忘记密码？</button>
+            ) : (
+              <Popover>
+                <PopoverTrigger asChild><button type="button" className="login-link">忘记密码？</button></PopoverTrigger>
+                <PopoverContent className="w-64 p-4"><p className="text-sm leading-relaxed">请联系平台管理员重置密码。首次登录或密码重置后，系统会引导你设置新密码。</p></PopoverContent>
+              </Popover>
+            )}
 
           </div>
 
@@ -266,6 +333,7 @@ export default function LoginPage() {
             </p>
           )}
         </form></ModelFormFields>
+        <ForgotPasswordDialog open={forgotOpen} onOpenChange={setForgotOpen} />
       </main>
     </div>
   )

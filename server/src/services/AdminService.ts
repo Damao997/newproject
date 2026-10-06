@@ -2,7 +2,7 @@ import type { PermissionAction } from '@prisma/client'
 import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
-import { hashPassword } from '../lib/password'
+import { hashPassword, assertPasswordRule } from '../lib/password'
 import { buildExcel } from '../lib/excel'
 import { resolveAuditLabels } from './audit-labels'
 
@@ -15,7 +15,7 @@ import { resolveAuditLabels } from './audit-labels'
 interface AuditCtx { userId: string; traceId?: string; actorRoleId?: string }
 
 interface UserRow {
-  id: string; username: string; displayName: string; companyCode: string | null
+  id: string; username: string; displayName: string; email: string | null; companyCode: string | null
   dataScopeCodes?: unknown
   status: string; createdAt: Date; updatedAt: Date; role: { code: string; scopeValue: string }
 }
@@ -28,7 +28,7 @@ function userDto(u: UserRow) {
   else if (u.role.scopeValue === '*') dataScope = '全部'
   else dataScope = '无'
   return {
-    id: u.id, username: u.username, name: u.displayName, role: u.role.code, dataScope,
+    id: u.id, username: u.username, name: u.displayName, email: u.email, role: u.role.code, dataScope,
     dataScopeCodes: codes,
     status: u.status, createdAt: u.createdAt.toISOString(), updatedAt: u.updatedAt.toISOString(),
   }
@@ -36,11 +36,19 @@ function userDto(u: UserRow) {
 
 const USER_INCLUDE = { role: { select: { code: true, scopeValue: true } } } as const
 
-/** 密码规则（与 auth 改密 updatePasswordSchema 一致）：至少 8 位且含字母与数字 */
-function assertPasswordRule(password: string): void {
-  if (!password || password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
-    throw errors.badRequest('密码至少 8 位，且需同时包含字母与数字')
-  }
+/**
+ * 邮箱归一化（管理员维护，忘记密码的收件目标）：
+ * undefined=未提供（不触碰）；null/空串=清空；其余校验格式并统一转小写落库
+ * （PasswordResetService 查找时同样小写化，两侧口径一致）。
+ */
+function normalizeEmail(input: unknown): string | null | undefined {
+  if (input === undefined) return undefined
+  if (input === null) return null
+  if (typeof input !== 'string') throw errors.badRequest('邮箱格式不正确')
+  const value = input.trim().toLowerCase()
+  if (value === '') return null
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) || value.length > 128) throw errors.badRequest('邮箱格式不正确')
+  return value
 }
 
 /**
@@ -127,9 +135,13 @@ export const AdminService = {
     return { items: rows.map(userDto), total, page: params.page, pageSize: params.pageSize, totalPages: Math.ceil(total / params.pageSize) }
   },
 
-  async createUser(input: { username: string; name?: string; password: string; role: string; companyCode?: string; dataScopeCodes?: string[] }, ctx: AuditCtx) {
+  async createUser(input: { username: string; name?: string; email?: string | null; password: string; role: string; companyCode?: string; dataScopeCodes?: string[] }, ctx: AuditCtx) {
     const exists = await prisma.user.findUnique({ where: { username: input.username } })
     if (exists) throw errors.conflict('用户名已存在')
+    const email = normalizeEmail(input.email)
+    if (email && (await prisma.user.findUnique({ where: { email } }))) {
+      throw errors.conflict('该邮箱已被其他账号使用')
+    }
     const role = await prisma.role.findUnique({ where: { code: input.role } })
     if (!role) throw errors.badRequest('角色不存在')
     await assertRoleAssignable(ctx.actorRoleId, role.id)
@@ -138,7 +150,7 @@ export const AdminService = {
     const passwordHash = await hashPassword(input.password)
     const created = await prisma.user.create({
       data: {
-        username: input.username, displayName: input.name ?? input.username, passwordHash, roleId: role.id,
+        username: input.username, displayName: input.name ?? input.username, email, passwordHash, roleId: role.id,
         // 新用户首次登录须修改初始密码
         mustChangePassword: true,
         // 提供多选范围时由新字段全权接管，companyCode 置空；否则保留旧单值路径
@@ -151,11 +163,16 @@ export const AdminService = {
     return userDto(created)
   },
 
-  async updateUser(id: string, input: { name?: string; role?: string; companyCode?: string | null; dataScopeCodes?: string[]; status?: string }, ctx: AuditCtx) {
+  async updateUser(id: string, input: { name?: string; email?: string | null; role?: string; companyCode?: string | null; dataScopeCodes?: string[]; status?: string }, ctx: AuditCtx) {
     const found = await prisma.user.findUnique({ where: { id } })
     if (!found) throw errors.notFound('用户不存在')
     // 防提权：不可操作高于自身权限的账号
     await assertRoleAssignable(ctx.actorRoleId, found.roleId)
+    const email = normalizeEmail(input.email)
+    // 邮箱唯一性预检（并发窗口由 user_email_key 唯一索引兜底 → 全局 P2002 映射 409）
+    if (email && email !== found.email && (await prisma.user.findUnique({ where: { email } }))) {
+      throw errors.conflict('该邮箱已被其他账号使用')
+    }
     const scopeCodes = await normalizeDataScopeCodes(input.dataScopeCodes)
     let roleId: string | undefined
     if (input.role) {
@@ -173,6 +190,7 @@ export const AdminService = {
       where: { id },
       data: {
         displayName: input.name ?? undefined,
+        email,
         roleId,
         // 提供多选范围时由新字段全权接管，companyCode 置空；未提供时保留旧单值路径
         companyCode: scopeCodes !== undefined ? null : (input.companyCode === undefined ? undefined : input.companyCode),
@@ -240,9 +258,10 @@ export const AdminService = {
     const rows = await prisma.user.findMany({ where: { status: { in: ['active', 'inactive'] } }, include: USER_INCLUDE, orderBy: { createdAt: 'asc' } })
     return buildExcel('用户列表', [
       { header: '用户名', key: 'username' }, { header: '姓名', key: 'name', width: 20 },
+      { header: '邮箱', key: 'email', width: 24 },
       { header: '角色', key: 'role', width: 20 }, { header: '数据范围', key: 'dataScope', width: 20 },
       { header: '状态', key: 'status' },
-    ], rows.map(userDto).map((u) => ({ username: u.username, name: u.name, role: u.role, dataScope: u.dataScope, status: u.status })))
+    ], rows.map(userDto).map((u) => ({ username: u.username, name: u.name, email: u.email ?? '', role: u.role, dataScope: u.dataScope, status: u.status })))
   },
 
   // ===== 角色 =====

@@ -22,11 +22,17 @@
 
 ## 备份、验收与回滚
 
-部署脚本会先执行生产全量加密备份并校验，再停进程、检出 tag、前后端 `npm ci` 与构建、迁移、原子切换产物、重载 backend/frontend、健康检查与冒烟。正式合并 SHA、部署时间、最终备份文件、巡检与冒烟结果保存在生产 `logs/release-v2026.10.8.json` 及部署日志；未执行步骤不预先标记成功。
+发布前全量加密备份 `zjyph_prod_20261006_095046.dump.enc`（4.13 MB）已生成并通过自动校验。部署于 2026-10-06 09:50:46 开始、10:00 结束，退出码 0：停进程 → 检出 tag `v2026.10.8` → 前后端 `npm ci` 与分阶段构建 → 启动 PostgreSQL → `migrate deploy`（无待应用迁移）→ 原子切换产物 → 重载 backend/frontend。
+
+部署后验收：生产 `HEAD` 精确匹配 `v2026.10.8`，工作区无已跟踪漂移；`ops-check-zjyph.ps1` 全绿（三进程 online、`/health` 双 up、前端 8080、同源 `/api/v1` 401、磁盘、备份时效、连接数）；`production-smoke-zjyph.ps1` 五项全 PASS（`/health`、前端首页、未授权 401、错误密码 401、审计落库）；PM2 三进程均 online（postgres pid 22368、backend pid 18688、frontend pid 22560）。部署产物 `web/dist/assets/audit-logs-awGWM99d.js` 已包含新的「简明视图 / 完整视图」与「需关注」文案。
+
+**真实客户端 IP 修复的功能验证**：从公网经 `https://zjyphfa.damaospace.ltd/api/v1/dashboard/overview` 发起一次未授权请求，生产访问日志记录为 `[ip=103.151.173.99]`（真实公网来源地址），不再出现修复前的 `127.0.0.1`。
+
+正式合并 SHA（`17bae79e`）、PR（#24 `feat/audit-log-plain` → develop、#25 develop → main）、备份文件、巡检与冒烟明细同时保存在生产 `logs/release-v2026.10.8.json`。
 
 回滚目标为 v2026.10.7，仍调用统一 `deploy-zjyph.ps1 -Tag`。本批次无迁移，回滚不涉及数据恢复。
 
 ## 已知限制
 
 - `deploy-zjyph.ps1` 的 sparse 守卫在本批次 tag 内，但**生效时机是下一次部署**（本批次部署时运行的仍是 v2026.10.7 的旧脚本副本，进程已加载旧内容）。
-- 真实客户端 IP 的修复效果需在生产部署后经公网域名访问一次才能确认；本地开发为局域网直连，走非回环分支，无法验证该路径。
+- 真实客户端 IP 已在生产经公网访问实测通过；本地开发为局域网直连，走非回环分支，无法覆盖该路径。

@@ -46,6 +46,15 @@ export interface AppConfig {
   enterpriseInfoApiKey: string | null
   enterpriseInfoApiBase: string
   fiscalStartMonth: number
+  /** SMTP 主机：null 表示未配置邮件服务（邮箱重置密码接口返回 503，登录等其他功能不受影响） */
+  smtpHost: string | null
+  smtpPort: number
+  smtpUser: string | null
+  smtpPass: string | null
+  /** 发件人地址（如 "浙壹品慧平台 <no-reply@example.com>"）；SMTP 发送时必填 */
+  mailFrom: string | null
+  /** 开发期邮件捕获：写 .eml/.json 到 server/.mail-out/（仅限非生产；生产启用将拒绝启动） */
+  mailDevCapture: boolean
 }
 
 let cached: AppConfig | null = null
@@ -72,6 +81,12 @@ export function loadConfig(): AppConfig {
     enterpriseInfoApiKey: process.env.ENTERPRISE_INFO_API_KEY && process.env.ENTERPRISE_INFO_API_KEY.trim() !== '' ? process.env.ENTERPRISE_INFO_API_KEY.trim() : null,
     enterpriseInfoApiBase: optional('ENTERPRISE_INFO_API_BASE', ''),
     fiscalStartMonth: getFiscalStartMonth(),
+    smtpHost: process.env.SMTP_HOST && process.env.SMTP_HOST.trim() !== '' ? process.env.SMTP_HOST.trim() : null,
+    smtpPort: Number(optional('SMTP_PORT', '465')),
+    smtpUser: process.env.SMTP_USER && process.env.SMTP_USER.trim() !== '' ? process.env.SMTP_USER.trim() : null,
+    smtpPass: process.env.SMTP_PASS && process.env.SMTP_PASS.trim() !== '' ? process.env.SMTP_PASS.trim() : null,
+    mailFrom: process.env.MAIL_FROM && process.env.MAIL_FROM.trim() !== '' ? process.env.MAIL_FROM.trim() : null,
+    mailDevCapture: optional('MAIL_DEV_CAPTURE', '0') === '1',
   }
 
   if (Number.isNaN(config.port)) {
@@ -82,6 +97,13 @@ export function loadConfig(): AppConfig {
   }
   if (Number.isNaN(config.persistentLoginTtlDays) || config.persistentLoginTtlDays < 1) {
     throw new Error('环境变量 PERSISTENT_LOGIN_TTL_DAYS 非法（必须 >= 1）')
+  }
+  if (Number.isNaN(config.smtpPort) || config.smtpPort < 1 || config.smtpPort > 65535) {
+    throw new Error('环境变量 SMTP_PORT 非法（需为 1..65535 的整数）')
+  }
+  // 安全红线：生产环境把验证码明文落盘等于把账号找回能力暴露给服务器文件系统
+  if (config.mailDevCapture && config.nodeEnv === 'production') {
+    throw new Error('生产环境禁止启用 MAIL_DEV_CAPTURE（邮件明文落盘会泄露验证码）')
   }
 
   cached = config
