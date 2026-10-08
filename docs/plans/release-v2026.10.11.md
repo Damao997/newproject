@@ -36,7 +36,19 @@
 
 ## 备份、验收与回滚
 
-> 部署完成后回填实测结果（备份文件名与校验、部署起止时间、`HEAD` 匹配、巡检与冒烟逐项、迁移结论、PM2 重启次数）。
+**部署前置（本次特有）**：生产工作树先检出到目标 tag `v2026.10.11`，使含 `prisma generate` 修复的部署脚本生效——脚本在被调用时读入内存，之后再检出 tag 不会更新自身，因此不预先检出就会用到旧脚本。发布前巡检全绿。
+
+**备份**：`zjyph_prod_20261008_172546.dump.enc`（4.14 MB）生成并通过自动校验。
+
+**部署**：2026-10-08 17:25:46 开始、17:32:25 结束，退出码 0；停机窗口约 17:26–17:31:53（约 5.5 分钟）。流程：停三个进程 → 检出 tag → 后端 `npm ci` + `prisma generate` + `tsc` → 前端 `npm ci` + 生产构建 → 起 PostgreSQL（17:31:36）→ `migrate deploy` 输出 `No pending migrations to apply` → 原子切换产物 → 重载 backend/frontend（17:31:53）。
+
+**管线修复实测**：后端 `node_modules/.prisma/client/index.d.ts` 于 17:26 重新生成、大小 **2 560 737 字节**（正常），后端构建通过——v2026.10.10 的失败条件已消除。
+
+**部署后验收**：生产 `HEAD` 精确匹配 `v2026.10.11`，工作区无已跟踪漂移；`ops-check-zjyph.ps1` 全绿（三进程 online、`/health` 双 up、前端 8080、同源 `/api/v1` 401、磁盘、备份时效、连接数）；`production-smoke-zjyph.ps1` **5/5 PASS**。PM2：postgres pid 39852（重启 1）、backend pid 7240（重启 16，为 16:48 那次失败部署的累计值，本次为 reload 未新增）、frontend pid 14436（重启 0）。
+
+**产物核对**：`web/dist/release-notes.json` 顶层为 `v2026.10.11`；构建产物中 `analysis-*.js` 含「财年累计实际」「月度环比」、`import-panel-*.js` 含「将替换」「继续保留」，确认本批前端特性确实进入线上产物。
+
+正式合并 SHA（`4fc3617a`）、PR（#28 `.11` → develop、#31 release → develop、#32 develop → main）、备份文件、巡检与冒烟明细同时保存在生产 `logs/release-v2026.10.11.json`。
 
 回滚目标为 **v2026.10.9**，仍调用统一 `deploy-zjyph.ps1 -Tag`。本版本无迁移，回滚不涉及数据恢复。
 
