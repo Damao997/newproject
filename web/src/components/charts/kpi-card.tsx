@@ -1,22 +1,26 @@
 import { Statistic } from 'antd'
 import { Card } from '@/components/ui/card'
 import {
-  ArrowDownRight,
-  ArrowUpRight,
+  ArrowDown,
+  ArrowUp,
+  CircleHelp,
   Minus,
 } from 'lucide-react'
 import { KpiSparkline } from './kpi-sparkline'
 import { SummaryBreakdownPopover } from '@/components/summary/summary-breakdown'
 import { ACHIEVEMENT_RATE_THRESHOLDS } from '@/lib/constants'
-import { formatMoneyWan, formatPercent } from '@/lib/utils'
+import { formatMoneyWan } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import type { MemberBreakdown } from '@/hooks/use-summary-member-values'
 import type { KpiData } from '@/types'
 import { getAppTheme } from '@/lib/app-theme'
 import { useThemeStore } from '@/stores/themeStore'
+import type { PersonalPreferences } from '@/lib/personal-settings'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
 interface KpiCardProps {
   data: KpiData
+  mode?: PersonalPreferences['dashboardKpiMode']
   /** 兼容原有列表调用；指标颜色由标题身份决定。 */
   index?: number
   /** 钻取回调：有值时卡片整体可点击（跳转指标分析等） */
@@ -43,9 +47,9 @@ export function kpiRootMatcher(title: string): { category: string; name?: string
   return { category: '壹品慧收入' }
 }
 
-/** 达成率展示：null（无预算）显示 "–" */
+/** 卡片百分比统一两位小数；无预算不混同于完成率为零。 */
 function rateText(rate: number | null): string {
-  return rate === null ? '–' : formatPercent(rate / 100)
+  return rate === null ? '—' : `${rate.toFixed(2)}%`
 }
 
 /** 达成率红绿灯三档：≥75 达标绿 / 60-75 预警黄 / <60 未达标红；无预算灰（阈值见 ACHIEVEMENT_RATE_THRESHOLDS）。
@@ -57,16 +61,47 @@ export function rateColorClass(rate: number | null): string {
   return 'text-destructive'
 }
 
-export function KpiCard({ data, onClick, breakdown }: KpiCardProps) {
+/** 涨跌只用颜色和尾部竖直箭头表达，持平仍保留完整读数。 */
+function KpiChange({ value }: { value: number }) {
+  const Icon = value > 0 ? ArrowUp : value < 0 ? ArrowDown : Minus
+  const direction = value > 0 ? '上升' : value < 0 ? '下降' : '持平'
+  return <span className={cn('kpi-change', value > 0 ? 'text-finance-red' : value < 0 ? 'text-finance-green' : 'text-muted-foreground')}>
+    <span className="font-num">{`${(Math.abs(value) * 100).toFixed(2)}%`}</span>
+    <Icon className="kpi-change-icon" aria-hidden />
+    <span className="sr-only">{direction}</span>
+  </span>
+}
+
+function KpiMonthChange({ data }: { data: KpiData }) {
+  if (data.monthMom != null) return <KpiChange value={data.monthMom} />
+  const reason = data.monthMomReason === 'zero-base' ? '上月金额为 0，无法计算环比' : '上月无数据，无法计算环比'
+  return <Popover trigger={['click', 'hover', 'focus']}>
+    <PopoverTrigger asChild>
+      <button type="button" className="kpi-comparison-help" aria-label={`月度环比：${reason}`} onClick={event => event.stopPropagation()}>
+        <span>—</span><CircleHelp aria-hidden />
+      </button>
+    </PopoverTrigger>
+    <PopoverContent className="max-w-[260px] rounded-control border border-border bg-popover p-3 text-xs text-popover-foreground" side="top">
+      {reason}
+    </PopoverContent>
+  </Popover>
+}
+
+export function KpiCard({ data, mode = 'month', onClick, breakdown }: KpiCardProps) {
   const style = useThemeStore((state) => state.printing ? 'light' : state.sidebarStyle)
   const metricIndex = /毛利/.test(data.title) ? 1 : /净利|利润/.test(data.title) ? 2 : /回款|收款/.test(data.title) ? 3 : 0
   const metricColor = getAppTheme(style).metricInks[metricIndex]
-  // 红涨绿跌（A 股/国内财报习惯）：正数红 finance.red / 负数绿 finance.green / 持平灰；方向由箭头图标表达，数值不再重复加 "+" 前缀
-  const isPositive = data.yoy > 0
-  const isFlat = data.yoy === 0
-  const hasTrend = data.trend.length > 1
+  const monthly = mode === 'month'
+  const mainActual = monthly ? data.monthActual : data.ytdActual
+  const mainRate = monthly ? data.monthRate : data.ytdRate
+  const otherRate = monthly ? data.ytdRate : data.monthRate
+  const hasTrend = monthly && data.trend.length > 1
   // 汇总主体成员明细：hover 大数字区展示各成员公司 本月实际/本年累计（数据由看板页预取注入）
   const memberBreakdown = breakdown?.getMemberValues(data.title)
+  const mainValue = <div className="kpi-main-value">
+    <Statistic value={formatMoneyWan(mainActual)} />
+    <span className="kpi-amount-caption">{monthly ? '本月实际' : '财年累计实际'} · 万元</span>
+  </div>
 
   return (
     <Card variant="metric"
@@ -75,8 +110,14 @@ export function KpiCard({ data, onClick, breakdown }: KpiCardProps) {
         onClick && 'cursor-pointer hover:border-primary/40',
       )}
       data-metric-tone={metricIndex + 1}
-      data-value-size={formatMoneyWan(data.monthActual).length > 10 ? "long" : "normal"}
-      onClick={onClick}
+      data-kpi-mode={mode}
+      data-value-size={formatMoneyWan(mainActual).length > 10 ? 'long' : 'normal'}
+      onClick={event => {
+        // 帮助浮层和内部按钮不触发卡片钻取，浮层门户也不冒泡为卡片导航。
+        if (!(event.target instanceof Node) || !event.currentTarget.contains(event.target)) return
+        if (event.target instanceof Element && event.target.closest('button, a, [role="button"]')) return
+        onClick?.()
+      }}
       role={onClick ? 'link' : undefined}
       tabIndex={onClick ? 0 : undefined}
       onKeyDown={(event) => {
@@ -89,113 +130,54 @@ export function KpiCard({ data, onClick, breakdown }: KpiCardProps) {
     >
       <div className="kpi-content">
         {/* 指标身份决定底面与曲线颜色，排序和过滤不改变含义。 */}
-        <div className="relative mb-3 flex items-center gap-2.5">
+        <div className="kpi-card-heading">
           <span className="text-sm font-semibold tracking-tight text-foreground">{data.title}</span>
-          {onClick && (
-            <ArrowUpRight
-              className="absolute right-0 top-1/2 h-4 w-4 -translate-y-1/2 text-primary"
-              aria-hidden
-            />
-          )}
+          <span className="kpi-mode-tag">{monthly ? '月度' : '财年累计'}</span>
         </div>
 
         {/* 大数字区：本月合计 + 月度达成率（分级色）；汇总口径时大数字悬浮展示成员公司明细 */}
-        <div className="kpi-value-row mb-4 flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
+        <div className="kpi-value-row">
           {memberBreakdown ? (
             <SummaryBreakdownPopover
               title={data.title}
               columns={[
-                { label: '本月实际', pick: (v) => v.actual, summaryValue: data.monthActual },
-                { label: '本年累计', pick: (v) => v.ytd, summaryValue: data.ytdActual },
+                ...(monthly ? [
+                  { label: '本月实际', pick: (v: MemberBreakdown['rows'][number]['value']) => v.actual, summaryValue: data.monthActual },
+                  { label: '财年累计', pick: (v: MemberBreakdown['rows'][number]['value']) => v.ytd, summaryValue: data.ytdActual },
+                ] : [
+                  { label: '财年累计', pick: (v: MemberBreakdown['rows'][number]['value']) => v.ytd, summaryValue: data.ytdActual },
+                  { label: '本月实际', pick: (v: MemberBreakdown['rows'][number]['value']) => v.actual, summaryValue: data.monthActual },
+                ]),
               ]}
               rows={memberBreakdown.rows}
               loading={memberBreakdown.loading}
               failedCount={memberBreakdown.failedCount}
             >
-              <div className="min-w-0">
-                <Statistic
-                  value={formatMoneyWan(data.monthActual)}
-                  valueStyle={{
-                    fontSize: 28,
-                    fontWeight: 700,
-                    lineHeight: 1.2,
-                    letterSpacing: '-0.01em',
-                    color: 'hsl(var(--foreground))',
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                />
-                <span className="text-xs text-muted-foreground">本月（万元）</span>
-              </div>
+              {mainValue}
             </SummaryBreakdownPopover>
           ) : (
-            <div className="min-w-0">
-              <Statistic
-                value={formatMoneyWan(data.monthActual)}
-                valueStyle={{
-                  fontSize: 28,
-                  fontWeight: 700,
-                  lineHeight: 1.2,
-                  letterSpacing: '-0.01em',
-                  color: 'hsl(var(--foreground))',
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              />
-              <span className="text-xs text-muted-foreground">本月（万元）</span>
-            </div>
+            mainValue
           )}
-          <div className="kpi-rate shrink-0 text-right">
-            <span
-              className={cn('font-num block text-lg font-bold leading-tight tracking-tight', rateColorClass(data.monthRate))}
-              title="月度预算达成率"
-            >
-              {rateText(data.monthRate)}
-            </span>
-            <span className="text-xs text-muted-foreground">月度达成率</span>
-          </div>
         </div>
+
+        <dl className="kpi-indicators" data-count={monthly ? 3 : 2}>
+          <div className="kpi-indicator"><dt>{monthly ? '预算达成' : '年度预算完成'}</dt><dd className={cn('font-num', rateColorClass(mainRate))}>{rateText(mainRate)}</dd></div>
+          <div className="kpi-indicator"><dt>{monthly ? '月度同比' : '累计同比'}</dt><dd><KpiChange value={monthly ? data.yoy : data.ytdYoy} /></dd></div>
+          {monthly && <div className="kpi-indicator"><dt>月度环比</dt><dd><KpiMonthChange data={data} /></dd></div>}
+        </dl>
 
         {/* 财年内月度趋势迷你图（数据不足 2 点时不渲染） */}
         {hasTrend && (
-          <div className="mb-3 -mx-1 h-10" aria-hidden>
+          <div className="kpi-trend" aria-hidden>
             <KpiSparkline data={data.trend} height={40} color={metricColor} />
           </div>
         )}
 
-        <div className="mb-3 h-px bg-border/60" aria-hidden />
-
-        {/* 小字体区：累计实际 / 同比 / 累计达成率 */}
-        <div className="kpi-details space-y-2 text-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">累计实际</span>
-            <span className="font-num font-medium text-foreground">{formatMoneyWan(data.ytdActual)}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">同比</span>
-            <span
-              className={cn(
-                'inline-flex items-center gap-0.5 text-xs font-medium',
-                isFlat
-                  ? 'text-muted-foreground'
-                  : isPositive
-                    ? 'text-finance-red'
-                    : 'text-finance-green'
-              )}
-            >
-              {isFlat ? (
-                <Minus className="h-3 w-3" />
-              ) : isPositive ? (
-                <ArrowUpRight className="h-3 w-3" />
-              ) : (
-                <ArrowDownRight className="h-3 w-3" />
-              )}
-              <span className="font-num">{data.yoy === 0 ? '-' : `${(Math.abs(data.yoy) * 100).toFixed(1)}%`}</span>
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">累计达成率</span>
-            <span className={cn('font-num font-medium', rateColorClass(data.ytdRate))}>{rateText(data.ytdRate)}</span>
-          </div>
-        </div>
+        {/* 另一口径保留金额与预算摘要；累计模式不保留趋势空位。 */}
+        <dl className="kpi-details">
+          <div><dt>{monthly ? '财年累计' : '本月实际'}</dt><dd className="font-num text-foreground">{formatMoneyWan(monthly ? data.ytdActual : data.monthActual)}</dd></div>
+          <div><dt>{monthly ? '年度预算完成率' : '月度预算达成率'}</dt><dd className={cn('font-num', rateColorClass(otherRate))}>{rateText(otherRate)}</dd></div>
+        </dl>
       </div>
     </Card>
   )

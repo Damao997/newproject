@@ -1,6 +1,6 @@
 // 个人设置模拟写入仅在内存中保存，业务数据请求仍由原模拟接口处理。
 import { user } from './redesign-fixtures.mjs'
-export const fixturePreferences = { theme: 'light', showShortName: false, sidebarCollapsed: false, homePath: 'auto', favoriteCompanies: [], companyStartup: 'remember', defaultCompanies: [], periodStartup: 'remember', indicatorDensity: 'default' }
+export const fixturePreferences = { theme: 'light', showShortName: false, sidebarCollapsed: false, homePath: 'auto', favoriteCompanies: [], companyStartup: 'remember', defaultCompanies: [], periodStartup: 'remember', indicatorDensity: 'default', dashboardKpiMode: 'month' }
 export function createPersonalFixtures(initial = {}) {
   let profile = { ...user, email: 'preview@example.test', phone: '', department: '经营分析组（模拟）', jobTitle: '数据分析', avatarVersion: null, updatedAt: '2026-10-03T00:00:00Z' }
   let preferences = { ...fixturePreferences, ...(initial.theme ? { theme: initial.theme } : {}) }

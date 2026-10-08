@@ -45,7 +45,7 @@ async function noOverflow(page, label) {
 }
 try {
   for (const theme of (process.env.PERSONAL_ONLY_INTERACTIONS === '1' ? [] : ['light', 'gradient', 'dark', 'antd'])) for (const width of [1440, 390]) {
-    const { context, page, errors } = await make(theme, width)
+    const { context, page, errors, shared } = await make(theme, width)
     for (const section of ['profile', 'preferences', 'security']) {
       await page.goto(base + '/settings/' + section); await settled(page)
       assert.equal(await page.locator('header h1').textContent(), '个人设置')
@@ -88,6 +88,24 @@ try {
     assert(surfaces.every(tile => tile.radius === '24px'))
     assert.equal(new Set(surfaces.map(tile => tile.color)).size, 4)
     await noOverflow(page, '库存'); await shot(page, theme + '-' + width + '-inventory')
+    for (const mode of ['month', 'ytd']) {
+      const current = shared('/api/v1/auth/preferences').data
+      shared('/api/v1/auth/preferences', 'PATCH', { revision: current.revision, changes: { dashboardKpiMode: mode } })
+      await page.goto(base + '/dashboard')
+      await page.reload()
+      await page.locator('.kpi-card[data-kpi-mode="' + mode + '"]').first().waitFor()
+      assert.equal(await page.locator('.kpi-card[data-kpi-mode="' + mode + '"]').count(), 4)
+      assert.equal(await page.locator('.kpi-trend').count(), mode === 'month' ? 4 : 0)
+      if (mode === 'month') {
+        const help = page.getByRole('button', { name: '月度环比：上月金额为 0，无法计算环比', exact: true })
+        await help.press('Enter')
+        await page.getByText('上月金额为 0，无法计算环比', { exact: true }).waitFor()
+        assert.equal(new URL(page.url()).pathname, '/dashboard', '查看环比原因不应触发钻取')
+        await help.press('Enter')
+      }
+      await noOverflow(page, '首页 KPI ' + mode)
+      await shot(page, theme + '-' + width + '-dashboard-kpi-' + mode)
+    }
     assert.deepEqual(errors, []); results.push({ theme, width, cards: true, pass: true })
     await context.close()
   }
@@ -150,6 +168,8 @@ try {
   await page.getByRole('link', { name: '使用习惯', exact: true }).click(); await settled(page)
   const radios = page.getByRole('radiogroup', { name: '工作台主题' }).getByRole('radio')
   await radios.nth(1).click()
+  await page.getByRole('combobox', { name: '首页 KPI 显示模式', exact: true }).press('ArrowDown')
+  await page.getByText('财年累计', { exact: true }).last().click()
   assert.equal(await page.locator('html').getAttribute('data-sidebar'), 'light')
   // 另一设备保存后当前编辑保留，并要求显式处理冲突。
   let latest = shared('/api/v1/auth/preferences').data
@@ -166,6 +186,21 @@ try {
   const other = await make('light', 390, shared)
   await other.page.goto(base + '/settings/preferences'); await settled(other.page)
   assert.equal(await other.page.locator('html').getAttribute('data-sidebar'), 'gradient')
+  assert.equal(shared('/api/v1/auth/preferences').data.preferences.dashboardKpiMode, 'ytd')
+  // 同账号另一设备恢复累计模式；重新载入仍无迷你趋势和月度环比。
+  for (const target of [page, other.page]) {
+    await target.goto(base + '/dashboard')
+    await target.locator('.kpi-card[data-kpi-mode="ytd"]').first().waitFor()
+    assert.equal(await target.locator('.kpi-card[data-kpi-mode="ytd"]').count(), 4)
+    assert.equal(await target.locator('.kpi-trend').count(), 0)
+    assert.equal(await target.getByText('累计同比', { exact: true }).count(), 4)
+    assert.equal(await target.getByText('月度环比', { exact: true }).count(), 0)
+    await noOverflow(target, '累计 KPI')
+    await target.reload()
+    await target.locator('.kpi-card[data-kpi-mode="ytd"]').first().waitFor()
+  }
+  await shot(page, 'dashboard-kpi-ytd-desktop')
+  await shot(other.page, 'dashboard-kpi-ytd-mobile')
   await other.page.goto(base + '/transactions/overview'); await settled(other.page)
   await other.page.getByRole('button', { name: '选择公司范围', exact: true }).click()
   assert(await other.page.locator('.header-filter-drawer').isVisible())

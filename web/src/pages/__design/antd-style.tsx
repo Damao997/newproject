@@ -12,10 +12,10 @@ import { useThemeStore } from '@/stores/themeStore'
 import type { KpiData } from '@/types'
 
 const SAMPLE_KPIS: KpiData[] = [
-  { title: '收入', monthActual: 1284.6, monthRate: 96.5, ytdActual: 9876.5, yoy: 0.123, ytdRate: 82.4, trend: [100, 110, 120, 130, 128, 135, 140] },
-  { title: '毛利', monthActual: 462.3, monthRate: 68.0, ytdActual: 3450.0, yoy: -0.025, ytdRate: 65.0, trend: [80, 82, 78, 75, 73, 70, 72] },
-  { title: '回款', monthActual: 980.1, monthRate: 45.0, ytdActual: 7200.0, yoy: 0.082, ytdRate: 58.0, trend: [60, 65, 70, 75, 78, 82, 90] },
-  { title: '净利润', monthActual: 312.0, monthRate: null, ytdActual: 2100.0, yoy: 0, ytdRate: null, trend: [] },
+  { title: '收入', monthActual: 1284.6, monthRate: 96.5, ytdActual: 9876.5, yoy: 0.123, ytdYoy: 0.0984, monthMom: 0.0528, monthMomReason: null, ytdRate: 82.4, trend: [100, 110, 120, 130, 128, 135, 140] },
+  { title: '毛利', monthActual: 462.3, monthRate: 68.0, ytdActual: 3450.0, yoy: -0.025, ytdYoy: 0.1248, monthMom: -0.0214, monthMomReason: null, ytdRate: 65.0, trend: [80, 82, 78, 75, 73, 70, 72] },
+  { title: '回款', monthActual: 980.1, monthRate: 45.0, ytdActual: 7200.0, yoy: 0.082, ytdYoy: 0.0754, monthMom: null, monthMomReason: 'zero-base', ytdRate: 58.0, trend: [60, 65, 70, 75, 78, 82, 90] },
+  { title: '净利润', monthActual: 312.0, monthRate: null, ytdActual: 2100.0, yoy: 0, ytdYoy: 0.1426, monthMom: 0, monthMomReason: null, ytdRate: null, trend: [] },
 ]
 
 const HEATMAP_DATA = [
