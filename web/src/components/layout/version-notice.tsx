@@ -19,27 +19,45 @@ import {
   markVersionRead,
   sortReleasesDesc,
   type ReleaseEntry,
-  type ReleaseNoteItem,
+  type ReleaseNoteType,
 } from '@/lib/app-version'
 import { useNoticeStore } from '@/stores/noticeStore'
 
-const NOTE_TYPE_META: Record<ReleaseNoteItem['type'], { label: string; variant: BadgeProps['variant'] }> = {
+type NoteMeta = { label: string; variant: BadgeProps['variant'] }
+
+const NOTE_TYPE_META: Record<ReleaseNoteType, NoteMeta> = {
   feature: { label: '新功能', variant: 'success' },
   fix: { label: '修复', variant: 'destructive' },
   improvement: { label: '优化', variant: 'secondary' },
+  note: { label: '提示', variant: 'info' },
+}
+
+/**
+ * 未知类型的兜底标签。release-notes.json 是人工维护的数据，
+ * 一旦出现映射表外的 type，绝不能让它把整页渲染带崩
+ * （v2026.10.9 事故：type=note 触发 `NOTE_TYPE_META[n.type].variant` 抛错，
+ * 登录后所有页面被错误边界接管）。
+ */
+const NOTE_FALLBACK_META: NoteMeta = { label: '更新', variant: 'secondary' }
+
+function noteMeta(type: string): NoteMeta {
+  return (NOTE_TYPE_META as Record<string, NoteMeta>)[type] ?? NOTE_FALLBACK_META
 }
 
 function ReleaseNotesBody({ entry }: { entry: ReleaseEntry }) {
   return (
     <ul className="space-y-2">
-      {entry.notes.map((n, i) => (
-        <li key={i} className="flex items-start gap-2 text-body leading-6 text-foreground">
-          <Badge variant={NOTE_TYPE_META[n.type].variant} className="mt-0.5 shrink-0">
-            {NOTE_TYPE_META[n.type].label}
-          </Badge>
-          <span>{n.text}</span>
-        </li>
-      ))}
+      {entry.notes.map((n, i) => {
+        const meta = noteMeta(n.type)
+        return (
+          <li key={i} className="flex items-start gap-2 text-body leading-6 text-foreground">
+            <Badge variant={meta.variant} className="mt-0.5 shrink-0">
+              {meta.label}
+            </Badge>
+            <span>{n.text}</span>
+          </li>
+        )
+      })}
     </ul>
   )
 }

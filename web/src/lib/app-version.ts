@@ -6,8 +6,15 @@
  * 发布说明：web/public/release-notes.json（随构建进入 dist，由 nginx 直出）。
  */
 
+/**
+ * 公告条目类型。这是**数据契约**：release-notes.json 由人工维护，
+ * 因此组件侧必须对未知取值做兜底（见 version-notice.tsx 的 noteMeta），
+ * 否则新增类型会让整页渲染崩溃（v2026.10.9 事故）。
+ */
+export type ReleaseNoteType = 'feature' | 'fix' | 'improvement' | 'note'
+
 export interface ReleaseNoteItem {
-  type: 'feature' | 'fix' | 'improvement'
+  type: ReleaseNoteType
   text: string
 }
 
