@@ -18,7 +18,7 @@
 
 - **批次模型**：所有类型共用 `ImportBatch`（`fileHash` 防重、`status` 结果态、`lifecycleStatus` 草稿→生效→归档/清除）。
 - **激活接口**：统一 `POST /data/imports/:id/activate`，`ImportService.activate` 内按 `dataType` 分支执行合并策略——
-  - operating/static：按期间合并替换；
+  - operating/static/cashflow：按实际数据行中的（公司 × 月份）组合整月替换，未包含的公司及月份保留；静态按快照所在自然月匹配。备份、预览、批量冲突和回滚使用相同组合，旧批次全量事实行清空后才自动归档；
   - transaction：按 (公司 × 期间 × 往来类型) 三元组合并替换；
   - budget：按财年整体替换；inventory：整体替换。
 - **归档/清除**：统一 `POST /data/imports/:id/archive|purge`，权限 `data:import:archive|purge`。

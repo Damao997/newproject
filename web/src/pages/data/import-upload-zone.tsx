@@ -6,6 +6,7 @@ import { DataTable, type DataTableColumn } from '@/components/data-table/data-ta
 import { downloadImportTemplate } from '@/lib/import-template'
 import { formatMoneyWan, cn } from '@/lib/utils'
 import { errorColumns, templateTypeLabel } from './use-import-flow'
+import { MonthlyActivationImpact } from './import-activation-impact'
 import type { ImportPreviewResult, MergedPreviewResult } from '@/lib/api'
 import type { ImportBatch } from '@/types'
 import {
@@ -223,10 +224,8 @@ export function UploadZone(props: UploadZoneProps) {
                         数据行 {r.dataRowCount} · 将入库 {r.detailCount} · 异常 {r.errorCount}
                         {r.summary.periodRange.min ? ` · 期间 ${r.summary.periodRange.min} ~ ${r.summary.periodRange.max}` : ''}
                       </span>
-                      {r.activationImpact.overlappingPeriods.length > 0 && (
-                        <span className="text-xs text-warning-strong">覆盖期间：{fmtPeriods(r.activationImpact.overlappingPeriods)}</span>
-                      )}
                     </div>
+                    <MonthlyActivationImpact impact={r.activationImpact} />
                     {r.errors.length > 0 && (
                       <p className="text-xs text-destructive">前 {Math.min(r.errors.length, 3)} 条错误：{r.errors.slice(0, 3).map((e) => `第${e.row}行 ${e.message}`).join('；')}</p>
                     )}
@@ -360,21 +359,14 @@ export function UploadZone(props: UploadZoneProps) {
                   </p>
                 </div>
               )}
-              {previewResult.activationImpact?.activeBatch && previewResult.activationImpact.overlappingPeriods.length > 0 && (
-                <div className="flex items-start space-x-2 rounded-lg border border-info/25 bg-info/10 p-3">
-                  <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-info" />
-                  <p className="text-sm text-info">
-                    {templateType === 'budget'
-                      ? `激活后将替换《${previewResult.activationImpact.activeBatch.filename}》的 ${fmtPeriods(previewResult.activationImpact.overlappingPeriods)} 财年预算。`
-                      : `激活后将替换期间 ${fmtPeriods(previewResult.activationImpact.overlappingPeriods)} 的现有数据。`}
-                  </p>
-                </div>
+              {previewResult.activationImpact && templateType !== 'budget' && (
+                <MonthlyActivationImpact impact={previewResult.activationImpact} />
               )}
-              {previewResult.activationImpact?.activeBatch && previewResult.activationImpact.retainedPeriods.length > 0 && templateType !== 'budget' && (
+              {templateType === 'budget' && previewResult.activationImpact?.activeBatch && previewResult.activationImpact.overlappingPeriods.length > 0 && (
                 <div className="flex items-start space-x-2 rounded-lg border border-info/25 bg-info/10 p-3">
                   <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-info" />
                   <p className="text-sm text-info">
-                    当前生效数据中的期间 {fmtPeriods(previewResult.activationImpact.retainedPeriods)} 本文件未包含，激活后将继续保留生效（按期间合并）。
+                    激活后将替换《{previewResult.activationImpact.activeBatch.filename}》的 {fmtPeriods(previewResult.activationImpact.overlappingPeriods)} 财年预算。
                   </p>
                 </div>
               )}
@@ -427,7 +419,7 @@ export function UploadZone(props: UploadZoneProps) {
                       <span className="text-xs text-success-strong">该批次已激活生效，数据已合并应用于看板与指标。</span>
                     ) : (
                       <p className="text-xs text-success-strong">
-                        批次已创建为草稿状态。请在下方「批次管理」中点击该批次行并「激活」，数据将按期间合并生效于看板与指标。
+                        批次已创建为草稿状态。请在下方「批次管理」中点击该批次行并「激活」，激活后按所选数据类型的覆盖规则生效于看板与指标；经营、静态和现金流按公司整月替换。
                       </p>
                     )}
                   </div>
