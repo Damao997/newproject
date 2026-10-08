@@ -134,6 +134,22 @@ export function handleSessionExpired(_reason: unknown): void {
   window.location.href = '/login?expired=1'
 }
 
+/** 月度报表激活的公司月份组合。 */
+export interface ImportCompanyPeriod {
+  companyCode: string
+  period: string
+}
+
+export interface ImportActivationImpact {
+  activeBatch: { id: string; filename: string } | null
+  newPeriods: string[]
+  overlappingPeriods: string[]
+  retainedPeriods: string[]
+  newCompanyPeriods?: ImportCompanyPeriod[]
+  overlappingCompanyPeriods?: ImportCompanyPeriod[]
+  retainedCompanyPeriods?: ImportCompanyPeriod[]
+}
+
 /** 导入预览（dry-run）返回结构：计数 + 错误明细 + 覆盖摘要 + 激活影响预告 + 看板 KPI 覆盖检查 */
 export interface ImportPreviewResult {
   dataRowCount: number
@@ -152,13 +168,7 @@ export interface ImportPreviewResult {
     duplicateCount: number
     duplicateSamples: string[]
   }
-  activationImpact?: {
-    activeBatch: { id: string; filename: string } | null
-    newPeriods: string[]
-    overlappingPeriods: string[]
-    /** 生效批次有而文件无（按期间合并：激活后继续保留生效） */
-    retainedPeriods: string[]
-  } | null
+  activationImpact?: ImportActivationImpact | null
   kpiCoverage?: { covered: string[]; missing: string[] } | null
   /** 预算模板口径告警：计算类/父级科目行将被重算或忽略、毛利直导叶子缺行将为 0 */
   budgetWarnings?: {
@@ -186,12 +196,7 @@ export interface MergedPreviewType {
     duplicateCount: number
     duplicateSamples: string[]
   }
-  activationImpact: {
-    activeBatch: { id: string; filename: string } | null
-    newPeriods: string[]
-    overlappingPeriods: string[]
-    retainedPeriods: string[]
-  }
+  activationImpact: ImportActivationImpact
   kpiCoverage: { covered: string[]; missing: string[] } | null
 }
 

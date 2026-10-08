@@ -5,7 +5,7 @@ import type { Prisma, ImportDataType } from '@prisma/client'
 import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
-import { parseImportWorkbook, emptySummary, type ImportTemplate, type Resolvers, type SampleRows, type PreviewSummary, type ValueUnit } from '../lib/excel-import'
+import { parseImportWorkbook, emptySummary, type ImportTemplate, type Resolvers, type SampleRows, type PreviewSummary, type ValueUnit, type ParseResult } from '../lib/excel-import'
 import { parseMergedWorkbook, type MergedSheetType } from '../lib/excel-import-merged'
 import { parseTransactionWorkbook, type TransactionParseResult, type TransactionResolvers, type TransactionSheetInfo, type TransactionImportIssue, type TransactionParseSummary } from '../lib/transaction-import'
 import { fyLabelOfDate, parsePeriod, formatPeriod } from '../lib/period'
@@ -14,6 +14,7 @@ import { withoutScope } from '../middleware/scope-context'
 import { advisoryLockKey as sharedAdvisoryLockKey } from '../lib/advisory-lock'
 import { latestOperatingPeriod, latestStaticPeriod, latestCashflowPeriod } from './IndicatorsService'
 import { markInvalidatedReclassifications } from './ReclassificationService'
+import { companyPeriodsOf, companyPeriodKey, operatingCoverageWhere, staticCoverageWhere, type CompanyPeriod } from '../lib/import-coverage'
 
 /**
  * 数据导入服务：文件校验（MIME magic + 大小由 multer 保证）、解析计数、
@@ -111,15 +112,19 @@ export interface ImportErrorItem {
 /** 预览覆盖摘要（对外 DTO：剔除仅供服务层内部对比用的 periods/accountCodes） */
 export type PreviewSummaryDto = Omit<PreviewSummary, 'periods' | 'accountCodes'>
 
-/** 激活影响预告：按 activate 的按期间合并语义（budget 按财年）对比文件与当前生效批次的期间集合 */
+/** 激活影响预告：按 activate 的按公司月份组合合并语义（budget 按财年）对比文件与当前生效批次的期间集合 */
 export interface ActivationImpact {
   activeBatch: { id: string; filename: string } | null
   /** 文件有而生效批次无（激活后新增） */
   newPeriods: string[]
   /** 双方都有（激活后被本文件数据替换） */
   overlappingPeriods: string[]
-  /** 生效批次有而文件无（按期间合并：激活后继续保留生效） */
+  /** 生效批次有而文件无（按公司月份组合合并：激活后继续保留生效） */
   retainedPeriods: string[]
+  /** 月度报表按实际公司月份组合比较；预算继续使用财年字段。 */
+  newCompanyPeriods?: CompanyPeriod[]
+  overlappingCompanyPeriods?: CompanyPeriod[]
+  retainedCompanyPeriods?: CompanyPeriod[]
 }
 
 /** 看板 KPI 可见性检查：文件科目沿科目树上溯到根后覆盖的根类别 */
@@ -206,10 +211,6 @@ function toSummaryDto(s: PreviewSummary): PreviewSummaryDto {
   return dto
 }
 
-function ymOfDate(d: Date): string {
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
-}
-
 /** 激活覆盖前备份将被物理删除的经营事实行到 fact_snapshot（支撑批次回滚）；返回备份行数与被删行 id（供重分类失效标记）。
  * template 区分 operating/cashflow（两者同存 fact_operating，回滚写回时按 template 还原批次类型语义） */
 async function backupOperatingRows(
@@ -270,7 +271,7 @@ async function backupStaticRows(
 
 /**
  * 事务内激活核心逻辑（rollbackBatch 复用）：删除旧 active 批次中与本批次重叠的数据
- * （operating/cashflow 按 period、static 按快照月，删除前先备份到 fact_snapshot）、
+ * （operating/cashflow 按公司和 period、static 按公司和快照月，删除前先备份到 fact_snapshot）、
  * 空批次自动归档、置目标批次 active；删除/归档联动重分类失效标记（cashflow 无重分类体系，不联动）。
  * transaction/budget/inventory 分支与旧逻辑一致。
  */
@@ -285,80 +286,59 @@ function assertActivatable(b: { lifecycleStatus: string; status: string }): void
 /**
  * 由替换范围键生成稳定的 bigint advisory lock 键（共享实现见 lib/advisory-lock.ts）
  */
-function advisoryLockKey(range: string): string {
-  return sharedAdvisoryLockKey(range)
+function activationLockOf(b: { dataType: ImportDataType; fiscalYear: string | null }): string {
+  return sharedAdvisoryLockKey('import-activate:' + b.dataType + ':' + (b.dataType === 'budget' ? (b.fiscalYear ?? '') : ''))
 }
 
 async function activateInTx(
   tx: Prisma.TransactionClient,
   b: { id: string; dataType: ImportDataType; fiscalYear: string | null; coverageJson: unknown },
   userId: string,
-): Promise<{ replacedPeriods: string[]; deletedRows: number; markedInvalidations: number }> {
+): Promise<{ replacedPeriods: string[]; replacementCompanyPeriods: CompanyPeriod[]; deletedRows: number; markedInvalidations: number }> {
   let replaced: string[] = []
+  let replacementCompanyPeriods: CompanyPeriod[] = []
   let deleted = 0
   let marked = 0
   if (b.dataType === 'operating' || b.dataType === 'static' || b.dataType === 'cashflow') {
+    // 先读取完整目标范围再检查权限，首批激活也不能因没有旧批次而跳过守卫。
+    const keys = await withoutScope(() => readCompanyPeriods(tx, b.dataType, [b.id]))
+    await assertCompaniesInScope(keys.map((k) => k.companyCode), undefined, '激活导入批次')
+    replacementCompanyPeriods = keys
     const oldActive = await tx.importBatch.findMany({
-      where: { dataType: b.dataType, lifecycleStatus: 'active' },
+      where: { dataType: b.dataType, lifecycleStatus: 'active', id: { not: b.id } },
       select: { id: true },
     })
-    // 排除目标批次自身：active 目标回滚（期间合并共存场景）时避免删除自己刚恢复的行
-    const oldIds = oldActive.map((x) => x.id).filter((x) => x !== b.id)
-    if (oldIds.length > 0) {
-      if (b.dataType === 'operating' || b.dataType === 'cashflow') {
-        const rows = await tx.factOperating.findMany({ where: { batchId: b.id }, distinct: ['period'], select: { period: true } })
-        const newPeriods = rows.map((r) => r.period)
-        // 影响范围守卫：目标批次与将被替换的旧批次数据行均须落在操作者数据范围内
-        // （批次激活是批次级状态变更，Prisma scope 扩展无法覆盖，须显式校验）。
-        // 查询须 withoutScope：守卫本身要看到范围外行才能判定越权，否则被自身 scope 过滤致盲
-        const [targetCompanyRows, oldCompanyRows] = await withoutScope(() => Promise.all([
-          tx.factOperating.findMany({ where: { batchId: b.id }, distinct: ['companyCode'], select: { companyCode: true } }),
-          tx.factOperating.findMany({ where: { batchId: { in: oldIds }, period: { in: newPeriods } }, distinct: ['companyCode'], select: { companyCode: true } }),
-        ]))
-        await assertCompaniesInScope([...targetCompanyRows, ...oldCompanyRows].map((r) => r.companyCode), undefined, '激活导入批次')
-        if (newPeriods.length > 0) {
-          const backed = await backupOperatingRows(tx, b.id, { batchId: { in: oldIds }, period: { in: newPeriods } }, b.dataType === 'cashflow' ? 'cashflow' : 'operating')
-          deleted += backed.count
-          await tx.factOperating.deleteMany({ where: { batchId: { in: oldIds }, period: { in: newPeriods } } })
-          replaced = newPeriods.sort()
-          // 重分类体系仅覆盖 operating/static/budget，cashflow 无失效标记联动
-          if (backed.ids.length > 0 && b.dataType === 'operating') {
-            marked += await markInvalidatedReclassifications(tx, 'operating', {
-              templateType: 'operating', replacedByBatchId: b.id, replacedPeriods: newPeriods, operatorId: userId,
-            })
-          }
-        }
+    const oldIds = oldActive.map((x) => x.id)
+    if (oldIds.length > 0 && keys.length > 0) {
+      replaced = [...new Set(keys.map((k) => k.period))].sort()
+      if (b.dataType === 'static') {
+        const where = { batchId: { in: oldIds }, ...staticCoverageWhere(keys) }
+        const backed = await backupStaticRows(tx, b.id, where)
+        deleted = backed.count
+        await tx.factStatic.deleteMany({ where })
         for (const oldId of oldIds) {
-          const remaining = await tx.factOperating.count({ where: { batchId: oldId } })
+          // 批次状态影响所有公司，必须按全量剩余行判断，不能依赖当前账号的可见行。
+          const remaining = await withoutScope(async () => await tx.factStatic.count({ where: { batchId: oldId } }))
           if (remaining === 0) await tx.importBatch.update({ where: { id: oldId }, data: { lifecycleStatus: 'archived' } })
+        }
+        if (backed.ids.length > 0) {
+          marked = await markInvalidatedReclassifications(tx, 'static', {
+            templateType: 'static', replacedByBatchId: b.id, replacedPeriods: replaced, operatorId: userId,
+          })
         }
       } else {
-        const snaps = await tx.factStatic.findMany({ where: { batchId: b.id }, distinct: ['snapshotDate'], select: { snapshotDate: true } })
-        const newMonths = new Set(snaps.map((s) => ymOfDate(s.snapshotDate)))
-        if (newMonths.size > 0) {
-          const oldSnaps = await tx.factStatic.findMany({ where: { batchId: { in: oldIds } }, distinct: ['snapshotDate'], select: { snapshotDate: true } })
-          const delDates = oldSnaps.map((s) => s.snapshotDate).filter((d) => newMonths.has(ymOfDate(d)))
-          // 影响范围守卫（同 operating：查询须 withoutScope 看见范围外行）
-          const [targetCompanyRows, oldCompanyRows] = await withoutScope(() => Promise.all([
-            tx.factStatic.findMany({ where: { batchId: b.id }, distinct: ['companyCode'], select: { companyCode: true } }),
-            tx.factStatic.findMany({ where: { batchId: { in: oldIds }, snapshotDate: { in: delDates } }, distinct: ['companyCode'], select: { companyCode: true } }),
-          ]))
-          await assertCompaniesInScope([...targetCompanyRows, ...oldCompanyRows].map((r) => r.companyCode), undefined, '激活导入批次')
-          if (delDates.length > 0) {
-            const backed = await backupStaticRows(tx, b.id, { batchId: { in: oldIds }, snapshotDate: { in: delDates } })
-            deleted += backed.count
-            await tx.factStatic.deleteMany({ where: { batchId: { in: oldIds }, snapshotDate: { in: delDates } } })
-            if (backed.ids.length > 0) {
-              marked += await markInvalidatedReclassifications(tx, 'static', {
-                templateType: 'static', replacedByBatchId: b.id, replacedPeriods: [...newMonths].sort(), operatorId: userId,
-              })
-            }
-          }
-          replaced = [...newMonths].sort()
-        }
+        const where = { batchId: { in: oldIds }, ...operatingCoverageWhere(keys) }
+        const backed = await backupOperatingRows(tx, b.id, where, b.dataType)
+        deleted = backed.count
+        await tx.factOperating.deleteMany({ where })
         for (const oldId of oldIds) {
-          const remaining = await tx.factStatic.count({ where: { batchId: oldId } })
+          const remaining = await withoutScope(async () => await tx.factOperating.count({ where: { batchId: oldId } }))
           if (remaining === 0) await tx.importBatch.update({ where: { id: oldId }, data: { lifecycleStatus: 'archived' } })
+        }
+        if (backed.ids.length > 0 && b.dataType === 'operating') {
+          marked = await markInvalidatedReclassifications(tx, 'operating', {
+            templateType: 'operating', replacedByBatchId: b.id, replacedPeriods: replaced, operatorId: userId,
+          })
         }
       }
     }
@@ -468,39 +448,53 @@ async function activateInTx(
     where: { id: b.id },
     data: { lifecycleStatus: 'active', status: 'success' },
   })
-  return { replacedPeriods: replaced, deletedRows: deleted, markedInvalidations: marked }
+  return { replacedPeriods: replaced, replacementCompanyPeriods, deletedRows: deleted, markedInvalidations: marked }
 }
 
-/** 查当前生效批次并对比期间集合（operating/cashflow=period、static=快照月、budget=财年）；
- * 与 AggregationService 消费口径一致，汇总全部 active 批次的期间（正常不变量下同类型仅一个 active） */
-async function computeActivationImpact(template: ImportTemplate, filePeriods: string[], fiscalYear: string): Promise<ActivationImpact> {
-  const where =
-    template === 'budget'
-      ? { dataType: 'budget' as const, lifecycleStatus: 'active' as const, fiscalYear }
-      : { dataType: template, lifecycleStatus: 'active' as const }
+/** 同一读取规则供激活、回滚、预览与批量预检复用；权限绕过由调用处显式控制。 */
+async function readCompanyPeriods(
+  client: Pick<Prisma.TransactionClient, 'factOperating' | 'factStatic'>,
+  template: ImportDataType,
+  batchIds: string[],
+): Promise<CompanyPeriod[]> {
+  if (batchIds.length === 0) return []
+  if (template === 'static') {
+    return companyPeriodsOf(await client.factStatic.findMany({
+      where: { batchId: { in: batchIds } }, distinct: ['companyCode', 'snapshotDate'], select: { companyCode: true, snapshotDate: true },
+    }))
+  }
+  return companyPeriodsOf(await client.factOperating.findMany({
+    where: { batchId: { in: batchIds } }, distinct: ['companyCode', 'period'], select: { companyCode: true, period: true },
+  }))
+}
+
+function parsedCompanyPeriods(parsed: ParseResult): CompanyPeriod[] {
+  return parsed.template === 'static' ? companyPeriodsOf(parsed.static) : companyPeriodsOf(parsed.operating)
+}
+
+/** 月度报表按公司月份组合比较，兼容期间投影字段；预算仍按财年整体比较。 */
+async function computeActivationImpact(template: ImportTemplate, filePeriods: string[], fiscalYear: string, fileKeys: CompanyPeriod[]): Promise<ActivationImpact> {
+  const where = template === 'budget'
+    ? { dataType: 'budget' as const, lifecycleStatus: 'active' as const, fiscalYear }
+    : { dataType: template, lifecycleStatus: 'active' as const }
   const batches = await prisma.importBatch.findMany({ where, select: { id: true, fileName: true }, orderBy: { updatedAt: 'desc' } })
-  if (batches.length === 0) {
-    return { activeBatch: null, newPeriods: filePeriods, overlappingPeriods: [], retainedPeriods: [] }
-  }
   const batchIds = batches.map((b) => b.id)
-  let activePeriods: string[]
-  if (template === 'operating' || template === 'cashflow') {
-    const rows = await prisma.factOperating.findMany({ where: { batchId: { in: batchIds } }, distinct: ['period'], select: { period: true } })
-    activePeriods = rows.map((r) => r.period)
-  } else if (template === 'static') {
-    const rows = await prisma.factStatic.findMany({ where: { batchId: { in: batchIds } }, distinct: ['snapshotDate'], select: { snapshotDate: true } })
-    activePeriods = [...new Set(rows.map((r) => ymOfDate(r.snapshotDate)))]
-  } else {
-    const rows = await prisma.factBudget.findMany({ where: { batchId: { in: batchIds } }, distinct: ['fiscalYear'], select: { fiscalYear: true } })
-    activePeriods = rows.map((r) => r.fiscalYear)
+  const activeBatch = batches.length ? { id: batches[0].id, filename: batches[0].fileName } : null
+  if (template === 'budget') {
+    const rows = batchIds.length ? await prisma.factBudget.findMany({ where: { batchId: { in: batchIds } }, distinct: ['fiscalYear'], select: { fiscalYear: true } }) : []
+    const activeSet = new Set(rows.map((r) => r.fiscalYear))
+    return { activeBatch, newPeriods: filePeriods.filter((p) => !activeSet.has(p)), overlappingPeriods: filePeriods.filter((p) => activeSet.has(p)), retainedPeriods: [...activeSet].filter((p) => !filePeriods.includes(p)).sort() }
   }
-  const fileSet = new Set(filePeriods)
-  const activeSet = new Set(activePeriods)
+  const activeKeys = await readCompanyPeriods(prisma, template, batchIds)
+  const fileSet = new Set(fileKeys.map(companyPeriodKey))
+  const activeSet = new Set(activeKeys.map(companyPeriodKey))
+  const newCompanyPeriods = fileKeys.filter((k) => !activeSet.has(companyPeriodKey(k)))
+  const overlappingCompanyPeriods = fileKeys.filter((k) => activeSet.has(companyPeriodKey(k)))
+  const retainedCompanyPeriods = activeKeys.filter((k) => !fileSet.has(companyPeriodKey(k)))
+  const periodsOf = (keys: CompanyPeriod[]) => [...new Set(keys.map((k) => k.period))].sort()
   return {
-    activeBatch: { id: batches[0].id, filename: batches[0].fileName },
-    newPeriods: filePeriods.filter((p) => !activeSet.has(p)),
-    overlappingPeriods: filePeriods.filter((p) => activeSet.has(p)),
-    retainedPeriods: [...activeSet].filter((p) => !fileSet.has(p)).sort(),
+    activeBatch, newCompanyPeriods, overlappingCompanyPeriods, retainedCompanyPeriods,
+    newPeriods: periodsOf(newCompanyPeriods), overlappingPeriods: periodsOf(overlappingCompanyPeriods), retainedPeriods: periodsOf(retainedCompanyPeriods),
   }
 }
 
@@ -610,7 +604,7 @@ export interface ImportBatchDto {
   errors?: ImportErrorItem[]
 }
 
-/** 激活冲突项：transaction 为 (公司, 期间, 往来类型) 三元组；operating/static 为期间；budget/inventory 为整体替换文案 */
+/** 激活冲突项：transaction 为 (公司, 期间, 往来类型) 三元组；operating/static/cashflow 为公司月份组合；budget/inventory 为整体替换文案 */
 export interface ActivateConflict {
   companyCode?: string
   period?: string
@@ -809,7 +803,7 @@ export const ImportService = {
       undefined,
       '预览导入',
     )
-    const activationImpact = await computeActivationImpact(template, parsed.summary.periods, fiscalYear)
+    const activationImpact = await computeActivationImpact(template, parsed.summary.periods, fiscalYear, parsedCompanyPeriods(parsed))
     const kpiCoverage = template === 'operating' || template === 'cashflow' ? await computeKpiCoverage(template, parsed.summary.accountCodes) : null
     // 预算模板附加口径告警：计算类/父级科目行将被重算或忽略、毛利直导叶子缺行将为 0
     const budgetWarnings = template === 'budget' ? await computeBudgetWarnings(parsed.summary.accountCodes) : null
@@ -859,7 +853,7 @@ export const ImportService = {
     for (const t of ['operating', 'static', 'cashflow'] as const) {
       const r = parsed[t]
       if (!r) continue
-      const activationImpact = await computeActivationImpact(t, r.summary.periods, fiscalYear)
+      const activationImpact = await computeActivationImpact(t, r.summary.periods, fiscalYear, parsedCompanyPeriods(r))
       const kpiCoverage = t === 'operating' || t === 'cashflow' ? await computeKpiCoverage(t, r.summary.accountCodes) : null
       perType[t] = {
         dataRowCount: r.dataRowCount,
@@ -1326,8 +1320,8 @@ export const ImportService = {
 
   /**
    * 激活批次：置 active。期间策略：
-   * - operating/cashflow/static 按期间合并：删除旧 active 批次中与本批次重叠期间的事实行
-   *   （operating/cashflow 按 period、static 按快照月，删除前先备份到 fact_snapshot 支撑回滚），
+   * - operating/cashflow/static 按公司月份组合合并：删除旧 active 批次中与本批次重叠期间的事实行
+   *   （operating/cashflow 按公司和 period、static 按公司和快照月，删除前先备份到 fact_snapshot 支撑回滚），
    *   旧批次清空后自动归档，否则保持 active（多批次按期间共存）；
    * - transaction 按 (公司, 期间, 往来类型) 合并：删除旧 active 批次中与本批次三元组重叠的明细，旧批次清空后自动归档；
    * - budget 按财年整体替换：归档同 dataType 且同 fiscalYear 的旧 active；
@@ -1342,15 +1336,15 @@ export const ImportService = {
     // 避免两个事务都在对方生效前读取旧集合导致双份有效数据
     // ::bigint 显式转换：Prisma 以 numeric/text 传参，不转换时部分 PG 签名无法解析；
     // IS NULL 包裹：pg_advisory_xact_lock 返回 void，Prisma $queryRaw 无法反序列化 void 列，须转为 boolean
-    const lock = advisoryLockKey(`import-activate:${b.dataType}:${b.dataType === 'budget' ? (b.fiscalYear ?? '') : ''}`)
+    const lock = activationLockOf(b)
 
-    const { updated, replacedPeriods, deletedRows, markedInvalidations } = await prisma.$transaction(async (tx) => {
+    const { updated, replacedPeriods, replacementCompanyPeriods, deletedRows, markedInvalidations } = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(${lock}::bigint) IS NULL AS locked`
       // 锁内重读：并发激活同一批次时，后到者在锁定后看到已 active 直接幂等返回
       const current = await tx.importBatch.findUnique({ where: { id } })
       if (!current) throw errors.notFound('导入批次不存在')
       if (current.lifecycleStatus === 'active') {
-        return { updated: current, replacedPeriods: [] as string[], deletedRows: 0, markedInvalidations: 0 }
+        return { updated: current, replacedPeriods: [] as string[], replacementCompanyPeriods: [] as CompanyPeriod[], deletedRows: 0, markedInvalidations: 0 }
       }
       assertActivatable(current)
       const impact = await activateInTx(tx, current, userId)
@@ -1358,7 +1352,7 @@ export const ImportService = {
       return { updated: batch, ...impact }
     })
     await recordAudit(
-      { userId, module: 'data', action: 'update', targetId: id, detail: { action: 'activate', replacedPeriods, deletedRows, markedInvalidations } },
+      { userId, module: 'data', action: 'update', targetId: id, detail: { action: 'activate', replacedPeriods, replacementCompanyPeriods, deletedRows, markedInvalidations } },
       traceId,
     )
     return toDto(updated)
@@ -1379,11 +1373,21 @@ export const ImportService = {
       throw errors.badRequest('该数据类型暂不支持回滚（v1 仅支持经营/静态/现金流量/预算数据）')
     }
 
-    const { updated, restoredRows, replacedPeriods, deletedRows, markedInvalidations } = await prisma.$transaction(async (tx) => {
+    const { updated, restoredRows, replacedPeriods, replacementCompanyPeriods, deletedRows, markedInvalidations } = await prisma.$transaction(async (tx) => {
+      const lock = activationLockOf(b)
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${lock}::bigint) IS NULL AS locked`
+      const current = await tx.importBatch.findUniqueOrThrow({ where: { id } })
+      assertActivatable(current)
+      // 恢复写入不受查询范围自动保护，必须先检查现存行与完整快照涉及的公司。
+      const snapshots = await tx.factSnapshot.findMany({ where: { batchId: id } })
+      const companies = current.dataType === 'budget'
+        ? await withoutScope(async () => await tx.factBudget.findMany({ where: { batchId: id }, distinct: ['companyCode'], select: { companyCode: true } }))
+        : await withoutScope(() => readCompanyPeriods(tx, current.dataType, [id]))
+      await assertCompaniesInScope([...companies, ...snapshots].map((r) => r.companyCode), undefined, '回滚导入批次')
       let restored = 0
       // 1) 恢复快照行（operating/static/cashflow 被覆盖时备份；budget 从不删行无需恢复）
       if (b.dataType === 'operating' || b.dataType === 'static' || b.dataType === 'cashflow') {
-        const snaps = await tx.factSnapshot.findMany({ where: { batchId: id } })
+        const snaps = snapshots
         if (snaps.length > 0) {
           if (b.dataType === 'operating' || b.dataType === 'cashflow') {
             const res = await tx.factOperating.createMany({
@@ -1427,14 +1431,14 @@ export const ImportService = {
             : await tx.factBudget.count({ where: { batchId: id } })
       if (hasData === 0) throw errors.badRequest('该批次数据已不可恢复（可能已被清除）')
       // 3) 重新激活：删除当前 active 重叠行（自动备份到快照表）并置目标批次 active
-      const impact = await activateInTx(tx, b, userId)
+      const impact = await activateInTx(tx, current, userId)
       // 4) 清理已恢复的快照（下次覆盖会重新备份）
       await tx.factSnapshot.deleteMany({ where: { batchId: id } })
       const batch = await tx.importBatch.findUniqueOrThrow({ where: { id } })
       return { updated: batch, restoredRows: restored, ...impact }
     })
     await recordAudit(
-      { userId, module: 'data', action: 'import_rollback', targetId: id, detail: { restoredRows, replacedPeriods, deletedRows, markedInvalidations } },
+      { userId, module: 'data', action: 'import_rollback', targetId: id, detail: { restoredRows, replacedPeriods, replacementCompanyPeriods, deletedRows, markedInvalidations } },
       traceId,
     )
     return toDto(updated)
@@ -1443,7 +1447,7 @@ export const ImportService = {
   /**
    * 批量激活预检（只读，不写库不记审计）：计算各批次激活后将替换的已生效组合，供前端批量激活前确认覆盖风险。
    * - transaction：申报三元组（明细 distinct ∪ coverageJson）与 active 批次明细重叠（含现有笔数）；
-   * - operating/cashflow：本批次期间与 active 批次重叠；static：本批次快照月与 active 批次重叠；
+   * - operating/cashflow/static：本批次公司月份组合与 active 批次重叠；
    * - budget：同财年 active 批次整体替换；inventory：同类型 active 整体替换。
    * 另统计所选批次之间的三元组重叠（激活顺序靠后的覆盖靠前的）。批次不存在时返回 status=''。
    */
@@ -1493,6 +1497,18 @@ export const ImportService = {
       for (const k of keys) keyFrequency.set(k, (keyFrequency.get(k) ?? 0) + 1)
     }
 
+    const monthlyBatchKeys = new Map<string, CompanyPeriod[]>()
+    const monthlyFrequency = new Map<string, number>()
+    for (const b of batches) {
+      if (b.lifecycleStatus !== 'draft' || !['operating', 'static', 'cashflow'].includes(b.dataType)) continue
+      const keys = await readCompanyPeriods(prisma, b.dataType, [b.id])
+      monthlyBatchKeys.set(b.id, keys)
+      for (const key of keys) {
+        const typedKey = b.dataType + '|' + companyPeriodKey(key)
+        monthlyFrequency.set(typedKey, (monthlyFrequency.get(typedKey) ?? 0) + 1)
+      }
+    }
+
     const results: BatchActivateCheckItem[] = []
     for (const id of uniqueIds) {
       const b = byId.get(id)
@@ -1511,32 +1527,11 @@ export const ImportService = {
           const existing = existingCount.get(k)
           if (existing) conflicts.push({ companyCode, period, transactionType, existingCount: existing })
         }
-      } else if (b.dataType === 'operating' || b.dataType === 'cashflow') {
-        const periods = await prisma.factOperating.findMany({ where: { batchId: id }, distinct: ['period'], select: { period: true } })
-        const fileSet = new Set(periods.map((p) => p.period))
-        if (fileSet.size > 0) {
-          const oldIds = (await prisma.importBatch.findMany({ where: { dataType: b.dataType, lifecycleStatus: 'active' }, select: { id: true } })).map((x) => x.id)
-          if (oldIds.length > 0) {
-            const overlap = await prisma.factOperating.findMany({
-              where: { batchId: { in: oldIds }, period: { in: [...fileSet] } },
-              distinct: ['period'],
-              select: { period: true },
-            })
-            for (const p of overlap) conflicts.push({ period: p.period })
-          }
-        }
-      } else if (b.dataType === 'static') {
-        const snaps = await prisma.factStatic.findMany({ where: { batchId: id }, distinct: ['snapshotDate'], select: { snapshotDate: true } })
-        const fileMonths = new Set(snaps.map((s) => ymOfDate(s.snapshotDate)))
-        if (fileMonths.size > 0) {
-          const oldIds = (await prisma.importBatch.findMany({ where: { dataType: 'static', lifecycleStatus: 'active' }, select: { id: true } })).map((x) => x.id)
-          if (oldIds.length > 0) {
-            const oldSnaps = await prisma.factStatic.findMany({ where: { batchId: { in: oldIds } }, distinct: ['snapshotDate'], select: { snapshotDate: true } })
-            const months = new Set(oldSnaps.map((s) => ymOfDate(s.snapshotDate)))
-            for (const m of months) {
-              if (fileMonths.has(m)) conflicts.push({ period: m })
-            }
-          }
+      } else if (b.dataType === 'operating' || b.dataType === 'cashflow' || b.dataType === 'static') {
+        const oldIds = (await prisma.importBatch.findMany({ where: { dataType: b.dataType, lifecycleStatus: 'active' }, select: { id: true } })).map((x) => x.id)
+        const activeSet = new Set((await readCompanyPeriods(prisma, b.dataType, oldIds)).map(companyPeriodKey))
+        for (const key of monthlyBatchKeys.get(id) ?? []) {
+          if (activeSet.has(companyPeriodKey(key))) conflicts.push(key)
         }
       } else if (b.dataType === 'budget') {
         const old = await prisma.importBatch.findMany({ where: { dataType: 'budget', lifecycleStatus: 'active', fiscalYear: b.fiscalYear }, select: { fileName: true } })
@@ -1546,6 +1541,9 @@ export const ImportService = {
         for (const x of old) conflicts.push({ label: `替换当前生效的数据《${x.fileName}》` })
       }
       let crossBatchConflictCount = 0
+      for (const key of monthlyBatchKeys.get(id) ?? []) {
+        if ((monthlyFrequency.get(b.dataType + '|' + companyPeriodKey(key)) ?? 0) > 1) crossBatchConflictCount++
+      }
       for (const k of txnBatchKeys.get(id) ?? []) {
         if ((keyFrequency.get(k) ?? 0) > 1) crossBatchConflictCount++
       }
