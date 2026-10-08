@@ -27,7 +27,7 @@ export interface BatchActivateSummary {
 export interface BatchActivateCheckSummary {
   /** 激活后将替换的已生效组合总数 */
   conflictCount: number
-  /** 选中批次之间互相重叠的三元组数（后激活覆盖先激活） */
+  /** 选中批次之间互相重叠的同类型组合数（后激活覆盖先激活） */
   crossCount: number
   /** 冲突示例文案（最多 3 条） */
   samples: string[]
@@ -53,7 +53,7 @@ export function buildActivateConflictDescription(check: BatchActivateCheckSummar
 /**
  * 批量激活编排（往来导入三界面复用）：
  * - checkConflicts(ids)：只读预检各批次激活后将替换的已生效组合，供激活前确认覆盖风险；
- * - run(batches)：串行逐个激活（后激活批次按三元组覆盖先激活批次，与单批激活语义一致），
+ * - run(batches)：串行逐个激活（后激活批次按对应类型的组合覆盖先激活批次，与单批激活语义一致），
  *   每批更新进度与结果，单批失败不中断其余，返回成功/失败汇总。
  */
 export function useBatchActivate() {

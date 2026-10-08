@@ -267,6 +267,11 @@ export interface KpiData {
   ytdActual: number
   /** 同比变化率（小数，0.1=+10%） */
   yoy: number
+  /** 累计同比变化率（小数，取同期累计为基数） */
+  ytdYoy: number
+  /** 自然上月环比（小数）；无数据或零基数为 null */
+  monthMom: number | null
+  monthMomReason: 'no-data' | 'zero-base' | null
   /** 累计预算达成率（%，YTD 实际/年预算） */
   ytdRate: number | null
   /** 财年内各月本月合计序列（迷你趋势图） */

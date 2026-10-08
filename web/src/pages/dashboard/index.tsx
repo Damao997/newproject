@@ -16,6 +16,7 @@ import { usePageStore } from '@/stores/pageStateStore'
 import { useSummaryMemberValues, type MemberBreakdown } from '@/hooks/use-summary-member-values'
 import { kpiRootMatcher } from '@/components/charts/kpi-card'
 import type { KpiData } from '@/types'
+import { usePreferencesStore } from '@/stores/preferencesStore'
 
 export default function DashboardPage() {
   // 吸顶测量：标题区高度实时测量（标题区含 actions 筛选控件，吸顶时筛选随标题区固定）
@@ -112,6 +113,7 @@ interface DashboardViewProps {
 }
 
 function DashboardView(props: DashboardViewProps) {
+  const kpiMode = usePreferencesStore(state => state.preferences.dashboardKpiMode)
   const {
     kpiData,
     isEmpty,
@@ -153,7 +155,7 @@ function DashboardView(props: DashboardViewProps) {
       {kpiData.length > 0 && (
         <div className="dashboard-kpis grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {kpiData.map((kpi, i) => (
-            <KpiCard key={kpi.title + '-' + i} data={kpi} index={i} onClick={() => onKpiDrill(kpi.title)} breakdown={kpiBreakdown} />
+            <KpiCard key={kpi.title + '-' + i} data={kpi} mode={kpiMode} index={i} onClick={() => onKpiDrill(kpi.title)} breakdown={kpiBreakdown} />
           ))}
         </div>
       )}

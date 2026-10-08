@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
+import { withoutScope } from '../middleware/scope-context'
 import { assertCompaniesInScope as assertScopeGuard, effectiveScope } from '../lib/scope-guard'
 import { fiscalYearLabel } from '../lib/period'
 import type { AuthUserContext } from '../types/express'
@@ -338,7 +339,8 @@ export async function markInvalidatedReclassifications(
     for (const u of snap.updated) allIds.add(u.id)
     for (const c of snap.created) allIds.add(createdIdOf(c))
   }
-  const rows = await findRowsByIds(tx, templateType, [...allIds])
+  // 失效判断读取事实真值，不能把操作者看不到的其他公司行误判为已被删除。
+  const rows = await withoutScope(() => findRowsByIds(tx, templateType, [...allIds]))
   const rowById = new Map(rows.map((r) => [r.id, r.batchId]))
   const batchIds = new Set(rows.map((r) => r.batchId))
   for (const { snap } of withSnap) {

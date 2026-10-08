@@ -198,6 +198,9 @@ try {
   try {
     & npm.cmd ci
     Assert-LastExitCode '后端 npm ci 失败'
+    # 显式生成 Prisma Client：不依赖 @prisma/client 的 postinstall（该钩子曾静默只写占位桩，导致 tsc 报数百条缺类型错误）
+    & npx.cmd prisma generate
+    Assert-LastExitCode '后端 prisma generate 失败'
     # 分阶段构建：产物先落 .release/dist-next，全部构建/迁移成功后再切换（避免中途失败留下混合版本）
     & npx.cmd tsc -p tsconfig.json --outDir $stagedServerDist
     Assert-LastExitCode '后端分阶段构建失败'

@@ -16,13 +16,16 @@ import type { Prisma } from '@prisma/client'
 
 type Scope = Pick<AuthUserContext, 'companyCode' | 'scopeValue'> & { dataScopeCodes?: string[] | null }
 
-/** 核心 KPI 卡：本月合计 + 月度/累计预算达成率（%，null=无预算）+ 累计实际 + 同比 */
+/** 核心 KPI 卡：月度/财年累计实际、预算达成率及同比；环比为空时附不可计算原因。 */
 interface Kpi {
   title: string
   monthActual: number
   monthRate: number | null
   ytdActual: number
   yoy: number
+  ytdYoy: number
+  monthMom: number | null
+  monthMomReason: 'no-data' | 'zero-base' | null
   ytdRate: number | null
   trend: number[]
 }
@@ -243,6 +246,13 @@ export function changeRate(cur: number, base: number): number {
   // 保留 4 位：round2 会把 12.34% 截成 12%，0.4% 的小幅增长直接归零
   return Number.isFinite(r) ? Number(r.toFixed(4)) : 0
 }
+
+/** 环比与既有同比共用绝对值分母；无上月数据和零基数单独表达，不能伪装为持平。 */
+export function kpiMonthComparison(current: number, previous: number | null): Pick<Kpi, 'monthMom' | 'monthMomReason'> {
+  if (previous === null) return { monthMom: null, monthMomReason: 'no-data' }
+  if (previous === 0) return { monthMom: null, monthMomReason: 'zero-base' }
+  return { monthMom: changeRate(current, previous), monthMomReason: null }
+}
 /** 预算达成率（%）：divisor=12 表示按月均预算折算月度达成率；预算为 0/缺失返回 null（前端显示 "–"） */
 export function rateOf(actualVal: number, budgetVal: number, divisor = 1): number | null {
   if (!budgetVal) return null
@@ -353,6 +363,18 @@ async function availablePeriods(): Promise<string[]> {
 async function buildTrees(companyCodes: string[], periods: string[], consolidationSummaryCode?: string | null): Promise<Map<string, ValueNode[]>> {
   const trees = await Promise.all(periods.map((p) => AggregationService.buildOperatingTree(companyCodes, p, { consolidationSummaryCode })))
   return new Map(periods.map((p, i) => [p, trees[i]]))
+}
+
+/** 按当前授权主体判断上月原始数据是否存在，避免其他公司有数据时把本主体缺失误判为零。 */
+async function hasOperatingData(companyCodes: string[], period: string): Promise<boolean> {
+  if (!companyCodes.length) return false
+  const batches = await prisma.importBatch.findMany({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true } })
+  if (!batches.length) return false
+  const row = await prisma.factOperating.findFirst({
+    where: { companyCode: { in: companyCodes }, period, periodDimCode: OPERATING_DIMS.ACTUAL_MONTH, batchId: { in: batches.map(batch => batch.id) } },
+    select: { id: true },
+  })
+  return row !== null
 }
 
 /** 四个核心指标的节点定位：收入/毛利/回款按 category，净利润在「经营指标」子树内按名称 */
@@ -674,9 +696,16 @@ async function buildDashboardData(companyCodes: string[], period: string, availa
   const { year, month } = parsePeriod(fyStart)
   const fyMonths = periodsInRange(fyStart, formatPeriod(year, month + 11))
   const dataMonths = fyMonths.filter((m) => available.includes(m))
-  const treeByPeriod = await buildTrees(companyCodes, dataMonths.includes(period) ? dataMonths : [...dataMonths, period], consolidationSummaryCode)
+  const selected = parsePeriod(period)
+  const previousPeriod = formatPeriod(selected.year, selected.month - 1)
+  // 自然上月可位于上一财年；复用财年内已有聚合树，只补查询缺失的上月。
+  const [treeByPeriod, previousHasData] = await Promise.all([
+    buildTrees(companyCodes, [...new Set([...dataMonths, period, ...(available.includes(previousPeriod) ? [previousPeriod] : [])])], consolidationSummaryCode),
+    hasOperatingData(companyCodes, previousPeriod),
+  ])
   const tree = treeByPeriod.get(period) ?? []
   const nodes = metricNodes(tree)
+  const previousNodes = metricNodes(treeByPeriod.get(previousPeriod) ?? [])
 
   // 预算：按财年一次取数，三个图表指标各自按叶子码归集；
   // 计算类指标（毛利等）无直导预算行时回退树预算总额（公式层重算值），
@@ -734,21 +763,23 @@ async function buildDashboardData(companyCodes: string[], period: string, availa
     periodIdx >= 0 ? trendData[periodIdx][field] : undefined
 
   // monthRate 按当月预算计算（与趋势图月度预算线同口径），ytdRate 按年度总额计算（与累计预算线同口径），无预算为 null
-  const kpiOf = (title: string, node: ValueNode | undefined, key: 'revenueActual' | 'profitActual' | 'netProfitActual' | 'collectionActual', monthBudget?: number | null): Kpi => ({
+  const kpiOf = (title: string, node: ValueNode | undefined, previousNode: ValueNode | undefined, key: 'revenueActual' | 'profitActual' | 'netProfitActual' | 'collectionActual', monthBudget?: number | null): Kpi => ({
     title,
     monthActual: round2(actual(node)),
     monthRate: monthBudget === undefined ? rateOf(actual(node), budget(node), 12) : rateOf(actual(node), monthBudget ?? 0),
     ytdActual: round2(ytd(node)),
     yoy: changeRate(actual(node), samePeriod(node)),
+    ytdYoy: changeRate(ytd(node), node?.values[OPERATING_DIMS.SAME_PERIOD_YTD] ?? 0),
+    ...kpiMonthComparison(actual(node), previousHasData && previousNode ? actual(previousNode) : null),
     ytdRate: rateOf(ytd(node), budget(node)),
     trend: trendData.map((t) => t[key] ?? 0),
   })
 
   const kpiData: Kpi[] = [
-    kpiOf('收入', nodes.revenue, 'revenueActual', monthBudgetOfTrend('revenueBudget')),
-    kpiOf('毛利', nodes.profit, 'profitActual', monthBudgetOfTrend('profitBudget')),
-    kpiOf('净利润', nodes.netProfit, 'netProfitActual', monthBudgetOfTrend('netProfitBudget')),
-    kpiOf('回款', nodes.collection, 'collectionActual'),
+    kpiOf('收入', nodes.revenue, previousNodes.revenue, 'revenueActual', monthBudgetOfTrend('revenueBudget')),
+    kpiOf('毛利', nodes.profit, previousNodes.profit, 'profitActual', monthBudgetOfTrend('profitBudget')),
+    kpiOf('净利润', nodes.netProfit, previousNodes.netProfit, 'netProfitActual', monthBudgetOfTrend('netProfitBudget')),
+    kpiOf('回款', nodes.collection, previousNodes.collection, 'collectionActual'),
   ]
   return { kpiData, trendData }
 }
