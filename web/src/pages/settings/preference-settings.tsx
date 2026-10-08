@@ -16,7 +16,8 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { resolveExclusiveCompanies } from '@/hooks/use-exclusive-company-filter'
-const schema = preferenceSchema.superRefine((value, context) => {
+// 缓存解析允许缺省字段；编辑表单已由账号快照初始化，模式必须明确选择。
+const schema = preferenceSchema.extend({ dashboardKpiMode: preferenceSchema.shape.dashboardKpiMode.removeDefault() }).superRefine((value, context) => {
   if (value.companyStartup === 'fixed' && !value.defaultCompanies.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ['defaultCompanies'], message: '请选择默认公司范围' })
 })
 const routeNames: Record<string, string> = { '/dashboard': '首页看板', '/indicators/operating': '财务指标', '/reports': '报告中心', '/transactions/overview': '往来分析', '/inventory': '存货管理', '/data/browse': '数据浏览', '/admin/users': '用户管理' }
@@ -89,7 +90,10 @@ export function PreferenceSettings() {
         {choose('periodStartup', '启动期间', [['remember', '记住本设备上次期间'], ['latest', '最新有数据期间']])}
         {choose('companyStartup', '启动公司范围', [['remember', '记住本设备上次范围'], ['all', '全部可见公司'], ['fixed', '指定公司范围']])}
       </div>{mode === 'fixed' && chooseCompanies('defaultCompanies', '默认公司范围')}</FormSection>
-      <FormSection title="数据阅读">{choose('indicatorDensity', '财务指标密度', [['default', '标准'], ['dense', '紧凑'], ['compact', '极简']], '与财务指标页的视图设置保持一致')}</FormSection>
+      <FormSection title="数据阅读"><div className="settings-field-grid">
+        {choose('dashboardKpiMode', '首页 KPI 显示模式', [['month', '月度'], ['ytd', '财年累计']], '四张卡片统一切换，另一口径保留在卡片底部')}
+        {choose('indicatorDensity', '财务指标密度', [['default', '标准'], ['dense', '紧凑'], ['compact', '极简']], '与财务指标页的视图设置保持一致')}
+      </div></FormSection>
       <FormSection title="常用公司">{chooseCompanies('favoriteCompanies', '置顶公司')}</FormSection>
     </AppForm><div className="settings-save-bar"><span role="status" className="text-sm text-muted-foreground">{isDirty ? '有未保存的修改' : saved ? '设置已保存' : '按账号同步'}</span><div className="flex gap-2"><Button variant="outline" disabled={!isDirty || isSubmitting || saving} onClick={() => { reset(snapshot); setError(null); baseRevision.current = revision }}>还原</Button><Button form="personal-preferences-form" type="submit" disabled={!isDirty || isSubmitting || saving} loading={isSubmitting}>保存设置</Button></div></div>{element}
   </Card>

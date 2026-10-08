@@ -10,12 +10,14 @@ export const preferencesSchema = z.object({
   defaultCompanies: z.array(z.string().max(32)).max(200),
   periodStartup: z.enum(['remember', 'latest']),
   indicatorDensity: z.enum(['default', 'dense', 'compact']),
+  dashboardKpiMode: z.enum(['month', 'ytd']).default('month'),
 }).strict()
 export type PersonalPreferences = z.infer<typeof preferencesSchema>
 export const defaultPreferences: PersonalPreferences = {
   theme: 'light', showShortName: false, sidebarCollapsed: false, homePath: 'auto',
   favoriteCompanies: [], companyStartup: 'remember', defaultCompanies: [],
   periodStartup: 'remember', indicatorDensity: 'default',
+  dashboardKpiMode: 'month',
 }
 export const preferencePatchSchema = z.object({
   revision: z.number().int().min(0),

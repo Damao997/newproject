@@ -19,18 +19,45 @@
 :is(.app-card[data-card-variant='filter'], [data-filter-bar]) .ant-btn { min-height: 36px; }
 :is(.app-card[data-card-variant='filter'], [data-filter-bar]) .ant-input-affix-wrapper { align-items: center; }
 
-/* 首页指标：金额独立占行，达成率和累计信息有明确阅读顺序。 */
+/* 首页指标：当前口径金额、并列比较指标、另一口径摘要；累计模式自然收紧。 */
 .kpi-card { container-type: inline-size; }
-.kpi-content { padding: 24px; }
-.kpi-card .ant-statistic-content { font-size: clamp(28px, 14cqw, 34px) !important; letter-spacing: -.035em; overflow-wrap: anywhere; line-height: 1.2; }
+.kpi-content { display: flex; flex-direction: column; height: 100%; padding: 24px; }
+.kpi-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 16px; }
+.kpi-mode-tag { flex-shrink: 0; padding: 2px 8px; border-radius: 6px; background: hsl(var(--card) / .65); color: hsl(var(--metric-ink)); font-size: 12px; }
+.kpi-card .ant-statistic-content { font-size: clamp(28px, 14cqw, 34px); color: hsl(var(--foreground)); font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.035em; overflow-wrap: anywhere; line-height: 1.2; }
 .kpi-card .ant-statistic { min-width: 0; }
-.kpi-card[data-value-size="long"] .ant-statistic-content { font-size: clamp(22px, 10cqw, 28px) !important; }
-.kpi-value-row > .min-w-0 { flex-basis: 100%; }
-.kpi-rate { display: flex; width: 100%; align-items: baseline; justify-content: space-between; flex-direction: row-reverse; gap: 8px; margin-top: 4px; }
-.kpi-rate .text-lg { font-size: 16px; }
-.kpi-details { padding-top: 2px; }
-.kpi-card .bg-border\/60 { background: hsl(var(--metric-ink) / .12); }
-.kpi-content > div:first-child > svg { color: hsl(var(--metric-ink)); background: hsl(var(--card) / .6); border-radius: 50%; width: 26px; height: 26px; padding: 5px; box-sizing: border-box; }
+.kpi-card[data-value-size="long"] .ant-statistic-content { font-size: clamp(22px, 10cqw, 28px); }
+.kpi-value-row, .kpi-main-value { min-width: 0; }
+.kpi-amount-caption { display: block; margin-top: 6px; color: hsl(var(--muted-foreground)); font-size: 12px; }
+.kpi-indicators { display: grid; grid-template-columns: .9fr 1fr 1fr; gap: 6px; margin: 22px 0 0; }
+.kpi-indicators[data-count='2'] { grid-template-columns: 1fr 1fr; }
+.kpi-indicator { min-width: 0; }
+.kpi-indicator + .kpi-indicator { padding-left: 8px; border-left: 1px solid hsl(var(--metric-ink) / .13); }
+.kpi-indicator dt { margin-bottom: 6px; color: hsl(var(--muted-foreground)); font-size: 12px; }
+.kpi-indicator dd { margin: 0; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.kpi-change { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 2px; }
+.kpi-change .font-num { white-space: nowrap; }
+.kpi-change-icon { width: 12px; height: 12px; flex: 0 0 auto; }
+.kpi-comparison-help { display: inline-flex; min-height: 24px; align-items: center; gap: 5px; padding: 0 2px; border: 0; border-radius: 4px; background: transparent; color: hsl(var(--muted-foreground)); cursor: pointer; }
+.kpi-comparison-help svg { width: 12px; height: 12px; }
+.kpi-comparison-help:hover { background: hsl(var(--card) / .6); color: hsl(var(--foreground)); }
+.kpi-comparison-help:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; }
+.kpi-trend { height: 40px; margin: 14px -2px 12px; }
+.kpi-details { margin: 20px 0 0; padding-top: 13px; border-top: 1px solid hsl(var(--metric-ink) / .16); font-size: 12px; }
+.kpi-trend + .kpi-details { margin-top: auto; }
+.kpi-details > div { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 3px 8px; }
+.kpi-details > div + div { margin-top: 7px; }
+.kpi-details dt { color: hsl(var(--muted-foreground)); }
+.kpi-details dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+@container (max-width: 260px) {
+  .kpi-content { padding: 20px 18px; }
+  .kpi-indicators { gap: 4px; }
+  .kpi-indicator + .kpi-indicator { padding-left: 4px; }
+  .kpi-indicator dd { font-size: 12px; }
+}
+@media (pointer: coarse) {
+  .kpi-comparison-help { min-width: 44px; min-height: 44px; }
+}
 .kpi-card[role='link'] { transition: transform 180ms ease, box-shadow 180ms ease; }
 .kpi-card[role='link']:hover { transform: translateY(-3px); box-shadow: 0 10px 24px hsl(var(--foreground) / .07); }
 
