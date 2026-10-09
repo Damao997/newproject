@@ -14,6 +14,24 @@ let statusTimer = null
 let logTimer = null
 
 // ── 基础工具 ──
+const TOKEN_RELOAD_FLAG = 'ops-panel-token-reloaded'
+let tokenReloading = false // 本次页面实例已发起令牌自愈重载
+
+// 令牌由服务端在返回 index.html 时注入，只在页面加载那一刻有效：
+// 页面停留过久（跨令牌轮换）或停留在改造前的旧页面时，令牌会失效，重载一次即可取回新令牌。
+// 返回 'reloading' 表示已发起自愈重载（调用方保持静默，等页面重载）；
+// 返回 'failed' 表示本次实例已重载过仍未成功（或 sessionStorage 不可用），按普通错误提示，避免反复重载。
+function tokenRecovery() {
+  if (tokenReloading) return 'reloading'
+  try {
+    if (sessionStorage.getItem(TOKEN_RELOAD_FLAG)) return 'failed'
+    sessionStorage.setItem(TOKEN_RELOAD_FLAG, '1')
+  } catch { return 'failed' }
+  tokenReloading = true
+  location.reload()
+  return 'reloading'
+}
+
 async function api(path, opts = {}) {
   let res
   const { headers, ...rest } = opts
@@ -36,12 +54,15 @@ async function api(path, opts = {}) {
   let data
   try { data = await res.json() } catch { data = {} }
   if (!res.ok) {
+    // 401 只来自令牌校验：静默重载换新令牌，不弹错误；重载挂起期间不再向下抛错
+    if (res.status === 401 && tokenRecovery() === 'reloading') return new Promise(() => {})
     const msg = data.error || `HTTP ${res.status}`
     if (!opts.silent) toast(msg)
     const err = new Error(msg)
     err.data = data
     throw err
   }
+  try { sessionStorage.removeItem(TOKEN_RELOAD_FLAG) } catch { /* 存储不可用时忽略 */ }
   return data
 }
 
