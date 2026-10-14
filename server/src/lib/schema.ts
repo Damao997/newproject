@@ -8,9 +8,10 @@ import { z } from 'zod'
 export const loginSchema = z.object({
   username: z.string().trim().min(1, '用户名不能为空').max(64, '用户名过长'),
   password: z.string().min(1, '密码不能为空').max(128, '密码过长'),
-  // 图形验证码：captchaId 与答案成对校验，一次性消费（防密码暴力破解）
-  captchaId: z.string().min(1, '验证码不能为空').max(64, '验证码标识非法'),
-  captcha: z.string().trim().min(1, '请输入验证码').max(8, '验证码过长'),
+  // 图形验证码：默认不要求（该账号失败次数达阈值后由服务端返回 428 要求补交）；
+  // 一旦携带就照常成对校验，不做“当前不需要就放行”的宽松处理，防绕过
+  captchaId: z.string().trim().max(64, '验证码标识非法').optional(),
+  captcha: z.string().trim().max(8, '验证码过长').optional(),
   // 勾选后服务端签发「7 天内免登录」持久令牌；仅在登录成功且勾选时下发，缺省 false
   rememberMe: z.boolean().optional(),
 })

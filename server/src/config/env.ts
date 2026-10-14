@@ -55,6 +55,10 @@ export interface AppConfig {
   mailFrom: string | null
   /** 开发期邮件捕获：写 .eml/.json 到 server/.mail-out/（仅限非生产；生产启用将拒绝启动） */
   mailDevCapture: boolean
+  /** 一次性邮箱收集活动开关：1=开启（引导未绑邮箱的账号补全），0/未设置=关闭 */
+  emailCollectionEnabled: boolean
+  /** 应急开关：1=每次登录都必须图形验证码（默认 0，仅在失败次数达阈值后要求） */
+  captchaAlwaysRequired: boolean
 }
 
 let cached: AppConfig | null = null
@@ -87,6 +91,8 @@ export function loadConfig(): AppConfig {
     smtpPass: process.env.SMTP_PASS && process.env.SMTP_PASS.trim() !== '' ? process.env.SMTP_PASS.trim() : null,
     mailFrom: process.env.MAIL_FROM && process.env.MAIL_FROM.trim() !== '' ? process.env.MAIL_FROM.trim() : null,
     mailDevCapture: optional('MAIL_DEV_CAPTURE', '0') === '1',
+    emailCollectionEnabled: optional('EMAIL_COLLECTION_ENABLED', '0') === '1',
+    captchaAlwaysRequired: optional('CAPTCHA_ALWAYS_REQUIRED', '0') === '1',
   }
 
   if (Number.isNaN(config.port)) {
@@ -108,4 +114,15 @@ export function loadConfig(): AppConfig {
 
   cached = config
   return config
+}
+
+/**
+ * 邮箱收集引导是否生效：活动开关开启，且邮件服务可用。
+ * 未配 SMTP 时收集邮箱没有意义（存了也发不出找回邮件），故要求 mailConfigured 一并成立；
+ * 开关默认关闭，活动结束后改回 0 即停止拦截。
+ */
+export function emailCollectionRequired(
+  config: Pick<AppConfig, 'emailCollectionEnabled' | 'smtpHost' | 'mailFrom'>,
+): boolean {
+  return config.emailCollectionEnabled && Boolean(config.smtpHost && config.mailFrom)
 }

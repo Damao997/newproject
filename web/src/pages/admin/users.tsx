@@ -120,7 +120,7 @@ export default function UsersPage() {
     return users.filter((u) => {
       if (roleFilter !== 'all' && u.role !== roleFilter) return false
       if (statusFilter !== 'all' && u.status !== statusFilter) return false
-      if (kw && !`${u.name} ${u.username} ${u.dataScope}`.toLowerCase().includes(kw)) return false
+      if (kw && !`${u.name} ${u.username} ${u.email ?? ''} ${u.dataScope}`.toLowerCase().includes(kw)) return false
       return true
     })
   }, [users, roleFilter, statusFilter, searchValue])
@@ -141,11 +141,14 @@ export default function UsersPage() {
     const active = users.filter((u) => u.status === 'active').length
     const inactive = users.length - active
     const mustChange = users.filter((u) => u.mustChangePassword).length
+    // 未绑邮箱：邮箱收集活动的进度口径（无邮箱的账号无法自助找回密码）
+    const noEmail = users.filter((u) => !u.email).length
     return [
       { label: '用户总数', value: totalFromServer, sub: '系统账号合计', dotClass: 'bg-blue-8' },
       { label: '活跃用户', value: active, sub: '当前拉取范围', dotClass: 'bg-success', subClass: 'text-success-strong' },
       { label: '已停用', value: inactive, sub: '当前拉取范围', dotClass: 'bg-destructive' },
       { label: '待改密', value: mustChange, sub: '首次登录/重置后须修改', dotClass: 'bg-orange-500' },
+      { label: '未填邮箱', value: noEmail, sub: '当前拉取范围', dotClass: 'bg-info' },
     ]
   }, [users, totalFromServer])
 
@@ -295,7 +298,7 @@ export default function UsersPage() {
               <Input
                 value={searchValue}
                 onChange={(e) => handleSearch(e.target.value)}
-                placeholder="姓名 / 账号 / 数据范围"
+                placeholder="姓名 / 账号 / 邮箱 / 数据范围"
                 className="h-8 pl-8 text-[13px]"
               />
             </div>

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { clearEmailCollectionSnooze } from '@/lib/email-collection'
 import type { User } from '@/types'
 
 interface AuthState {
@@ -40,12 +41,16 @@ export const useAuthStore = create<AuthState>()(
       persistentLoginToken: null,
       passwordDialog: { open: false, force: false },
       login: (user, accessToken, refreshToken, options) =>
-        set({
-          user,
-          accessToken,
-          refreshToken,
-          isAuthenticated: true,
-          persistentLoginToken: options?.persistentLoginToken ?? null,
+        set(() => {
+          // 新一轮登录：清掉上次「暂不填写工作邮箱」的会话豁免，让收集引导重新生效
+          clearEmailCollectionSnooze()
+          return {
+            user,
+            accessToken,
+            refreshToken,
+            isAuthenticated: true,
+            persistentLoginToken: options?.persistentLoginToken ?? null,
+          }
         }),
       logout: () =>
         set({
