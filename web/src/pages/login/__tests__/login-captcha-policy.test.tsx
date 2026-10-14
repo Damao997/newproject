@@ -33,6 +33,7 @@ describe('登录页图形验证码按需出现', () => {
   const submitButton = () => screen.getByRole('button', { name: /登\s*录/ })
 
   beforeEach(() => {
+    localStorage.clear()
     apiMocks.getLoginOptions.mockReset()
     apiMocks.getCaptcha.mockReset()
     apiMocks.login.mockReset()
@@ -102,6 +103,20 @@ describe('登录页图形验证码按需出现', () => {
     expect((await screen.findAllByText('请输入验证码')).length).toBeGreaterThan(0)
     expect(screen.getByLabelText('验证码')).toHaveAttribute('aria-invalid', 'true')
     expect(apiMocks.login).toHaveBeenCalledTimes(1)
+  })
+
+  it('「记住用户名」回填后仍可提交（回归：回填 reset 丢字段会让表单卡在 Required）', async () => {
+    localStorage.setItem('login-remembered-username', 'jinlujia')
+    apiMocks.login.mockResolvedValue({ user: { id: 'u1', username: 'jinlujia' }, accessToken: 'at', refreshToken: 'rt' })
+    renderPage()
+    await waitFor(() => expect(apiMocks.getLoginOptions).toHaveBeenCalled())
+    expect(screen.getByLabelText('账号')).toHaveValue('jinlujia')
+
+    fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'Yipinhui@2026' } })
+    fireEvent.click(submitButton())
+
+    await waitFor(() => expect(apiMocks.login).toHaveBeenCalled())
+    expect(screen.queryByText('Required')).not.toBeInTheDocument()
   })
 
   it('提示普通密码错误（401）时不会误展开验证码框', async () => {
