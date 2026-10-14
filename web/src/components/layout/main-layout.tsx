@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { Header } from './header'
 import { Sidebar } from './sidebar'
 import { ChangePasswordDialog } from './change-password-dialog'
+import { EmailCollectionDialog } from './email-collection-dialog'
 import { VersionNotice } from './version-notice'
 import { RouteFallback } from './route-fallback'
 import { PageTitleProvider } from './page-heading'
@@ -91,6 +92,8 @@ export function MainLayout() {
       </div>
       {/* 修改密码对话框（全局唯一实例：用户菜单主动改密 + 强制改密） */}
       <ChangePasswordDialog />
+      {/* 工作邮箱收集引导（一次性活动，由后端开关下发；强制改密期间让位，不叠加弹窗） */}
+      <EmailCollectionDialog />
       {/* 版本更新公告（发现需要刷新的新版本时提醒，历史公告手动查看） */}
       <VersionNotice />
     </div></PageTitleProvider></AccountBoundary>

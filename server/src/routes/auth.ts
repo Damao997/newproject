@@ -9,7 +9,7 @@ import { loginRateLimiter, captchaRateLimiter, passwordResetRateLimiter } from '
 import { auditMeta } from '../middleware/audit'
 import { sendOk } from '../lib/response'
 import { errors } from '../lib/errors'
-import { loadConfig } from '../config/env'
+import { loadConfig, emailCollectionRequired } from '../config/env'
 import {
   loginSchema,
   refreshSchema,
@@ -39,7 +39,14 @@ router.get(
   '/login-options',
   asyncHandler(async (_req, res) => {
     const config = loadConfig()
-    sendOk(res, { mailConfigured: Boolean(config.smtpHost && config.mailFrom), captchaRequired: true })
+    sendOk(res, {
+      mailConfigured: Boolean(config.smtpHost && config.mailFrom),
+      // 默认 false：验证码只在失败次数达阈值后要求（见 LoginAttemptService）；
+      // 应急开关 CAPTCHA_ALWAYS_REQUIRED=1 时恢复「每次登录都要」，前端据此提前展示验证码框
+      captchaRequired: config.captchaAlwaysRequired,
+      // 邮箱收集引导：开关开启且邮件可用（登录后据此决定是否拦截未绑邮箱的账号）
+      emailCollectionRequired: emailCollectionRequired(config),
+    })
   }),
 )
 
@@ -52,7 +59,7 @@ router.get(
   }),
 )
 
-// POST /auth/login —— 登录（5 次/分钟限流；请求体需携带图形验证码）
+// POST /auth/login —— 登录（5 次/分钟限流；图形验证码按需：该账号失败满 5 次后必须携带）
 router.post(
   '/login',
   loginRateLimiter,

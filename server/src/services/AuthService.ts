@@ -13,6 +13,7 @@ import {
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
 import { verifyCaptcha } from './CaptchaService'
+import { recordLoginFailure, isCaptchaNeeded, clearLoginFailures } from './LoginAttemptService'
 import { loadConfig } from '../config/env'
 
 /**
@@ -132,16 +133,23 @@ function toFrontendUser(user: UserWithRole): FrontendUser {
 }
 
 export const AuthService = {
-  /** 登录：图形验证码 → 校验凭证 → 签发令牌 → 记录 refresh jti → 审计；rememberMe=true 时额外签发持久令牌 */
+  /** 登录：按需图形验证码 → 校验凭证 → 签发令牌 → 记录 refresh jti → 审计；rememberMe=true 时额外签发持久令牌 */
   async login(
     username: string,
     password: string,
     meta: AuditMeta = {},
-    options: { rememberMe?: boolean; captcha: { id: string; code: string } },
+    options: { rememberMe?: boolean; captcha: { id?: string; code?: string } },
   ): Promise<LoginResult> {
-    // 验证码前置校验（一次性消费，先于密码校验）：防密码暴力破解。
-    // 失败不记 login_failed 审计（避免噪音），暴力尝试由 loginRateLimiter + 拉图限流兜底
-    if (!verifyCaptcha(options.captcha.id, options.captcha.code)) {
+    // 图形验证码按需前置校验：该账号窗口内失败达阈值（或应急开关开启）时必须携带；
+    // 未被要求但客户端仍带了验证码 → 照常一次性校验，避免把“当前不需要”当成绕过窗口。
+    // 验证码失败不记 login_failed 审计（避免噪音），暴力尝试由 loginRateLimiter + 拉图限流兜底
+    const captchaId = options.captcha.id ?? ''
+    const captchaCode = options.captcha.code ?? ''
+    const captchaProvided = Boolean(captchaId && captchaCode)
+    if (isCaptchaNeeded(username, loadConfig().captchaAlwaysRequired) && !captchaProvided) {
+      throw errors.captchaRequired()
+    }
+    if (captchaProvided && !verifyCaptcha(captchaId, captchaCode)) {
       throw errors.badRequest('验证码错误或已过期')
     }
 
@@ -153,6 +161,8 @@ export const AuthService = {
     // 用户不存在 / 已停用 / 密码错误：统一返回同一错误，避免用户枚举
     const ok = user && user.status === 'active' && (await verifyPassword(password, user.passwordHash))
     if (!user || !ok) {
+      // 失败计数：达阈值后该账号必须过图形验证码（登录成功时清零）
+      recordLoginFailure(username)
       await recordAudit(
         {
           userId: user?.id ?? null,
@@ -166,6 +176,9 @@ export const AuthService = {
       )
       throw errors.unauthorized('用户名或密码错误')
     }
+
+    // 登录成功：清零失败计数，下一次登录重新回到「无需验证码」
+    clearLoginFailures(username)
 
     const { token: refreshToken, jti } = signRefreshToken(user.id)
     const accessToken = signAccessToken({

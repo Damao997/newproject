@@ -9,7 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { AlertCircle, Eye, EyeOff } from 'lucide-react'
-import { api } from '@/lib/api'
+import { api, ApiError } from '@/lib/api'
 import { ForgotPasswordDialog } from './forgot-password-dialog'
 
 /** 记住用户名：仅本地保存用户名（凭证不落盘） */
@@ -23,7 +23,9 @@ const DEMO_ERROR_TEXT = '账号或密码错误，还可重试 4 次（演示态�
 const DEMO_HINT_TEXT = '首次登录或密码过期将被引导到修改密码流程'
 
 export default function LoginPage() {
-  const model = useFormModel({ username: '', password: '', rememberMe: false, captcha: '' }, { username: '请输入用户名', password: '请输入密码', captcha: '请输入验证码' })
+  // captcha 不放进 required 映射：是否需要验证码由服务端策略决定（该账号失败次数达阈值后返回 428 要求），
+  // 按需校验放在 handleSubmit 里；这里只把它的值纳入表单
+  const model = useFormModel({ username: '', password: '', rememberMe: false, captcha: '' }, { username: '请输入用户名', password: '请输入密码' })
   const [username, setUsername] = useFormValue(model, 'username')
   const [password, setPassword] = useFormValue(model, 'password')
   const [rememberMe, setRememberMe] = useFormValue(model, 'rememberMe')
@@ -32,6 +34,10 @@ export default function LoginPage() {
   // 图形验证码：答案仅存服务端内存、一次性消费；登录失败后必须换新图
   const [captchaId, setCaptchaId] = useState('')
   const [captchaSvg, setCaptchaSvg] = useState('')
+  // 验证码框按需出现：服务端要求时（登录返回 428「失败过多」）才展开，或应急开关全量开启；
+  // 默认不预拉图，避免给每次登录都增加一次无谓请求
+  const [captchaVisible, setCaptchaVisible] = useState(false)
+  const captchaWrapRef = useRef<HTMLDivElement>(null)
   // 忘记密码入口形态：邮件未配置时降级为「联系管理员」指引，避免把用户引到必然失败的流程
   const [mailConfigured, setMailConfigured] = useState(false)
   const [forgotOpen, setForgotOpen] = useState(false)
@@ -120,12 +126,24 @@ export default function LoginPage() {
     if (persistentLoginToken && !isAuthenticated) {
       void runAutoLogin(persistentLoginToken)
     }
-    // 图形验证码与登录页能力探测并行拉取；失败不阻塞登录页渲染
-    void refreshCaptcha()
-    api.getLoginOptions().then((options) => setMailConfigured(options.mailConfigured)).catch(() => setMailConfigured(false))
+    // 登录页能力探测：邮件是否已配置（忘记密码入口形态）+ 是否需要常驻验证码（应急开关）
+    api.getLoginOptions()
+      .then((options) => {
+        setMailConfigured(options.mailConfigured)
+        if (options.captchaRequired) {
+          setCaptchaVisible(true)
+          void refreshCaptcha()
+        }
+      })
+      .catch(() => setMailConfigured(false))
     // 仅挂载时执行一次；后续状态变化不重复触发
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // 验证码框出现后自动聚焦，省去用户再点一次
+  useEffect(() => {
+    if (captchaVisible) captchaWrapRef.current?.querySelector('input')?.focus()
+  }, [captchaVisible])
 
   // 已登录用户访问登录页时直接回到权限感知首页（所有 hooks 之后早退，保证调用顺序稳定）
   if (isAuthenticated) {
@@ -137,6 +155,11 @@ export default function LoginPage() {
     if (submittingRef.current || isLoading) return
 
     if (!(await model.validate())) return
+    // 验证码框已展开则必填（schema 层面它是可选的，只有服务端要求时才在这里拦）
+    if (captchaVisible && !captcha.trim()) {
+      model.form.setError('captcha', { message: '请输入验证码' })
+      return
+    }
 
     submittingRef.current = true
     setIsLoading(true)
@@ -164,9 +187,18 @@ export default function LoginPage() {
       navigate(loginTarget)
     } catch (err) {
       setError(err instanceof Error ? err.message : '登录失败，请稍后重试')
-      // 验证码一次性消费：失败后换新图，否则重试必然再次失败
-      setCaptcha('')
-      void refreshCaptcha()
+      // 服务端要求验证码（该账号失败次数过多）：展开验证码框并拉图
+      if (err instanceof ApiError && err.status === 428) {
+        setCaptcha('')
+        setCaptchaVisible(true)
+        void refreshCaptcha()
+        return
+      }
+      // 验证码一次性消费：已展开时失败后换新图，否则重试必然再次失败
+      if (captchaVisible) {
+        setCaptcha('')
+        void refreshCaptcha()
+      }
     } finally {
       submittingRef.current = false
       setIsLoading(false)
@@ -258,40 +290,43 @@ export default function LoginPage() {
             )}
           </div>
 
-          {/* 图形验证码（点击图片刷新；答案一次性消费，登录失败后自动换图） */}
-          <div className="login-field">
-            <Label htmlFor="captcha">验证码</Label>
-            <div className="login-input-wrap">
-              <Input
-                id="captcha"
-                placeholder="请输入验证码"
-                value={captcha}
-                name="captcha"
-                onChange={(e) => setCaptcha(e.target.value)}
-                maxLength={8}
-                autoComplete="off"
-                disabled={isLoading}
-                aria-invalid={!!fieldErrors.captcha}
-                aria-describedby={fieldErrors.captcha ? 'captcha-error' : undefined}
-                className={cn(
-                  'login-input h-10',
-                  fieldErrors.captcha && 'login-input-error'
-                )}
-              />
-              <button
-                type="button"
-                onClick={() => { setCaptcha(''); void refreshCaptcha() }}
-                className="login-captcha"
-                aria-label="刷新验证码"
-                title="点击刷新验证码"
-                /* 内容来自本服务端 svg-captcha 生成的 SVG，不含用户输入，无需额外转义 */
-                dangerouslySetInnerHTML={{ __html: captchaSvg }}
-              />
+          {/* 图形验证码：仅服务端要求时出现（该账号失败次数过多 / 应急开关开启）；
+              点击图片刷新，答案一次性消费，登录失败后自动换图 */}
+          {captchaVisible && (
+            <div className="login-field" ref={captchaWrapRef}>
+              <Label htmlFor="captcha">验证码</Label>
+              <div className="login-input-wrap">
+                <Input
+                  id="captcha"
+                  placeholder="请输入验证码"
+                  value={captcha}
+                  name="captcha"
+                  onChange={(e) => setCaptcha(e.target.value)}
+                  maxLength={8}
+                  autoComplete="off"
+                  disabled={isLoading}
+                  aria-invalid={!!fieldErrors.captcha}
+                  aria-describedby={fieldErrors.captcha ? 'captcha-error' : undefined}
+                  className={cn(
+                    'login-input h-10',
+                    fieldErrors.captcha && 'login-input-error'
+                  )}
+                />
+                <button
+                  type="button"
+                  onClick={() => { setCaptcha(''); void refreshCaptcha() }}
+                  className="login-captcha"
+                  aria-label="刷新验证码"
+                  title="点击刷新验证码"
+                  /* 内容来自本服务端 svg-captcha 生成的 SVG，不含用户输入，无需额外转义 */
+                  dangerouslySetInnerHTML={{ __html: captchaSvg }}
+                />
+              </div>
+              {fieldErrors.captcha && (
+                <p id="captcha-error" className="login-field-tip">{fieldErrors.captcha}</p>
+              )}
             </div>
-            {fieldErrors.captcha && (
-              <p id="captcha-error" className="login-field-tip">{fieldErrors.captcha}</p>
-            )}
-          </div>
+          )}
 
           {/* 7 天免登录 + 忘记密码 */}
           <div className="login-row">

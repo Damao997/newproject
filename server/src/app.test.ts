@@ -30,6 +30,10 @@ import request from 'supertest'
 import { createApp, isTrustedProxy } from './app'
 import { validCaptchaFields } from './test/captcha-helper'
 
+// 钉住两个开关：本机 server/.env 里可能开着（生产就这么配的），用例要的是「未开启」的默认口径
+process.env.EMAIL_COLLECTION_ENABLED = '0'
+process.env.CAPTCHA_ALWAYS_REQUIRED = '0'
+
 const app = createApp()
 
 describe('isTrustedProxy（审计 IP 可信口径）', () => {
@@ -182,6 +186,20 @@ describe('全链路：登录 → profile → refresh → logout', () => {
       .set('Authorization', `Bearer ${accessToken}`)
     expect(logoutRes.status).toBe(200)
     expect(logoutRes.body.code).toBe(0)
+  })
+})
+
+describe('GET /api/v1/auth/login-options（登录页能力探测）', () => {
+  it('返回统一响应，且收集活动开关未开启时 emailCollectionRequired=false', async () => {
+    const res = await request(app).get('/api/v1/auth/login-options')
+
+    expect(res.status).toBe(200)
+    expect(res.body.code).toBe(0)
+    expect(res.body.traceId).toBeTruthy()
+    expect(res.body.data.captchaRequired).toBe(false)
+    expect(typeof res.body.data.mailConfigured).toBe('boolean')
+    // 开关需显式配 EMAIL_COLLECTION_ENABLED=1 才生效（测试环境未配置）
+    expect(res.body.data.emailCollectionRequired).toBe(false)
   })
 })
 

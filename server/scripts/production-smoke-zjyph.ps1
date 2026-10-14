@@ -93,9 +93,10 @@ Check '未授权访问返回 401' {
   }
 }
 
-# 4. 登录链路（自 v2026.10.9 起登录强制图形验证码：脚本无法反解 SVG 答案，
-#    故断言「缺少验证码时被拒」——期望 400（校验失败）；兼容旧版本返回 401，同时触发审计）
-Check '登录接口（强制图形验证码）' {
+# 4. 登录链路（图形验证码自 v2026.10.x 起改为按需：默认不要求，同一账号 15 分钟窗口内失败满 5 次后才要求）。
+#    脚本无法反解 SVG 答案，故断言「错误凭证被拒」——正常为 401；
+#    若 smoke-test-user 同一窗口内已被跑满 5 次失败，服务端返回 428（要求验证码），同样视为通过。
+Check '登录接口（错误凭证被拒）' {
   $body = @{ username = 'smoke-test-user'; password = 'wrong-password-smoke' } | ConvertTo-Json
   try {
     Invoke-WebRequest -Uri "http://127.0.0.1:$frontendPort/api/v1/auth/login" -Method POST -ContentType 'application/json' -Body $body -TimeoutSec 8 -UseBasicParsing | Out-Null
@@ -103,7 +104,7 @@ Check '登录接口（强制图形验证码）' {
   }
   catch {
     $code = $_.Exception.Response.StatusCode.value__
-    if ($code -ne 400 -and $code -ne 401) { throw "预期 400（缺验证码）或 401（旧契约），实际 $code" }
+    if ($code -ne 401 -and $code -ne 400 -and $code -ne 428) { throw "预期 401（错误凭证）/400（缺验证码）/428（需验证码），实际 $code" }
   }
 }
 

@@ -1,7 +1,7 @@
 /**
  * 统一错误码与应用异常。
  * code 与 HTTP 状态码映射见 docs/references/errorcode.md：
- *   0=成功 / 400=参数 / 401=未认证 / 403=无权限 / 409=冲突 / 429=限流 / 503=服务暂不可用 / 500=系统
+ *   0=成功 / 400=参数 / 401=未认证 / 403=无权限 / 409=冲突 / 428=需要图形验证码 / 429=限流 / 503=服务暂不可用 / 500=系统
  */
 
 export class AppError extends Error {
@@ -27,6 +27,8 @@ export const errors = {
   notFound: (message = '资源不存在') => new AppError(404, 404, message),
   /** 409 资源冲突（唯一约束 / 重复导入 / 版本冲突） */
   conflict: (message = '资源冲突') => new AppError(409, 409, message),
+  /** 428 需要图形验证码（该账号近期登录失败过多，前置条件未满足；客户端据此展开验证码输入） */
+  captchaRequired: (message = '密码错误次数过多，请输入图形验证码') => new AppError(428, 428, message),
   /** 429 请求频率超限 */
   tooManyRequests: (message = '请求频率超限，请稍后再试') => new AppError(429, 429, message),
   /** 503 服务暂不可用（依赖的外部服务未配置/不可达，如 SMTP 邮件服务） */
