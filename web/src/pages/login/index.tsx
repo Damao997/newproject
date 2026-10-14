@@ -121,7 +121,9 @@ export default function LoginPage() {
   useEffect(() => {
     const remembered = localStorage.getItem(REMEMBER_KEY)
     if (remembered) {
-      model.form.reset({ username: remembered, password: '', rememberMe: true })
+      // reset 是整体替换：必须带上模型里的**每一个**键（漏掉 captcha 会变 undefined，
+      // z.string() 不接受 undefined → 表单报 "Required" 并卡死提交）
+      model.form.reset({ username: remembered, password: '', rememberMe: true, captcha: '' })
     }
     if (persistentLoginToken && !isAuthenticated) {
       void runAutoLogin(persistentLoginToken)
