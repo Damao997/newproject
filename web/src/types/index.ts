@@ -651,6 +651,8 @@ export interface CaptchaResponse {
 export interface LoginOptions {
   mailConfigured: boolean
   captchaRequired: boolean
+  /** 邮箱收集活动是否生效：开启且邮件可用时，登录后引导未绑邮箱的账号补全工作邮箱 */
+  emailCollectionRequired: boolean
 }
 
 /** 忘记密码：申请重置验证码（凭据含 @ 按邮箱、否则按用户名定位账号） */

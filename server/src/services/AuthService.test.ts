@@ -26,6 +26,7 @@ vi.mock('../middleware/audit', () => ({
 
 import { AuthService } from './AuthService'
 import { newCaptcha } from './CaptchaService'
+import { LOGIN_CAPTCHA_THRESHOLD } from './LoginAttemptService'
 
 /** 登录用例的验证码入参：直接用真实 CaptchaService 签发（同进程内存 store） */
 function captchaOpts() {
@@ -325,5 +326,66 @@ describe('AuthService.changePassword', () => {
     const passwordHash = await hashPassword('old-pass-123')
     mocks.prisma.user.findUnique.mockResolvedValue({ id: 'u1', status: 'active', passwordHash, refreshTokenJtiList: [] })
     await expect(AuthService.changePassword('u1', 'wrong', 'new-pass-456')).rejects.toMatchObject({ code: 400 })
+  })
+})
+
+describe('AuthService.login 图形验证码按需要求（失败计数）', () => {
+  /** 制造 N 次失败：账号不存在 → 直接记失败，省掉 bcrypt */
+  async function failTimes(username: string, times: number) {
+    mocks.prisma.user.findUnique.mockResolvedValue(null)
+    for (let i = 0; i < times; i++) {
+      await expect(AuthService.login(username, 'x', {}, { captcha: { id: '', code: '' } })).rejects.toMatchObject({ code: 401 })
+    }
+  }
+
+  it('未达阈值：不带验证码也能登录成功（默认不再每次都要验证码）', async () => {
+    const passwordHash = await hashPassword('Yipinhui@2026')
+    mocks.prisma.user.findUnique.mockResolvedValue(makeUser({ username: 'no-captcha-user', passwordHash }))
+
+    const result = await AuthService.login('no-captcha-user', 'Yipinhui@2026', {}, { captcha: { id: '', code: '' } })
+    expect(result.accessToken).toBeTruthy()
+  })
+
+  it('失败满 5 次后：不带验证码返回 428，且在验证码层拦下不查用户', async () => {
+    const username = 'threshold-hit-user'
+    await failTimes(username, LOGIN_CAPTCHA_THRESHOLD)
+
+    mocks.prisma.user.findUnique.mockClear()
+    await expect(AuthService.login(username, 'x', {}, { captcha: { id: '', code: '' } })).rejects.toMatchObject({ code: 428 })
+    expect(mocks.prisma.user.findUnique).not.toHaveBeenCalled()
+  })
+
+  it('达阈值后带正确验证码可继续登录，成功后计数清零', async () => {
+    const username = 'recover-user'
+    await failTimes(username, LOGIN_CAPTCHA_THRESHOLD)
+
+    const passwordHash = await hashPassword('Yipinhui@2026')
+    mocks.prisma.user.findUnique.mockResolvedValue(makeUser({ username, passwordHash }))
+    const result = await AuthService.login(username, 'Yipinhui@2026', {}, captchaOpts())
+    expect(result.accessToken).toBeTruthy()
+
+    // 登录成功即清零：下一次不带验证码也能登录
+    const again = await AuthService.login(username, 'Yipinhui@2026', {}, { captcha: { id: '', code: '' } })
+    expect(again.accessToken).toBeTruthy()
+  })
+
+  it('达阈值后验证码错误仍返回 400（提示换图重试），不是 428', async () => {
+    const username = 'bad-captcha-user'
+    await failTimes(username, LOGIN_CAPTCHA_THRESHOLD)
+
+    const c = newCaptcha()
+    await expect(
+      AuthService.login(username, 'x', {}, { captcha: { id: c.captchaId, code: 'zzzz' } }),
+    ).rejects.toMatchObject({ code: 400 })
+  })
+
+  it('失败计数按账号隔离：A 账号达阈值不影响 B 账号', async () => {
+    await failTimes('blocked-user', LOGIN_CAPTCHA_THRESHOLD)
+    await expect(AuthService.login('blocked-user', 'x', {}, { captcha: { id: '', code: '' } })).rejects.toMatchObject({ code: 428 })
+
+    const passwordHash = await hashPassword('Yipinhui@2026')
+    mocks.prisma.user.findUnique.mockResolvedValue(makeUser({ username: 'clean-user', passwordHash }))
+    const result = await AuthService.login('clean-user', 'Yipinhui@2026', {}, { captcha: { id: '', code: '' } })
+    expect(result.accessToken).toBeTruthy()
   })
 })

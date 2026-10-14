@@ -325,7 +325,8 @@ class ApiClient {
     })
   }
 
-  async updateProfile(data: { name: string; email: string; phone: string; department: string; jobTitle: string }): Promise<ProfileUser> {
+  /** 个人资料增量更新：只传需要修改的字段，未传的字段后端保持原值 */
+  async updateProfile(data: Partial<{ name: string; email: string | null; phone: string; department: string; jobTitle: string }>): Promise<ProfileUser> {
     return this.request({ method: 'PATCH', url: '/auth/profile', data })
   }
   async getPreferences(): Promise<PreferenceSnapshot> { return this.request({ method: 'GET', url: '/auth/preferences' }) }
