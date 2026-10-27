@@ -314,10 +314,9 @@ export function ViewManager({
               </>
             )}
           </div>
-          {(listError || notice) && (
+          {listError && (
             <div className="space-y-1 border-t px-3 py-2 text-[11px]">
-              {listError && <p role="alert" className="text-destructive">{listError}</p>}
-              {notice && <p role="status" className="text-muted-foreground">{notice}</p>}
+              <p role="alert" className="text-destructive">{listError}</p>
             </div>
           )}
           {pendingActionId && <p role="status" className="border-t px-3 py-2 text-[11px] text-muted-foreground">正在写入并重新查询确认…</p>}
