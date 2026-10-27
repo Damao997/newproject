@@ -22,13 +22,12 @@ const server = await createServer({
         response.setHeader('Content-Type', 'application/json; charset=utf-8')
         response.setHeader('Cache-Control', 'no-store')
         let body = {}
-        if (request.url.startsWith('/api/v1/auth/') && !['GET', 'HEAD'].includes(request.method)) {
+        const isJsonWrite = !['GET', 'HEAD'].includes(request.method) && request.headers['content-type']?.includes('application/json')
+        if (isJsonWrite) {
           const chunks = []; for await (const chunk of request) chunks.push(chunk)
-          if (request.headers['content-type']?.includes('application/json')) {
-            try { body = JSON.parse(Buffer.concat(chunks).toString() || '{}') } catch { response.statusCode = 400; return response.end(JSON.stringify({ code: 400, message: '模拟请求格式错误' })) }
-          }
+          try { body = JSON.parse(Buffer.concat(chunks).toString() || '{}') } catch { response.statusCode = 400; return response.end(JSON.stringify({ code: 400, message: '模拟请求格式错误' })) }
         }
-        const result = personalFixtures(request.url, request.method, body) ?? resolveFixture(request.url, request.method)
+        const result = personalFixtures(request.url, request.method, body) ?? resolveFixture(request.url, request.method, 'success', body)
         if (result.binary) { response.setHeader('Content-Type', result.contentType); return response.end(result.binary) }
         if (result.code >= 400) response.statusCode = result.code
         response.end(JSON.stringify(result))

@@ -518,6 +518,90 @@ describe('DashboardService 纯函数', () => {
       expect(rows[0].profit.monthActual).toBe(11)
       expect(covered[0].subjects).toEqual(['宣传推广收入', '维修改造业务收入', '安检业务收入'])
     })
+
+    describe('C1 显式科目编码（混合模式）', () => {
+      /** 编码与名称可分别指定的收入节点（关键词模式用 name，显式模式用 code） */
+      const incomeC = (code: string, name: string, actual: number, budgetAmt: number): ValueNode =>
+        node({
+          code, name, level: 3, category: '收入',
+          values: {
+            [OPERATING_DIMS.ACTUAL_MONTH]: actual,
+            [OPERATING_DIMS.BUDGET_AMOUNT]: budgetAmt,
+            [OPERATING_DIMS.SAME_PERIOD_ACTUAL]: actual * 0.8,
+            [OPERATING_DIMS.YTD_ACTUAL]: actual * 12,
+            [OPERATING_DIMS.SAME_PERIOD_YTD]: actual * 10,
+          },
+        })
+
+      it('按编码精确命中（名称不含关键词亦可），不叠加其他科目', () => {
+        const cats = [{ code: 'kitchen', name: '厨房产品销售', subjectKeyword: '', subjectCodes: ['K1'] }]
+        const incomeRoots = [
+          incomeC('K1', '某收入科目（名称不含任何关键词）', 100, 1200),
+          incomeC('K9', '干扰项收入', 999, 999),
+        ]
+        const { rows, covered } = matchProductCategories(cats, incomeRoots, new Map())
+        expect(rows).toHaveLength(1)
+        expect(rows[0].income.monthActual).toBe(100)
+        expect(rows[0].income.budget).toBe(1200)
+        expect(covered[0].subjects).toEqual(['某收入科目（名称不含任何关键词）'])
+      })
+
+      it('显式与关键词同时配置时显式优先（关键词被忽略）', () => {
+        const cats = [{ code: 'kitchen', name: '厨房产品销售', subjectKeyword: '厨房', subjectCodes: ['K1'] }]
+        const incomeRoots = [
+          incomeC('K1', '编码命中收入', 100, 1200),
+          incomeC('K2', '厨房关键词命中收入', 500, 6000),
+        ]
+        const { rows } = matchProductCategories(cats, incomeRoots, new Map())
+        expect(rows).toHaveLength(1)
+        // 取显式编码 K1 的口径，而非关键词命中的 K2
+        expect(rows[0].income.monthActual).toBe(100)
+      })
+
+      it('显式编码同时命中父与子时收敛为不重叠子树（不重复求和）', () => {
+        const parent = node({
+          code: 'P1', name: '父级收入', level: 2, category: '收入', isLeaf: false,
+          values: {
+            [OPERATING_DIMS.ACTUAL_MONTH]: 100,
+            [OPERATING_DIMS.BUDGET_AMOUNT]: 1200,
+            [OPERATING_DIMS.SAME_PERIOD_ACTUAL]: 0,
+            [OPERATING_DIMS.YTD_ACTUAL]: 0,
+            [OPERATING_DIMS.SAME_PERIOD_YTD]: 0,
+          },
+          children: [incomeC('C1', '子级收入', 70, 840)],
+        })
+        const cats = [{ code: 'x', name: 'X', subjectKeyword: '', subjectCodes: ['P1', 'C1'] }]
+        const { rows } = matchProductCategories(cats, [parent], new Map())
+        // 父级 100 已包含子级 70，只计一次，不得变成 170
+        expect(rows[0].income.monthActual).toBe(100)
+      })
+
+      it('显式编码在科目树中不存在时静默跳过', () => {
+        const cats = [{ code: 'x', name: 'X', subjectKeyword: '', subjectCodes: ['NOT_EXIST'] }]
+        const incomeRoots = [incomeC('K1', '正常收入', 100, 1200)]
+        const { rows, covered } = matchProductCategories(cats, incomeRoots, new Map())
+        expect(rows).toHaveLength(0)
+        expect(covered[0].subjects).toEqual([])
+      })
+
+      it('subjectCodes 为空数组时回退关键词匹配（存量行为不变）', () => {
+        const cats = [{ code: 'kitchen', name: '厨房产品销售', subjectKeyword: '厨房', subjectCodes: [] }]
+        const incomeRoots = [incomeC('K1', '厨房产品销售', 100, 1200)]
+        const { rows, covered } = matchProductCategories(cats, incomeRoots, new Map())
+        expect(rows).toHaveLength(1)
+        expect(rows[0].income.monthActual).toBe(100)
+        expect(covered[0].subjects).toEqual(['厨房产品销售'])
+      })
+
+      it('显式编码命中时同样配对毛利镜像', () => {
+        const cats = [{ code: 'kitchen', name: '厨房产品销售', subjectKeyword: '', subjectCodes: ['K1'] }]
+        const incomeRoots = [incomeC('K1', '厨房产品销售收入', 100, 1200)]
+        const profitByName = new Map([['厨房产品销售毛利', profit('厨房产品销售毛利', 40)]])
+        const { rows } = matchProductCategories(cats, incomeRoots, profitByName)
+        expect(rows[0].income.monthActual).toBe(100)
+        expect(rows[0].profit.monthActual).toBe(40)
+      })
+    })
   })
 
   /** 费用类科目节点（供运营费用映射/环比测试构造树） */

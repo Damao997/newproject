@@ -21,6 +21,7 @@ const DashboardAnalysisCategoryBudgetPage = lazy(() => import('@/pages/dashboard
 const DashboardAnalysisSubjectBudgetPage = lazy(() => import('@/pages/dashboard/analysis/subject-budget'))
 const DashboardAnalysisExpensePage = lazy(() => import('@/pages/dashboard/analysis/expense'))
 const DashboardAnalysisCoreMetricsPage = lazy(() => import('@/pages/dashboard/analysis/core-metrics'))
+const AnalysisWorkspacePage = lazy(() => import('@/pages/analysis/workspace'))
 // 财务指标：三个子路由共用完整版指标页（科目树/筛选/交叉表/分析抽屉/AI 概览/导出/列设置），按路由传 subjectType
 function lazyIndicatorPage(subjectType: 'operating' | 'static' | 'cashflow') {
   return lazy(async () => {
@@ -132,6 +133,7 @@ const router = createBrowserRouter(createRoutesFromElements(<Route element={<Rou
                 <Route path="dashboard/analysis/subject-budget" element={<RequirePermission resource="dashboard" action="view"><DashboardAnalysisSubjectBudgetPage /></RequirePermission>} />
                 <Route path="dashboard/analysis/expense" element={<RequirePermission resource="dashboard" action="view"><DashboardAnalysisExpensePage /></RequirePermission>} />
                 <Route path="dashboard/analysis/core-metrics" element={<RequirePermission resource="dashboard" action="view"><DashboardAnalysisCoreMetricsPage /></RequirePermission>} />
+                <Route path="dashboard/analysis/workspace" element={<RequirePermission resource="dashboard" action="view"><AnalysisWorkspacePage /></RequirePermission>} />
                 {/* 财务指标：根路径按旧 query 或默认重定向到子页 */}
                 <Route path="indicators" element={<RequirePermission resource="indicators" action="view"><LegacyQueryRedirect /></RequirePermission>} />
                 <Route path="indicators/operating" element={<RequirePermission resource="indicators" action="view"><IndicatorsOperatingPage /></RequirePermission>} />

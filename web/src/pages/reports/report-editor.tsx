@@ -29,10 +29,11 @@ import {
   useCreateReportTemplate,
   type ReportDetail, type ReportVersionItem,
 } from '@/hooks/api-queries'
-import type { ReportSectionView } from '@/lib/api'
 import { REPORT_STATUS_LABEL, REPORT_STATUS_BADGE_VARIANT } from '@/lib/constants'
 import { api, ApiError } from '@/lib/api'
 import { exportReportToDocx, exportReportToPdf } from '@/lib/report-export'
+import { clearReportDraft, readReportDraft, saveReportDraft, type ReportDraftSection as EditorSection, type StoredReportDraft } from '@/lib/report-draft'
+import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/lib/utils'
 
 /**
@@ -42,6 +43,7 @@ import { cn } from '@/lib/utils'
  * - AI 按报告主体范围生成引用章节（generateReportSections）
  * - 章节整体保存（setReportSections，乐观锁 expectedUpdatedAt，409 冲突对话框可复制本地修改）
  * - 编辑安全感：未保存标识 / beforeunload 守卫 / sessionStorage 草稿暂存与恢复
+ *   （草稿按「稳定账号 ID + 报告 ID + 基准版本」隔离存取，见 lib/report-draft.ts）
  * - 版本管理：保存版本 / 版本列表 / 快照查看 / 回滚
  * - 导出 Word / PDF（api.exportReport + report-export，富文本格式保真）
  * 状态机：仅草稿可编辑章节 / 存版本 / 回滚；已发布、已归档只读。
@@ -67,43 +69,8 @@ function htmlToText(html: string): string {
     .trim()
 }
 
-/** 编辑器内章节视图：服务端章节（id 为真实 id）与本地新增章节（id 为 local- 前缀临时 id）统一形态 */
-interface EditorSection {
-  id: string
-  analysisId: string | null
-  title: string
-  content: string
-  source: ReportSectionView['source']
-  missing: boolean
-}
-
 const TEMP_ID_PREFIX = 'local-'
 const isTempId = (id: string) => id.startsWith(TEMP_ID_PREFIX)
-
-/** sessionStorage 暂存结构：结构变更（sections，可为 null=仅内容修改）+ 内容草稿 */
-interface StoredDraft {
-  sections: EditorSection[] | null
-  drafts: Record<string, string>
-  savedAt: string
-}
-
-function parseStoredDraft(raw: string | null): StoredDraft | null {
-  if (!raw) return null
-  try {
-    const obj = JSON.parse(raw) as Partial<StoredDraft>
-    if (!obj || typeof obj !== 'object' || typeof obj.drafts !== 'object' || obj.drafts === null) return null
-    const sections = Array.isArray(obj.sections)
-      ? obj.sections.filter((s): s is EditorSection =>
-          !!s && typeof s === 'object' && typeof s.id === 'string' && typeof s.title === 'string' && typeof s.content === 'string')
-      : null
-    const hasDrafts = Object.keys(obj.drafts).length > 0
-    if (!sections && !hasDrafts) return null
-    if (sections && sections.length === 0 && !hasDrafts) return null
-    return { sections, drafts: obj.drafts, savedAt: typeof obj.savedAt === 'string' ? obj.savedAt : '' }
-  } catch {
-    return null
-  }
-}
 
 export function ReportEditor() {
   const { reportId } = useParams<{ reportId: string }>()
@@ -136,6 +103,8 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
   const canUpdate = can('reports', 'update')
   const canExport = can('reports', 'export')
   const editable = canUpdate && report.status === 'draft'
+  // 草稿归属：以稳定账号 ID 定位；账号未就绪时不读写任何草稿键
+  const accountId = useAuthStore((s) => s.user?.id)
 
   const { confirm, element: confirmElement } = useConfirm()
 
@@ -154,7 +123,14 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
     [localSections, report.sections],
   )
 
+  // 服务端快照变化（保存/回滚/生成/他人修改）时整体重置本地态；
+  // 同时标记本次提交，避免写入副作用把即将失效的旧草稿按新版本落盘
+  const serverSnapshotChanged = useRef(false)
+  // 草稿基准版本：默认跟随当前报告；恢复旧版本草稿后保持其原基准，直到下次服务端快照变化
+  const draftBaseRef = useRef(report.updatedAt)
   useEffect(() => {
+    serverSnapshotChanged.current = true
+    draftBaseRef.current = report.updatedAt
     setDrafts({})
     setLocalSections(null)
   }, [report.updatedAt])
@@ -175,31 +151,35 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
   )
   const dirty = contentDirty || structureDirty
 
-  // ===== 编辑安全感：sessionStorage 暂存 + 恢复提示 + beforeunload 守卫 =====
-  const draftKey = `report-drafts:${report.id}`
-  const [restorable, setRestorable] = useState<StoredDraft | null>(null)
+  // ===== 编辑安全感：sessionStorage 暂存（账号隔离）+ 恢复提示 + beforeunload 守卫 =====
+  // 读取只认「账号 + 报告」均匹配的记录；无归属旧键（report-drafts:{reportId}）不自动认领
+  const [restorable, setRestorable] = useState<StoredReportDraft | null>(null)
 
-  // 挂载时检查上次未保存的本地草稿（SPA 路由跳转/浏览器刷新后的找回入口）
+  // 挂载/账号或报告变化时检查本地草稿（SPA 路由跳转/浏览器刷新后的找回入口）；
+  // 报告无编辑权限（非草稿或缺 reports:update）时不读取正文，避免越权恢复
   useEffect(() => {
-    setRestorable(parseStoredDraft(window.sessionStorage.getItem(draftKey)))
-  }, [draftKey])
+    if (!accountId || !editable) {
+      setRestorable(null)
+      return
+    }
+    setRestorable(readReportDraft(accountId, report.id))
+  }, [accountId, report.id, editable])
 
   // 有未保存修改时写入暂存（保存成功/显式丢弃时清除；非脏态不覆盖既有暂存）
   useEffect(() => {
-    if (!editable || !dirty) return
-    try {
-      window.sessionStorage.setItem(draftKey, JSON.stringify({ sections: localSections, drafts, savedAt: new Date().toISOString() } satisfies StoredDraft))
-    } catch (e) {
-      // 隐私模式/配额满时降级为无暂存，不阻断编辑
-      console.error('报告草稿暂存失败', e)
+    if (serverSnapshotChanged.current) {
+      serverSnapshotChanged.current = false
+      return
     }
-  }, [editable, dirty, localSections, drafts, draftKey])
+    if (!accountId || !editable || !dirty) return
+    saveReportDraft(accountId, report.id, draftBaseRef.current, { sections: localSections, drafts })
+  }, [accountId, editable, dirty, localSections, drafts, report.id, report.updatedAt])
 
   // 路由返回和刷新共用全站离开保护；原有会话草稿恢复继续保留。
 
-
   const applyRestorable = () => {
     if (!restorable) return
+    if (restorable.baseUpdatedAt) draftBaseRef.current = restorable.baseUpdatedAt
     if (restorable.sections) setLocalSections(restorable.sections)
     setDrafts(restorable.drafts)
     setRestorable(null)
@@ -207,11 +187,7 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
   }
 
   const discardRestorable = () => {
-    try {
-      window.sessionStorage.removeItem(draftKey)
-    } catch (e) {
-      console.error('清除报告草稿暂存失败', e)
-    }
+    if (accountId) clearReportDraft(accountId, report.id)
     setRestorable(null)
   }
 
@@ -269,11 +245,7 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
       )
       await setSections.mutateAsync({ id: report.id, items, expectedUpdatedAt: report.updatedAt })
       // 保存成功后清除本地暂存（refetch 触发 updatedAt 变化，本地态随之重置）
-      try {
-        window.sessionStorage.removeItem(draftKey)
-      } catch (e) {
-        console.error('清除报告草稿暂存失败', e)
-      }
+      if (accountId) clearReportDraft(accountId, report.id)
       setRestorable(null)
       flash('章节已保存')
     } catch (e) {
@@ -582,16 +554,21 @@ function EditorShell({ report, onReload }: { report: ReportDetail; onReload: () 
               </Card>
             )}
 
-            {/* 本地草稿恢复提示（上次会话未保存的修改） */}
+            {/* 本地草稿恢复提示（上次会话未保存的修改；含基准版本差异提示） */}
             {editable && restorable && (
-              <Card className="flex flex-wrap items-center justify-between gap-2 rounded-card p-3">
-                <span className="text-body text-foreground">
-                  检测到未保存的本地草稿{restorable.savedAt ? `（${new Date(restorable.savedAt).toLocaleString('zh-CN')}）` : ''}，是否恢复？
-                </span>
-                <span className="flex items-center gap-2">
-                  <Button size="sm" onClick={applyRestorable}>恢复</Button>
-                  <Button size="sm" variant="ghost" onClick={discardRestorable}>丢弃</Button>
-                </span>
+              <Card className="rounded-card p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-body text-foreground">
+                    检测到未保存的本地草稿{restorable.savedAt ? `（${new Date(restorable.savedAt).toLocaleString('zh-CN')}）` : ''}，是否恢复？
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <Button size="sm" onClick={applyRestorable}>恢复</Button>
+                    <Button size="sm" variant="ghost" onClick={discardRestorable}>丢弃</Button>
+                  </span>
+                </div>
+                {restorable.baseUpdatedAt !== '' && restorable.baseUpdatedAt !== report.updatedAt && (
+                  <p className="mt-1.5 text-caption text-warning-strong">该草稿保存后报告已被更新（基准版本不一致），恢复后请核对内容并重新保存。</p>
+                )}
               </Card>
             )}
 

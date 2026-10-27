@@ -1,6 +1,6 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios'
 import { useAuthStore } from '@/stores/authStore'
-import type { ApiResponse, LoginRequest, LoginResponse, AutoLoginResponse, User, CaptchaResponse, LoginOptions, ForgotPasswordRequest, ResetPasswordRequest, PaginatedResponse, FilterParams, BatchActivateCheckResult, KpiData, TrendData, DashboardAlert, ReceivableRow, ProductBudgetResponse, SubjectBudgetResponse, ExpenseAnalysisResponse, KeyMetricsResponse, ProductMetricsResponse, ProductCategory, ProductCategoryCheckResult, KeyMetricsProduct, KeyMetricsProductCheckResult, ExpenseMapping, ExpenseMappingCheckResult, SubjectBudgetConfig, SubjectBudgetConfigCheckResult, BudgetRatio, ImportBatch, ImportDiff, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, ConsolidationAdjustment, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData, ReportTemplateItem, ReportShareInfo, ReportChartDataRow } from '@/types'
+import type { ApiResponse, LoginRequest, LoginResponse, AutoLoginResponse, User, CaptchaResponse, LoginOptions, ForgotPasswordRequest, ResetPasswordRequest, PaginatedResponse, FilterParams, BatchActivateCheckResult, KpiData, TrendData, DashboardAlert, ReceivableRow, ProductBudgetResponse, SubjectBudgetResponse, ExpenseAnalysisResponse, KeyMetricsResponse, ProductMetricsResponse, ProductCategory, ProductCategoryCheckResult, KeyMetricsProduct, KeyMetricsProductCheckResult, AnalysisQuerySpec, AnalysisQueryResponse, AnalysisColMember, AnalysisViewItem, ExpenseMapping, ExpenseMappingCheckResult, SubjectBudgetConfig, SubjectBudgetConfigCheckResult, BudgetRatio, ImportBatch, ImportDiff, Company, AggregationMap, AccountSubject, Metric, Role, Permission, ReclassifyLog, ConsolidationAdjustment, AnalysisItem, AnalysisInput, ReportListItem, ReportDetail, ReportSectionInput, ReportVersionItem, ReportVersionSnapshot, ReportExportData, ReportTemplateItem, ReportShareInfo, ReportChartDataRow } from '@/types'
 
 import type { PersonalPreferences, PreferenceSnapshot } from '@/lib/personal-settings'
 import type { ProfileUser } from '@/types'
@@ -18,6 +18,11 @@ export class ApiError extends Error {
     this.name = 'ApiError'
     this.status = status
   }
+}
+
+/** 权限不足（403）须与网络/服务失败、空结果分开呈现，不能落入“暂无数据”分支。 */
+export function isForbiddenError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { status?: number }).status === 403
 }
 
 /**
@@ -53,11 +58,20 @@ if (refreshChannel) {
 }
 
 /** 提取刷新失败的业务消息（与拦截器一致：有响应取 message，无响应区分超时与网络层错误） */
+class SessionAuthError extends Error {
+  /** true = 刷新令牌确已失效（需重新认证）；false/普通 Error = 网络或服务端故障，保留会话与输入 */
+  readonly authInvalid = true
+}
+
 function toRefreshError(e: unknown): Error {
-  const axiosErr = e as { response?: { data?: { message?: string } }; code?: string }
+  const axiosErr = e as { response?: { status?: number; data?: { message?: string } }; code?: string }
+  const status = axiosErr.response?.status
   const message = axiosErr.response?.data?.message
+  // 401/403：刷新令牌失效或已被吊销 → 需要重新认证
+  if (status === 401 || status === 403) return new SessionAuthError(message || '登录状态已失效，请重新登录')
+  // 其他有响应的服务端错误（如 500）：保留错误，不强制重新认证、不清空页面输入
   if (message) return new Error(message)
-  if (axiosErr.code === 'ECONNABORTED') return new Error('刷新令牌请求超时，请重新登录')
+  if (axiosErr.code === 'ECONNABORTED') return new Error('刷新令牌请求超时，请重试')
   return new Error('网络连接异常，请检查网络后重试')
 }
 
@@ -96,7 +110,7 @@ async function refreshAccessTokenOnce(): Promise<string> {
   if (!refreshPromise) {
     refreshPromise = (async () => {
       const { refreshToken, setTokens } = useAuthStore.getState()
-      if (!refreshToken) throw new Error('登录状态已失效，请重新登录')
+      if (!refreshToken) throw new SessionAuthError('登录状态已失效，请重新登录')
       try {
         const response = await postRefreshWithRetry(refreshToken)
         const { accessToken, refreshToken: newRefreshToken } = response.data.data
@@ -119,19 +133,27 @@ async function refreshAccessTokenOnce(): Promise<string> {
   return refreshPromise
 }
 
-/** 会话失效提示：并发 401 只提示一次，避免连环弹窗 */
+/** 会话失效提示：未登录场景的并发跳转只提示一次，避免连环跳转 */
 let sessionExpiredNotified = false
 
 /**
- * 会话失效降级处理：本地登出 → 跳转登录页（携带 expired 提示参数）。
- * 提示由登录页展示（/login?expired=1 → "登录已过期，请重新登录"提示条），请求层不再弹窗。
- * _reason 保留参数位：后续如需按失败原因差异化提示可在此扩展。
+ * 会话失效统一入口（FE-02）。
+ *
+ * 已登录：不再本地登出 + 整页跳转——那会销毁所有页面与表单输入。改为标记「等待同页重新认证」，
+ * 保留 user/token 与页面状态，由 SessionExpiredDialog 收集密码；并发 401 由该标记合并，
+ * 认证成功后不自动重放失效期间的写请求。
+ * 未登录（无输入可保护的后台请求）：保留整页跳转登录页。
+ * 明确不保留：整页刷新、关闭标签页后内存中的输入不恢复（本任务不新增敏感持久化）。
  */
 export function handleSessionExpired(_reason: unknown): void {
-  useAuthStore.getState().logout()
-  if (sessionExpiredNotified) return
-  sessionExpiredNotified = true
-  window.location.href = '/login?expired=1'
+  const state = useAuthStore.getState()
+  if (!state.isAuthenticated) {
+    if (sessionExpiredNotified) return
+    sessionExpiredNotified = true
+    window.location.href = '/login?expired=1'
+    return
+  }
+  state.expireSession()
 }
 
 /** 月度报表激活的公司月份组合。 */
@@ -250,6 +272,11 @@ class ApiClient {
           originalRequest.url?.includes('/auth/auto-login')
 
         if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
+          // 会话失效已进入同页重新认证：并发 401 不再重复刷新，直接失败；
+          // 失效期间的写请求不自动重放，由用户在认证后自行确认结果并手动重试
+          if (useAuthStore.getState().reauthRequired) {
+            return Promise.reject(new ApiError('登录状态已失效，请重新登录', 401))
+          }
           originalRequest._retry = true
 
           try {
@@ -257,8 +284,9 @@ class ApiClient {
             originalRequest.headers.Authorization = `Bearer ${accessToken}`
             return this.client(originalRequest)
           } catch (refreshError) {
-            // 降级处理：本地登出后跳转登录页（仅一次），过期原因由登录页 ?expired=1 提示条展示
-            handleSessionExpired(refreshError)
+            // 仅确认令牌失效（401/403/缺失）才进入同页重新认证；
+            // 网络/超时/服务端错误保留当前会话与页面输入，请求以错误返回供用户重试
+            if (refreshError instanceof SessionAuthError) handleSessionExpired(refreshError)
             // refreshAccessTokenOnce 已统一抛中文 Error；兜底非 Error 值
             return Promise.reject(refreshError instanceof Error ? refreshError : new Error('登录状态已失效，请重新登录'))
           }
@@ -279,6 +307,9 @@ class ApiClient {
     } catch (err) {
       // 已包装为 ApiError 的直接透传（保留状态码）
       if (err instanceof ApiError) throw err
+      // 刷新令牌失效以 SessionAuthError 抛出且无 response 字段：保留认证语义与 401，
+      // 否则会被下方无响应兜底误判成“网络连接异常”
+      if (err instanceof SessionAuthError) throw new ApiError(err.message, 401)
       const axiosErr = err as { response?: { status?: number; data?: { message?: string } }; code?: string }
       const status = axiosErr.response?.status
       // 优先提取后端统一响应中的业务错误信息（HTTP 非 2xx 且响应为 JSON 时）
@@ -484,6 +515,63 @@ class ApiClient {
     })
   }
 
+  /** 即席分析查询（自定义报表）：以「行维度 × 指标列」为参数返回统一二维结果。
+   *  用 POST 而非 GET：查询描述含数组字段（metrics/rowCodes），GET 查询串冗长且需转义。
+   *  signal 用于范围切换时取消旧请求，避免迟到响应继续占用连接。 */
+  async queryAnalysis(spec: AnalysisQuerySpec, options?: { signal?: AbortSignal }): Promise<AnalysisQueryResponse> {
+    return this.request({
+      method: 'POST',
+      url: '/dashboard/analysis/query',
+      data: spec,
+      signal: options?.signal,
+    })
+  }
+
+  /** 列成员清单（矩阵模式选择器）：与后端 /analysis/query 的 resolveColMembers 同源 */
+  async getAnalysisColMembers(dim: AnalysisQuerySpec['colDim'] & string, options?: { signal?: AbortSignal }): Promise<AnalysisColMember[]> {
+    return this.request({
+      method: 'GET',
+      url: '/dashboard/analysis/col-members',
+      params: { dim },
+      signal: options?.signal,
+    })
+  }
+
+  /** 我的视图 + 共享视图列表 */
+  async getAnalysisViews(options?: { signal?: AbortSignal }): Promise<{ views: AnalysisViewItem[] }> {
+    return this.request({
+      method: 'GET',
+      url: '/dashboard/analysis/views',
+      signal: options?.signal,
+    })
+  }
+
+  /** 保存视图（spec 须通过后端 analysisQuerySchema 校验） */
+  async createAnalysisView(input: { name: string; spec: AnalysisQuerySpec; shared?: boolean }): Promise<AnalysisViewItem> {
+    return this.request({
+      method: 'POST',
+      url: '/dashboard/analysis/views',
+      data: input,
+    })
+  }
+
+  /** 更新视图（仅创建者或超管）：name/spec/shared 可局部更新 */
+  async updateAnalysisView(id: string, input: { name?: string; spec?: AnalysisQuerySpec; shared?: boolean }): Promise<AnalysisViewItem> {
+    return this.request({
+      method: 'PUT',
+      url: `/dashboard/analysis/views/${id}`,
+      data: input,
+    })
+  }
+
+  /** 删除视图（创建者或超管） */
+  async deleteAnalysisView(id: string): Promise<{ id: string }> {
+    return this.request({
+      method: 'DELETE',
+      url: `/dashboard/analysis/views/${id}`,
+    })
+  }
+
   // ---- 品类配置（品类预算达成分析，数据维护）----
   async getProductCategories(): Promise<ProductCategory[]> {
     return this.request({
@@ -500,7 +588,7 @@ class ApiClient {
     })
   }
 
-  async createProductCategory(input: { code: string; name: string; subjectKeyword: string; sortOrder?: number; status?: string }): Promise<ProductCategory> {
+  async createProductCategory(input: { code: string; name: string; subjectKeyword?: string; subjectCodes?: string[]; sortOrder?: number; status?: string }): Promise<ProductCategory> {
     return this.request({
       method: 'POST',
       url: '/data/product-categories',
@@ -508,7 +596,7 @@ class ApiClient {
     })
   }
 
-  async updateProductCategory(id: string, input: { name?: string; subjectKeyword?: string; sortOrder?: number; status?: string }): Promise<ProductCategory> {
+  async updateProductCategory(id: string, input: { name?: string; subjectKeyword?: string; subjectCodes?: string[]; sortOrder?: number; status?: string }): Promise<ProductCategory> {
     return this.request({
       method: 'PUT',
       url: `/data/product-categories/${id}`,
@@ -539,7 +627,7 @@ class ApiClient {
     })
   }
 
-  async createKeyMetricsProduct(input: { code: string; name: string; subjectKeyword: string; sortOrder?: number; status?: string }): Promise<KeyMetricsProduct> {
+  async createKeyMetricsProduct(input: { code: string; name: string; subjectKeyword?: string; subjectCodes?: string[]; sortOrder?: number; status?: string }): Promise<KeyMetricsProduct> {
     return this.request({
       method: 'POST',
       url: '/data/key-metrics-products',
@@ -547,7 +635,7 @@ class ApiClient {
     })
   }
 
-  async updateKeyMetricsProduct(id: string, input: { name?: string; subjectKeyword?: string; sortOrder?: number; status?: string }): Promise<KeyMetricsProduct> {
+  async updateKeyMetricsProduct(id: string, input: { name?: string; subjectKeyword?: string; subjectCodes?: string[]; sortOrder?: number; status?: string }): Promise<KeyMetricsProduct> {
     return this.request({
       method: 'PUT',
       url: `/data/key-metrics-products/${id}`,

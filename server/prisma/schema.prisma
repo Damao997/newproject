@@ -214,12 +214,14 @@ model AccountSubject {
   @@map("account_subject")
 }
 
-// 3.4 品类配置表（品类预算达成分析：品类 ↔ 收入科目名关键词，支持科目树变化后由管理员维护）
+// 3.4 品类配置表（品类预算达成分析：品类 ↔ 收入科目。subject_codes 为显式科目编码集合（优先命中），
+// 为空数组时回退 subject_keyword 关键词匹配；支持科目树变化后由管理员维护）
 model ProductCategory {
   id             String       @id @default(uuid())
   code           String       @unique
   name           String
   subjectKeyword String       @map("subject_keyword")
+  subjectCodes   String[]     @default([]) @map("subject_codes")
   sortOrder      Int          @default(0) @map("sort_order")
   status         RecordStatus @default(active)
   createdAt      DateTime     @default(now()) @map("created_at")
@@ -229,13 +231,14 @@ model ProductCategory {
   @@map("product_category")
 }
 
-// 3.4-2 关键指标产品配置表（壹品慧关键指标表「按产品分」明细：产品 ↔ 收入科目名关键词，
-// 独立于品类配置，支持科目树变化后由管理员维护）
+// 3.4-2 关键指标产品配置表（壹品慧关键指标表「按产品分」明细：产品 ↔ 收入科目。subject_codes 为显式
+// 科目编码集合（优先命中），为空数组时回退 subject_keyword 关键词匹配；独立于品类配置，两套配置各自维护）
 model KeyMetricsProduct {
   id             String       @id @default(uuid())
   code           String       @unique
   name           String
   subjectKeyword String       @map("subject_keyword")
+  subjectCodes   String[]     @default([]) @map("subject_codes")
   sortOrder      Int          @default(0) @map("sort_order")
   status         RecordStatus @default(active)
   createdAt      DateTime     @default(now()) @map("created_at")
@@ -356,6 +359,7 @@ model DimensionMember {
   orderNo     Int     @default(0) @map("order_no")
 
   @@index([dimensionId])
+  @@unique([dimensionId, code])
   @@map("dimension_member")
 }
 
@@ -1070,4 +1074,22 @@ model UserPreference {
   updatedAt DateTime @updatedAt @map("updated_at")
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@map("user_preference")
+}
+
+// 7.13 即席分析视图表（自定义报表的持久化，spec 原样存 JSON）
+// 权限模型：shared=true 时所有具 dashboard:view 的用户可见可加载；
+// 更新/删除仅创建者或超管（服务层校验，无 DB 级关系——user 表不作外键，
+// 与 MappingScheme.ownerId 同风格，避免删用户连带删视图）。
+model AnalysisView {
+  id      String   @id @default(uuid())
+  name    String
+  ownerId String   @map("owner_id")
+  shared  Boolean  @default(false)
+  // AnalysisQuerySpec 原样保存（含 rowDim/colDim/colCodes/metrics/filters/options）
+  spec    Json     @db.JsonB
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([ownerId])
+  @@map("analysis_view")
 }

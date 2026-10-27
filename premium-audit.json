@@ -2,6 +2,33 @@
   "findings": [
     {
       "category": "violation",
+      "file": "web/src/components/analysis/col-dim-picker.tsx",
+      "line": 79,
+      "message": "Enabled literal button has no detectable action or submit behavior.",
+      "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
+      "ruleId": "affordance.actionless-button",
+      "severity": "error"
+    },
+    {
+      "category": "violation",
+      "file": "web/src/components/analysis/metric-picker.tsx",
+      "line": 45,
+      "message": "Enabled literal button has no detectable action or submit behavior.",
+      "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
+      "ruleId": "affordance.actionless-button",
+      "severity": "error"
+    },
+    {
+      "category": "violation",
+      "file": "web/src/components/analysis/view-manager.tsx",
+      "line": 89,
+      "message": "Enabled literal button has no detectable action or submit behavior.",
+      "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
+      "ruleId": "affordance.actionless-button",
+      "severity": "error"
+    },
+    {
+      "category": "violation",
       "file": "web/src/components/dimension/expense-mapping-panel.tsx",
       "line": 519,
       "message": "Enabled literal button has no detectable action or submit behavior.",
@@ -47,15 +74,6 @@
     },
     {
       "category": "violation",
-      "file": "web/src/components/layout/company-pill.tsx",
-      "line": 66,
-      "message": "Enabled literal button has no detectable action or submit behavior.",
-      "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
-      "ruleId": "affordance.actionless-button",
-      "severity": "error"
-    },
-    {
-      "category": "violation",
       "file": "web/src/components/layout/page-heading.tsx",
       "line": 33,
       "message": "Enabled literal button has no detectable action or submit behavior.",
@@ -65,17 +83,8 @@
     },
     {
       "category": "violation",
-      "file": "web/src/components/layout/period-pill.tsx",
-      "line": 78,
-      "message": "Enabled literal button has no detectable action or submit behavior.",
-      "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
-      "ruleId": "affordance.actionless-button",
-      "severity": "error"
-    },
-    {
-      "category": "violation",
       "file": "web/src/components/layout/user-chip.tsx",
-      "line": 107,
+      "line": 20,
       "message": "Enabled literal button has no detectable action or submit behavior.",
       "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
       "ruleId": "affordance.actionless-button",
@@ -228,7 +237,7 @@
     {
       "category": "violation",
       "file": "web/src/pages/admin/users.tsx",
-      "line": 392,
+      "line": 399,
       "message": "Enabled literal button has no detectable action or submit behavior.",
       "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
       "ruleId": "affordance.actionless-button",
@@ -237,7 +246,7 @@
     {
       "category": "violation",
       "file": "web/src/pages/dashboard/analysis/cash-flow-content.tsx",
-      "line": 167,
+      "line": 177,
       "message": "Enabled literal button has no detectable action or submit behavior.",
       "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
       "ruleId": "affordance.actionless-button",
@@ -246,7 +255,7 @@
     {
       "category": "violation",
       "file": "web/src/pages/dashboard/analysis/expense-content.tsx",
-      "line": 234,
+      "line": 47,
       "message": "Enabled literal button has no detectable action or submit behavior.",
       "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
       "ruleId": "affordance.actionless-button",
@@ -255,7 +264,7 @@
     {
       "category": "violation",
       "file": "web/src/pages/dashboard/analysis/inventory-aging-content.tsx",
-      "line": 91,
+      "line": 63,
       "message": "Enabled literal button has no detectable action or submit behavior.",
       "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
       "ruleId": "affordance.actionless-button",
@@ -264,7 +273,7 @@
     {
       "category": "violation",
       "file": "web/src/pages/dashboard/analysis/receivable-aging-content.tsx",
-      "line": 174,
+      "line": 186,
       "message": "Enabled literal button has no detectable action or submit behavior.",
       "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
       "ruleId": "affordance.actionless-button",
@@ -300,7 +309,7 @@
     {
       "category": "violation",
       "file": "web/src/pages/login/index.tsx",
-      "line": 243,
+      "line": 347,
       "message": "Enabled literal button has no detectable action or submit behavior.",
       "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
       "ruleId": "affordance.actionless-button",
@@ -345,7 +354,7 @@
     {
       "category": "violation",
       "file": "web/src/pages/transactions/overview.tsx",
-      "line": 169,
+      "line": 150,
       "message": "Enabled literal button has no detectable action or submit behavior.",
       "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
       "ruleId": "affordance.actionless-button",
@@ -354,7 +363,7 @@
     {
       "category": "violation",
       "file": "web/src/pages/transactions/overview.tsx",
-      "line": 175,
+      "line": 156,
       "message": "Enabled literal button has no detectable action or submit behavior.",
       "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
       "ruleId": "affordance.actionless-button",
@@ -363,7 +372,7 @@
     {
       "category": "violation",
       "file": "web/src/pages/transactions/shared.tsx",
-      "line": 128,
+      "line": 117,
       "message": "Enabled literal button has no detectable action or submit behavior.",
       "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
       "ruleId": "affordance.actionless-button",
@@ -372,7 +381,7 @@
     {
       "category": "violation",
       "file": "web/src/pages/transactions/shared.tsx",
-      "line": 178,
+      "line": 167,
       "message": "Enabled literal button has no detectable action or submit behavior.",
       "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
       "ruleId": "affordance.actionless-button",
@@ -444,10 +453,37 @@
     {
       "category": "violation",
       "file": "web/src/pages/transactions/collections/salesmen.tsx",
-      "line": 378,
+      "line": 379,
       "message": "Literal product textarea does not show evidence of the canonical resize-none rule.",
       "remediation": "Use the shared Textarea owner or apply resize-none/resize: none with adequate height or auto-grow behavior.",
       "ruleId": "form.textarea-resize-missing",
+      "severity": "error"
+    },
+    {
+      "category": "violation",
+      "file": "web/src/components/analysis/col-dim-picker.tsx",
+      "line": 67,
+      "message": "Native select conflicts with recorded Select/Listbox ownership: authored.",
+      "remediation": "Record Select/Listbox as native or reuse the authored canonical owner.",
+      "ruleId": "ownership.native-select-conflict",
+      "severity": "error"
+    },
+    {
+      "category": "violation",
+      "file": "web/src/components/analysis/row-dim-picker.tsx",
+      "line": 27,
+      "message": "Native select conflicts with recorded Select/Listbox ownership: authored.",
+      "remediation": "Record Select/Listbox as native or reuse the authored canonical owner.",
+      "ruleId": "ownership.native-select-conflict",
+      "severity": "error"
+    },
+    {
+      "category": "violation",
+      "file": "web/src/components/analysis/workspace.tsx",
+      "line": 46,
+      "message": "Native select conflicts with recorded Select/Listbox ownership: authored.",
+      "remediation": "Record Select/Listbox as native or reuse the authored canonical owner.",
+      "ruleId": "ownership.native-select-conflict",
       "severity": "error"
     },
     {
@@ -516,7 +552,7 @@
     {
       "category": "violation",
       "file": "web/src/components/layout/period-pill.tsx",
-      "line": 96,
+      "line": 51,
       "message": "Native select conflicts with recorded Select/Listbox ownership: authored.",
       "remediation": "Record Select/Listbox as native or reuse the authored canonical owner.",
       "ruleId": "ownership.native-select-conflict",
@@ -606,7 +642,7 @@
     {
       "category": "violation",
       "file": "web/src/pages/admin/audit-logs.tsx",
-      "line": 406,
+      "line": 559,
       "message": "Native select conflicts with recorded Select/Listbox ownership: authored.",
       "remediation": "Record Select/Listbox as native or reuse the authored canonical owner.",
       "ruleId": "ownership.native-select-conflict",
@@ -615,7 +651,7 @@
     {
       "category": "violation",
       "file": "web/src/pages/admin/dialogs/user-dialog.tsx",
-      "line": 73,
+      "line": 76,
       "message": "Native select conflicts with recorded Select/Listbox ownership: authored.",
       "remediation": "Record Select/Listbox as native or reuse the authored canonical owner.",
       "ruleId": "ownership.native-select-conflict",
@@ -624,7 +660,16 @@
     {
       "category": "violation",
       "file": "web/src/pages/admin/users.tsx",
-      "line": 302,
+      "line": 305,
+      "message": "Native select conflicts with recorded Select/Listbox ownership: authored.",
+      "remediation": "Record Select/Listbox as native or reuse the authored canonical owner.",
+      "ruleId": "ownership.native-select-conflict",
+      "severity": "error"
+    },
+    {
+      "category": "violation",
+      "file": "web/src/pages/analysis/workspace.tsx",
+      "line": 146,
       "message": "Native select conflicts with recorded Select/Listbox ownership: authored.",
       "remediation": "Record Select/Listbox as native or reuse the authored canonical owner.",
       "ruleId": "ownership.native-select-conflict",
@@ -642,7 +687,7 @@
     {
       "category": "violation",
       "file": "web/src/pages/data/browse.tsx",
-      "line": 291,
+      "line": 293,
       "message": "Native select conflicts with recorded Select/Listbox ownership: authored.",
       "remediation": "Record Select/Listbox as native or reuse the authored canonical owner.",
       "ruleId": "ownership.native-select-conflict",
@@ -669,7 +714,7 @@
     {
       "category": "violation",
       "file": "web/src/pages/data/import-upload-zone.tsx",
-      "line": 113,
+      "line": 114,
       "message": "Native select conflicts with recorded Select/Listbox ownership: authored.",
       "remediation": "Record Select/Listbox as native or reuse the authored canonical owner.",
       "ruleId": "ownership.native-select-conflict",
@@ -687,7 +732,7 @@
     {
       "category": "violation",
       "file": "web/src/pages/inventory/detail-table.tsx",
-      "line": 298,
+      "line": 305,
       "message": "Native select conflicts with recorded Select/Listbox ownership: authored.",
       "remediation": "Record Select/Listbox as native or reuse the authored canonical owner.",
       "ruleId": "ownership.native-select-conflict",
@@ -731,8 +776,17 @@
     },
     {
       "category": "violation",
+      "file": "web/src/pages/settings/preference-settings.tsx",
+      "line": 53,
+      "message": "Native select conflicts with recorded Select/Listbox ownership: authored.",
+      "remediation": "Record Select/Listbox as native or reuse the authored canonical owner.",
+      "ruleId": "ownership.native-select-conflict",
+      "severity": "error"
+    },
+    {
+      "category": "violation",
       "file": "web/src/pages/transactions/aging.tsx",
-      "line": 170,
+      "line": 173,
       "message": "Native select conflicts with recorded Select/Listbox ownership: authored.",
       "remediation": "Record Select/Listbox as native or reuse the authored canonical owner.",
       "ruleId": "ownership.native-select-conflict",
@@ -759,7 +813,7 @@
     {
       "category": "violation",
       "file": "web/src/pages/transactions/collections/salesmen.tsx",
-      "line": 191,
+      "line": 192,
       "message": "Native select conflicts with recorded Select/Listbox ownership: authored.",
       "remediation": "Record Select/Listbox as native or reuse the authored canonical owner.",
       "ruleId": "ownership.native-select-conflict",
@@ -785,13 +839,13 @@
     }
   ],
   "mode": "strict",
-  "projectRoot": "C:\\Users\\85988\\.codex\\worktrees\\frontend-redesign\\ZJYPHFA",
+  "projectRoot": "D:\\ZJYPHFA-dev",
   "schemaVersion": 1,
   "summary": {
-    "errors": 87,
-    "total": 87,
+    "errors": 93,
+    "total": 93,
     "unresolved": 0,
-    "violations": 87,
+    "violations": 93,
     "warnings": 0
   }
 }

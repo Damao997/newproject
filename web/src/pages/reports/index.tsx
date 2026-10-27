@@ -1,7 +1,7 @@
 import { useRetainedState } from '@/hooks/use-retained-state'
 import { useFormModel, useFormValue, ModelFormFields } from '@/components/forms/form-model'
 import { useFormClose } from '@/components/forms/form-navigation'
-import { useEffect, useState, type Ref } from 'react'
+import { useEffect, useRef, useState, type Ref } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   FileText, CheckCircle2, Archive, Search, Plus, Pencil, MoreHorizontal, Trash2, Download, Loader2, RefreshCw, FileDown, BookOpen,
@@ -34,6 +34,7 @@ import {
 } from '@/hooks/api-queries'
 import { REPORT_STATUS_LABEL, REPORT_STATUS_BADGE_VARIANT } from '@/lib/constants'
 import { CreateReportDialog } from './create-report-form'
+import { describeStatusAction, EXTRA_STATUS, NEXT_STATUS, type StatusTarget } from './report-status-confirm'
 import { api } from '@/lib/api'
 import { exportReportToDocx, exportReportToPdf } from '@/lib/report-export'
 import type { ReportListItem } from '@/hooks/api-queries'
@@ -42,6 +43,7 @@ import { cn } from '@/lib/utils'
 /**
  * 分析报告中心：汇总报告列表（状态筛选 / 关键词 / 分页）+ 新建 / 重命名 / 状态流转 / 删除 / 导出。
  * 数据层 useReports/useCreateReport/useUpdateReport/useDeleteReport；编辑器跳转 /reports/:reportId/edit。
+ * 状态流转的目标定义与确认文案见 report-status-confirm.ts。
  */
 
 type StatusFilter = '' | 'draft' | 'published' | 'archived'
@@ -62,18 +64,6 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: 'currentVersion-desc', label: '版本号 高→低' },
   { value: 'currentVersion-asc', label: '版本号 低→高' },
 ]
-
-/** 主操作（卡片按钮）：draft→发布、published→归档、archived→恢复草稿 */
-const NEXT_STATUS: Record<string, { status: string; label: string }> = {
-  draft: { status: 'published', label: '发布' },
-  published: { status: 'archived', label: '归档' },
-  archived: { status: 'draft', label: '恢复为草稿' },
-}
-
-/** 次要状态操作（更多菜单）：published 支持撤回为草稿直达（后端状态机 draft↔published 本就允许） */
-const EXTRA_STATUS: Record<string, { status: string; label: string }[]> = {
-  published: [{ status: 'draft', label: '撤回为草稿' }],
-}
 
 export default function ReportsPage() {
   const navigate = useNavigate()
@@ -103,7 +93,7 @@ interface ReportsListProps {
   stickyTop: number
 }
 
-function ReportsList({ filterRef, stickyTop }: ReportsListProps) {
+export function ReportsList({ filterRef, stickyTop }: ReportsListProps) {
   const navigate = useNavigate()
   const { can } = usePermission()
   const canCreate = can('reports', 'create')
@@ -132,6 +122,10 @@ function ReportsList({ filterRef, stickyTop }: ReportsListProps) {
   const updateReport = useUpdateReport()
   const deleteReport = useDeleteReport()
   const { confirm, element: confirmElement } = useConfirm()
+  const { getDisplayName } = useCompanyDisplayName()
+  // 防重：确认框未关闭时忽略重复触发；同一报告写入期间忽略再次点击（禁用渲染之外的同步兜底）
+  const confirmingRef = useRef(false)
+  const statusInFlightRef = useRef(new Set<string>())
 
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const flash = (text: string, type: 'success' | 'error' = 'success') => {
@@ -145,12 +139,41 @@ function ReportsList({ filterRef, stickyTop }: ReportsListProps) {
 
   const resetPage = () => setPage(1)
 
-  const handleStatusChange = async (report: ReportListItem, target: { status: string; label: string }) => {
+  const handleStatusChange = async (report: ReportListItem, target: StatusTarget) => {
+    if (confirmingRef.current || statusInFlightRef.current.has(report.id)) return
+    const scopeName = getDisplayName(report.companyScope.code, report.companyScope.name ?? report.companyScope.code)
+    const options = describeStatusAction(report, target, scopeName)
+    if (options) {
+      confirmingRef.current = true
+      let confirmed = false
+      try {
+        confirmed = await confirm(options)
+      } finally {
+        confirmingRef.current = false
+      }
+      if (!confirmed) return
+    }
+    statusInFlightRef.current.add(report.id)
     try {
-      await updateReport.mutateAsync({ id: report.id, data: { status: target.status } })
+      const updated = await updateReport.mutateAsync({ id: report.id, data: { status: target.status } })
+      // 以服务端返回的真实状态确认；仅“已受理”不足以提示完成
+      if (updated?.status !== target.status) {
+        await refetch()
+        flash(`状态未被服务端确认（当前：${REPORT_STATUS_LABEL[updated?.status ?? ''] ?? '未知'}），请刷新后核对`, 'error')
+        return
+      }
       flash(`已${target.label}`)
     } catch (e) {
-      flash((e as Error).message || '状态更新失败', 'error')
+      // 结果未知时先重新查询真实状态，避免失败提示掩盖已生效的变更，也不伪报成功
+      const refreshed = await refetch().catch(() => null)
+      const current = refreshed?.data?.items.find((item) => item.id === report.id)
+      if (current && current.status !== report.status) {
+        flash(`状态可能已变更（当前：${REPORT_STATUS_LABEL[current.status] ?? current.status}），请核对`, 'error')
+      } else {
+        flash((e as Error).message || '状态更新失败', 'error')
+      }
+    } finally {
+      statusInFlightRef.current.delete(report.id)
     }
   }
 
@@ -332,7 +355,7 @@ function ReportCard({
   canExport: boolean
   onEdit: () => void
   onRename: () => void
-  onStatusChange: (target: { status: string; label: string }) => void
+  onStatusChange: (target: StatusTarget) => void
   onDelete: () => void
   onExport: (format: 'docx' | 'pdf') => void
 }) {

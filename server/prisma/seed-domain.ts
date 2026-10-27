@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client'
 import { decorateTree, rawOperatingAnalysis, rawStaticAnalysis, rawCashflowAnalysis, type DecoratedSubject } from './seed-data/subject-trees'
 import { transactionAccounts } from './seed-data/transaction-accounts'
 import { OPERATING_DIMS, STATIC_DIMS } from '../src/lib/metric-values'
+import { syncAllDimensionMembers } from '../src/services/analysis/dimension-members'
 
 /**
  * 领域种子：期间维度 + 科目体系 + 指标。
@@ -284,6 +285,11 @@ export async function seedDomain(prisma: PrismaClient): Promise<void> {
     })
   }
   console.log(`[seed] 往来会计科目 ${transactionAccounts.length} 条 完成`)
+
+  // 8) 维度成员化（L2/T31）：品类/产品/费用配置镜像为一等维度成员（幂等 reconcile）。
+  // 与配置 CRUD 的同事务同步同源：补建从未落盘的存量库（如本迁移前已 seed 的环境）。
+  const dimCounts = await syncAllDimensionMembers(prisma)
+  console.log(`[seed] 维度成员 品类 ${dimCounts.category} / 产品 ${dimCounts.product} / 费用 ${dimCounts.expense} 完成`)
 
   // 注：事实数据不再 mock，由 3 个数据范例 Excel 经导入接口提供真实数据。
 }

@@ -10,6 +10,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { cn } from '@/lib/utils'
 import { AlertCircle, Eye, EyeOff } from 'lucide-react'
 import { api, ApiError } from '@/lib/api'
+import { safeReturnPath } from '@/lib/safe-return-path'
 import { ForgotPasswordDialog } from './forgot-password-dialog'
 
 /** 记住用户名：仅本地保存用户名（凭证不落盘） */
@@ -52,8 +53,9 @@ export default function LoginPage() {
 
   const navigate = useNavigate()
   const location = useLocation()
-  const requestedPath = (location.state as { returnTo?: unknown } | null)?.returnTo
-  const loginTarget = typeof requestedPath === 'string' && requestedPath.startsWith('/') && !requestedPath.startsWith('//') && !requestedPath.startsWith('/login') ? requestedPath : '/'
+  // returnTo 只接受站内允许路径（拒绝协议/主机、反斜杠与控制字符），并排除登录页自身避免循环
+  const returnTo = safeReturnPath((location.state as { returnTo?: unknown } | null)?.returnTo)
+  const loginTarget = returnTo && !returnTo.startsWith('/login') ? returnTo : '/'
   const [searchParams] = useSearchParams()
   const login = useAuthStore((state) => state.login)
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)

@@ -66,10 +66,23 @@ function DeviationCell({ g, isRatio }: { g: KeyMetricsGroup; isRatio: boolean })
 }
 
 /**
+ * 同比单元：同期基数缺失或为 0 时后端统一返回 0%，不能渲染成「0.0% 持平」，
+ * 统一显示「无基数」；旧数据无同比字段显示「—」。仅做展示判定，不重算比率。
+ */
+function YoyTag({ value, base }: { value: number | null | undefined; base: number | null | undefined }) {
+  // 旧数据可能同时缺同比与同期基数：先判同比缺失，显示占位符而不是断言“无基数”
+  if (typeof value !== 'number' || !Number.isFinite(value)) return <span className="text-muted-foreground" title="数据未提供同比">—</span>
+  const hasBase = typeof base === 'number' && Number.isFinite(base) && base !== 0
+  if (!hasBase) return <span className="text-muted-foreground" title="无同期基数，无法计算同比">无基数</span>
+  return <DeltaTag value={value} />
+}
+
+/**
  * 整体核心指标总览（关键指标子页顶部的两级表头总览）：
  * - 数据取 GET /dashboard/analysis/key-metrics；
  * - 行：营业收入/营业毛利/运营费用/净利润/经营性现金流净值 + 劳效比/费效比（经营指标板块）；
  * - 列：月度完成情况（预算/达成/完成率/同比/环比）+ 财年累计（预算/累计/偏差额/完成率/预警/同比）；
+ * - 期间口径：金额卡主值统一为财年累计；本月金额只配「月度同比」，累计同比与累计金额同卡同组，不交叉；
  * 偏差额 = 财年累计达成 − 本年累计预算（金额行：年度预算 × 占比前缀和；比率行：直接对年度目标值，后端不拆分）；
  * 预警统一按时序口径 = 财年累计达成 ÷ Σ月度预算目标（年初至当期累计预算，完成率列的 annualRate 分母是全年预算，
  * 财年早期天然偏低、不用于预警）：收入/利润类 AlertLight 三档，运营费用为费用类反向规则 ExpenseAlertLight（超支才警示）；
@@ -124,10 +137,15 @@ export function CoreMetricsOverview({ period, companyCode }: CoreMetricsOverview
       <AnalysisSection kind="focus">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">{(['income', 'profit', 'netProfit', 'operating']).map((key, index) => {
           const row = rows.find(row => row.key === key)
-          return row ? <StatTile key={key} label={row.label} value={formatMoneyWan(row.g.ytdActual)} unit="万" tone={(index + 1) as 1 | 2 | 3 | 4} foot={<span>本月 {formatMoneyWan(row.g.monthActual)} 万 · 同比 <DeltaTag value={row.g.ytdYoy} /></span>} /> : null
+          return row ? <StatTile key={key} label={row.label} period="财年累计" value={formatMoneyWan(row.g.ytdActual)} unit="万" tone={(index + 1) as 1 | 2 | 3 | 4} foot={
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span>本月达成 {formatMoneyWan(row.g.monthActual)} 万 · 月度同比 <YoyTag value={row.g.monthYoy} base={row.g.monthSame} /></span>
+              <span>累计同比 <YoyTag value={row.g.ytdYoy} base={row.g.ytdSame} /></span>
+            </span>
+          } /> : null
         })}</div>
         <AnalysisComparison title="金额指标与预算差距" note="财年累计 · 与累计预算比较 · 单位：万元" items={amountRows.map(row => ({ id: row.key, label: row.label, expense: row.key === 'expense', amount: row.g.ytdActual, budget: row.g.ytdBudget, rate: alertRateOf(row.g), detail: <dl><div><dt>本月实际</dt><dd>{formatMoneyWan(row.g.monthActual)}</dd></div><div><dt>当月预算</dt><dd>{row.g.monthBudget == null ? '—' : formatMoneyWan(row.g.monthBudget)}</dd></div><div><dt>财年累计实际</dt><dd>{formatMoneyWan(row.g.ytdActual)}</dd></div><div><dt>年度预算完成率</dt><dd><RateCell value={row.g.annualRate} /></dd></div><div><dt>累计预算达成率</dt><dd><RateCell value={alertRateOf(row.g)} /></dd></div><div><dt>本月环比</dt><dd><DeltaTag value={row.g.monthMom} /></dd></div></dl> }))} />
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">{rows.filter(row => ['expense', 'laborEff', 'expenseEff'].includes(row.key)).map(row => <StatTile key={row.key} label={row.label} value={row.valueType === 'ratio' ? formatMetricValue(row.g.ytdActual, 'ratio') : formatMoneyWan(row.g.ytdActual)} unit={row.valueType === 'amount' ? '万' : undefined} tone={row.key === 'expense' ? 3 : 2} foot={<span>财年累计 · 同比 <DeltaTag value={row.g.ytdYoy} /></span>} />)}</div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">{rows.filter(row => ['expense', 'laborEff', 'expenseEff'].includes(row.key)).map(row => <StatTile key={row.key} label={row.label} period="财年累计" value={row.valueType === 'ratio' ? formatMetricValue(row.g.ytdActual, 'ratio') : formatMoneyWan(row.g.ytdActual)} unit={row.valueType === 'amount' ? '万' : undefined} tone={row.key === 'expense' ? 3 : 2} foot={<span>累计同比 <YoyTag value={row.g.ytdYoy} base={row.g.ytdSame} /></span>} />)}</div>
         <GapAnalysisPanel items={analysisItems} onSelect={key => workspace?.update(amountRows.some(row => row.key === key) ? { selected: key } : { view: "report", selected: "" })} />
       </AnalysisSection>
       <AnalysisSection kind="report">
@@ -154,7 +172,7 @@ export function CoreMetricsOverview({ period, companyCode }: CoreMetricsOverview
               <th className={TH_CLS}>偏差额</th>
               <th className={TH_CLS}>完成率</th>
               <th className={TH_CLS}><TipLabel label="预警" tip="预警 = 财年累计达成 ÷ Σ月度预算目标（年初至当期累计预算）。收入/利润类三档：<60 红 / 60-75 黄 / ≥75 绿；运营费用反向三档（超支才警示）：<75 绿 / 75-100 黄 / >100 红" /></th>
-              <th className={TH_CLS}>财年同比</th>
+              <th className={TH_CLS}>累计同比</th>
             </tr>
           </thead>
           <tbody>
@@ -169,7 +187,7 @@ export function CoreMetricsOverview({ period, companyCode }: CoreMetricsOverview
                   <td className={TD_CLS}><MagnitudeValue value={valueType === 'amount' ? g.monthBudget : null} maximum={maxima.monthBudget}><BudgetCell value={g.monthBudget} isRatio={isRatio} /></MagnitudeValue></td>
                   <td className={TD_CLS}><MagnitudeValue value={valueType === 'amount' ? g.monthActual : null} maximum={maxima.monthActual}><ActualCell value={g.monthActual} isRatio={isRatio} /></MagnitudeValue></td>
                   <td className={TD_CLS}><RateCell value={g.monthRate} /></td>
-                  <td className={TD_CLS}><DeltaTag value={g.monthYoy} /></td>
+                  <td className={TD_CLS}><YoyTag value={g.monthYoy} base={g.monthSame} /></td>
                   <td className={TD_CLS}><DeltaTag value={g.monthMom} /></td>
                   <td className={`${TD_CLS} border-l border-border`}><MagnitudeValue value={valueType === 'amount' ? g.annualBudget : null} maximum={maxima.annualBudget}><BudgetCell value={g.annualBudget} isRatio={isRatio} /></MagnitudeValue></td>
                   <td className={TD_CLS}><MagnitudeValue value={valueType === 'amount' ? g.ytdActual : null} maximum={maxima.ytdActual}><ActualCell value={g.ytdActual} isRatio={isRatio} /></MagnitudeValue></td>
@@ -178,7 +196,7 @@ export function CoreMetricsOverview({ period, companyCode }: CoreMetricsOverview
                   <td className={`${TD_CLS} text-center`}>
                     {isExpense ? <ExpenseAlertLight rate={alertRate} /> : <AlertLight rate={alertRate} />}
                   </td>
-                  <td className={TD_CLS}><DeltaTag value={g.ytdYoy} /></td>
+                  <td className={TD_CLS}><YoyTag value={g.ytdYoy} base={g.ytdSame} /></td>
                 </tr>
               )
             })}

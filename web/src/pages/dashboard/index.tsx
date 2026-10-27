@@ -11,6 +11,7 @@ import { InventoryPieCard } from './inventory-pie-card'
 import { ExpenseStructureCard } from './expense-structure-card'
 import { TrendSection } from './trend-section'
 import { AlertsCard } from './alerts-card'
+import { NextUiEntry } from '@/components/layout/next-ui-entry'
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react'
 import { usePageStore } from '@/stores/pageStateStore'
 import { useSummaryMemberValues, type MemberBreakdown } from '@/hooks/use-summary-member-values'
@@ -128,6 +129,7 @@ function DashboardView(props: DashboardViewProps) {
 
   return (
     <>
+      <NextUiEntry />
       {/* 加载/错误态：保留视觉密度的同时提示用户当前数据状态 */}
       {(isLoading || isError) && (
         <div

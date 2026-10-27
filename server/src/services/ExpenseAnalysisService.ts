@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma'
 import { errors } from '../lib/errors'
 import { recordAudit } from '../middleware/audit'
+import { syncDimensionMembers } from './analysis/dimension-members'
 
 /**
  * 运营费用映射服务：运营费用分析的展示指标 ↔ 经营科目编码集合配置。
@@ -237,11 +238,16 @@ export const ExpenseAnalysisService = {
     const exists = await prisma.expenseSubjectMapping.findUnique({ where: { code } })
     if (exists) {
       // 墓碑行（软删除）同 code 重建视为复活：清除墓碑标记并按新输入更新
+      // 配置写 + 维度成员同步同事务（L2/T31）
       if (exists.deletedAt) {
         await assertSubjectCodesUsable(subjectCodes, exists.id)
-        const revived = await prisma.expenseSubjectMapping.update({
-          where: { id: exists.id },
-          data: { name, subjectCodes, sortOrder: input.sortOrder ?? 0, status: input.status === 'inactive' ? 'inactive' : 'active', deletedAt: null },
+        const revived = await prisma.$transaction(async (tx) => {
+          const row = await tx.expenseSubjectMapping.update({
+            where: { id: exists.id },
+            data: { name, subjectCodes, sortOrder: input.sortOrder ?? 0, status: input.status === 'inactive' ? 'inactive' : 'active', deletedAt: null },
+          })
+          await syncDimensionMembers(tx, 'expense')
+          return row
         })
         await recordAudit({ userId: ctx.userId, module: 'data', action: 'create', targetId: revived.code, detail: { entity: 'expense_subject_mapping', revived: true } }, ctx.traceId)
         return toDto(revived)
@@ -249,14 +255,19 @@ export const ExpenseAnalysisService = {
       throw errors.conflict('映射编码已存在')
     }
     await assertSubjectCodesUsable(subjectCodes)
-    const created = await prisma.expenseSubjectMapping.create({
-      data: {
-        code,
-        name,
-        subjectCodes,
-        sortOrder: input.sortOrder ?? 0,
-        status: input.status === 'inactive' ? 'inactive' : 'active',
-      },
+    // 配置写 + 维度成员同步同事务（L2/T31）
+    const created = await prisma.$transaction(async (tx) => {
+      const row = await tx.expenseSubjectMapping.create({
+        data: {
+          code,
+          name,
+          subjectCodes,
+          sortOrder: input.sortOrder ?? 0,
+          status: input.status === 'inactive' ? 'inactive' : 'active',
+        },
+      })
+      await syncDimensionMembers(tx, 'expense')
+      return row
     })
     await recordAudit({ userId: ctx.userId, module: 'data', action: 'create', targetId: created.code, detail: { entity: 'expense_subject_mapping' } }, ctx.traceId)
     return toDto(created)
@@ -272,14 +283,19 @@ export const ExpenseAnalysisService = {
       : undefined
     if (subjectCodes !== undefined && subjectCodes.length === 0) throw errors.badRequest('至少选择 1 个运营费用科目')
     if (subjectCodes !== undefined) await assertSubjectCodesUsable(subjectCodes, id)
-    const updated = await prisma.expenseSubjectMapping.update({
-      where: { id },
-      data: {
-        ...(input.name !== undefined ? { name: String(input.name).trim() } : {}),
-        ...(subjectCodes !== undefined ? { subjectCodes } : {}),
-        ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
-        ...(input.status === 'active' || input.status === 'inactive' ? { status: input.status } : {}),
-      },
+    // 配置写 + 维度成员同步同事务（L2/T31）：停用移出成员表、改名/改序/改科目同步回写
+    const updated = await prisma.$transaction(async (tx) => {
+      const row = await tx.expenseSubjectMapping.update({
+        where: { id },
+        data: {
+          ...(input.name !== undefined ? { name: String(input.name).trim() } : {}),
+          ...(subjectCodes !== undefined ? { subjectCodes } : {}),
+          ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
+          ...(input.status === 'active' || input.status === 'inactive' ? { status: input.status } : {}),
+        },
+      })
+      await syncDimensionMembers(tx, 'expense')
+      return row
     })
     await recordAudit({ userId: ctx.userId, module: 'data', action: 'update', targetId: updated.code, detail: { entity: 'expense_subject_mapping' } }, ctx.traceId)
     return toDto(updated)
@@ -289,7 +305,11 @@ export const ExpenseAnalysisService = {
     const found = await prisma.expenseSubjectMapping.findUnique({ where: { id } })
     if (!found) throw errors.notFound('运营费用映射不存在')
     // 软删除（墓碑）：避免 seed 重跑时按默认配置复活；list/check/看板均过滤 deleted_at 行
-    await prisma.expenseSubjectMapping.update({ where: { id }, data: { deletedAt: new Date() } })
+    // 墓碑写 + 成员表差集删同事务（L2/T31）
+    await prisma.$transaction(async (tx) => {
+      await tx.expenseSubjectMapping.update({ where: { id }, data: { deletedAt: new Date() } })
+      await syncDimensionMembers(tx, 'expense')
+    })
     await recordAudit({ userId: ctx.userId, module: 'data', action: 'delete', targetId: found.code, detail: { entity: 'expense_subject_mapping' } }, ctx.traceId)
   },
 
