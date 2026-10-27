@@ -4,7 +4,13 @@ import { readFileSync } from 'node:fs'
 const permissionSource = readFileSync(new URL('../src/lib/permissions.ts', import.meta.url), 'utf8')
 export const permissions = [...new Set([...permissionSource.matchAll(/'([a-z][\w-]*(?::[a-z][\w-]*){1,2})'/g)].map((match) => match[1]))]
 export const user = { id: 'preview-user', username: 'preview', name: '预览账号', role: 'superadmin', permissions, dataScope: 'all', status: 'active', mustChangePassword: false, createdAt: '2026-01-01T00:00:00Z' }
+// 第二模拟账号（显著标识）：用于验证报告草稿的账号隔离；权限与账号 A 相同，仅身份不同
+export const userB = { ...user, id: 'preview-user-b', username: 'preview-b', name: '预览账号B（模拟）' }
 export const auth = { state: { user, accessToken: 'mock-redesign-token', refreshToken: 'mock-redesign-refresh', isAuthenticated: true }, version: 0 }
+const tokenB = 'mock-redesign-token-b'
+// 报告章节保存的模拟写入仅内存生效（进程重启即复原），用于验证草稿清理与乐观锁；其余业务写入仍默认拒绝
+let liveReport = null
+const getLiveReport = () => (liveReport ??= structuredClone(report))
 export const companies = [
   { id: 'company-1', code: 'EN330001', name: '壹品慧杭州分公司（模拟）', shortName: '杭州分公司', type: 'entity', entityType: 'single', status: 'active' },
   { id: 'company-2', code: 'EN330002', name: '壹品慧宁波分公司（模拟）', shortName: '宁波分公司', type: 'entity', entityType: 'single', status: 'active' },
@@ -52,8 +58,13 @@ const logs = Array.from({ length: 10 }, (_, i) => ({ id: `log-${i}`, type: i % 2
 const auditLogs = logs.map((log, i) => ({ id: log.id, createdAt: stamp, username: user.name, module: i % 2 ? 'data' : 'auth', action: i % 2 ? 'import' : 'login', detail: '模拟记录：用于检查时间线、详情与搜索布局', ip: '127.0.0.1', userAgent: '模拟浏览器', targetId: null }))
 const periods = { periods: ['2026-08', '2026-09'], fiscalYears: ['2026'], fiscalStartMonth: 1 }
 const aging = ['应收账款', '应付账款'].map((transactionType, i) => ({ transactionType, companyCode: companies[i].code, companyName: companies[i].name, counterpartyCode: `C0${i}`, counterpartyName: `模拟客商${i + 1}`, accountCode: '1122', accountDesc: '应收账款', closingBalance: 7800000, openingBalance: 7100000, aging: { '1个月': 4800000, '2个月': 1200000, '3个月': 800000, '4-6月': 400000, '半年以上': 300000, '1年至2年': 200000, '2年至3年': 50000, '3年以上': 50000 }, partyType: 'external', isInternal: false }))
+// 即席分析视图（模拟）：写入仅进程内存，用于「我的视图」成功/空列表；重启预览即复原
+let mockAnalysisViews = [
+  { id: 'view-mock-local', name: '品类月度达成（模拟）', ownerId: user.id, ownerName: user.name, shared: false, spec: { period: '2026-09', rowDim: 'category', metrics: [] }, isOwner: true, createdAt: stamp, updatedAt: stamp },
+  { id: 'view-mock-shared', name: '费用结构共享视图（模拟）', ownerId: userB.id, ownerName: userB.name, shared: true, spec: { period: '2026-09', rowDim: 'expense', metrics: [] }, isOwner: false, createdAt: stamp, updatedAt: stamp },
+]
 
-export function resolveFixture(input, method = 'GET', scenario = 'success') {
+export function resolveFixture(input, method = 'GET', scenario = 'success', body = {}) {
   const url = new URL(input, 'http://127.0.0.1')
   const path = url.pathname.replace('/api/v1', '')
   const selectedCompany = companies.find(company => company.code === url.searchParams.get('companyCode')) ?? companies[2]
@@ -61,9 +72,91 @@ export function resolveFixture(input, method = 'GET', scenario = 'success') {
   const paged = (items) => ({ items, total: items.length, page: Number(url.searchParams.get('page') || 1), pageSize: Number(url.searchParams.get('pageSize') || 10), totalPages: 1 })
   const ok = (data) => ({ code: 0, data, message: '模拟数据预览', traceId: 'preview-only' })
   if (scenario === 'error' && !path.startsWith('/auth') && !path.includes('/periods') && path !== '/data/companies') return { code: 1, data: null, message: '模拟请求失败，请重试', traceId: 'preview-only' }
-  if (['/auth/login', '/auth/refresh', '/auth/auto-login'].includes(path)) return ok({ user, accessToken: auth.state.accessToken, refreshToken: auth.state.refreshToken })
+  if (['/auth/login', '/auth/refresh', '/auth/auto-login'].includes(path)) {
+    // 按登录用户名/刷新令牌区分模拟账号：preview-b 为第二模拟账号，其余回落到默认预览账号
+    const account = body?.username === userB.username || body?.refreshToken === `${tokenB}-refresh` ? userB : user
+    const token = account.id === userB.id ? tokenB : auth.state.accessToken
+    return ok({ user: account, accessToken: token, refreshToken: account.id === userB.id ? `${tokenB}-refresh` : auth.state.refreshToken })
+  }
   if (['/auth/me', '/auth/profile'].includes(path)) return ok(user)
   if (path === '/auth/logout') return ok(null)
+  // ===== 即席分析夹具（模拟）：query / col-members / views，覆盖成功、空、失败三态 =====
+  // 写入仅进程内存生效，重启即复原；名称与提示均带“模拟”，不连接真实数据库。
+  if (path === '/dashboard/analysis/query' && method === 'POST') {
+    if (scenario === 'error') return { code: 403, data: null, message: '模拟：当前账号无权查看该范围', traceId: 'preview-only' }
+    const spec = body ?? {}
+    const company = companies.find((row) => row.code === spec.companyCode) ?? companies[2]
+    const columnSource = spec.rowDim === 'product' ? categories.map((row) => ({ code: row.code, name: row.name }))
+      : spec.rowDim === 'subject' ? operating.map((row) => ({ code: row.code, name: row.name }))
+      : spec.rowDim === 'company' ? companies.slice(0, 2).map((row) => ({ code: row.code, name: row.name }))
+      : categories.slice(0, 3).map((row) => ({ code: row.code, name: row.name }))
+    const columns = [
+      { key: 'income.monthActual', header: '本月实际', valueType: 'amount', group: '收入', tip: '模拟预览数据' },
+      { key: 'marginRate', header: '毛利率', valueType: 'ratio', tip: '模拟预览数据' },
+    ]
+    const rows = scenario === 'empty' ? [] : columnSource.map((row, index) => ({
+      code: row.code, name: `${row.name}（模拟）`, level: 0, isTotal: false,
+      values: { 'income.monthActual': Number((1220 / (index + 1)).toFixed(2)), marginRate: index === 0 ? null : Number((23.5 - index).toFixed(1)) },
+    }))
+    return ok({
+      period: spec.period ?? '2026-09', rowDim: spec.rowDim ?? 'category',
+      ...(spec.colDim ? { colDim: spec.colDim, colMembers: (spec.colCodes?.length ? spec.colCodes.map((code) => ({ code, name: `${code}（模拟）`, subjectCodes: [] })) : companies.slice(0, 2).map((row) => ({ code: row.code, name: row.name, subjectCodes: [] }))) } : {}),
+      companyCode: company.code, companyName: `${company.name}`, companyType: company.type === 'summary' ? 'summary' : 'single',
+      degraded: false, columns, rows,
+      totals: { values: { 'income.monthActual': 1800, marginRate: 21.3 } },
+      meta: { skippedReclassifyLogs: 0, unmatchedRows: [] },
+    })
+  }
+  if (path === '/dashboard/analysis/col-members' && method === 'GET') {
+    const dim = url.searchParams.get('dim')
+    if (scenario === 'empty') return ok([])
+    const members = dim === 'company' ? companies.slice(0, 2) : dim === 'product' ? categories : companies.slice(0, 2)
+    return ok(members.map((row) => ({ code: row.code, name: row.name, subjectCodes: [] })))
+  }
+  if (path === '/dashboard/analysis/views') {
+    if (method === 'GET') return ok({ views: scenario === 'empty' ? [] : mockAnalysisViews.map((view) => structuredClone(view)) })
+    if (method === 'POST') {
+      const now = new Date().toISOString()
+      const created = { id: `view-mock-${Date.now()}`, name: body?.name ?? '未命名视图（模拟）', ownerId: user.id, ownerName: user.name, shared: !!body?.shared, spec: body?.spec ?? {}, isOwner: true, createdAt: now, updatedAt: now }
+      mockAnalysisViews = [created, ...mockAnalysisViews]
+      return ok(created)
+    }
+  }
+  const viewMatch = path.match(/^\/dashboard\/analysis\/views\/([^/]+)$/)
+  if (viewMatch) {
+    const index = mockAnalysisViews.findIndex((view) => view.id === viewMatch[1])
+    if (index < 0) return { code: 404, data: null, message: '视图不存在（模拟）', traceId: 'preview-only' }
+    if (method === 'PUT') {
+      const updated = { ...mockAnalysisViews[index], ...(body?.name !== undefined ? { name: body.name } : {}), ...(body?.spec !== undefined ? { spec: body.spec } : {}), ...(body?.shared !== undefined ? { shared: body.shared } : {}), updatedAt: new Date().toISOString() }
+      mockAnalysisViews = mockAnalysisViews.map((view) => view.id === updated.id ? updated : view)
+      return ok(updated)
+    }
+    if (method === 'DELETE') {
+      mockAnalysisViews = mockAnalysisViews.filter((view) => view.id !== viewMatch[1])
+      return ok({ id: viewMatch[1] })
+    }
+  }
+  // 报告章节保存：模拟写入仅内存生效并返回真实形态，支持乐观锁 409；其余业务写入仍默认拒绝
+  if (path === '/reports/preview-report/sections' && method === 'PUT') {
+    const current = getLiveReport()
+    if (body?.expectedUpdatedAt && body.expectedUpdatedAt !== current.updatedAt) return { code: 409, data: null, message: '报告已被其他人修改，请刷新后重试', traceId: 'preview-only' }
+    current.sections = (Array.isArray(body?.items) ? body.items : []).map((item, index) => {
+      const existing = item.analysisId
+        ? current.sections.find((row) => row.analysisId === item.analysisId)
+        : item.id ? current.sections.find((row) => row.id === item.id) : null
+      return {
+        id: existing?.id ?? item.id ?? `section-saved-${Date.now()}-${index}`,
+        orderNo: index + 1,
+        title: existing?.title ?? item.title ?? '自定义章节',
+        content: item.analysisId ? existing?.content ?? '' : item.content ?? '',
+        analysisId: item.analysisId ?? null,
+        source: existing?.source ?? null,
+        missing: existing?.missing ?? false,
+      }
+    })
+    current.updatedAt = new Date().toISOString()
+    return ok(current)
+  }
   if (method !== 'GET' && path !== '/reports/chart-data') return { code: 1, data: null, message: '模拟预览不写入数据', traceId: 'preview-only' }
   if (path === '/data/companies') return ok(companies)
   if (path === '/data/aggregation-map') return ok(companies.slice(0, 2).map((company, i) => ({ id: `map-${i}`, summaryCompanyCode: 'ET0001', summaryCompanyName: companies[2].name, singleCompanyCode: company.code, singleCompanyName: company.name, isInternalElimination: false })))
@@ -108,7 +201,7 @@ export function resolveFixture(input, method = 'GET', scenario = 'success') {
   if (path === '/admin/permissions') return ok(roles[0].permissions)
   if (path === '/admin/audit-logs') return ok(paged(auditLogs))
   if (path === '/admin/audit-logs/today-stats') return ok({ total: 10, byCategory: { login: 5, data: 5, perm: 0, sys: 0, other: 0 } })
-  if (path === '/reports') return ok(paged([report]))
+  if (path === '/reports') return ok(paged([getLiveReport()]))
   if (path === '/reports/templates') return ok([])
   if (path === '/reports/analyses') return ok(paged([]))
   if (/^\/reports\/shared\//.test(path)) return ok({ ...report, status: 'published' })
@@ -116,7 +209,9 @@ export function resolveFixture(input, method = 'GET', scenario = 'success') {
   if (/^\/reports\/[^/]+\/versions\/\d+$/.test(path)) return ok({ ...versions[0], snapshot: report })
   if (/^\/reports\/[^/]+\/share$/.test(path)) return ok({ enabled: false, url: null, token: null })
   if (path === '/reports/chart-data') return ok({ name: '模拟图表', actual: 1220, samePeriod: 1100, budget: 1300, current: 1220, yearStart: 1160 })
-  if (/^\/reports\/[^/]+$/.test(path)) return ok(report)
+  // 第二报告（模拟）：仅用于验证草稿按报告 ID 隔离，不参与章节保存
+  if (path === '/reports/other-report') return ok({ ...getLiveReport(), id: 'other-report', title: '其他报告（模拟·草稿隔离检查）' })
+  if (/^\/reports\/[^/]+$/.test(path)) return ok(getLiveReport())
   if (path === '/data/cross-table') return ok({ subjects: [], companies: [], rows: [], items: [], columns: [], values: {} })
   if (path === '/data/metrics' || path === '/data/imports') return ok(paged([]))
   if (/\/check$/.test(path)) return ok({ categories: [], products: [], mappings: [], candidates: [], uncoveredSubjects: [], brokenKeywords: [], missingProfitMirror: [], brokenCodes: [] })
@@ -136,5 +231,5 @@ export function resolveBrowserFixture(route, scenario = 'success') {
   if (request.headers()['content-type']?.includes('application/json')) {
     try { body = request.postDataJSON() ?? {} } catch { body = {} }
   }
-  return browserPersonalFixtures.get(context)(request.url(), request.method(), body) ?? resolveFixture(request.url(), request.method(), scenario)
+  return browserPersonalFixtures.get(context)(request.url(), request.method(), body) ?? resolveFixture(request.url(), request.method(), scenario, body)
 }

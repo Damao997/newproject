@@ -5,6 +5,7 @@ import { usePreferencesStore } from '@/stores/preferencesStore'
 import { usePeriodStore } from '@/stores/periodStore'
 import { usePageStore } from '@/stores/pageStateStore'
 import { claimLegacyStorage, setStorageAccount } from '@/stores/account-storage'
+import { clearOtherAccountReportDrafts } from '@/lib/report-draft'
 import { api } from '@/lib/api'
 import { DEFAULT_PREFERENCES, preferenceSchema, type PreferenceSnapshot } from '@/lib/personal-settings'
 import { applySidebarStyle } from '@/stores/themeStore'
@@ -33,6 +34,8 @@ export function AccountBoundary({ children }: { children: ReactNode }) {
     usePeriodStore.setState(usePeriodStore.getInitialState())
     usePageStore.setState(usePageStore.getInitialState())
     setStorageAccount(userId)
+    // 账号边界：登录/切号后仅保留当前账号名下的报告草稿键（其他账号与无归属旧键清理，同账号重登不受影响）
+    clearOtherAccountReportDrafts(userId)
     void usePeriodStore.persist.rehydrate()
     void usePageStore.persist.rehydrate()
     let cached: PreferenceSnapshot = { preferences: DEFAULT_PREFERENCES, revision: 0 }

@@ -57,6 +57,12 @@ export default defineConfig(({ mode }) => {
           target: `http://127.0.0.1:${apiPort}`,
           changeOrigin: true,
         },
+        // 新版 Soybean 工作台：同源路径转发，开发期与旧版共享 localStorage 会话。
+        '/next': {
+          target: 'http://127.0.0.1:9527',
+          changeOrigin: true,
+          ws: true,
+        },
       },
     },
   }

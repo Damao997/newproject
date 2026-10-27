@@ -1,7 +1,8 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { useAuthStore } from '@/stores/authStore'
 import type { AnalysisInput, AnalysisItem, AvailablePeriodsResult, ReportDetail, ReportListItem, ReportSectionInput, ReportVersionItem, ReportExportData } from '@/lib/api'
-import type { FilterParams, BatchActivateCheckResult } from '@/types'
+import type { AnalysisQuerySpec, FilterParams, BatchActivateCheckResult } from '@/types'
 
 /**
  * React Query hook 层：集中封装对 @/lib/api 的调用与缓存键，
@@ -123,6 +124,62 @@ export function useKeyMetrics(params: { period?: string; companyCode?: string },
   })
 }
 
+/** 即席分析查询：以「行维度 × 指标列」为参数；queryKey 含账号与 spec（公司/期间/维度/指标），
+ *  切换范围时经 placeholderData 保留旧结果，避免整页 loading。period 未定时不发请求。
+ *  账号进入键：切换账号后不得复用上一账号的结果；signal 随范围切换取消旧请求。 */
+export function useAnalysisQuery(spec: AnalysisQuerySpec, options?: { enabled?: boolean }) {
+  const accountId = useAuthStore((s) => s.user?.id ?? 'anonymous')
+  return useQuery({
+    queryKey: ['analysis', 'query', accountId, spec] as const,
+    queryFn: ({ signal }) => api.queryAnalysis(spec, { signal }),
+    enabled: !!spec.period && options?.enabled !== false,
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+/** 列成员清单（矩阵模式选择器）：仅当选了列维度才拉取；成员表变化频率低，缓存 5 分钟 */
+export function useAnalysisColMembers(dim?: AnalysisQuerySpec['colDim']) {
+  const accountId = useAuthStore((s) => s.user?.id ?? 'anonymous')
+  return useQuery({
+    queryKey: ['analysis', 'col-members', accountId, dim ?? ''] as const,
+    queryFn: ({ signal }) => api.getAnalysisColMembers(dim!, { signal }),
+    enabled: !!dim,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+/** 我的视图 + 共享视图（保存/删除后统一 invalidate） */
+export function useAnalysisViews() {
+  const accountId = useAuthStore((s) => s.user?.id ?? 'anonymous')
+  return useQuery({
+    queryKey: ['analysis', 'views', accountId] as const,
+    queryFn: ({ signal }) => api.getAnalysisViews({ signal }),
+    staleTime: 30 * 1000,
+  })
+}
+
+/** 视图 mutations：保存 / 更新 / 删除，成功后刷新列表 */
+export function useAnalysisViewMutations() {
+  const qc = useQueryClient()
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['analysis', 'views'] })
+  return {
+    create: useMutation({
+      mutationFn: (input: { name: string; spec: AnalysisQuerySpec; shared?: boolean }) => api.createAnalysisView(input),
+      onSuccess: invalidate,
+    }),
+    update: useMutation({
+      mutationFn: (input: { id: string } & Parameters<typeof api.updateAnalysisView>[1]) =>
+        api.updateAnalysisView(input.id, input),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => api.deleteAnalysisView(id),
+      onSuccess: invalidate,
+    }),
+  }
+}
+
 /** 品类核心指标分析：产品配置全行 + 整体合计（单期间 + 可选主体），period 未定时不发请求 */
 export function useProductMetrics(params: { period?: string; companyCode?: string }) {
   return useQuery({
@@ -161,11 +218,11 @@ export function useProductCategoryMutations() {
   }
   return {
     create: useMutation({
-      mutationFn: (input: { code: string; name: string; subjectKeyword: string; sortOrder?: number; status?: string }) => api.createProductCategory(input),
+      mutationFn: (input: { code: string; name: string; subjectKeyword?: string; subjectCodes?: string[]; sortOrder?: number; status?: string }) => api.createProductCategory(input),
       onSuccess: invalidate,
     }),
     update: useMutation({
-      mutationFn: (input: { id: string; name?: string; subjectKeyword?: string; sortOrder?: number; status?: string }) =>
+      mutationFn: (input: { id: string; name?: string; subjectKeyword?: string; subjectCodes?: string[]; sortOrder?: number; status?: string }) =>
         api.updateProductCategory(input.id, input),
       onSuccess: invalidate,
     }),
@@ -200,11 +257,11 @@ export function useKeyMetricsProductMutations() {
   }
   return {
     create: useMutation({
-      mutationFn: (input: { code: string; name: string; subjectKeyword: string; sortOrder?: number; status?: string }) => api.createKeyMetricsProduct(input),
+      mutationFn: (input: { code: string; name: string; subjectKeyword?: string; subjectCodes?: string[]; sortOrder?: number; status?: string }) => api.createKeyMetricsProduct(input),
       onSuccess: invalidate,
     }),
     update: useMutation({
-      mutationFn: (input: { id: string; name?: string; subjectKeyword?: string; sortOrder?: number; status?: string }) =>
+      mutationFn: (input: { id: string; name?: string; subjectKeyword?: string; subjectCodes?: string[]; sortOrder?: number; status?: string }) =>
         api.updateKeyMetricsProduct(input.id, input),
       onSuccess: invalidate,
     }),

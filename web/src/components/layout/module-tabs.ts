@@ -20,6 +20,7 @@ export const DASHBOARD_ANALYSIS_TABS: SubPageTab[] = [
   { path: '/dashboard/analysis/category-budget', label: '品类预算达成', group: '经营表现' },
   { path: '/dashboard/analysis/subject-budget', label: '公司预算达成', group: '经营表现' },
   { path: '/dashboard/analysis/expense', label: '运营费用分析', group: '经营表现' },
+  { path: '/dashboard/analysis/workspace', label: '即席分析', group: '经营表现' },
   { path: '/dashboard/analysis/cash-flow', label: '现金流量分析', group: '资金资产' },
   { path: '/dashboard/analysis/receivable-aging', label: '应收账龄分析', group: '资金资产' },
   { path: '/dashboard/analysis/inventory-aging', label: '存货分析', group: '资金资产' },

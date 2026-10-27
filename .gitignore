@@ -133,3 +133,8 @@ frp/
 # 隔离开发的客户端缓存、测试库备份与验证产物
 /server/.cache/
 /server/prisma/.cache/
+
+# 本地临时工作目录与 Agent 运行产物（日志/编译缓存/上下文，不入库）
+/.tmp/
+/.workbuddy-ai/
+/spark-output/

@@ -357,12 +357,14 @@ export interface SubjectBudgetResponse {
   rows: SubjectBudgetRow[]
 }
 
-/** 品类配置（品类预算达成分析：品类 ↔ 收入科目名关键词） */
+/** 品类配置（品类预算达成分析：品类 ↔ 收入科目关键词或显式科目编码，C1 混合模式） */
 export interface ProductCategory {
   id: string
   code: string
   name: string
   subjectKeyword: string
+  /** 显式科目编码集合（非空时优先于 subjectKeyword 精确匹配，不受科目改名影响） */
+  subjectCodes: string[]
   sortOrder: number
   status: 'active' | 'inactive'
   createdAt: string
@@ -380,15 +382,19 @@ export interface ProductCategoryCheckResult {
   categories: ProductCategoryCheckItem[]
   uncoveredSubjects: string[]
   brokenKeywords: string[]
+  /** 显式科目模式下在收入科目树中不存在的编码（关键词模式下恒为空） */
+  brokenCodes: string[]
   missingProfitMirror: string[]
 }
 
-/** 关键指标产品配置（壹品慧关键指标表「按产品分」明细：产品 ↔ 收入科目名关键词，独立于品类配置） */
+/** 关键指标产品配置（壹品慧关键指标表「按产品分」明细：产品 ↔ 收入科目关键词或显式科目编码，独立于品类配置） */
 export interface KeyMetricsProduct {
   id: string
   code: string
   name: string
   subjectKeyword: string
+  /** 显式科目编码集合（非空时优先于 subjectKeyword） */
+  subjectCodes: string[]
   sortOrder: number
   status: 'active' | 'inactive'
   createdAt: string
@@ -406,6 +412,8 @@ export interface KeyMetricsProductCheckResult {
   products: KeyMetricsProductCheckItem[]
   uncoveredSubjects: string[]
   brokenKeywords: string[]
+  /** 显式科目模式下在收入科目树中不存在的编码（关键词模式下恒为空） */
+  brokenCodes: string[]
   missingProfitMirror: string[]
 }
 
@@ -481,6 +489,99 @@ export interface ProductMetricsResponse {
   degraded: boolean
   rows: ProductMetricsRow[]
   totals: { income: KeyMetricsGroup; profit: KeyMetricsGroup }
+}
+
+// ===== 即席分析 / 自定义报表（POST /dashboard/analysis/query，见 docs/plans/即席分析模块技术方案.md §4）=====
+
+/** 即席分析查询请求体（与后端 server/src/lib/analysis-query.ts 的 schema 对应） */
+export interface AnalysisQuerySpec {
+  /** 缺省按用户 scope 汇总；汇总主体编码自动展开成员 */
+  companyCode?: string
+  /** 缺省取最新可用期间（YYYY-MM） */
+  period?: string
+  rowDim: 'product' | 'category' | 'expense' | 'subject' | 'company'
+  /** 列维度（矩阵模式，v2）：存在时响应为行列二维 cells 形态；不能与 rowDim 相同 */
+  colDim?: 'product' | 'category' | 'expense' | 'subject' | 'company'
+  /** 列成员过滤（编码白名单）；缺省 = 该维度全部成员 */
+  colCodes?: string[]
+  filters?: {
+    excludeReclassify?: boolean
+    keyword?: string
+    rowCodes?: string[]
+  }
+  metrics?: string[]
+  options?: {
+    includeEmptyRows?: boolean
+    includeTotals?: boolean
+    level?: number | null
+  }
+}
+
+/** 指标列定义（后端下发，前端按 valueType 渲染；口径以这里为准，前端静态表仅用于列的标签） */
+export interface AnalysisMetricColumn {
+  key: string
+  header: string
+  /** amount=金额(万元) / ratio=百分数(×100) / quantity=整数 */
+  valueType: 'amount' | 'ratio' | 'quantity'
+  /** 表头分组（多指标组维度下为 收入/毛利/净利润） */
+  group?: string
+  tip: string
+}
+
+export interface AnalysisQueryRow {
+  code: string
+  name: string
+  level: number
+  isTotal: boolean
+  /** key 与 columns[].key 对齐；null = 不适用/无预算（前端显示「—」） */
+  values: Record<string, number | null>
+  /** 矩阵模式（colDim 存在）：列成员编码 → 指标值（含 "__total" 行小计，与 values 相同） */
+  cells?: Record<string, Record<string, number | null>>
+}
+
+/** 矩阵模式列成员（科目维度成员的 subjectCodes 即其命中科目集） */
+export interface AnalysisColMember {
+  code: string
+  name: string
+  subjectCodes: string[]
+}
+
+export interface AnalysisQueryResponse {
+  period: string
+  rowDim: string
+  colDim?: string
+  colMembers?: AnalysisColMember[]
+  companyCode: string | null
+  companyName: string | null
+  companyType: 'single' | 'summary' | null
+  degraded: boolean
+  columns: AnalysisMetricColumn[]
+  rows: AnalysisQueryRow[]
+  totals?: { values: Record<string, number | null> }
+  meta: { skippedReclassifyLogs: number; unmatchedRows: string[] }
+}
+
+/** 行维度选项 */
+export const ANALYSIS_ROW_DIMS: { value: AnalysisQuerySpec['rowDim']; label: string; hint: string }[] = [
+  { value: 'product', label: '产品', hint: '按产品配置（key_metrics_product）匹配收入科目，含毛利组' },
+  { value: 'category', label: '品类', hint: '按品类配置（product_category）匹配收入科目，含毛利组' },
+  { value: 'expense', label: '运营费用', hint: '按费用映射（expense_subject_mapping）的科目编码集合汇总' },
+  { value: 'subject', label: '科目', hint: '经营科目树逐节点投影，可按层级过滤' },
+  { value: 'company', label: '主体', hint: '按主体展示配置逐主体聚合，含收入/毛利/净利润三组' },
+]
+
+/** 即席分析视图（自定义报表持久化；spec 为规范化后的查询描述） */
+export interface AnalysisViewItem {
+  id: string
+  name: string
+  ownerId: string
+  ownerName: string
+  shared: boolean
+  spec: AnalysisQuerySpec
+  /** 当前用户是否为创建者（false = 他人共享，只读） */
+  isOwner: boolean
+  createdAt: string
+  updatedAt: string
 }
 
 /** 运营费用映射（运营费用分析：展示指标 ↔ 经营科目编码集合） */

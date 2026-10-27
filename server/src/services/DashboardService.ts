@@ -56,7 +56,7 @@ interface Trend {
 
 /** 品类预算达成的单指标组（收入/毛利各一组）：预算为年度总额；monthBudget 为当月预算金额（按占比拆分，无预算 null）；
  * ytdBudget 为预警专用的累计预算（按占比前缀和累计，不参与看板展示，无预算 null） */
-interface ProductBudgetMetric {
+export interface ProductBudgetMetric {
   budget: number
   monthBudget: number | null
   monthActual: number
@@ -83,24 +83,16 @@ interface ProductBudgetRow {
   profit: ProductBudgetMetric
 }
 
-/** 运营费用分析基础行：展示指标（映射配置）+ 单组口径值（字段平铺，供前端直接消费） */
-interface ExpenseAnalysisBase {
+/** 运营费用分析基础行：映射配置展示字段 + 单组口径值（字段平铺，供前端直接消费）。
+ * 口径字段与 ProductBudgetMetric 完全一致（实现即 `{ code, name, ...productMetric(...) }`），
+ * 故直接继承——此前仅声明了子集，导致 ytdBudget/ytdCumRate 在运行时存在但类型不可见。 */
+export interface ExpenseAnalysisBase extends ProductBudgetMetric {
   code: string
   name: string
-  budget: number
-  monthBudget: number | null
-  monthActual: number
-  monthSame: number
-  monthRate: number | null
-  monthYoy: number
-  ytdActual: number
-  ytdSame: number
-  ytdRate: number | null
-  ytdYoy: number
 }
 
 /** 运营费用分析行（含环比）：monthPrev 上月实际金额（供合计行环比按 Σ金额重算）、monthMom 环比率 */
-interface ExpenseAnalysisRow extends ExpenseAnalysisBase {
+export interface ExpenseAnalysisRow extends ExpenseAnalysisBase {
   monthPrev: number
   monthMom: number
 }
@@ -224,16 +216,16 @@ export function rootByName(tree: ValueNode[], name: string): ValueNode | undefin
   return tree.find((n) => n.name === name)
 }
 
-function actual(node?: ValueNode): number {
+export function actual(node?: ValueNode): number {
   return node?.values[OPERATING_DIMS.ACTUAL_MONTH] ?? 0
 }
-function budget(node?: ValueNode): number {
+export function budget(node?: ValueNode): number {
   return node?.values[OPERATING_DIMS.BUDGET_AMOUNT] ?? 0
 }
-function ytd(node?: ValueNode): number {
+export function ytd(node?: ValueNode): number {
   return node?.values[OPERATING_DIMS.YTD_ACTUAL] ?? 0
 }
-function samePeriod(node?: ValueNode): number {
+export function samePeriod(node?: ValueNode): number {
   return node?.values[OPERATING_DIMS.SAME_PERIOD_ACTUAL] ?? 0
 }
 function round2(n: number): number {
@@ -347,7 +339,7 @@ export function alertScopeWhere(companyCodes: string[]): Prisma.AlertWhereInput 
 }
 
 /** active 经营批次内的可用期间（升序；多批次按期间共存，汇总全部 active 批次） */
-async function availablePeriods(): Promise<string[]> {
+export async function availablePeriods(): Promise<string[]> {
   const batches = await prisma.importBatch.findMany({ where: { dataType: 'operating', lifecycleStatus: 'active' }, select: { id: true } })
   if (batches.length === 0) return []
   const rows = await prisma.factOperating.findMany({
@@ -378,7 +370,7 @@ async function hasOperatingData(companyCodes: string[], period: string): Promise
 }
 
 /** 四个核心指标的节点定位：收入/毛利/回款按 category，净利润在「经营指标」子树内按名称 */
-function metricNodes(tree: ValueNode[]): { revenue?: ValueNode; profit?: ValueNode; netProfit?: ValueNode; collection?: ValueNode } {
+export function metricNodes(tree: ValueNode[]): { revenue?: ValueNode; profit?: ValueNode; netProfit?: ValueNode; collection?: ValueNode } {
   return {
     revenue: tree.find((n) => n.category === '壹品慧收入'),
     profit: tree.find((n) => n.category === '壹品慧毛利'),
@@ -493,11 +485,13 @@ export function productMetric(node?: ValueNode, monthBudget?: number | null, ytd
   }
 }
 
-/** 品类配置的匹配载体（由 product_category 表派生） */
+/** 品类配置的匹配载体（由 product_category / key_metrics_product 表派生） */
 export interface ProductCategoryMatch {
   code: string
   name: string
   subjectKeyword: string
+  /** 显式科目编码集合（C1 混合模式）：非空时按编码精确匹配，为空时回退 subjectKeyword 关键词匹配 */
+  subjectCodes?: string[]
 }
 
 /** 品类 × 科目树匹配结果：rows 供看板展示；covered/uncovered 供科目树变化检测 */
@@ -574,8 +568,58 @@ export function attachExpenseMom(rows: ExpenseAnalysisBase[], prevRows: ExpenseA
 }
 
 /**
- * 品类 × 科目树匹配：按关键词命中收入类别节点（可多个，各维度求和；汇总节点值=子级求和），
- * subjectKeyword 支持逗号（半角/全角）分隔多关键词——各关键词命中节点取并集（按节点名去重防重复求和），
+ * 解析单个映射配置行命中的收入科目节点（C1 混合模式）。
+ *
+ * 匹配优先级：
+ *   1. subjectCodes 非空 → 按科目编码精确匹配（显式，不受科目改名/重构影响）
+ *   2. 否则              → 按 subjectKeyword 关键词匹配（自动，保持改造前行为）
+ *
+ * 两种模式共用「祖先已命中则后代剔除」的收敛规则：祖先节点值已包含全部后代，
+ * 父子同时命中会重复求和（如关键词命中「直饮水业务回款」及其子科目）。
+ * 命中集按 key 去重（显式=科目编码，关键词=节点名），与改造前关键词模式语义一致。
+ */
+export function resolveCategoryMembers(
+  cat: Pick<ProductCategoryMatch, 'subjectKeyword' | 'subjectCodes'>,
+  allNodes: ValueNode[],
+  incomeRoots: ValueNode[],
+): ValueNode[] {
+  const explicitCodes = (cat.subjectCodes ?? []).map((c) => c.trim()).filter(Boolean)
+  const explicit = explicitCodes.length > 0
+
+  let isHit: (n: ValueNode) => boolean
+  let keyOf: (n: ValueNode) => string
+  if (explicit) {
+    const codes = new Set(explicitCodes)
+    isHit = (n) => codes.has(n.code)
+    keyOf = (n) => n.code
+  } else {
+    // 关键词命中节点名取并集（多关键词可命中同一节点，按名去重防重复求和）
+    const names = new Set<string>()
+    for (const kw of cat.subjectKeyword.split(/[,，]/).map((k) => k.trim()).filter(Boolean)) {
+      for (const n of allNodes) {
+        if (n.name.includes(kw)) names.add(n.name)
+      }
+    }
+    isHit = (n) => names.has(n.name)
+    keyOf = (n) => n.name
+  }
+
+  const hits = new Map<string, ValueNode>()
+  const collect = (nodes: ValueNode[], ancestorHit: boolean): void => {
+    for (const n of nodes) {
+      const selfHit = isHit(n)
+      if (selfHit && !ancestorHit) hits.set(keyOf(n), n)
+      collect(n.children, ancestorHit || selfHit)
+    }
+  }
+  collect(incomeRoots, false)
+  return [...hits.values()]
+}
+
+/**
+ * 品类 × 科目树匹配：命中收入类别节点（可多个，各维度求和；汇总节点值=子级求和）。
+ * 匹配方式由 resolveCategoryMembers 决定——显式科目编码优先，为空时回退 subjectKeyword 关键词
+ * （关键词支持逗号（半角/全角）分隔多关键词，各关键词命中节点取并集），
  * 用于无对应科目汇总节点的品类合计行（如「服务类」= 宣传推广+维修改造+安检 各科目之和）。
  * 毛利按镜像名（profitMirrorName，"XX收入"→"XX毛利"）在毛利类别中取值求和。
  * ratios/monthIndex 传入时月度达成率按占比拆分后的当月预算计算（未传保持年度/12 折算）。
@@ -621,26 +665,8 @@ export function matchProductCategories(
     return ytdBudgetOf(annual, ratios ?? null, monthIndex ?? -1)
   }
   for (const cat of categories) {
-    // subjectKeyword 支持逗号（半角/全角）分隔多关键词：命中节点取并集（按节点名去重，防多关键词命中同一节点重复求和）
-    const keywords = cat.subjectKeyword.split(/[,，]/).map((k) => k.trim()).filter(Boolean)
-    const matchedNamesAll = new Set<string>()
-    for (const kw of keywords) {
-      for (const n of allNodes) {
-        if (n.name.includes(kw)) matchedNamesAll.add(n.name)
-      }
-    }
-    // 命中集收敛为不重叠子树：祖先已命中时其后代不再计入——
-    // 祖先节点值已包含全部后代，父子同时命中会重复统计（如关键词命中「直饮水业务回款」及其子科目）
-    const hitByName = new Map<string, ValueNode>()
-    const collectHits = (nodes: ValueNode[], ancestorMatched: boolean): void => {
-      for (const n of nodes) {
-        const selfMatched = matchedNamesAll.has(n.name)
-        if (selfMatched && !ancestorMatched) hitByName.set(n.name, n)
-        collectHits(n.children, ancestorMatched || selfMatched)
-      }
-    }
-    collectHits(incomeRoots, false)
-    const hits = [...hitByName.values()]
+    // 命中集收敛为不重叠子树：祖先已命中时其后代不再计入（祖先值已包含全部后代，父子同命中会重复统计）
+    const hits = resolveCategoryMembers(cat, allNodes, incomeRoots)
     for (const h of hits) matchedNames.add(h.name)
     const income = productMetric(hits.length > 0 ? nodeOf(sumValues(hits)) : undefined, monthBudgetOf(hits), ytdBudgetOfNodes(hits))
     const profitHits = hits

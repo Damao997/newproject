@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { clearEmailCollectionSnooze } from '@/lib/email-collection'
+import { clearAccountReportDrafts } from '@/lib/report-draft'
 import type { User } from '@/types'
 
 interface AuthState {
@@ -16,6 +17,11 @@ interface AuthState {
   persistentLoginToken: string | null
   /** 修改密码对话框状态：force=true 为强制改密（不可关闭） */
   passwordDialog: { open: boolean; force: boolean }
+  /**
+   * 会话已失效（刷新令牌失败），等待同页重新认证（FE-02）。
+   * 保留 user 与页面状态以避免销毁表单输入；不落库、不跨刷新承诺恢复。
+   */
+  reauthRequired: boolean
   login: (
     user: User,
     accessToken: string,
@@ -29,17 +35,22 @@ interface AuthState {
   setPersistentLoginToken: (token: string | null) => void
   openPasswordDialog: (force: boolean) => void
   closePasswordDialog: () => void
+  /** 会话失效统一入口：保留当前账号与页面状态，等待同页重新认证 */
+  expireSession: () => void
+  /** 同页重新认证成功（仅同一稳定账号）：更新令牌与资料，不清空页面状态 */
+  reauthenticate: (user: User, accessToken: string, refreshToken: string) => void
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       accessToken: null,
       refreshToken: null,
       isAuthenticated: false,
       persistentLoginToken: null,
       passwordDialog: { open: false, force: false },
+      reauthRequired: false,
       login: (user, accessToken, refreshToken, options) =>
         set(() => {
           // 新一轮登录：清掉上次「暂不填写工作邮箱」的会话豁免，让收集引导重新生效
@@ -50,9 +61,13 @@ export const useAuthStore = create<AuthState>()(
             refreshToken,
             isAuthenticated: true,
             persistentLoginToken: options?.persistentLoginToken ?? null,
+            reauthRequired: false,
           }
         }),
-      logout: () =>
+      logout: () => {
+        // 显式退出清理本人报告草稿；会话过期走 expireSession/reauthenticate，不经过此处
+        const userId = get().user?.id
+        if (userId) clearAccountReportDrafts(userId)
         set({
           user: null,
           accessToken: null,
@@ -60,7 +75,9 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: false,
           persistentLoginToken: null,
           passwordDialog: { open: false, force: false },
-        }),
+          reauthRequired: false,
+        })
+      },
       updateUser: (userData) =>
         set((state) => ({
           user: state.user ? { ...state.user, ...userData } : null,
@@ -70,6 +87,9 @@ export const useAuthStore = create<AuthState>()(
       setPersistentLoginToken: (token) => set({ persistentLoginToken: token }),
       openPasswordDialog: (force) => set({ passwordDialog: { open: true, force } }),
       closePasswordDialog: () => set({ passwordDialog: { open: false, force: false } }),
+      expireSession: () => set({ reauthRequired: true }),
+      reauthenticate: (user, accessToken, refreshToken) =>
+        set({ user, accessToken, refreshToken, isAuthenticated: true, reauthRequired: false }),
     }),
     {
       name: 'auth-storage',

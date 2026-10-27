@@ -18,6 +18,7 @@ import { useConfirm } from '@/components/ui/confirm-dialog'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { useProductCategories, useProductCategoryCheck, useProductCategoryMutations } from '@/hooks/api-queries'
 import { BatchRowsDialog, BatchOpMessage } from './batch-rows-dialog'
+import { IncomeSubjectPicker } from './subject-code-picker'
 import { useBatchDelete } from './use-batch-delete'
 import { cn } from '@/lib/utils'
 import { Plus, RefreshCw, Pencil, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, ListPlus } from 'lucide-react'
@@ -33,11 +34,12 @@ interface CategoryForm {
   code: string
   name: string
   subjectKeyword: string
+  subjectCodes: string[]
   sortOrder: string
   status: 'active' | 'inactive'
 }
 
-const EMPTY_FORM: CategoryForm = { code: '', name: '', subjectKeyword: '', sortOrder: '', status: 'active' }
+const EMPTY_FORM: CategoryForm = { code: '', name: '', subjectKeyword: '', subjectCodes: [], sortOrder: '', status: 'active' }
 
 /**
  * 品类配置管理面板（品类预算达成分析）：维护品类 ↔ 收入科目名关键词的对应关系，
@@ -52,7 +54,8 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<ProductCategory | null>(null)
-  const model = useFormModel<CategoryForm>(EMPTY_FORM, {"name":"请输入品类名称","subjectKeyword":"请输入收入科目关键词"})
+  // subjectKeyword 不设 required：C1 混合模式下允许「纯显式科目」配置，联合校验见 handleSave
+  const model = useFormModel<CategoryForm>(EMPTY_FORM, { "name": "请输入品类名称" })
   const form = model.values
   const setForm = model.setValues
   const [saving, setSaving] = useState(false)
@@ -84,6 +87,7 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
       code: row.code,
       name: row.name,
       subjectKeyword: row.subjectKeyword,
+      subjectCodes: row.subjectCodes ?? [],
       sortOrder: String(row.sortOrder),
       status: row.status,
     })
@@ -93,8 +97,13 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
 
   const handleSave = async () => {
     if (!(await model.validate())) return
-    if (!form.name.trim() || !form.subjectKeyword.trim()) {
-      setError('品类名称与匹配关键词必填')
+    if (!form.name.trim()) {
+      setError('品类名称必填')
+      return
+    }
+    // C1 混合模式：显式科目非空时按编码精确匹配；为空回退关键词匹配。两者至少配置一个
+    if (!form.subjectKeyword.trim() && form.subjectCodes.length === 0) {
+      setError('「匹配关键词」与「显式科目」至少配置一个')
       return
     }
     if (!editing && !form.code.trim()) {
@@ -107,6 +116,7 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
       const payload = {
         name: form.name.trim(),
         subjectKeyword: form.subjectKeyword.trim(),
+        subjectCodes: form.subjectCodes,
         sortOrder: form.sortOrder ? Number(form.sortOrder) : 0,
         status: form.status,
       }
@@ -138,11 +148,11 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
     }
   }
 
-  // 批量新增行校验：必填 + 编码唯一（对已有列表与行间查重）
+  // 批量新增行校验：必填 + 编码唯一（对已有列表与行间查重）；关键词与显式科目至少一个非空（C1）
   const validateBatchRow = (row: CategoryForm, _index: number, allRows: CategoryForm[]): string | null => {
     if (!row.code.trim()) return '品类编码必填'
     if (!row.name.trim()) return '品类名称必填'
-    if (!row.subjectKeyword.trim()) return '匹配关键词必填'
+    if (!row.subjectKeyword.trim() && row.subjectCodes.length === 0) return '「匹配关键词」与「显式科目」至少配置一个'
     if ((categories ?? []).some((c) => c.code === row.code.trim())) return `编码 ${row.code.trim()} 已存在`
     if (allRows.filter((r) => r.code.trim() === row.code.trim()).length > 1) return `编码 ${row.code.trim()} 在批量行中重复`
     return null
@@ -157,6 +167,7 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
           code: row.code.trim(),
           name: row.name.trim(),
           subjectKeyword: row.subjectKeyword.trim(),
+          subjectCodes: row.subjectCodes,
           sortOrder: row.sortOrder ? Number(row.sortOrder) : 0,
           status: row.status,
         })
@@ -171,17 +182,25 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
   const selectedBatchRows = (categories ?? []).filter((r) => batchDelete.selectedKeys.has(r.id))
 
   const checkMap = new Map((check?.categories ?? []).map((c) => [c.id, c]))
-  const hasWarnings = (check?.uncoveredSubjects.length ?? 0) > 0 || (check?.brokenKeywords.length ?? 0) > 0 || (check?.missingProfitMirror.length ?? 0) > 0
+  const hasWarnings = (check?.uncoveredSubjects.length ?? 0) > 0 || (check?.brokenKeywords.length ?? 0) > 0 || (check?.brokenCodes.length ?? 0) > 0 || (check?.missingProfitMirror.length ?? 0) > 0
 
   // 品类列表列（含科目树变化检测结果与权限门禁行操作）
   const columns: DataTableColumn<ProductCategory>[] = useMemo(() => {
     const cols: DataTableColumn<ProductCategory>[] = [
       { key: 'name', header: '品类名称', cellClassName: 'font-medium text-foreground' },
       {
-        key: 'subjectKeyword', header: '匹配关键词',
-        render: (row) => (
-          <code className="rounded bg-muted px-1.5 py-0.5 text-xs text-foreground">{row.subjectKeyword}</code>
-        ),
+        key: 'subjectKeyword', header: '匹配方式',
+        render: (row) =>
+          row.subjectCodes.length > 0 ? (
+            <span className="inline-flex items-center gap-1.5">
+              <Badge variant="default" className="text-micro">显式 {row.subjectCodes.length} 科</Badge>
+              <span className="text-micro text-muted-foreground" title={row.subjectKeyword ? `关键词回退：${row.subjectKeyword}` : '未配置关键词回退'}>
+                精确匹配
+              </span>
+            </span>
+          ) : (
+            <code className="rounded bg-muted px-1.5 py-0.5 text-xs text-foreground">{row.subjectKeyword}</code>
+          ),
       },
       { key: 'sortOrder', header: '排序', align: 'right', cellClassName: 'font-num text-foreground' },
       {
@@ -318,6 +337,20 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
               </div>
             </div>
           )}
+          {(check?.brokenCodes?.length ?? 0) > 0 && (
+            <div className="flex items-start gap-2 text-xs">
+              <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+              <div>
+                <span className="font-medium text-destructive">以下显式科目编码在收入科目树中不存在</span>
+                <span className="ml-2 text-muted-foreground">（科目可能已改名/停用/删除，请在对应品类编辑中修正）</span>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {check!.brokenCodes.map((c) => (
+                    <span key={c} className="rounded-full bg-destructive/10 px-2 py-0.5 font-num text-destructive">{c}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
           {(check?.missingProfitMirror?.length ?? 0) > 0 && (
             <div className="flex items-start gap-2 text-xs">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
@@ -361,7 +394,7 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
           <DialogHeader>
             <DialogTitle>{editing ? '编辑品类配置' : '新增品类配置'}</DialogTitle>
             <DialogDescription>
-              品类名称将展示在看板品类预算达成分析中；匹配关键词对应经营科目树收入类别下的科目名（可命中多个科目并自动求和）。
+              品类名称将展示在看板品类预算达成分析中。匹配方式二选一或并用：<b>显式科目</b>按科目编码精确匹配（不受科目改名影响，需人工维护）；未配置显式科目时回退<b>匹配关键词</b>按科目名模糊匹配（多个关键词逗号分隔）。两者至少配置一个。
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="grid gap-4"><ModelFormFields model={model}>
@@ -385,11 +418,18 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="subjectKeyword" className="text-xs text-muted-foreground">匹配关键词</Label>
+                <Label htmlFor="subjectKeyword" className="text-xs text-muted-foreground">匹配关键词（回退，逗号分隔多个）</Label>
                 <Input name="subjectKeyword"
                   value={form.subjectKeyword}
                   onChange={(e) => setForm((f) => ({ ...f, subjectKeyword: e.target.value }))}
-                  placeholder="如 厨房产品销售"
+                  placeholder="如 厨房产品销售；配置了显式科目时可不填"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">显式科目（优先，多选；勾选父级即含全部后代，父子同选只计祖先）</Label>
+                <IncomeSubjectPicker
+                  value={form.subjectCodes}
+                  onChange={(codes) => setForm((f) => ({ ...f, subjectCodes: codes }))}
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -437,12 +477,12 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
         open={batchOpen}
         onOpenChange={setBatchOpen}
         title="批量新增品类配置"
-        description="逐行填写后一次性创建；编码不可与已有品类重复，匹配关键词对应经营科目树收入类别下的科目名。"
+        description="逐行填写后一次性创建；编码不可与已有品类重复。显式科目按编码精确匹配（优先），未配置时回退匹配关键词（对应收入类别下的科目名），两者至少配置一个。"
         createEmptyRow={() => ({ ...EMPTY_FORM })}
         validateRow={validateBatchRow}
         submitRows={submitBatchRows}
-        renderRowFields={(row, _index, patch, invalid) => (
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+        renderRowFields={(row, _index, patch, invalid, _submitting, _allRows) => (
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-6">
             <Input
               value={row.code}
               onChange={(e) => patch({ code: e.target.value })}
@@ -458,9 +498,15 @@ export function ProductCategoryPanel({ canCreate = false, canUpdate = false, can
             <Input
               value={row.subjectKeyword}
               onChange={(e) => patch({ subjectKeyword: e.target.value })}
-              placeholder="匹配关键词 *"
-              aria-invalid={invalid && !row.subjectKeyword.trim()}
+              placeholder="关键词（回退）"
+              aria-invalid={invalid && !row.subjectKeyword.trim() && row.subjectCodes.length === 0}
             />
+            <div aria-invalid={invalid && row.subjectCodes.length === 0 && !row.subjectKeyword.trim()}>
+              <IncomeSubjectPicker
+                value={row.subjectCodes}
+                onChange={(codes) => patch({ subjectCodes: codes })}
+              />
+            </div>
             <Input
               type="number"
               value={row.sortOrder}
