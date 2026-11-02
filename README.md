@@ -7,12 +7,13 @@
 - Web：React 19、TypeScript 6、Vite 5、Tailwind CSS、Radix UI、Ant Design
 - 服务端：Node.js 20、Express 4、TypeScript 5.6、Prisma 5
 - 数据库：PostgreSQL 17（Windows 生产使用嵌入式实例）
-- 生产运行：Windows、PM2、`serve-static.cjs` 同源 API 代理、可选 FRP 公网入口
+- 生产运行：Windows + PM2 + 嵌入式 PostgreSQL；企业 AI 中台使用 Docker + 平台共享 PostgreSQL，两套生产通道并行
 
 ## 工作区约定
 
 - `D:\ZJYPHFA-dev`：开发工作区，只在这里修改、测试和提交代码。
 - `D:\ZJYPHFA`：生产工作区，只检出 `main` 的正式 tag 并执行部署脚本。
+- 企业 AI 中台：应用 `yipinhui-finance`，同一正式 tag 通过 ai-portal MCP 独立发布。
 
 生产数据、备份、PostgreSQL 工具、真实环境变量和运维密钥均不得进入 Git。
 
@@ -36,6 +37,7 @@ powershell -File server\scripts\deploy-zjyph.ps1 -Tag v2026.09.2
 
 - AI/工程约束：[CLAUDE.md](CLAUDE.md)
 - 开发与生产更新流程：[开发与生产更新指南](docs/plans/开发与生产更新指南.md)
+- AI 中台并行部署：[AI 中台部署流程](docs/plans/AI中台部署流程.md)
 - 环境隔离与运维：[环境管理规范](docs/plans/环境管理规范.md)
 - 标准操作流程：[标准操作流程手册](docs/plans/标准操作流程手册.md)
 - 安全与权限：[安全与权限规范](docs/plans/安全与权限规范.md)

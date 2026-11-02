@@ -2,10 +2,10 @@
 
 > **项目身份**：`yipinhui_finance_analytics` | 内部管理口径财务数据平台 | "Excel 进、看板/报表出"
 > **技术栈**：Vite5+React19+TypeScript6+Radix UI+Shadcn/ui+Tailwind+Zustand5+ECharts6+TipTap3 / Express4.21+TypeScript5.6+Prisma5+PostgreSQL17+JWT
-> **AI 引擎**：DeepSeek API（SSE 流式） | **部署**：生产为内网 Windows 非 Docker（PM2 + 嵌入式 PG17，权威口径见 docs/plans/环境管理规范.md；Docker 为预留迁移路径） | **单位**：万元/人民币/简体中文
+> **AI 引擎**：DeepSeek API（SSE 流式） | **部署**：内网 Windows 非 Docker（PM2 + 嵌入式 PG17）与企业 AI 中台 Docker 双生产通道并行（权威口径见 docs/plans/环境管理规范.md） | **单位**：万元/人民币/简体中文
 > **受众**：本文件是日常开发的权威规范；`AGENTS.md` 作为跨 Agent 自动加载入口并指向本文件。
 
-> **生产发版强制入口**：凡涉及生产部署、上线、回滚、正式 tag 或 `main` 发布，必须先阅读 [`docs/plans/生产部署发布流程.md`](docs/plans/生产部署发布流程.md)，再按文档调用 `server/scripts/deploy-zjyph.ps1`。生产目录 `D:\ZJYPHFA` 只允许获取 tag、备份、部署、巡检和回滚；不得在生产目录开发、测试、stash 或直接 pull。
+> **生产发版强制入口**：凡涉及生产部署、上线、回滚、正式 tag 或 `main` 发布，必须先阅读 [`docs/plans/生产部署发布流程.md`](docs/plans/生产部署发布流程.md)。Windows 内网生产调用 `server/scripts/deploy-zjyph.ps1`；企业 AI 中台调用 ai-portal MCP，并遵循 [`docs/plans/AI中台部署流程.md`](docs/plans/AI中台部署流程.md)。生产目录 `D:\ZJYPHFA` 只允许获取 tag、备份、部署、巡检和回滚；不得在生产目录开发、测试、stash 或直接 pull。
 
 ---
 
@@ -267,6 +267,7 @@ formatMoneyWan(value) // → "1,234.56"（财务指标/数据管理，纯数值�
 | **写 AI 润色/分析/脱敏** | Read `docs/plans/AI模块规范.md` |
 | **配 Docker/Nginx/备份/部署/环境分离** | Read `docs/plans/环境管理规范.md`（当前实际方案，权威）+ `docs/references/devops.md` + `docs/plans/部署运维规范.md` |
 | **生产发布/上线/回滚/tag** | **先 Read `docs/plans/生产部署发布流程.md`（强制）**，再按 `server/scripts/deploy-zjyph.ps1` 执行；同时 Read `docs/plans/环境管理规范.md` |
+| **企业 AI 中台发布/更新** | Read `docs/plans/AI中台部署流程.md` + `docs/plans/生产部署发布流程.md`；更新必须复用原 `name`/`slug` |
 | **配错误码/响应格式/异常处理** | Read `docs/references/errorcode.md` |
 | **配日志/traceId/监控** | Read `docs/references/observability.md` |
 | **配性能优化/缓存** | Read `docs/references/performance.md` |
