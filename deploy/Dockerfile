@@ -22,7 +22,7 @@ RUN cd web && npm run build
 
 FROM registry.zrhsh.com/library/node:20-alpine AS runner
 
-RUN apk add --no-cache openssl
+RUN apk add --no-cache openssl socat su-exec
 
 ENV NODE_ENV=production \
     PORT=8080 \
@@ -41,9 +41,7 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
     && mkdir -p /app/server/uploads/report-images \
     && chown -R node:node /app/server/uploads
 
-USER node
-
-EXPOSE 8080
+EXPOSE 80 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD wget -q --spider "http://127.0.0.1:${PORT}/health" || exit 1
