@@ -16,7 +16,12 @@ const EXEMPT_AUTH_PATHS = [
 ]
 
 function isExemptPath(req: Request): boolean {
-  return EXEMPT_AUTH_PATHS.some((e) => e.method === req.method && req.originalUrl.startsWith(e.path))
+  // 路由内部的 baseUrl + path 已由中台前缀中间件规范化，不能读取带 /<slug>/ 的 originalUrl。
+  const routedPath = req.baseUrl || req.path ? `${req.baseUrl ?? ''}${req.path ?? ''}` : ''
+  const currentPath = (routedPath || req.originalUrl).split('?')[0]
+  return EXEMPT_AUTH_PATHS.some(
+    (e) => e.method === req.method && (currentPath === e.path || currentPath.startsWith(`${e.path}/`)),
+  )
 }
 
 /**

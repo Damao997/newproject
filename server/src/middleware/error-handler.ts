@@ -41,7 +41,7 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
   }
 
   if (err instanceof ZodError) {
-    const first = err.errors[0]
+    const first = err.issues[0]
     const message = first ? `${first.path.join('.') || '参数'}: ${first.message}` : '参数校验失败'
     logger.warn(traceId, `参数校验失败: ${message}`)
     sendFail(res, 400, message, 400)

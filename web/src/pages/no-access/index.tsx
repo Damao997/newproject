@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { resolveHomePath } from '@/lib/permissions'
 import { api } from '@/lib/api'
+import { assetPath } from '@/lib/portal-path'
 
 const ROLE_LABEL: Record<string, string> = { superadmin: '超级管理员', admin: '系统管理员', finance_manager: '财务主管', department_manager: '部门经理', finance_analyst_it: '财务分析师', viewer: '只读用户' }
 
@@ -25,7 +26,7 @@ export default function NoAccessPage() {
   return (
     <main className="flex min-h-dvh items-center justify-center bg-page p-4">
       <div className="w-full max-w-lg rounded-card border border-subtle bg-card px-6 py-10 text-center sm:px-10">
-        <img src="/logo.png" alt="浙江壹品慧" className="mx-auto mb-10 h-10 w-10 object-contain" />
+        <img src={assetPath('/logo.png')} alt="浙江壹品慧" className="mx-auto mb-10 h-10 w-10 object-contain" />
         <ShieldAlert className="mx-auto mb-5 h-9 w-9 text-warning-strong" aria-hidden />
         <h1 className="page-title text-2xl font-semibold text-foreground">当前账号暂无访问权限</h1>
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">请联系平台管理员，说明需要访问的模块与使用用途。</p>

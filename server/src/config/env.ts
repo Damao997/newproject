@@ -1,5 +1,6 @@
 import dotenv from 'dotenv'
 import { getFiscalStartMonth } from '../lib/period'
+import { normalizeBasePath } from '../lib/base-path'
 
 dotenv.config()
 
@@ -29,6 +30,12 @@ export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR'
 export interface AppConfig {
   nodeEnv: string
   port: number
+  /** 中台挂载前缀；普通部署为空字符串。 */
+  basePath: string
+  /** 单进程容器内前端构建产物目录；为空表示仅提供 API。 */
+  webRoot: string | null
+  /** 可信反向代理跳数；普通本机代理为 0，中台入口通常为 1。 */
+  trustProxyHops: number
   databaseUrl: string
   jwtSecret: string
   jwtRefreshSecret: string
@@ -69,6 +76,9 @@ export function loadConfig(): AppConfig {
   const config: AppConfig = {
     nodeEnv: optional('NODE_ENV', 'development'),
     port: Number(optional('PORT', '3001')),
+    basePath: normalizeBasePath(process.env.BASE_PATH),
+    webRoot: process.env.WEB_ROOT?.trim() || null,
+    trustProxyHops: Number(optional('TRUST_PROXY_HOPS', '0')),
     databaseUrl: required('DATABASE_URL'),
     jwtSecret: required('JWT_SECRET', 32),
     jwtRefreshSecret: required('JWT_REFRESH_SECRET', 32),
@@ -97,6 +107,9 @@ export function loadConfig(): AppConfig {
 
   if (Number.isNaN(config.port)) {
     throw new Error('环境变量 PORT 非法')
+  }
+  if (!Number.isInteger(config.trustProxyHops) || config.trustProxyHops < 0 || config.trustProxyHops > 10) {
+    throw new Error('环境变量 TRUST_PROXY_HOPS 非法（需为 0..10 的整数）')
   }
   if (Number.isNaN(config.bcryptCost) || config.bcryptCost < 12) {
     throw new Error('环境变量 BCRYPT_COST 非法（cost 必须 >= 12）')

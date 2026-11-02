@@ -9,7 +9,7 @@
 .app-sidebar nav a, .navigation-drawer nav a { border-radius: 14px; }
 .app-sidebar nav a { transition: background-color 160ms ease, color 160ms ease, transform 160ms ease; }
 .app-sidebar nav a:hover { transform: translateX(2px); }
-.app-sidebar nav a[href^='/dashboard'] svg, .app-sidebar nav a[href^='/indicators'] svg { color: hsl(var(--metric-ink-1)); }
+.app-sidebar nav a[href*='/dashboard'] svg, .app-sidebar nav a[href*='/indicators'] svg { color: hsl(var(--metric-ink-1)); }
 .app-sidebar nav a[href^='/transactions'] svg, .app-sidebar nav a[href^='/inventory'] svg { color: hsl(var(--metric-ink-2)); }
 .app-sidebar nav a[href^='/reports'] svg { color: hsl(var(--metric-ink-4)); }
 .app-sidebar nav a[href^='/data'] svg { color: hsl(var(--metric-ink-3)); }

@@ -1,6 +1,6 @@
 import { FormErrorSummary } from './error-summary'
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode, type RefCallback } from 'react'
-import { Controller, useForm, type FieldValues, type Path, type PathValue } from 'react-hook-form'
+import { Controller, useForm, type FieldValues, type Path, type PathValue, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import type { Dispatch, SetStateAction } from 'react'
@@ -17,7 +17,9 @@ export function useFormModel<T extends FieldValues>(initial: T, required: Partia
   }
   // schema 字段和默认值逐项同源；业务联合类型仍由调用方维护。
   const schema = explicitSchema ?? z.object(shape) as unknown as z.ZodType<T>
-  const form = useForm<T>({ defaultValues: initial as import('react-hook-form').DefaultValues<T>, resolver: zodResolver(schema), mode: 'onBlur', reValidateMode: 'onChange' })
+  // @hookform/resolvers 当前泛型未完整表达 Zod 4 的 input/output；运行时仍由同一 schema 校验。
+  const resolver = zodResolver(schema as never) as Resolver<T>
+  const form = useForm<T>({ defaultValues: initial as import('react-hook-form').DefaultValues<T>, resolver, mode: 'onBlur', reValidateMode: 'onChange' })
   const validationAttempted = useRef(false)
   const submitLock = useRef(false)
   const [pending, setPending] = useState(false)

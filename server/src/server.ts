@@ -9,10 +9,13 @@ import { basePrisma } from './lib/prisma'
  */
 async function bootstrap(): Promise<void> {
   const config = loadConfig()
-  const app = createApp()
+  const app = createApp({ basePath: config.basePath, webRoot: config.webRoot })
 
-  const server = app.listen(config.port, () => {
-    logger.info(undefined, `后端服务已启动：http://localhost:${config.port}（env=${config.nodeEnv}）`)
+  const server = app.listen(config.port, '0.0.0.0', () => {
+    logger.info(
+      undefined,
+      `服务已启动：http://0.0.0.0:${config.port}（env=${config.nodeEnv}，basePath=${config.basePath || '/'}，webRoot=${config.webRoot ?? '-'}）`,
+    )
   })
 
   // 与 nginx keepalive_timeout 65s 对齐：Node 默认 keepAliveTimeout 仅 5s，

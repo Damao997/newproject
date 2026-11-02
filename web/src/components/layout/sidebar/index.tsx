@@ -3,6 +3,7 @@ import { Drawer } from 'antd'
 import { PanelLeftClose, PanelLeftOpen, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { assetPath } from '@/lib/portal-path'
 import { NavList } from './nav-list'
 
 interface SidebarProps {
@@ -14,7 +15,7 @@ interface SidebarProps {
 function SidebarBrand({ collapsed }: { collapsed: boolean }) {
   return (
     <Link to="/dashboard" aria-label="浙江壹品慧经营分析平台首页" className={cn('sidebar-brand flex h-14 shrink-0 items-center gap-3 px-5', collapsed && 'justify-center px-2')}>
-      <img src="/logo.png" alt="" className="h-8 w-8 shrink-0 object-contain" />
+      <img src={assetPath('/logo.png')} alt="" className="h-8 w-8 shrink-0 object-contain" />
       {!collapsed && <span className="min-w-0"><span className="block text-base font-semibold tracking-wide text-sidebar-brand-fg">浙江壹品慧</span><span className="block text-xs text-sidebar-fg">经营分析平台</span></span>}
     </Link>
   )

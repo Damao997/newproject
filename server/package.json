@@ -44,7 +44,7 @@
     "sharp": "^0.35.5",
     "svg-captcha": "^1.4.0",
     "xlsx": "file:vendor/xlsx-0.20.3.tgz",
-    "zod": "^3.24.1"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
