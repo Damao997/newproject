@@ -4,8 +4,9 @@ import type { ApiResponse, LoginRequest, LoginResponse, AutoLoginResponse, User,
 
 import type { PersonalPreferences, PreferenceSnapshot } from '@/lib/personal-settings'
 import type { ProfileUser } from '@/types'
+import { getApiBaseUrl, withBasePath } from '@/lib/portal-path'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+const API_BASE_URL = getApiBaseUrl()
 
 /**
  * 携带 HTTP 状态码的业务错误：乐观锁 409 等场景须按状态码而非文案识别，
@@ -131,7 +132,7 @@ export function handleSessionExpired(_reason: unknown): void {
   useAuthStore.getState().logout()
   if (sessionExpiredNotified) return
   sessionExpiredNotified = true
-  window.location.href = '/login?expired=1'
+    window.location.href = withBasePath('/login?expired=1')
 }
 
 /** 月度报表激活的公司月份组合。 */

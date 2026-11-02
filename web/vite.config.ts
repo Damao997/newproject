@@ -12,6 +12,8 @@ export default defineConfig(({ mode }) => {
   const webPort = Number(loadEnv(mode, __dirname, '').VITE_DEV_PORT || 5173)
 
   return {
+    // 中台将应用挂在 /<slug>/ 下，全部构建资源必须相对加载。
+    base: './',
     plugins: [react(), {
       name: 'app-theme-bootstrap',
       transformIndexHtml: {

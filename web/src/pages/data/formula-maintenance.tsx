@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { DataTable, type DataTableColumn } from '@/components/data-table/data-table'
 import { Pagination } from '@/components/data-table/pagination'
-import { PAGINATION } from '@/lib/constants'
+import { API_BASE_URL, PAGINATION } from '@/lib/constants'
 import { useAuthStore } from '@/stores/authStore'
 import {
   useMetrics,
@@ -215,7 +215,7 @@ export function FormulaMaintenance({ canCreate = false, canUpdate = false, canDe
     setFormulaExporting(true)
     setFormulaExportFlash(null)
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || '/api/v1'}/data/metrics/formulas/export`, {
+      const res = await fetch(`${API_BASE_URL}/data/metrics/formulas/export`, {
         // token 统一取自 zustand store（localStorage 的 auth-storage 为嵌套 JSON，直读 getItem('accessToken') 恒为 null 导致 401）
         headers: { Authorization: `Bearer ${useAuthStore.getState().accessToken ?? ''}` },
       })

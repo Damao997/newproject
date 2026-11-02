@@ -9,6 +9,7 @@ import { HomeRedirect } from '@/components/layout/home-redirect'
 import { ErrorBoundary } from '@/components/layout/error-boundary'
 import { FormNavigationProvider } from '@/components/forms/form-navigation'
 import { DocumentTitle } from '@/components/layout/document-title'
+import { getBasePath } from '@/lib/portal-path'
 
 const SettingsPage = lazy(() => import('@/pages/settings'))
 const LoginPage = lazy(() => import('@/pages/login'))
@@ -181,7 +182,7 @@ const router = createBrowserRouter(createRoutesFromElements(<Route element={<Rou
               </Route>
               {/* 未知路径：权限感知首页 */}
               <Route path="*" element={<HomeRedirect />} />
-              </Route>))
+              </Route>), { basename: getBasePath() || '/' })
 function App() {
   return <QueryClientProvider client={queryClient}><AntdProvider><TooltipProvider><RouterProvider router={router} /></TooltipProvider></AntdProvider></QueryClientProvider>
 }

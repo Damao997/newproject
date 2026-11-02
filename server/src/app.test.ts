@@ -35,6 +35,7 @@ process.env.EMAIL_COLLECTION_ENABLED = '0'
 process.env.CAPTCHA_ALWAYS_REQUIRED = '0'
 
 const app = createApp()
+const portalApp = createApp({ basePath: '/yipinhui-finance' })
 
 describe('isTrustedProxy（审计 IP 可信口径）', () => {
   it('仅本机 serve-static 代理跳可信', () => {
@@ -147,6 +148,16 @@ describe('GET /api/v1/auth/profile', () => {
       .set('Authorization', `Bearer ${token}`)
     expect(res.status).toBe(200)
     expect(res.body.code).toBe(0)
+    expect(res.body.data).toMatchObject({ id: 'u1', role: 'admin' })
+  })
+
+  it('中台前缀下强制改密用户仍可访问资料豁免路径', async () => {
+    mocks.prisma.user.findUnique.mockResolvedValue(activeUser({ mustChangePassword: true }))
+    const token = signAccessToken({ userId: 'u1', username: 'alice', roleCode: 'admin' })
+    const res = await request(portalApp)
+      .get('/yipinhui-finance/api/v1/auth/profile')
+      .set('Authorization', `Bearer ${token}`)
+    expect(res.status).toBe(200)
     expect(res.body.data).toMatchObject({ id: 'u1', role: 'admin' })
   })
 })

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const preferencesSchema = z.object({
+const preferencesShape = {
   theme: z.enum(['light', 'gradient', 'dark', 'antd']),
   showShortName: z.boolean(),
   sidebarCollapsed: z.boolean(),
@@ -10,7 +10,12 @@ export const preferencesSchema = z.object({
   defaultCompanies: z.array(z.string().max(32)).max(200),
   periodStartup: z.enum(['remember', 'latest']),
   indicatorDensity: z.enum(['default', 'dense', 'compact']),
-  dashboardKpiMode: z.enum(['month', 'ytd']).default('month'),
+  dashboardKpiMode: z.enum(['month', 'ytd']),
+} satisfies z.ZodRawShape
+
+export const preferencesSchema = z.object({
+  ...preferencesShape,
+  dashboardKpiMode: preferencesShape.dashboardKpiMode.default('month'),
 }).strict()
 export type PersonalPreferences = z.infer<typeof preferencesSchema>
 export const defaultPreferences: PersonalPreferences = {
@@ -21,7 +26,8 @@ export const defaultPreferences: PersonalPreferences = {
 }
 export const preferencePatchSchema = z.object({
   revision: z.number().int().min(0),
-  changes: preferencesSchema.partial(),
+  // Zod 4 的 object.partial() 仍会执行子字段 default；补丁字段必须使用无默认值 shape，避免误覆盖 ytd 为 month。
+  changes: z.object(preferencesShape).partial().strict(),
 }).strict()
 const optionalText = (length: number) => z.string().trim().max(length).nullable()
 export const profilePatchSchema = z.object({
