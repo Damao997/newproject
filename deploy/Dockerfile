@@ -22,7 +22,8 @@ RUN cd web && npm run build
 
 FROM registry.zrhsh.com/library/node:20-alpine AS runner
 
-RUN apk add --no-cache openssl
+RUN apk add --no-cache openssl libcap \
+    && setcap cap_net_bind_service=+ep /usr/local/bin/node
 
 ENV NODE_ENV=production \
     PORT=8080 \
