@@ -30,6 +30,7 @@ import { REPORT_STATUS_LABEL, REPORT_STATUS_BADGE_VARIANT } from '@/lib/constant
 import { api } from '@/lib/api'
 import { exportReportToDocx, exportReportToPdf } from '@/lib/report-export'
 import { cn } from '@/lib/utils'
+import { withBasePath } from '@/lib/portal-path'
 
 /**
  * 报告阅读视图（/reports/:reportId/read）—— Power BI 式编制/阅读态分离。
@@ -184,7 +185,7 @@ function ReaderShell({ report }: { report: ReportDetail }) {
   const revokeShare = useRevokeReportShare()
   const shareModel = useFormModel({expiresDays:('30') as string}, {})
   const [expiresDays, setExpiresDays] = useFormValue(shareModel, "expiresDays")
-  const shareUrl = shareInfo ? `${window.location.origin}/shared/${shareInfo.shareToken}` : ''
+  const shareUrl = shareInfo ? `${window.location.origin}${withBasePath(`/shared/${shareInfo.shareToken}`)}` : ''
 
   const handleCreateShare = async (regenerate = false) => {
     try {

@@ -1,4 +1,5 @@
 import { useAuthStore } from '@/stores/authStore'
+import { getApiBaseUrl } from '@/lib/portal-path'
 
 /**
  * AI SSE 流式客户端。以 fetch(POST) 携带 Bearer token 与 JSON body，
@@ -6,7 +7,7 @@ import { useAuthStore } from '@/stores/authStore'
  * 返回 abort 函数用于取消。后端事件格式：{ type:'token'|'done'|'error', content?, finalText?, error? }
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+const API_BASE_URL = getApiBaseUrl()
 
 export interface StreamHandlers {
   onToken?: (delta: string) => void

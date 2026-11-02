@@ -1,6 +1,6 @@
 import { FormErrorSummary } from './error-summary'
 import { createContext, useContext, useEffect, useId, useRef, type ReactNode, type RefCallback } from 'react'
-import { Controller, FormProvider, useForm, type Control, type FieldValues, type Path, type UseFormProps, type UseFormReturn } from 'react-hook-form'
+import { Controller, FormProvider, useForm, type Control, type FieldValues, type Path, type Resolver, type UseFormProps, type UseFormReturn } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import type { z } from 'zod'
 import { Input, type InputProps } from '@/components/ui/input'
@@ -14,7 +14,8 @@ export const useFormFieldContext = () => useContext(FieldContext)
 
 /** 表单值保持编辑态；金额等业务转换由提交映射负责，避免把空串转换为零。 */
 export function useAppForm<T extends FieldValues>(schema: z.ZodType<T>, options: Omit<UseFormProps<T>, 'resolver'> = {}) {
-  return useForm<T>({ mode: 'onBlur', reValidateMode: 'onChange', ...options, resolver: zodResolver(schema) })
+  const resolver = zodResolver(schema as never) as Resolver<T>
+  return useForm<T>({ mode: 'onBlur', reValidateMode: 'onChange', ...options, resolver })
 }
 
 export function AppForm<T extends FieldValues>({ form, children, onSubmit, id, className }: {

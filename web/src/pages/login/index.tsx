@@ -10,6 +10,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { cn } from '@/lib/utils'
 import { AlertCircle, Eye, EyeOff } from 'lucide-react'
 import { api, ApiError } from '@/lib/api'
+import { assetPath } from '@/lib/portal-path'
 import { ForgotPasswordDialog } from './forgot-password-dialog'
 
 /** 记住用户名：仅本地保存用户名（凭证不落盘） */
@@ -211,7 +212,7 @@ export default function LoginPage() {
     <div className="login-shell">
       <main className="login-form-wrap">
         <div className="login-brand">
-          <img className="login-brand-logo" src="/logo.png" alt="" />
+          <img className="login-brand-logo" src={assetPath('/logo.png')} alt="" />
           <span className="login-brand-text">浙江壹品慧<span>经营分析平台</span></span>
         </div>
         <h1 className="login-heading">登录</h1>

@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import * as XLSX from 'xlsx'
+import fs from 'node:fs'
 import path from 'node:path'
 
 /**
@@ -12,7 +13,23 @@ import path from 'node:path'
  * 幂等：按 code upsert；映射全量同步（清理旧映射后重建）。
  */
 
-const MAPPING_FILE = path.resolve(__dirname, '../../docs/data-templates/samples/分析主体及汇总映射.xlsx')
+function resolveMappingFile(): string {
+  const relative = 'docs/data-templates/samples/分析主体及汇总映射.xlsx'
+  const candidates = [
+    // tsx 直接运行 server/prisma/seed.ts
+    path.resolve(__dirname, '../..', relative),
+    // 编译产物在 server/dist/prisma，容器工作目录为 server
+    path.resolve(process.cwd(), '..', relative),
+    path.resolve(process.cwd(), relative),
+  ]
+  const found = candidates.find((candidate) => fs.existsSync(candidate))
+  if (!found) {
+    throw new Error(`种子数据文件不存在，已检查：${candidates.join('；')}`)
+  }
+  return found
+}
+
+const MAPPING_FILE = resolveMappingFile()
 
 function readSheet(file: string, index: number): unknown[][] {
   const wb = XLSX.readFile(file)

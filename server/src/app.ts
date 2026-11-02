@@ -4,10 +4,13 @@ import { securityHeaders } from './middleware/helmet'
 import { corsMiddleware } from './middleware/cors'
 import { generalRateLimiter } from './middleware/rate-limit'
 import { errorHandler, notFoundHandler } from './middleware/error-handler'
+import { createPortalWebHandler, stripBasePath } from './middleware/portal-web'
 import { sendOk } from './lib/response'
 import { basePrisma } from './lib/prisma'
 import { logger } from './lib/logger'
 import { REPORT_IMAGE_DIR } from './lib/uploads'
+import { normalizeBasePath } from './lib/base-path'
+import { loadConfig } from './config/env'
 import authRouter from './routes/auth'
 import dashboardRouter from './routes/dashboard'
 import indicatorsRouter from './routes/indicators'
@@ -43,10 +46,24 @@ export function isTrustedProxy(ip: string): boolean {
  *   traceId → helmet → cors → express.json → 通用限流 → 路由 → 404 → 全局错误处理
  * 认证路由内部再叠加 auth/rate-limit/audit（登录限流在 /auth/login）。
  */
-export function createApp(): Application {
-  const app = express()
+export interface AppOptions {
+  /** 覆盖环境变量 BASE_PATH，供单元测试或嵌入场景使用。 */
+  basePath?: string
+  /** 提供后由同一 Express 进程托管构建后的前端。 */
+  webRoot?: string | null
+}
 
-  app.set('trust proxy', isTrustedProxy)
+export function createApp(options: AppOptions = {}): Application {
+  const app = express()
+  const config = loadConfig()
+  const basePath = normalizeBasePath(options.basePath ?? config.basePath)
+  const webRoot = options.webRoot ?? config.webRoot
+
+  // 单机旧部署只信任本机代理；中台入口按明确配置的可信跳数读取 X-Forwarded-For。
+  app.set('trust proxy', config.trustProxyHops > 0 ? config.trustProxyHops : isTrustedProxy)
+
+  // 兼容网关保留 /<slug>/ 前缀的转发方式；已剥离前缀的请求不受影响。
+  app.use(stripBasePath(basePath))
 
   // 链路追踪最先执行，保证后续中间件/错误处理均可用 traceId
   app.use(traceId)
@@ -105,6 +122,11 @@ export function createApp(): Application {
   app.use('/api/v1/transactions', transactionsRouter)
   app.use('/api/v1/inventory', inventoryRouter)
   app.use('/api/v1/tools', toolsRouter)
+
+  // 中台单镜像模式：同一进程托管前端静态资源与 SPA 路由。
+  if (webRoot) {
+    app.use(createPortalWebHandler(webRoot, basePath))
+  }
 
   // 兜底 404 与全局错误处理
   app.use(notFoundHandler)
