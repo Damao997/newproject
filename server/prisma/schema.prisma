@@ -14,7 +14,8 @@
 //   - 新表禁用 PG 保留字（存量 user 例外）；枚举值小写 snake_case（存量 AgingBucket 例外）。
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
