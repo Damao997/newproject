@@ -1,6 +1,25 @@
 {
   "releases": [
     {
+      "version": "v2026.11.6",
+      "publishedAt": "2026-11-02",
+      "title": "双生产通道上线与安全兼容性升级",
+      "notes": [
+        {
+          "type": "improvement",
+          "text": "内网生产与企业 AI 中台采用同一正式版本并行发布；两条通道数据独立，均可独立验收和回滚。"
+        },
+        {
+          "type": "improvement",
+          "text": "完成依赖安全升级和 PostgreSQL、Alpine 容器兼容性修正，提升部署稳定性。"
+        },
+        {
+          "type": "note",
+          "text": "企业 AI 中台入口为 https://ai-portal.zrhsh.com/yipinhui-finance，首次使用仍按现有账号权限登录。"
+        }
+      ]
+    },
+    {
       "version": "v2026.10.15",
       "publishedAt": "2026-10-14",
       "title": "修复勾选过「记住用户名」的账号无法登录的问题",
