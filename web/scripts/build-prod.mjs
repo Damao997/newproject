@@ -2,7 +2,7 @@
 /**
  * 生产构建一键脚本（替代手工两步，防遗漏）：
  *   1. 注入 VITE_API_BASE_URL 后执行 npm run build（tsc -b && vite build）
- *   2. 构建后向 dist/index.html 注入/更新 <meta name="app-version">（口径同 deploy-zjyph.ps1）
+ *   2. 构建后向 dist/index.html 注入根路径 <base> 与 <meta name="app-version">
  *
  * 用法：npm run build:prod [-- --api /api/v1]
  * API 地址优先级：--api 参数 > 环境变量 VITE_API_BASE_URL > 同源 /api/v1。
@@ -11,6 +11,7 @@
 import { spawnSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import { ensureRootBaseHref, hasRootBaseHref } from './index-html.mjs'
 
 const args = process.argv.slice(2)
 const apiIdx = args.indexOf('--api')
@@ -58,9 +59,21 @@ if (build.status !== 0) {
   process.exit(build.status ?? 1)
 }
 
-// 2. 注入/更新 meta app-version（与 deploy-zjyph.ps1 同逻辑）
+// 2. 注入根路径 base（内部生产）；中台构建不经过本脚本，由 portal-web 注入前缀。
 const indexPath = path.join(outDir, 'index.html')
 let html = readFileSync(indexPath, 'utf8')
+try {
+  html = ensureRootBaseHref(html)
+} catch (err) {
+  console.error(`[build:prod] ${err instanceof Error ? err.message : String(err)}`)
+  process.exit(1)
+}
+if (!hasRootBaseHref(html)) {
+  console.error('[build:prod] 注入失败：构建产物缺少 <base href="/">')
+  process.exit(1)
+}
+
+// 3. 注入/更新 meta app-version（与 deploy-zjyph.ps1 同逻辑）
 if (/name="app-version"\s+content="([^"]*)"/i.test(html)) {
   html = html.replace(/name="app-version"\s+content="[^"]*"/i, `name="app-version" content="${version}"`)
 } else if (/<head>/i.test(html)) {
@@ -70,4 +83,4 @@ if (/name="app-version"\s+content="([^"]*)"/i.test(html)) {
   process.exit(1)
 }
 writeFileSync(indexPath, html)
-console.log(`[build:prod] 版本标识已注入：${version}`)
+console.log(`[build:prod] 根路径 base 与版本标识已注入：${version}`)

@@ -10,7 +10,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:static": "node --test serve-static.test.cjs",
+    "test:static": "node --test serve-static.test.cjs scripts/index-html.check.mjs",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
