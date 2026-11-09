@@ -82,6 +82,13 @@ Check '前端 8080 首页' {
   if ($r.StatusCode -ne 200) { throw "HTTP $($r.StatusCode)" }
 }
 
+# 2.1 深层路由刷新：产物必须声明根路径 base，且资源按 /assets 加载
+Check '前端深层路由刷新' {
+  $r = Invoke-WebRequest -Uri "http://127.0.0.1:$frontendPort/data/import" -TimeoutSec 8 -UseBasicParsing
+  if ($r.StatusCode -ne 200) { throw "HTTP $($r.StatusCode)" }
+  if ($r.Content -notmatch '<base href="/">') { throw 'index.html 缺少根路径 <base href="/">' }
+}
+
 # 3. 鉴权生效（未带 token 访问需登录接口应 401）
 Check '未授权访问返回 401' {
   try {
